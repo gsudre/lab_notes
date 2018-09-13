@@ -19,3 +19,5 @@ for y in diag_group2 random_HI_slope random_total_slope random_inatt_slope \
 done
 ```
 
+It looks like uni01 is not doing much. For the ones that it actually run (sometimes there were no variables p < .01)), the results were not better than when using uni. That could indicate overfitting, but also there could be features that interact well and hacving so few features (As in uni01) means shooting ourselves in the foot.
+
