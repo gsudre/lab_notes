@@ -90,4 +90,10 @@ m[, 15:27] = NULL
 colnames(m)[13] = 'mask.id'
 m$PROFILES.0.00001.profile = NULL
 write.csv(m, file='~/data/baseline_prediction/geno3_gf_09142018.csv', row.names=F)
+
+clin = read.csv('~/data/baseline_prediction/long_clin_0913.csv')
+clin$mask.id = clin$MRN
+write.csv(clin, '~/data/baseline_prediction/cog_gf_09142018.csv')
 ```
+
+
