@@ -21,3 +21,58 @@ done
 
 It looks like uni01 is not doing much. For the ones that it actually run (sometimes there were no variables p < .01)), the results were not better than when using uni. That could indicate overfitting, but also there could be features that interact well and hacving so few features (As in uni01) means shooting ourselves in the foot.
 
+# 2018-09-14 12:34:50
+
+I updated the code to use all the improvements/enhancements we have in the limited version, except that it's not limited to algorithms or time. In fact, I think the filtering to the structural data puts the number of variables in a manageable number, so we don't need to run the limited code anymore. And I have alreayd noticed that the raw code breaks because it runs out of memory... let's run it anyways, and let it die.
+
+```bash
+rm swarm.automl
+for var in raw pca uni pca_uni uni_pca uni01; do
+    for m in area thickness volume; do
+        for sx in inatt HI total; do
+            for sl in OLS random; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/struct_${m}_08312018_260timeDiff12mo.RData.gz ~/data/baseline_prediction/struct_gf_09052018_260timeDiff12mo.csv ${sl}_${sx}_slope ~/tmp/${m}_${sl}_${sx}" >> swarm.automl;
+            done;
+        done;
+        for sx in INATT HI total; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/struct_${m}_08312018_260timeDiff12mo.RData.gz ~/data/baseline_prediction/struct_gf_09052018_260timeDiff12mo.csv group_${sx}3 ~/tmp/${m}_${sx}" >> swarm.automl;
+        done;
+        echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/struct_${m}_08312018_260timeDiff12mo.RData.gz ~/data/baseline_prediction/struct_gf_09052018_260timeDiff12mo.csv diag_group2 ~/tmp/${m}_diag_group2" >> swarm.automl;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl;
+swarm -f swarm.automl -g 40 -t 32 --time 1-00:00:00 --logdir trash_bin --job-name struc -m R --gres=lscratch:10
+```
+
+We can also run the snp code. I also don't think there's much value in running the PCA code there, so it's just the raw code.
+
+```bash
+rm swarm.automl
+var=raw;
+for m in {1..9}; do
+    for sx in inatt HI total; do
+        for sl in OLS random; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_snps1e0${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv ${sl}_${sx}_slope ~/tmp/${m}_${sl}_${sx}" >> swarm.automl;
+        done;
+    done;
+    for sx in INATT HI total; do
+        echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_snps1e0${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv group_${sx}3 ~/tmp/${m}_${sx}" >> swarm.automl;
+    done;
+    echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_snps1e0${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv diag_group2 ~/tmp/${m}_diag_group2" >> swarm.automl;
+done;
+m='prs'
+for sx in inatt HI total; do
+    for sl in OLS random; do
+        echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv ${sl}_${sx}_slope ~/tmp/${m}_${sl}_${sx}" >> swarm.automl;
+    done;
+done;
+for sx in INATT HI total; do
+    echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv group_${sx}3 ~/tmp/${m}_${sx}" >> swarm.automl;
+done;
+echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv diag_group2 ~/tmp/${m}_diag_group2" >> swarm.automl;
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl;
+swarm -f swarm.automl -g 40 -t 32 --time 1-00:00:00 --logdir trash_bin --job-name geno -m R --gres=lscratch:10
+```
+
+And since we're running all for comparison, let's attach neuropsych as well:
+
