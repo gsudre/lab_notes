@@ -63,13 +63,13 @@ done;
 m='prs'
 for sx in inatt HI total; do
     for sl in OLS random; do
-        echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv ${sl}_${sx}_slope ~/tmp/${m}_${sl}_${sx}" >> swarm.automl;
+        echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09142018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv ${sl}_${sx}_slope ~/tmp/${m}_${sl}_${sx}" >> swarm.automl;
     done;
 done;
 for sx in INATT HI total; do
-    echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv group_${sx}3 ~/tmp/${m}_${sx}" >> swarm.automl;
+    echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09142018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv group_${sx}3 ~/tmp/${m}_${sx}" >> swarm.automl;
 done;
-echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09132018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv diag_group2 ~/tmp/${m}_diag_group2" >> swarm.automl;
+echo "Rscript --vanilla ~/research_code/automl/${var}.R ~/data/baseline_prediction/geno3_${m}_09142018.RData.gz ~/data/baseline_prediction/geno3_gf_09142018.csv diag_group2 ~/tmp/${m}_diag_group2" >> swarm.automl;
 sed -i -e "s/^/unset http_proxy; /g" swarm.automl;
 swarm -f swarm.automl -g 40 -t 32 --time 1-00:00:00 --logdir trash_bin --job-name geno -m R --gres=lscratch:10
 ```
