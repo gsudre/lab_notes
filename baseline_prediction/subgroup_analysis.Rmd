@@ -1,0 +1,58 @@
+---
+title: "Subgroup analysis"
+output: html_notebook
+---
+
+# 2018-09-19 14:30:54
+
+Let's re-run the analysis for different subgroups. I'll change the code to add
+different cases when restricting the groups, but in some cases the different
+targets won't apply.
+
+In particular, I don't think it's valid to run the LCMM groups, as we'll be
+removing subjects and the LCMM groups were created using all of them. I can see
+an aergument for doing it anyways, but for now let's avoid it. The same idea
+applies to not using random slopes.
+
+## ADHD
+
+Here we remove anyone who is unaffected (diag_group). That leaves people in full and partial
+remission, as well as persistent and new_onset. We can run OLS regression, do a
+3 group classification, 2 group (persistent vs remission without new onset).
+
+```{r}
+df = read.csv('~/data/baseline_prediction/long_clin_0918.csv')
+df = df[df$diag_group != 'unaffect', ]
+df$diag_group = factor(df$diag_group)
+table(df$diag_group)
+table(df$diag_group2)
+```
+
+## ADHD_NOS
+
+Here we remove anyone who is NV (DX). That leaves people who are ADHD and
+ADHD_NOS. In this case, the labels of remission and persistence don't apply, so
+we have to categorize based on OLS slopes. We can then have 2 groups (improvers
+vs non-improvers), or do the OLS regression.
+
+```{r}
+df = read.csv('~/data/baseline_prediction/long_clin_0918.csv')
+df = df[df$DX != 'NV', ]
+plot(df$OLS_HI_slope)
+```
+
+## No new-onset
+
+Here we remove anyone who had late-onset ADHD (diag_group). We can still run OLS slopes, and
+and diag_group2. If we categorize slopes we'd have 2 groups, but NV would be
+mixed with non-improvers. It's still worth running it, just to compare with the entire group analysis. Or, we could also disregard NVs and just run improvers vs
+non-improvers. 
+
+```{r}
+df = read.csv('~/data/baseline_prediction/long_clin_0918.csv')
+df = df[df$diag_group != 'new_onset', ]
+df$diag_group = factor(df$diag_group)
+table(df$diag_group)
+table(df$diag_group2)
+plot(df$OLS_HI_slope)
+```
