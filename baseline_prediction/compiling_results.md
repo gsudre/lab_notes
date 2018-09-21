@@ -285,3 +285,32 @@ for y in diag_group2 random_HI_slope random_total_slope random_inatt_slope \
     done;
 done
 ```
+
+# 2018-09-21 10:15:52
+
+Now we compile the results from the subgroup analysis:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val" > auto_summary.csv;
+for y in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+    for f in `grep -l \"${y} subgroups2*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6 | cut -d"_" -f 1,2 -`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc >> auto_summary.csv;
+    done;
+done
+```
+
