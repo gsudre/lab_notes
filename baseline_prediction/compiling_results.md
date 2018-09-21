@@ -245,5 +245,43 @@ for var in raw pca uni pca_uni uni_pca uni01; do
     done;
 done;
 sed -i -e "s/^/unset http_proxy; /g" swarm.automl_subgroup;
-swarm -f swarm.automl_subgroup -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name subgroups -m R --gres=lscratch:10
+swarm -f swarm.automl_subgroup -g 40 -t 32 --time 4:00:00 --logdir trash_bin --job-name subgroups -m R --gres=lscratch:10
+```
+
+# 2018-09-20 09:18:45
+
+SLURM was bundling my swarms, which screwed up my output files. So, I had to
+split the runs:
+
+```bash
+split -l 500 swarm.automl_subgroup 
+for f in `/bin/ls -1 xa?`; do swarm -f $f -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name subgroups2 -m R --gres=lscratch:10; done
+```
+
+While we wait on results, let's collect the rsfmri results to add to the
+previous summary:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val" > auto_summary.csv;
+for y in diag_group2 random_HI_slope random_total_slope random_inatt_slope \
+    OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+    group_HI3 group_total3 group_INATT3; do
+    for f in `grep -l \"${y} rsfmri*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 4 | cut -d"_" -f 1,2 -`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        echo $y,$phen,$var,$nfeat,$model,$metric,$acc >> auto_summary.csv;
+    done;
+done
 ```
