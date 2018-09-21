@@ -314,3 +314,16 @@ for y in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
 done
 ```
 
+RUNNING NEW DTI ON FULL DATA AND SUBGROUPS!
+
+Results too good to be true? getting very close to 100% accuracy for subgroups, but that's
+true even when using leaderboard scoring, and forced 5-fold CV... look at
+uni01.R for tests... Also, nice that loading saved models bring up the
+cross-validation scores. Maybe plot it in the brain to see if it makes sense,
+implement some dummy scoring, and calculate univariate filters only in training
+set? Maybe I could get the leaderboard also through Kfold, setting it form the
+outside, and then I can accumulate several test results that can give us a
+distribution...
+
+The issue there is that we could potentially be succeptible to different models.
+Something to think about...

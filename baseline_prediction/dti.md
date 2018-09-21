@@ -158,11 +158,3 @@ swarm -f xaa -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --j
 swarm -f xab -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name subgroupDTI -m R --gres=lscratch:10;
 ```
 
-RUNNING NEW DTI ON FULL DATA AND SUBGROUPS!
-
-Results too good to be true? getting very close to 100% accuracy for subgroups, but that's
-true even when using leaderboard scoring, and forced 5-fold CV... look at
-uni01.R for tests... Also, nice that loading saved models bring up the
-cross-validation scores. Maybe plot it in the brain to see if it makes sense,
-implement some dummy scoring, and calculate univariate filters only in training
-set? 
