@@ -314,8 +314,6 @@ for y in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
 done
 ```
 
-RUNNING NEW DTI ON FULL DATA AND SUBGROUPS!
-
 Results too good to be true? getting very close to 100% accuracy for subgroups, but that's
 true even when using leaderboard scoring, and forced 5-fold CV... look at
 uni01.R for tests... Also, nice that loading saved models bring up the
@@ -327,3 +325,62 @@ distribution...
 
 The issue there is that we could potentially be succeptible to different models.
 Something to think about...
+
+# 2018-09-24 10:02:38
+
+Just noticed that I didn't change the correct variables in the cog files... see
+that specific notes for new files. Now, I'm just re-running those cog files,
+after changing the date.
+
+```bash
+split -l 600 swarm.automl_subgroupCog
+for f in xaa xab; do swarm -f $f -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name subgroupsCog -m R --gres=lscratch:10; done
+```
+
+Let's also collect the results of using DTI with the new data:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val" > auto_summary.csv;
+for y in diag_group2 random_HI_slope random_total_slope random_inatt_slope \
+    OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+    group_HI3 group_total3 group_INATT3; do
+    for f in `grep -l \"${y} subgroupDTI*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc >> auto_summary.csv;
+    done;
+done
+```
+
+I then changed uni01_limited.R to use a leaderboard (test) set, fix the CV
+folds, output a proxy for dummy predictions, and also to calculate the
+univariate filter using only the training data. Let's run a few iterations of
+it, using only the DTI_all dataset, just to see what's the spread in the test
+set.
+
+```bash
+var=uni01_limited
+f=~/data/baseline_prediction/dti_ALL_voxelwise_n272_09212018.RData.gz 
+for target in nonew_ADHDonly_diag_group2 diag_group2 nonew_ADHDonly_OLS_inatt_slope; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${target} ~/data/baseline_prediction/models/${target} $RANDOM" >> swarm.automl_LBtest;
+    done; 
+done;
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl_LBtest;
+swarm -f swarm.automl_LBtest -g 40 --partition quick -t 32 --time 4:00:00 --logdir trash_bin --job-name lb -m R --gres=lscratch:10
+```
+
+Let's see how the spread looks like...

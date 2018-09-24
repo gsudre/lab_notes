@@ -24,8 +24,25 @@ done
 Some of the IDs Ayaka had sent didn't have good DTI (i.e. were bad according to
 Labmatrix and didn't have the necessary directories ot be converted).
 
-NEXT STEPS
+# 2018-09-24 09:44:12
+
+```bash
+# caterpie
+for m in `cat ~/tmp/no_fatcat_ok.txt `; do
+    echo $m;
+    ssh -q helix.nih.gov "mkdir /scratch/sudregp/tortoise_exported_v2/${m}";
+    scp -qr /mnt/shaw/data_by_maskID/${m}/tortoise_converted_v2 helix:/scratch/sudregp/tortoise_exported_v2/${m}/exported;
+done
+```
 
 Then, we copy the export directory of all subjects to biowulf, and run fatcat:
 
-while read m; do echo "bash ~/research_code/dti/run_fatcat_fs_exported.sh /scratch/sudregp/tortoise_exported_v2/ ${m}" >> swarm.fatcat; done < ~/tmp/400.txt
+```bash
+while read m; do
+    echo "export SUBJECTS_DIR=/data/NCR_SBRB/freesurfer5.3_subjects/; bash ~/research_code/dti/run_fatcat_fs_exported.sh /scratch/sudregp/tortoise_exported_v2/ ${m}" >> swarm.fatcat;
+done < ~/tmp/no_fatcat_ok.txt
+swarm -f swarm.fatcat -t 8 -g 40 --time=24:00:00 --merge-output --logdir trash_bin --job-name fc -m afni,TORTOISE
+```
+
+Some of the IDs died because of badly formed BMTXT matrix... not sure if it's
+worth fixing them, though.
