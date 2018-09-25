@@ -1,0 +1,72 @@
+---
+title: "Socioeconomic variables"
+output: html_notebook
+---
+
+I got a file from Aman through secure e-mail with all the raw data in the socio-economic study. I extracted the important columns from it, and now let's see what we can use in the baseline prediction study. Mostly, we need to check what we will code as categorical and what will be continuous.
+
+```{r}
+socio = read.csv('~/data/baseline_prediction/socioeconomic_full.csv')
+dim(socio)
+clin = read.csv('~/data/baseline_prediction/long_clin_0918.csv')
+dim(clin)
+m = merge(socio, clin)
+dim(m)
+```
+
+OK, now let's plot these variables to decide what needs to be categorical:
+
+```{r}
+str(socio)
+```
+
+Yeah, I definitely don't like how some of these variables were classified.
+
+```{r}
+length(unique(m$County))
+m$County = factor(m$County)
+table(m$County)
+```
+
+That's for sure better than 68, but we might still run into problems in the OneHotEncoder. Let's condense it a bit more:
+
+```{r}
+m$County = as.character(m$County)
+too_few = names(which(table(m$County) <= 10))
+idx = sapply(1:nrow(m), function(x) m[x,]$County %in% too_few)
+m[idx, ]$County = 'Other'
+m$County = factor(m$County)
+table(m$County)
+```
+
+```{r}
+length(unique(m$Home_Type))
+m$County = factor(m$Home_Type)
+table(m$Home_Type)
+```
+
+```{r}
+m$Home_Type = as.character(m$Home_Type)
+m[m$Home_Type=='', ]$Home_Type = 'Unknown'
+m[m$Home_Type=='5', ]$Home_Type = 'Unknown'
+m[m$Home_Type=='2', ]$Home_Type = '3'
+m[m$Home_Type=='3', ]$Home_Type = 'AptOrCondo'
+m[m$Home_Type=='4', ]$Home_Type = '1'
+m[m$Home_Type=='1', ]$Home_Type = 'HouseOrTownhouse'
+m$Home_Type = factor(m$Home_Type)
+table(m$Home_Type)
+```
+
+OK, much better now. Let's go ahead and save it, making a few tweaks to variable names so that we can properly encode them later:
+
+```{r}
+data = m[1:19]
+cnames = sapply(colnames(data)[2:ncol(data)], function(y) sprintf('v_%s', y))
+colnames(data)[2:ncol(data)] = cnames
+colnames(data)[2] = "v_CategCounty"
+colnames(data)[3] = "v_CategHomeType"
+save(data, file='~/data/baseline_prediction/social_09252018.RData.gz', compress=T)
+colnames(data)
+```
+
+

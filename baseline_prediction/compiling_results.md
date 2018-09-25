@@ -493,3 +493,54 @@ for f in `/bin/ls vf??`; do
     done;
 done
 ```
+
+I have also been thinking that we should run the subgroups in the latent
+categories as well. My reasoning here is that the latent variables were obtained
+in the complete group, but we run it for subsamples of it (e.g. not everyone had
+DTI). So, if we are removing some people because of being NV, or late onset, we
+should still be able to use those labels under the same logic.
+
+```bash
+rm swarm.automl_valFixed;
+for var in raw pca uni pca_uni uni_pca uni01; do
+    for f in `/bin/ls -1 ~/data/baseline_prediction/cog*0924*gz \
+        ~/data/baseline_prediction/dti*0921*gz ~/data/baseline_prediction/aparc*gz \
+        ~/data/baseline_prediction/struct*gz ~/data/baseline_prediction/geno3*gz \
+        ~/data/baseline_prediction/aparc*gz`;do
+        for nn in nonew_ ''; do
+            for g in ADHDonly_ ''; do
+                for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                    random_HI_slope random_total_slope random_inatt_slope \
+                    group_HI3 group_total3 group_INATT3; do
+                    echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+                done; 
+            done;
+            # diag_group2 doesn't apply to ADHD_NOS
+            for g in ADHDNOS_ ADHDNOS_group; do
+                for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                random_HI_slope random_total_slope random_inatt_slope \
+                group_HI3 group_total3 group_INATT3; do
+                    echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+                done; 
+            done;
+        done;
+        for y in ; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${y} ~/data/baseline_prediction/models/${y} 42" >> swarm.automl_valFixed;
+        done;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl_valFixed;
+wc -l swarm.automl_valFixed;
+split -l 1000 swarm.automl_valFixed vf;
+for f in `/bin/ls vf??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_valFixed --job-name valFixed -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```

@@ -29,8 +29,28 @@ From quick chat with Philip today:
   these, and also in SX at assessment
 - [ ] Run genome-wide significance for SNPs, just to show it, even though nothing
   will come out of it
-- [ ] Run dummy classifiers to assess significance (i.e. not show only the best ones)
-- [ ] Use new DTI motion parameters to assess if we're using correct IDs.
+- [x] Run dummy classifiers to assess significance (i.e. not show only the best ones)
+- [x] Use new DTI motion parameters to assess if we're using correct IDs.
   (will need to remove scans to reduce correlation! check R notebook note)
-- [ ] Try best uni models getting features from training set! (not necessarily
+- [x] Try best uni models getting features from training set! (not necessarily
   bad if using replication set from Wendy, but definitely needed otherwise)
+
+**2018-09-25 13:44:15**
+
+- [ ] Maybe give Wendy more names of people to interview back, if modalities
+  other than DTI perform well?
+- [ ] Maybe add sex, age, and movement variables to the models to see if they
+  share some of the loadings
+- [ ] Combine datasets. Here, we can try to use only people that have all
+  variables, or go for allowing NAs. Most algorithms in autoML can handle them
+  (other than GNB, I think). The main (empirical) question is to whether we will
+  join all datasets, or only combinations of them. I imagine we could test every
+  possible combination (using and not using NAs), but it makes more sense to
+  just pick the best pipeline in each modality (e.g. only one of the rsFMRI
+  aparcs, one one DTI modality, etc). In the worst case scenario, we could just
+  clump together the good modalities, compared to everything, and show that it's
+  not just a matter of having more features.
+- [ ] Run subgroups in latent groups as well (see main notes)
+- [ ] Change it to only remove NA columns for PCA (and maybe univariate) pipeline
+
+ 
