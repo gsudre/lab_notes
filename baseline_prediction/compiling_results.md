@@ -383,4 +383,113 @@ sed -i -e "s/^/unset http_proxy; /g" swarm.automl_LBtest;
 swarm -f swarm.automl_LBtest -g 40 --partition quick -t 32 --time 4:00:00 --logdir trash_bin --job-name lb -m R --gres=lscratch:10
 ```
 
+# 2018-09-25 09:57:37
+
 Let's see how the spread looks like...
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > auto_summary.csv;
+for y in nonew_ADHDonly_diag_group2 diag_group2 nonew_ADHDonly_OLS_inatt_slope; do
+    for f in `grep -l \"${y} lb_*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        if grep -q "Class distribution" $f; then
+            dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        else
+            dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> auto_summary.csv;
+    done;
+done
+```
+
+So, the results were quite good (auto_summary_leaderboard_09252018). For the
+binary group decision between persistent and remitted
+(nonew_ADHDonly_diag_group2), we get a mean over different seeds of about 90%.
+The class majority would be around 70%. Note that I had the training seed fixed
+at 42, but that's not an issue. 
+
+I also did some research on what happens to the data in H2O autoML. By looking
+at the confusion matrix of the best models, it's clear that the actual training
+data is (about) 80% of the data sent in the training argument, with the rest
+used for validation. Note that the 5-fold cross-validation happens only within
+the training data, so it's 5-fold on the 80%. For example, if df2 is sent for
+training, and it has 110 observations, 81 observations were used for training
+and 29 for validation. The 5-fold is done only within the 81. So, in this case,
+we're actualing fitting a combination of algorithm and grid parameters to .8*81,
+doing it for all parts of the grid until we see no potential improvement in the
+29 observations in the validation set, then predicting the remaining .2*81. 
+
+This might be overkill, but it definitely keeps the procedure clean. Especially
+if we use a leaderboard set later. 
+
+Now, keep in mind this is only true for autoML (or any grid search). If we were to simply train a
+givel model, there would be no validation set. In other words, the training part
+would be N (110 in the case above), which would also be the number of
+cross-validation predictions as each cross validation would predict independent
+.2*N observations. 
+
+So, given everything we've seen so far, I think it's fair to run the entire
+experiment using a single seed, without specifying the leaderboard. Then, for
+the "interesting" results, we run multiple seeds (still without the
+leaderboard). The idea there is that we'll use Wendy's search as the test set
+eventually. But then, for the best results in the CV approach, we also run them
+through the leaderboard approach, just to we have some backup results.
+
+What I might do is specify the validation myself, so I have more control of how
+much data goes into it, and also compute univariate filter only in training data.
+
+Of course, we should also start plotting in the brain where all these good
+variables are.
+
+```bash
+for var in raw pca uni pca_uni uni_pca uni01; do
+    for f in `/bin/ls -1 ~/data/baseline_prediction/cog*0924*gz \
+        ~/data/baseline_prediction/dti*0921*gz ~/data/baseline_prediction/aparc*gz \
+        ~/data/baseline_prediction/struct*gz ~/data/baseline_prediction/geno3*gz \
+        ~/data/baseline_prediction/aparc*gz`;do
+        for nn in nonew_ ''; do
+            for g in ADHDonly_ ''; do
+                for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                    echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+                done; 
+            done;
+            for g in ADHDNOS_ ADHDNOS_group; do
+                for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                    echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+                done; 
+            done;
+        done;
+        for y in random_HI_slope random_total_slope random_inatt_slope \
+            group_HI3 group_total3 group_INATT3; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${y} ~/data/baseline_prediction/models/${y} 42" >> swarm.automl_valFixed;
+        done;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl_valFixed;
+split -l 1000 swarm.automl_valFixed vf;
+for f in `/bin/ls vf??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name valFixed -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
