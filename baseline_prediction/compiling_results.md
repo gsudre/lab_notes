@@ -552,3 +552,46 @@ for f in `/bin/ls vf??`; do
     done;
 done
 ```
+
+# 2018-09-26 12:28:10
+
+Note that all tests above were conducted removing all variables that had any
+NAs in them. Today I changed the scripts to keep NAs so we could run the social
+variables a bit better, and also to better deal in the future when combining datasets. 
+
+Not sure how keeping the NAs would affect the results, as I don't have a good
+quantification of how many of the single-domain datasets have NAs in them.
+
+At this moment the cluster is swamped with all the stuff I'm running above. So, 
+I'm trying to run the different tests with the socioeconomic variables locally:
+
+```bash
+function print_commands () {
+    var=$1;
+    f=$2;
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                random_HI_slope random_total_slope random_inatt_slope \
+                group_HI3 group_total3 group_INATT3; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42 | tee social_${var}_${nn}${g}${t}.log" >> swarm.automl_allSocial;
+            done; 
+        done;
+        # diag_group2 doesn't apply to ADHD_NOS
+        for g in ADHDNOS_ ADHDNOS_group; do
+            for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+            random_HI_slope random_total_slope random_inatt_slope; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42 | tee social_${var}_${nn}${g}${t}.log" >> swarm.automl_allSocial;
+            done; 
+        done;
+        g=ADHDNOS_;
+        for t in group_HI3 group_total3 group_INATT3; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f ~/data/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} ~/data/baseline_prediction/models/${nn}${g}${t} 42 | tee social_${var}_${nn}${g}${t}.log" >> swarm.automl_allSocial;
+        done;
+    done;
+}
+f=~/data/baseline_prediction/social_09262018.RData.gz;
+for var in raw pca uni pca_uni uni_pca uni01; do
+    print_commands $var $f
+done;
+```

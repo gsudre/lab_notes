@@ -35,13 +35,15 @@ m$County = as.character(m$County)
 too_few = names(which(table(m$County) <= 10))
 idx = sapply(1:nrow(m), function(x) m[x,]$County %in% too_few)
 m[idx, ]$County = 'Other'
+idx = sapply(1:nrow(m), function(x) m[x,]$County=='Prince George\'s')
+m[idx, ]$County = 'PrinceGeorge'
 m$County = factor(m$County)
 table(m$County)
 ```
 
 ```{r}
 length(unique(m$Home_Type))
-m$County = factor(m$Home_Type)
+m$HomeType = factor(m$Home_Type)
 table(m$Home_Type)
 ```
 
@@ -60,13 +62,14 @@ table(m$Home_Type)
 OK, much better now. Let's go ahead and save it, making a few tweaks to variable names so that we can properly encode them later:
 
 ```{r}
-data = m[1:19]
+data = m[,1:19]
 cnames = sapply(colnames(data)[2:ncol(data)], function(y) sprintf('v_%s', y))
 colnames(data)[2:ncol(data)] = cnames
 colnames(data)[2] = "v_CategCounty"
 colnames(data)[3] = "v_CategHomeType"
-save(data, file='~/data/baseline_prediction/social_09252018.RData.gz', compress=T)
+save(data, file='~/data/baseline_prediction/social_09262018.RData.gz', compress=T)
 colnames(data)
 ```
+
 
 
