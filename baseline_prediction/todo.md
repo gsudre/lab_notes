@@ -61,3 +61,14 @@ Another idle mind during WIP:
 - [ ] Check if good variables are at all correlated to sex, motion, or age, or
   if we could use just those variables to predict the outcome.
  
+
+**2018-09-28 16:26:21**
+
+Suggestion from Philip:
+
+- [ ] Try decoding just using age, IQ, and sex, to simulate the best results in the ADHD-200 competition.
+- [ ] Are these kids already remitted/persistent by the time we're using as baseline?
+- [ ] Should we calculate slopes using as baseline the day we use as baseline in the phenotype? (That will be an issue when combining the data...).
+
+
+
