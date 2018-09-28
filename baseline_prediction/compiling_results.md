@@ -765,7 +765,7 @@ if (grepl(pattern = 'group', target)) {
 ``` 
 
 My best model without age and Sex had .68 AUC, and the class ratio is .69. Now, let's add sex and
-age to this.
+age to this. Yep, still only up to .71. Nice.
 
 I'm also getting a bit uneasy with doing the univariate analysis in the
 cross-validation set. I know the results were still wuite good in the
