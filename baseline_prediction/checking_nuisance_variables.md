@@ -216,3 +216,5 @@ if (grepl(pattern = 'group', target)) {
   print(m@metrics$MSE)
 }
 ``` 
+
+For fMRI I got AUC of .58, with class ratio of .63.
