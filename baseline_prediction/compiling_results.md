@@ -595,3 +595,310 @@ for var in raw pca uni pca_uni uni_pca uni01; do
     print_commands $var $f
 done;
 ```
+
+# 2018-09-27 10:51:48
+
+Let's run some stuff under Philip's account...
+
+```bash
+rm swarm.automl_valFixed;
+function print_commands () {
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                random_HI_slope random_total_slope random_inatt_slope \
+                group_HI3 group_total3 group_INATT3; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+            done; 
+        done;
+        # diag_group2 doesn't apply to ADHD_NOS
+        for g in ADHDNOS_ ADHDNOS_group; do
+            for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+            random_HI_slope random_total_slope random_inatt_slope; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+            done; 
+        done;
+        g=ADHDNOS_;
+        for t in group_HI3 group_total3 group_INATT3; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> swarm.automl_valFixed;
+        done;
+    done;
+}
+
+for f in `/bin/ls -1 /data/NCR_SBRB/baseline_prediction/cog*0924*gz \
+    /data/NCR_SBRB/baseline_prediction/dti*0921*gz /data/NCR_SBRB/baseline_prediction/aparc*0918*gz \
+    /data/NCR_SBRB/baseline_prediction/struct*0919*gz`; do
+    for var in raw pca uni pca_uni uni_pca uni01; do
+        print_commands
+    done;
+    var=raw;
+    for f in `/bin/ls -1 /data/NCR_SBRB/baseline_prediction/geno3*0919*gz`; do
+        print_commands
+    done;
+done;
+
+sed -i -e "s/^/unset http_proxy; /g" swarm.automl_valFixed;
+wc -l swarm.automl_valFixed;
+split -l 1000 swarm.automl_valFixed vf;
+for f in `/bin/ls vf??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_valFixed --job-name valFixed -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Note that the tests I started running in Philip's account (starting on vfai
+split file) do have the NA variables still in there, because it checked the
+newer code. It won't affect any data domains that don't have NAs, though.
+
+Today I also ran some very crude tests and it doesn't look like movement is
+driving the results. The best test will be to pick a model, and then just run it
+under different seeds, trying to predict whatever the target was using just the
+movement variables, age, and sex. Of course, before we do that we'll need to
+decide on the model. But still, this current test gives me hope. Here's some
+details:
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+# starting h2o
+library(h2o)
+if (Sys.info()['sysname'] == 'Darwin') {
+  max_mem = '16G'
+} else {
+  max_mem = paste(Sys.getenv('SLURM_MEM_PER_NODE'),'m',sep='')
+}
+h2o.init(ip='localhost', nthreads=future::availableCores(), max_mem_size=max_mem)
+clin_fname='/data/NCR_SBRB/baseline_prediction/long_clin_0918.csv'
+data_fname='/data/NCR_SBRB/baseline_prediction/dti_tracts_n272_09212018.RData.gz'
+print('Loading files')
+# merging phenotype and clinical data
+clin = read.csv(clin_fname)
+load(data_fname)  #variable is data
+# remove constant variables that screw up PCA and univariate tests
+print('Removing constant variables')
+feat_var = apply(data, 2, var, na.rm=TRUE)
+idx = feat_var != 0  # TRUE for features with 0 variance (constant)
+# categorical variables give NA variance, but we want to keep them
+idx[is.na(idx)] = TRUE
+data = data[, idx]
+nNAs = colSums(is.na(data))  # number of NAs in each variable
+# remove variables that are all NAs
+data = data[, nNAs < nrow(data)]
+print(sprintf('Features remaining: %d (%d with NAs)', ncol(data)-1, sum(nNAs>0)))
+print('Merging files')
+df = merge(clin, data, by='MRN')
+print('Looking for data columns')
+dti = read.csv('/data/NCR_SBRB/baseline_prediction/dti_long_09272018.csv')
+m = merge(df, dti, by='mask.id')
+df = m
+x = c('norm.trans', 'norm.rot', 'goodVolumes', 'age_at_scan', 'Sex')
+
+target='nonew_ADHDonly_diag_group2'
+if (grepl('nonew', target)) {
+  df = df[df$diag_group != 'new_onset', ]
+  df$diag_group = factor(df$diag_group)
+  target = sub('nonew_', '', target)
+}
+if (grepl('ADHDonly', target)) {
+  df = df[df$diag_group != 'unaffect', ]
+  df$diag_group = factor(df$diag_group)
+  target = sub('ADHDonly_', '', target)
+}
+if (grepl('ADHDNOS', target)) {
+  df = df[df$DX != 'NV', ]
+  target = sub('ADHDNOS_', '', target)
+  if (grepl('groupOLS', target) || grepl('grouprandom', target)) {
+    df[, target] = 'nonimprovers'
+    slope = sub('group', '', target)
+    df[df[, slope] < 0, target] = 'improvers'
+    df[, target] = as.factor(df[, target])
+  }
+}
+myseed=42
+set.seed(myseed)
+idx = sample(1:nrow(df), nrow(df), replace=F)
+mylim = floor(.10 * nrow(df))
+data.test = df[idx[1:mylim], ]
+data.train = df[idx[(mylim + 1):nrow(df)], ]
+print(sprintf('Using %d samples for training, %d for testing.',
+              nrow(data.train),
+              nrow(data.test)))
+print('Converting to H2O')
+dtrain = as.h2o(data.train[, c(x, target)])
+dtest = as.h2o(data.test[, c(x, target)])
+if (grepl(pattern = 'group', target)) {
+  dtrain[, target] = as.factor(dtrain[, target])
+  dtest[, target] = as.factor(dtest[, target])
+}
+dtrain[, 'Sex'] = as.factor(dtrain[, 'Sex'])
+dtest[, 'Sex'] = as.factor(dtest[, 'Sex'])
+print(sprintf('Running model on %d features', length(x)))
+aml <- h2o.automl(x = x, y = target, training_frame = dtrain,
+                  seed=myseed,
+                  validation_frame=dtest,
+                  max_runtime_secs = NULL,
+                  max_models = NULL)
+aml@leaderboard
+if (grepl(pattern = 'group', target)) {
+  print('Class distribution:')
+  print(as.vector(h2o.table(dtrain[,target])['Count'])/nrow(dtrain))
+} else {
+  preds = rep(mean(dtrain[,target]), nrow(dtrain))
+  m = h2o.make_metrics(as.h2o(preds), dtrain[, target])
+  print('MSE prediction mean:')
+  print(m@metrics$MSE)
+}
+``` 
+
+My best model without age and Sex had .68 AUC, and the class ratio is .69. Now, let's add sex and
+age to this.
+
+I'm also getting a bit uneasy with doing the univariate analysis in the
+cross-validation set. I know the results were still wuite good in the
+leaderboard analysis, but I think it'd be more fair if we did no
+cross-validation, specified the training, validation, and test sets, and ran
+that hundreds of times, combining the leaderboard results across runs. Let's see
+how that goes (nocv_ code). But the issue there is that it's not a true
+implementation of the internal CV, which only predicts the held out data once.
+So, I'll have to implement the CV manually, and do the predictions as we go.
+
+At this point, the nocv_uni01 code works, but we still need to combine the
+different models. Howe would we do that? In other words, what's the best model?
+We need to recreate the cross-validation leaderboard. But that's not possible
+because automl only exposes the leader, which is a model that has been trained
+on 4/5 of the data already. So, it's not fair to have it predict that same
+dataset...
+
+So, we're back at where we started. We can use the train+valid split, doing the
+univariate test on the entire thing, and report the best model for further
+testing, including variable selection and testing using Wendy's set. We could
+potentially randomize it with different seeds, so that we're playing with
+different validation sets, and we then can assess the stability of the best
+model selected, as well as the features used. 
+
+The other options is to use train+valid+test, repeating it several times. That's
+what we did for the best results (DTI) so far, which gives us a nice test
+distribution, uncorrupted by the univariate test that we're using for feature
+selection. Just remember that in this case the leaderboard (i.e. best model) is
+based on the test data, not the CV held-out data.
+ 
+# 2018-09-28 11:37:18
+
+Let's do the same as above, but now for motion in the rsfmri data:
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+# starting h2o
+library(h2o)
+if (Sys.info()['sysname'] == 'Darwin') {
+  max_mem = '16G'
+} else {
+  max_mem = paste(Sys.getenv('SLURM_MEM_PER_NODE'),'m',sep='')
+}
+h2o.init(ip='localhost', nthreads=future::availableCores(), max_mem_size=max_mem)
+clin_fname='/data/NCR_SBRB/baseline_prediction/long_clin_0918.csv'
+data_fname='/data/NCR_SBRB/baseline_prediction/aparcdti_tracts_n272_09212018.RData.gz'
+print('Loading files')
+# merging phenotype and clinical data
+clin = read.csv(clin_fname)
+load(data_fname)  #variable is data
+# remove constant variables that screw up PCA and univariate tests
+print('Removing constant variables')
+feat_var = apply(data, 2, var, na.rm=TRUE)
+idx = feat_var != 0  # TRUE for features with 0 variance (constant)
+# categorical variables give NA variance, but we want to keep them
+idx[is.na(idx)] = TRUE
+data = data[, idx]
+nNAs = colSums(is.na(data))  # number of NAs in each variable
+# remove variables that are all NAs
+data = data[, nNAs < nrow(data)]
+print(sprintf('Features remaining: %d (%d with NAs)', ncol(data)-1, sum(nNAs>0)))
+print('Merging files')
+df = merge(clin, data, by='MRN')
+print('Looking for data columns')
+library(gdata)
+rsfmri = read.xlsx('/data/NCR_SBRB/baseline_prediction/rsfmri_09282018.xlsx')
+m = merge(df, rsfmri, by.x='mask.id', by.y='Mask.ID...Scan')
+df = m
+x = c('enorm', 'norm.rot', 'used_TRs', 'age_at_scan', 'Sex')
+
+target='nonew_ADHDonly_diag_group2'
+if (grepl('nonew', target)) {
+  df = df[df$diag_group != 'new_onset', ]
+  df$diag_group = factor(df$diag_group)
+  target = sub('nonew_', '', target)
+}
+if (grepl('ADHDonly', target)) {
+  df = df[df$diag_group != 'unaffect', ]
+  df$diag_group = factor(df$diag_group)
+  target = sub('ADHDonly_', '', target)
+}
+if (grepl('ADHDNOS', target)) {
+  df = df[df$DX != 'NV', ]
+  target = sub('ADHDNOS_', '', target)
+  if (grepl('groupOLS', target) || grepl('grouprandom', target)) {
+    df[, target] = 'nonimprovers'
+    slope = sub('group', '', target)
+    df[df[, slope] < 0, target] = 'improvers'
+    df[, target] = as.factor(df[, target])
+  }
+}
+myseed=42
+set.seed(myseed)
+idx = sample(1:nrow(df), nrow(df), replace=F)
+mylim = floor(.10 * nrow(df))
+data.test = df[idx[1:mylim], ]
+data.train = df[idx[(mylim + 1):nrow(df)], ]
+print(sprintf('Using %d samples for training, %d for testing.',
+              nrow(data.train),
+              nrow(data.test)))
+print('Converting to H2O')
+dtrain = as.h2o(data.train[, c(x, target)])
+dtest = as.h2o(data.test[, c(x, target)])
+if (grepl(pattern = 'group', target)) {
+  dtrain[, target] = as.factor(dtrain[, target])
+  dtest[, target] = as.factor(dtest[, target])
+}
+dtrain[, 'Sex'] = as.factor(dtrain[, 'Sex'])
+dtest[, 'Sex'] = as.factor(dtest[, 'Sex'])
+print(sprintf('Running model on %d features', length(x)))
+aml <- h2o.automl(x = x, y = target, training_frame = dtrain,
+                  seed=myseed,
+                  validation_frame=dtest,
+                  max_runtime_secs = NULL,
+                  max_models = NULL)
+aml@leaderboard
+if (grepl(pattern = 'group', target)) {
+  print('Class distribution:')
+  print(as.vector(h2o.table(dtrain[,target])['Count'])/nrow(dtrain))
+} else {
+  preds = rep(mean(dtrain[,target]), nrow(dtrain))
+  m = h2o.make_metrics(as.h2o(preds), dtrain[, target])
+  print('MSE prediction mean:')
+  print(m@metrics$MSE)
+}
+``` 
+
+

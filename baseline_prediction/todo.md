@@ -53,4 +53,11 @@ From quick chat with Philip today:
 - [ ] Run subgroups in latent groups as well (see main notes)
 - [ ] Change it to only remove NA columns for PCA (and maybe univariate) pipeline
 
+**2018-09-27 10:25:38**
+
+Another idle mind during WIP:
+
+- [ ] Try using the actual clinical data as future predictor
+- [ ] Check if good variables are at all correlated to sex, motion, or age, or
+  if we could use just those variables to predict the outcome.
  
