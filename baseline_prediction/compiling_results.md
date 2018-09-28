@@ -686,6 +686,9 @@ distribution, uncorrupted by the univariate test that we're using for feature
 selection. Just remember that in this case the leaderboard (i.e. best model) is
 based on the test data, not the CV held-out data.
  
+# 2018-09-28 18:33:21
+
+Maybe the best approach is to use the fixed seed approach to find the best model, then we just permute for different seeds that best model, without autoML. We'd do it to get the test estimate, but also the error estimate using nuisance variables?
 
 
 
