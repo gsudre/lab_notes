@@ -46,3 +46,25 @@ swarm -f swarm.fatcat -t 8 -g 40 --time=24:00:00 --merge-output --logdir trash_b
 
 Some of the IDs died because of badly formed BMTXT matrix... not sure if it's
 worth fixing them, though.
+
+# 2018-10-01 14:35:08
+
+At this point we have everyone that was run without problems ready. There are 322 scans. So, now it's time to parse those results:
+
+```bash
+for m in `cat ~/tmp/done.txt`; do
+    if [ -e /mnt/shaw/data_by_maskID/${m}/fatcat_tortoise201_exported/o.pr00_000.grid ]; then
+        cp /mnt/shaw/data_by_maskID/${m}/fatcat_tortoise201_exported/o.pr00_000.grid ~/ayaka/${m}.pr00_000.grid;
+    fi;
+done
+mkdir ~/ayaka/parsed
+cd ~/ayaka
+for f in `/bin/ls -1 *grid`; do
+     s=`echo $f | cut -d"." -f 1`;
+     echo $s;
+     csplit --quiet --prefix=${s}. ${s}.pr00_000.grid /^#/ {*};
+     mv ${s}.?? parsed/;
+done
+```
+
+And we have to run dti/collect_fatcat_grids.R to do the heavy lifting.
