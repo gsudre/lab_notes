@@ -39,7 +39,7 @@ From quick chat with Philip today:
 
 - [ ] Maybe give Wendy more names of people to interview back, if modalities
   other than DTI perform well?
-- [ ] Maybe add sex, age, and movement variables to the models to see if they
+- [x] Maybe add sex, age, and movement variables to the models to see if they
   share some of the loadings
 - [ ] Combine datasets. Here, we can try to use only people that have all
   variables, or go for allowing NAs. Most algorithms in autoML can handle them
@@ -50,15 +50,15 @@ From quick chat with Philip today:
   aparcs, one one DTI modality, etc). In the worst case scenario, we could just
   clump together the good modalities, compared to everything, and show that it's
   not just a matter of having more features.
-- [ ] Run subgroups in latent groups as well (see main notes)
-- [ ] Change it to only remove NA columns for PCA (and maybe univariate) pipeline
+- [x] Run subgroups in latent groups as well (see main notes)
+- [x] Change it to only remove NA columns for PCA (and maybe univariate) pipeline
 
 **2018-09-27 10:25:38**
 
 Another idle mind during WIP:
 
 - [ ] Try using the actual clinical data as future predictor
-- [ ] Check if good variables are at all correlated to sex, motion, or age, or
+- [x] Check if good variables are at all correlated to sex, motion, or age, or
   if we could use just those variables to predict the outcome.
  
 

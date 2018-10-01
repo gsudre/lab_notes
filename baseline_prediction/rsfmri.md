@@ -127,3 +127,27 @@ clin = read.csv('~/data/baseline_prediction/long_clin_0913.csv')
 colnames(clin)[1]='mask.id'
 write.csv(clin, file='~/data/baseline_prediction/rsfmri_gf_09182018.csv', row.names=F)
 ```
+
+# 2018-09-28 11:25:35
+
+Added movement, sex, and age variables to the rsfmri file
+(rsfmri_09282018.xlsx).
+
+```bash
+# caterpie
+while read s; do
+    mydir=/mnt/shaw/data_by_maskID/${s}/afni/${s}.rest.subjectSpace.results;
+    if [ -d $mydir ]; then
+        echo $s;
+        used=`1d_tool.py -infile ${mydir}//X.xmat.1D -show_rows_cols -verb 0 | cut -d " " -f 1 -`;
+        if [ -e ${mydir}//X.nocensor.xmat.1D ]; then
+            total=`1d_tool.py -infile ${mydir}//X.nocensor.xmat.1D -show_rows_cols -verb 0 | cut -d " " -f 1 -`;
+        else
+            total=$used;
+        fi;
+        1deval -a ${mydir}/motion_${s}_enorm.1D -b ${mydir}/censor_${s}_combined_2.1D -expr 'a*b' > ~/tmp/rm.ec.1D;
+        mvmt=`3dTstat -prefix - -nzmean ~/tmp/rm.ec.1D\'`;
+        echo ${s},${total},${used},${mvmt} >> ~/tmp/good_trs.csv;
+    fi;
+done < ~/tmp/rsfmri.txt
+```
