@@ -956,3 +956,10 @@ sed -i -e "s/^/unset http_proxy; /g" $fname;
 wc -l $fname;
 swarm -f $fname -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_geno --job-name valFixed -m R --gres=lscratch:10;
 ```
+
+# 2018-10-02 10:38:10
+
+I'm splitting allSocial to run in the cluster, into 4 pieces, so I can run each in an interactive machine between Philip and I. Hopefully that will speed things up, as the desktop running is dying frequently.
+
+I've noticed lots of errors coming out of the socioeconomic variables and the different pipelines. It's unclear whether we should be running them just in raw as well. In any case, it might be worth considering a closer look at them, if any of the good results look promising.
+
