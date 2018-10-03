@@ -960,6 +960,93 @@ swarm -f $fname -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_geno
 # 2018-10-02 10:38:10
 
 I'm splitting allSocial to run in the cluster, into 4 pieces, so I can run each in an interactive machine between Philip and I. Hopefully that will speed things up, as the desktop running is dying frequently.
-
 I've noticed lots of errors coming out of the socioeconomic variables and the different pipelines. It's unclear whether we should be running them just in raw as well. In any case, it might be worth considering a closer look at them, if any of the good results look promising.
 
+# 2018-10-03 10:09:31
+
+LEt's recode the social work just for the raw pipeline to better compare with
+something like the geno phenotype:
+
+```bash
+fname=swarm.automl_soc
+rm $fname;
+function print_commands () {
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                random_HI_slope random_total_slope random_inatt_slope \
+                group_HI3 group_total3 group_INATT3; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+            done; 
+        done;
+        # diag_group2 doesn't apply to ADHD_NOS
+        for g in ADHDNOS_ ADHDNOS_group; do
+            for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+            random_HI_slope random_total_slope random_inatt_slope; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+            done; 
+        done;
+        g=ADHDNOS_;
+        for t in group_HI3 group_total3 group_INATT3; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+        done;
+    done;
+}
+
+var=raw;
+f=/data/NCR_SBRB/baseline_prediction/social_09262018.RData.gz
+print_commands
+
+sed -i -e "s/^/unset http_proxy; /g" $fname;
+wc -l $fname;
+swarm -f $fname -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_soc --job-name social -m R --gres=lscratch:10;
+```
+
+But because we split them into different trash directories, we need to make a
+small change to the compilation code:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > auto_summary.csv;
+old_phen=''
+for f in `ls trash_*/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+    if [[ $phen != $old_phen ]]; then
+        echo $phen;
+        old_phen=$phen;
+    fi;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+    if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+        nfeat=36066;
+    elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+        nfeat=12022;
+    elif grep -q "Running model on" $f; then  # newer versions of the script
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    else # older versions were less verbose
+        nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+    fi
+    if grep -q "Class distribution" $f; then
+        dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    else
+        dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+    fi
+    echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> auto_summary.csv;
+done
+```
+
+Looking at the file auto_Summary_10032018, using uni is almost always the best
+approach. For DTI, it's a competition between ALL and AD, but 223 is always on
+top. OK, so for DTI we'll run ALL 223.
+
+For rsfmri, it looks like aparc2009s_trimmed does best. For structural, we'll
+stick with thickness for now, even though volume would be a close second.
+
+For SNPs, it's hardly ever significant. We might as well just create a new one
+using genome-wide significance and call it the ay. But if anything, SNPs are
+better than PRS.
+
+Also, need a more careful look at the code running for socioeconomic, cognitive
+and clinical variables... lots of them seemed to die.

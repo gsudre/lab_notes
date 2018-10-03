@@ -66,9 +66,11 @@ Another idle mind during WIP:
 
 Suggestion from Philip:
 
-- [ ] Try decoding just using age, IQ, and sex, to simulate the best results in the ADHD-200 competition.
+- [ ] Try decoding just using age, handedness, IQ, and sex, to simulate the best results in
+  the ADHD-200 competition (Jen is getting handedness from Motor)
 - [ ] Are these kids already remitted/persistent by the time we're using as baseline?
 - [ ] Should we calculate slopes using as baseline the day we use as baseline in the phenotype? (That will be an issue when combining the data...).
 
 
-
+# questions
+- what age to use in ADHD-200 prediction? baseline? Philip said yes.
