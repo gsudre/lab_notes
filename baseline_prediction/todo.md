@@ -57,7 +57,7 @@ From quick chat with Philip today:
 
 Another idle mind during WIP:
 
-- [ ] Try using the actual clinical data as future predictor
+- [x] Try using the actual clinical data as future predictor
 - [x] Check if good variables are at all correlated to sex, motion, or age, or
   if we could use just those variables to predict the outcome.
  
@@ -71,6 +71,3 @@ Suggestion from Philip:
 - [ ] Are these kids already remitted/persistent by the time we're using as baseline?
 - [ ] Should we calculate slopes using as baseline the day we use as baseline in the phenotype? (That will be an issue when combining the data...).
 
-
-# questions
-- what age to use in ADHD-200 prediction? baseline? Philip said yes.

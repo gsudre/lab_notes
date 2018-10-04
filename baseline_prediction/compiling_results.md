@@ -1052,3 +1052,77 @@ But keep in mind that these results come from a single seed. So, it's possible t
 
 Also, need a more careful look at the code running for socioeconomic, cognitive
 and clinical variables... lots of them seemed to die.
+
+# 2018-10-04 10:15:44
+
+Also, it looks like the tracts file doesn't have correct variable names? So, add
+it to the list of phenotypes to double-check.
+
+cog_all was also not run, so we'll need to add that to the set of things to run,
+along with dti_tracts.
+
+Given the small number of variables, I could potentially just run raw and uni
+for those 2 sets.
+
+It also turns out that social variables ran fine... I only ran them using raw,
+and the results are abismal, but they did run. Same for clinics (only ran using raw), but the results
+there are better.
+
+So, let's fix and re-run dti_tracts and cog_all.
+
+```bash
+job_name=missing
+fname=swarm.automl_${job_name}
+rm $fname;
+function print_commands () {
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for t in diag_group2 OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+                random_HI_slope random_total_slope random_inatt_slope \
+                group_HI3 group_total3 group_INATT3; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+            done; 
+        done;
+        # diag_group2 doesn't apply to ADHD_NOS
+        for g in ADHDNOS_ ADHDNOS_group; do
+            for t in OLS_inatt_slope OLS_HI_slope OLS_total_slope \
+            random_HI_slope random_total_slope random_inatt_slope; do
+                echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+            done; 
+        done;
+        g=ADHDNOS_;
+        for t in group_HI3 group_total3 group_INATT3; do
+            echo "Rscript --vanilla ~/research_code/automl/${var}.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${g}${t} /data/NCR_SBRB/baseline_prediction/models/${nn}${g}${t} 42" >> $fname;
+        done;
+    done;
+}
+
+for f in /data/NCR_SBRB/baseline_prediction/cog_all_09242018.RData.gz \
+    /data/NCR_SBRB/baseline_prediction/dti_tracts_n223_10042018.RData.gz \
+    /data/NCR_SBRB/baseline_prediction/dti_tracts_n272_10042018.RData.gz; do
+    for var in raw uni; do
+        print_commands
+    done;
+done;
+
+sed -i -e "s/^/unset http_proxy; /g" $fname;
+wc -l $fname;
+swarm -f $fname -g 18 -t 24 --time 4:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+I'm also running the ADHD-200 variables using raw. I'll likely have to make a
+raw_test as well, for those datasets with too few variables, but for consistency
+let's keep it as is for now.
+
+```bash
+job_name=adhd200
+fname=swarm.automl_${job_name}
+rm $fname;
+var=raw;
+f=/data/NCR_SBRB/baseline_prediction/adhd200_10042018.RData.gz
+print_commands
+
+sed -i -e "s/^/unset http_proxy; /g" $fname;
+wc -l $fname;
+swarm -f $fname -g 24 -t 19 --time 4:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```

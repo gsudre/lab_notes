@@ -158,3 +158,22 @@ swarm -f xaa -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --j
 swarm -f xab -g 40 -t 32 --time 4:00:00 --partition quick --logdir trash_bin --job-name subgroupDTI -m R --gres=lscratch:10;
 ```
 
+# 2018-10-04 13:47:31
+
+Just re-doing the tracts data with correct names:
+
+```r
+library(gdata)
+clin = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx', 'dti')
+clin = clin[, c(1,4)]
+colnames(clin) = c('MRN', 'mask.id')
+for (n in c(272, 223)) {
+    fname = sprintf('~/data/baseline_prediction/dti_mean_phenotype_%d.csv', n)
+    data = read.csv(fname)
+    cnames = c('mask.id', sapply(colnames(data)[2:ncol(data)], function(d) sprintf('v_%s', d)))
+    colnames(data) = cnames
+    data = merge(clin, data, by='mask.id')
+    save(data, file=sprintf('~/data/baseline_prediction/dti_tracts_n%d_10042018.RData.gz', n),
+        compress=T)
+}
+```
