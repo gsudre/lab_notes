@@ -1048,5 +1048,7 @@ For SNPs, it's hardly ever significant. We might as well just create a new one
 using genome-wide significance and call it the ay. But if anything, SNPs are
 better than PRS.
 
+But keep in mind that these results come from a single seed. So, it's possible that when moving to a seed distribution, using a test set, things will fall apart, so we might need to try other options. For example, using the 272 DTI set, or combining the volume/thickness/area estimates to best mimic DTI.
+
 Also, need a more careful look at the code running for socioeconomic, cognitive
 and clinical variables... lots of them seemed to die.
