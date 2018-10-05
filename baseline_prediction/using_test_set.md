@@ -170,7 +170,97 @@ take a while to get the resources.
 Wolfgang got back to me and said that's right, so I changed the initial port for
 the server to be random. This way we can have more than one job per node.
 
+But it turned out not to be the problem. It was memory, even though jobhist said
+it was fine. I'm running them now on norm partition under -t 16 and g10 (jen). Let's
+see if that runs. Also, under --quick as Philip. I'm running ADtest under
+myself.
 
+Just as a reminder, in the autoValidation function we take the univariate over
+90% of the data, which then gets split by autoML into 80-20 for train/split. In
+the regular unit_test, the entire dataset is split into 80-10-10, and I used
+just the train data to get the univariates.
 
+Because there's a long weekend coming, I'm going to go ahead and queue the
+autoValidation for rsfmri, thickness, and dti_ad:
 
+```bash
+job_name=rsFMRIautoframe;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz; 
+for target in ADHDonly_diag_group2 ADHDonly_OLS_inatt_slope ADHDonly_OLS_HI_slope; do
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test/${target} $RANDOM" >> $swarm_file;
+    done; 
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 40 --partition quick -t 16 --time 3:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10
+```
+
+```bash
+job_name=ADautoframe;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz; 
+for target in ADHDonly_diag_group2 ADHDonly_OLS_inatt_slope ADHDonly_OLS_HI_slope; do
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test/${target} $RANDOM" >> $swarm_file;
+    done; 
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 40 --partition quick -t 16 --time 3:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10
+```
+
+```bash
+job_name=thicknessAutoframe;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/struct_thickness_09192018_260timeDiff12mo.RData.gz; 
+for target in ADHDonly_diag_group2 ADHDonly_OLS_inatt_slope ADHDonly_OLS_HI_slope; do
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test/${target} $RANDOM" >> $swarm_file;
+    done; 
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 40 --partition quick -t 16 --time 3:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10
+```
+
+And just before I leave, here's what everyone is running:
+
+```
+User     JobId            JobName       Part      St  Reason    Runtime   Walltime    Nodes  CPUs  Memory      Dependency Nodelist
+====================================================================================================================================
+sudregp  10617195_[109-1  ADtest        quick     PD  Priority      0:00     2:00:00      1  1312   30GB/node                      
+sudregp  10623633         sinteractive  interact  R   ---        1:11:14  1-12:00:00      1    32  120GB/node              cn3239  
+sudregp  10628584_[0-449  thicknessAut  quick     PD  ---           0:00     3:00:00      1  7200   40GB/node                      
+sudregp  10628691_[0-449  rndThickness  quick     PD  ---           0:00     3:00:00      1  7200   40GB/node                      
+====================================================================================================================================
+cpus running = 32
+cpus queued = 15712
+jobs running = 1
+jobs queued = 941
+```
+
+```
+[shawp@biowulf research_code]$ sjobs
+User   JobId            JobName       Part   St  Reason    Runtime  Walltime  Nodes  CPUs  Memory     Dependency Nodelist
+===========================================================================================================================
+shawp  10627819_[0-449  rndDTIautofr  quick  PD  Priority     0:00   3:00:00      1  7200  40GB/node                      
+shawp  10628593_[0-449  ADautoframe   quick  PD  ---          0:00   3:00:00      1  7200  40GB/node                      
+shawp  10628657_[0-449  rndADautofra  quick  PD  ---          0:00   3:00:00      1  7200  40GB/node                      
+===========================================================================================================================
+cpus running = 0
+cpus queued = 21600
+jobs running = 0
+jobs queued = 1350
+```
+
+```
+...
+frederickja  10626220_99      DTIautoframe  norm   R   ---       16:57   2:00:00      1    16  40GB/node              cn3524  
+frederickja  10628602_[0-449  rsFMRIautofr  quick  PD  ---        0:00   3:00:00      1  7200  40GB/node                      
+frederickja  10628724_[0-449  rndrsFMRIaut  quick  PD  ---        0:00   3:00:00      1  7200  40GB/node                      
+===============================================================================================================================
+cpus running = 2400
+cpus queued = 14400
+jobs running = 150
+jobs queued = 900
+```
 

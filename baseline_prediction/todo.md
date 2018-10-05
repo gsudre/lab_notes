@@ -71,3 +71,13 @@ Suggestion from Philip:
 - [ ] Are these kids already remitted/persistent by the time we're using as baseline?
 - [ ] Should we calculate slopes using as baseline the day we use as baseline in the phenotype? (That will be an issue when combining the data...).
 
+**2018-10-05 15:29:52**
+
+Just brainstorming...
+
+- [ ] What if we boosted our numbers by using our findings that the remitted
+  brain looks more like the NV brain? So, we'd train using NV=remission to
+  collapse it to only 2 classes, but only test on kids who actually have ADHD.
+  The idea there is that, if the kid's brain (and SX?) will eventually look more
+  like NV, then we can force them at this earlier time point to look the same as
+  well. It would also boost our numbers, where remitted is usually the smallest. 
