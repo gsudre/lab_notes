@@ -123,3 +123,54 @@ swarm -f $swarm_file -g 18 --partition quick -t 24 --time 2:00:00 --logdir trash
 
 I should also find a better way to estimate the dummy results. Just class
 majority isn't great...
+
+# 2018-10-05 10:33:55
+
+Let's put in the results of the two tests above... luckily our average goes up:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > autoTest_summary.csv;
+old_phen=''
+for dir in ADtest DTIautoframe structTest; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        if grep -q "Class distribution" $f; then
+            dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        else
+            dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> autoTest_summary.csv;
+    done;
+done
+```
+
+Unfortunately lots of them died again... let's rerun at least the diag group
+ones. We should then reconsider if running AD and volume is better.
+
+My guess (but without much evidence) is that running these nodes with smaller
+number of cores makes more than one job enter the same node, and that generates
+issues with the Java server. I'm re-running everything with t32, but it might
+take a while to get the resources.
+
+Wolfgang got back to me and said that's right, so I changed the initial port for
+the server to be random. This way we can have more than one job per node.
+
+
+
+
+

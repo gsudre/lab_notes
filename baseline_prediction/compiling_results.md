@@ -1126,3 +1126,38 @@ sed -i -e "s/^/unset http_proxy; /g" $fname;
 wc -l $fname;
 swarm -f $fname -g 24 -t 19 --time 4:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
 ```
+
+# 2018-10-05 10:22:20
+
+Let's compile the results for the missing datasets and also for adhd200:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > auto_summary.csv;
+old_phen=''
+for dir in adhd200 missing; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        if [[ $var == 'raw' ]] && [[ $phen == 'dti_ALL' ]]; then
+            nfeat=36066;
+        elif [[ $var == 'raw' ]] && [[ $phen = *'dti_'* ]]; then
+            nfeat=12022;
+        elif grep -q "Running model on" $f; then  # newer versions of the script
+            nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        else # older versions were less verbose
+            nfeat=`grep -e "26. *[1-9]" $f | grep "\[1\]" | tail -1 | awk '{ print $3 }'`;
+        fi
+        if grep -q "Class distribution" $f; then
+            dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        else
+            dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> auto_summary.csv;
+    done;
+done
+```
