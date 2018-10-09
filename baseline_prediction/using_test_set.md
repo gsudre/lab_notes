@@ -264,3 +264,56 @@ jobs running = 150
 jobs queued = 900
 ```
 
+# 2018-10-09 14:50:45
+
+Alright, let's collect the autoframe results we generated over the long weekend.
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > autoframe_summary.csv;
+for dir in rsFMRIautoframe DTIautoframe ADautoframe thicknessAutoframe; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        if grep -q "Class distribution" $f; then
+            dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        else
+            dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> autoframe_summary.csv;
+    done;
+done
+```
+
+And we can also check the results with randomized data:
+
+```bash
+echo "target,pheno,var,nfeat,model,metric,val,dummy" > rndAutoframe_summary.csv;
+for dir in rndrsFMRIautoframe rndDTIautoframe rndADautoframe rndThicknessAutoframe; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        acc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        metric=`grep -A 0 model_id $f | awk '{FS=" "; print $2}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        if grep -q "Class distribution" $f; then
+            dummy=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        else
+            dummy=`grep -A 1 "MSE prediction mean" $f | tail -1 | awk '{FS=" "; print $2}'`;
+        fi
+        echo $target,$phen,$var,$nfeat,$model,$metric,$acc,$dummy >> rndAutoframe_summary.csv;
+    done;
+done
+```
+
+It looks like the randomized results still do well. Not sure why though. Is it finding structure in the data for meaningless labels? Maybe... let's plot the other results using the normal dummy parameters, and see what we get.
+
+It looks like the best approach here will be to create an R function that loads a series of models. For each model, grab the seed ml@parameters$seed, spli the data, and predict(). We can then use those predictions to compute the exact same metrics we're using in the random_autoValidation function using caret. It's probably less costly to load the data once, and split it for each model based on the seed. The list of models can be gathered by doing grep gpfs on the output files. 
