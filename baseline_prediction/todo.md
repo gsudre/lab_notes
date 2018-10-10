@@ -80,4 +80,28 @@ Just brainstorming...
   collapse it to only 2 classes, but only test on kids who actually have ADHD.
   The idea there is that, if the kid's brain (and SX?) will eventually look more
   like NV, then we can force them at this earlier time point to look the same as
-  well. It would also boost our numbers, where remitted is usually the smallest. 
+  well. It would also boost our numbers, where remitted is usually the smallest.
+  
+  
+  **2018-10-10 14:25:35**
+
+  Just had a chat with Philip on next directions. He wants me to stick with a
+  single model, but it's OK to find model parameters within the validation set.
+  If I want, I can later test something else, or even a combination. For
+  example, stick to DeepLearning, then try just XGB (or something else) for
+  comparison. Or even both together. But for main results, he thinks it'll be
+  easier to for people to understand a single model approach.
+
+  He also thinks I shoulkd check right away how many of the people we're
+  classifying have already remitted.
+
+  Making ROC plots is a good idea because people are familiar with it. But
+  the barplots I'm planning to show are also OK. He said there are guidelines on
+  how to show these results (PRISM? PRISMA?). 
+
+  Finally, we should focus on pairwise comparisons, mostly to include the NVs.
+  We can do it for ADHDonly and ADHD_NOS, where the later the groups would be
+  improvers and not improvers, based on slopes. We could also do that approach
+  for ADHD_only. But it looks like slope prediction is a burst for now.
+  
+   
