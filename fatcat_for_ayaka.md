@@ -68,3 +68,9 @@ done
 ```
 
 And we have to run dti/collect_fatcat_grids.R to do the heavy lifting.
+
+# 2018-10-11 12:58:29
+
+The format of the output wasn't exactly what Ayaka needed. She needs a square
+matrix per subject, per datatype. So, I created
+dti/collect_fatcat_grids_matrixOutput.R to do that.
