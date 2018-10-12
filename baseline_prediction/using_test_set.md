@@ -316,4 +316,154 @@ done
 
 It looks like the randomized results still do well. Not sure why though. Is it finding structure in the data for meaningless labels? Maybe... let's plot the other results using the normal dummy parameters, and see what we get.
 
-It looks like the best approach here will be to create an R function that loads a series of models. For each model, grab the seed ml@parameters$seed, spli the data, and predict(). We can then use those predictions to compute the exact same metrics we're using in the random_autoValidation function using caret. It's probably less costly to load the data once, and split it for each model based on the seed. The list of models can be gathered by doing grep gpfs on the output files. 
+It looks like the best approach here will be to create an R function that loads
+a series of models. For each model, grab the seed ml@parameters$seed, spli the
+data, and predict(). We can then use those predictions to compute the exact same
+metrics we're using in the random_autoValidation function using caret. It's
+probably less costly to load the data once, and split it for each model based on
+the seed. The list of models can be gathered by doing grep gpfs on the output
+files. 
+
+# 2018-10-12 14:39:52
+
+After my meeting with Philip (see TODO), I made changes to the autovalidate
+code. For now, we'll run it just for deep learning, but then we can run other
+algorithms. 
+
+```bash
+job_name=rsFMRI_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz;
+for nn in '' nonew_; do
+    for target in nvVSper nvVSrem perVSrem; do
+        for i in {1..150}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+    for sx in inatt HI total; do
+        for target in nvVSimp nvVSnonimp impVSnonimp; do
+            for i in {1..150}; do
+                echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+            done; 
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Running that on my account. And then we have to run it for AD, ALL_DTI, and struct. We can run the nulls
+(cognition, adhd200, etc) later.
+
+```bash
+job_name=AD_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+for nn in '' nonew_; do
+    for target in nvVSper nvVSrem perVSrem; do
+        for i in {1..150}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+    for sx in inatt HI total; do
+        for target in nvVSimp nvVSnonimp impVSnonimp; do
+            for i in {1..150}; do
+                echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+            done; 
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=ALL_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ALL_voxelwise_n223_09212018.RData.gz;
+for nn in '' nonew_; do
+    for target in nvVSper nvVSrem perVSrem; do
+        for i in {1..150}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+    for sx in inatt HI total; do
+        for target in nvVSimp nvVSnonimp impVSnonimp; do
+            for i in {1..150}; do
+                echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+            done; 
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=thickness_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/struct_thickness_09192018_260timeDiff12mo.RData.gz;
+for nn in '' nonew_; do
+    for target in nvVSper nvVSrem perVSrem; do
+        for i in {1..150}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+    for sx in inatt HI total; do
+        for target in nvVSimp nvVSnonimp impVSnonimp; do
+            for i in {1..150}; do
+                echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${target} $RANDOM" >> $swarm_file;
+            done; 
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Then I'm running AD as philip and ALL as Jen. I'm running thickness as myself on
+norm.
