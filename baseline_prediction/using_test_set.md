@@ -643,3 +643,10 @@ done
 
 Jen is running rsFMRI, Philip thickness, and I'm running both DTIs, one in quick
 and the other one in norm.
+
+# 2018-10-17 16:20:00
+
+I just noticed a bug in the script when running nvVSimp and nvVSnonimp, where
+the nvs were not properly transformed into classes. So, I'll have to re-run
+those. Also, since we're re-running things, let's do nvVSadhd and nvVSadhdnos
+too. 
