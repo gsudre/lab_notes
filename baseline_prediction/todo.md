@@ -104,4 +104,18 @@ Just brainstorming...
   improvers and not improvers, based on slopes. We could also do that approach
   for ADHD_only. But it looks like slope prediction is a burst for now.
   
-   
+**2018-10-18 15:02:47**
+
+Some more ideas after playing a bit with the function to plot the results:
+
+- [ ] make ROC curves
+- [ ] generate boxes for all other datasets. the main plot should only be the
+  main phenotype for each data domain. But we should probably generate again the
+  results within domain just to get a better idea.
+- [ ] check if we should be doing worse in nvVSrem type of comparisons (maybe
+  not if we can do nvVSadhd at baseline, baselically showing that the brain is
+  not remitted yet at the time of scan.
+- [ ] check that the brain regions are similiar for similar decoding tasks, but
+  different for differen ones (e.g. nvVSper should be similar to nvVSnonimp, but
+  different than perVSrem. Also, nvVSper and nvVSrem should be similar to
+  nvVSadhd, when we run the latter.

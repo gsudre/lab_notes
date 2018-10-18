@@ -656,7 +656,7 @@ too.
 Let's re-run just the grou_*nvVS comparisons:
 
 ```bash
-job_name=rsFMRI_DL;  # and change it for the other variables too
+job_name=thickness_DL;  # and change it for the other variables too
 swarm_file=swarm.automl_${job_name};
 grep nvVSimp $swarm_file > ${swarm_file}_groupNV;
 grep nvVSnonimp $swarm_file >> ${swarm_file}_groupNV;
@@ -684,4 +684,90 @@ wc -l tmp.txt
 for f in `cut -d '.' -f 1 tmp.txt`; do rm -f ${f}.?; done
 ```
 
--> Run randomized data!
+And of course, run the nvVSadhd results I just implemented:
+
+```bash
+job_name=rsFMRI_DL_na;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz;
+rm -rf $swarm_file;
+for nn in '' nonew_; do
+    target=nvVSadhd;
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+```bash
+job_name=thickness_DL_na;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/struct_thickness_09192018_260timeDiff12mo.RData.gz;
+rm -rf $swarm_file;
+for nn in '' nonew_; do
+    target=nvVSadhd;
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+```bash
+job_name=dtiAD_DL_na;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for nn in '' nonew_; do
+    target=nvVSadhd;
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+```bash
+job_name=dtiALL_DL_na;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ALL_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for nn in '' nonew_; do
+    target=nvVSadhd;
+    for i in {1..150}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${nn}${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+While we wait for this whole shibang to run, let's take a look at the results we
+have so far, which gives as a chance to update anything that's already an error:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,spec,sens,prec,ratio" > autoframeDL_summary.csv;
+for dir in dtiAD_DL dtiALL_DL rsFMRI_DL thickness_DL; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        spec=`grep -A 8 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        sens=`grep -A 7 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        prec=`grep -A 6 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$spec,$sens,$prec,$ratio >> autoframeDL_summary.csv;
+    done;
+done
+```

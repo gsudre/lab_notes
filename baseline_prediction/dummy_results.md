@@ -129,11 +129,11 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 split -l 1000 $swarm_file ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
-    echo "ERROR" > swarm_wait
-    while grep -q ERROR swarm_wait; do
+    echo "ERROR" > swarm_wait_${USER};
+    while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
-        if grep -q ERROR swarm_wait; then
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
@@ -161,11 +161,11 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 split -l 1000 $swarm_file ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
-    echo "ERROR" > swarm_wait
-    while grep -q ERROR swarm_wait; do
+    echo "ERROR" > swarm_wait_${USER};
+    while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
-        if grep -q ERROR swarm_wait; then
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
@@ -193,11 +193,11 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 split -l 1000 $swarm_file ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
-    echo "ERROR" > swarm_wait
-    while grep -q ERROR swarm_wait; do
+    echo "ERROR" > swarm_wait_${USER};
+    while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
-        if grep -q ERROR swarm_wait; then
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
@@ -225,11 +225,11 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 split -l 1000 $swarm_file ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
-    echo "ERROR" > swarm_wait
-    while grep -q ERROR swarm_wait; do
+    echo "ERROR" > swarm_wait_${USER};
+    while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
-        if grep -q ERROR swarm_wait; then
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
