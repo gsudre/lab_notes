@@ -101,3 +101,138 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 swarm -f $swarm_file -g 40 --partition quick -t 16 --time 3:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10
 ```
+
+# 2018-10-18 11:40:42
+
+I changed the uni_test_autoValidation_DL.R code to create a random data matrix
+when the seed is negative. Let's run 100 of them just to get a flavor, for each
+of the datasets, and see what we get. Also, just to save some time, I won't run
+the nonew parameters, but we can always do it later.
+
+```bash
+job_name=rnd_rsFMRI_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper nvVSrem perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done;
+for sx in inatt HI total; do
+    for target in nvVSimp nvVSnonimp impVSnonimp; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=rnd_thickness_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/struct_thickness_09192018_260timeDiff12mo.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper nvVSrem perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done;
+for sx in inatt HI total; do
+    for target in nvVSimp nvVSnonimp impVSnonimp; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=rnd_dtiAD_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper nvVSrem perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done;
+for sx in inatt HI total; do
+    for target in nvVSimp nvVSnonimp impVSnonimp; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=rnd_dtiALL_DL;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ALL_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper nvVSrem perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+    done; 
+done;
+for sx in inatt HI total; do
+    for target in nvVSimp nvVSnonimp impVSnonimp; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        done; 
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```

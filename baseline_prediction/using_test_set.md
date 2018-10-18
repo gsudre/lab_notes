@@ -650,3 +650,38 @@ I just noticed a bug in the script when running nvVSimp and nvVSnonimp, where
 the nvs were not properly transformed into classes. So, I'll have to re-run
 those. Also, since we're re-running things, let's do nvVSadhd and nvVSadhdnos
 too. 
+
+# 2018-10-18 09:36:06
+
+Let's re-run just the grou_*nvVS comparisons:
+
+```bash
+job_name=rsFMRI_DL;  # and change it for the other variables too
+swarm_file=swarm.automl_${job_name};
+grep nvVSimp $swarm_file > ${swarm_file}_groupNV;
+grep nvVSnonimp $swarm_file >> ${swarm_file}_groupNV;
+split -l 1000 ${swarm_file}_groupNV ${job_name}_splitNV;
+for f in `/bin/ls ${job_name}_splitNV??`; do
+    echo "ERROR" > swarm_wait
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name}_groupNV --job-name ${job_name}_gnv -m R --gres=lscratch:10 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Also, delete all old nvVSimp comparisons so we're not using old results! (still
+need to delete the stuff form PHilip's folder): 
+
+```bash
+grep -l nvVSimp trash_rsFMRI_DL/rsFMRI_DL_114218* > tmp.txt
+grep -l nvVSnonimp trash_rsFMRI_DL/rsFMRI_DL_114218* >> tmp.txt
+wc -l tmp.txt
+for f in `cut -d '.' -f 1 tmp.txt`; do rm -f ${f}.?; done
+```
+
+-> Run randomized data!
