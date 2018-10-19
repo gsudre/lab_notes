@@ -116,13 +116,13 @@ f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz
 rm -rf $swarm_file;
 for target in nvVSper nvVSrem perVSrem; do
     for i in {1..100}; do
-        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
     done; 
 done;
 for sx in inatt HI total; do
     for target in nvVSimp nvVSnonimp impVSnonimp; do
         for i in {1..100}; do
-            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
         done; 
     done;
 done;
@@ -148,13 +148,13 @@ f=/data/NCR_SBRB/baseline_prediction/struct_thickness_09192018_260timeDiff12mo.R
 rm -rf $swarm_file;
 for target in nvVSper nvVSrem perVSrem; do
     for i in {1..100}; do
-        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
     done; 
 done;
 for sx in inatt HI total; do
     for target in nvVSimp nvVSnonimp impVSnonimp; do
         for i in {1..100}; do
-            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
         done; 
     done;
 done;
@@ -180,13 +180,13 @@ f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
 rm -rf $swarm_file;
 for target in nvVSper nvVSrem perVSrem; do
     for i in {1..100}; do
-        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
     done; 
 done;
 for sx in inatt HI total; do
     for target in nvVSimp nvVSnonimp impVSnonimp; do
         for i in {1..100}; do
-            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
         done; 
     done;
 done;
@@ -212,13 +212,13 @@ f=/data/NCR_SBRB/baseline_prediction/dti_ALL_voxelwise_n223_09212018.RData.gz;
 rm -rf $swarm_file;
 for target in nvVSper nvVSrem perVSrem; do
     for i in {1..100}; do
-        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
     done; 
 done;
 for sx in inatt HI total; do
     for target in nvVSimp nvVSnonimp impVSnonimp; do
         for i in {1..100}; do
-            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv groupOLS_${sx}_slope_${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$RANDOM" >> $swarm_file;
         done; 
     done;
 done;
@@ -233,6 +233,33 @@ for f in `/bin/ls ${job_name}_split??`; do
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
+    done;
+done
+```
+
+# 2018-10-19 10:34:06
+
+Let's grab some of the random results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,spec,sens,prec,ratio" > rndAutoframeDL_summary.csv;
+for dir in dtiAD_DL dtiALL_DL rsFMRI_DL thickness_DL; do
+    echo $dir
+    for f in `ls trash_rnd_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        spec=`grep -A 8 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        sens=`grep -A 7 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        prec=`grep -A 6 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$spec,$sens,$prec,$ratio >> rndAutoframeDL_summary.csv;
     done;
 done
 ```

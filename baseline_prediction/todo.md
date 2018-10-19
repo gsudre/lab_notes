@@ -119,3 +119,6 @@ Some more ideas after playing a bit with the function to plot the results:
   different for differen ones (e.g. nvVSper should be similar to nvVSnonimp, but
   different than perVSrem. Also, nvVSper and nvVSrem should be similar to
   nvVSadhd, when we run the latter.
+- [ ] re-run nuisance imaging variables just to make the points again using the
+  current testing framework
+  

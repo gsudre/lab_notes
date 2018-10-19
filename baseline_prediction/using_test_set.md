@@ -674,8 +674,7 @@ for f in `/bin/ls ${job_name}_splitNV??`; do
 done
 ```
 
-Also, delete all old nvVSimp comparisons so we're not using old results! (still
-need to delete the stuff form PHilip's folder): 
+Also, delete all old nvVSimp comparisons so we're not using old results!
 
 ```bash
 grep -l nvVSimp trash_rsFMRI_DL/rsFMRI_DL_114218* > tmp.txt
@@ -768,6 +767,74 @@ for dir in dtiAD_DL dtiALL_DL rsFMRI_DL thickness_DL; do
         sens=`grep -A 7 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
         prec=`grep -A 6 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`
         echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$spec,$sens,$prec,$ratio >> autoframeDL_summary.csv;
+    done;
+done
+```
+
+# 2018-10-19 10:32:14
+
+Now we're ready to gather all the results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,spec,sens,prec,ratio" > autoframeDL_summary.csv;
+for dir in dtiAD_DL dtiALL_DL rsFMRI_DL thickness_DL \
+        dtiAD_DL_na dtiALL_DL_na rsFMRI_DL_na thickness_DL_na \
+        dtiAD_DL_groupNV dtiALL_DL_groupNV rsFMRI_DL_groupNV thickness_DL_groupNV; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        spec=`grep -A 8 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        sens=`grep -A 7 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        prec=`grep -A 6 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$spec,$sens,$prec,$ratio >> autoframeDL_summary.csv;
+    done;
+done
+```
+
+But let's also run everything for the extra datasets:
+
+```bash
+job_name=extras_DL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in adhd200_10042018.RData.gz clinics_binary_sx_baseline_10022018.RData.gz \
+    cog_all_09242018.RData.gz social_09262018.RData.gz; do
+    for nn in '' nonew_; do
+        for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+            for i in {1..150}; do
+                echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f ${mydir}/long_clin_0918.csv ${nn}${target} ${mydir}/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+            done; 
+        done;
+        for sx in inatt HI total; do
+            for target in nvVSimp nvVSnonimp impVSnonimp; do
+                for i in {1..150}; do
+                    echo "Rscript --vanilla ~/research_code/automl/uni_test_autoValidation_DL.R $f ${mydir}/long_clin_0918.csv ${nn}groupOLS_${sx}_slope_${target} ${mydir}/models_test_DL/${USER} $RANDOM" >> $swarm_file;
+                done; 
+            done;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
     done;
 done
 ```
