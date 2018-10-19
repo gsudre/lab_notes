@@ -786,7 +786,7 @@ for dir in dtiAD_DL dtiALL_DL rsFMRI_DL thickness_DL \
         target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
         seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
         var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
-        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}'`;
         auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
         nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
         ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
@@ -838,3 +838,28 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+
+
+
+
+<!-- echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,spec,sens,prec,ratio" > test.csv;
+for dir in dtiAD_DL rsFMRI_DL; do
+    echo $dir
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}'`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        spec=`grep -A 8 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        sens=`grep -A 7 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        prec=`grep -A 6 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$spec,$sens,$prec,$ratio >> test.csv;
+    done;
+done -->

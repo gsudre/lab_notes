@@ -36,6 +36,30 @@ the usual parietal regions, as also some ventral/inferior candidates (uncinate)?
 
 Now, does the n223 somewhat mirror the n272 result? 
 
+# 2018-10-19 15:13:44
 
+Let's do something similar for rsFMRI... but here we'll need a matrix as the output. Let's maybe just rank them at first.
 
-
+```r
+models_fname = '~/tmp/models.txt'
+models_dir = '/Users/sudregp/tmp/models/'
+base_fname = '~/data/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz'
+load(base_fname)
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+scores = rep(0, length(x))
+names(scores) = x
+models = read.table(models_fname)[, 1]
+library(h2o)
+h2o.init()
+cnt = 1;
+for (m in models) {
+    if (file.exists(sprintf('%s/%s', models_dir, m))) {
+        print(cnt)
+        ml = h2o.loadModel(sprintf('%s/%s', models_dir, m))
+        idx = ml@model$variable_importances$variable
+        scores[idx] = scores[idx] + ml@model$variable_importances$relative_importance
+        cnt = cnt + 1  # just keeping count of how mnay models we actually found
+    }
+}
+scores = scores/length(models)
+```
