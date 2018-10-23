@@ -499,7 +499,7 @@ rm -rf $swarm_file;
 target=nvVSper;
 for i in {1..100}; do
     myseed=-$RANDOM;
-    echo "Rscript --vanilla ~/research_code/automl/rfFilter_varTest_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $train" >> $swarm_file;
+    echo "Rscript --vanilla ~/research_code/automl/raw_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $train" >> $swarm_file;
 done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
@@ -509,3 +509,108 @@ As a side note, I've tried Lasso for feature selection (lambda=1), but I keep
 geeting results with all coefficients 0. If I try the automl model, I can't
 extract coefficients...
 
+# 2018-10-23 09:23:17
+
+Let's se eif the results using RF for filtering are more encouraging:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > rndRF_summary.csv;
+dir=trainRF;
+echo $dir;
+for f in `ls trash_rnd_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> rndRF_summary.csv;
+done
+```
+
+Yep, we're still seeing inflated results with random data... do at least the raw
+results look as expected?
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > rndRaw_summary.csv;
+dir=trainRaw;
+echo $dir;
+for f in `ls trash_rnd_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> rndRaw_summary.csv;
+done
+```
+
+Let's play a bit with dimensionality reduction.
+
+```bash
+job_name=dimRedTests;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper perVSrem; do
+    for i in {1..20}; do
+        myseed=$RANDOM;
+        for dr in PCA ICA AutoEncoder; do
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $dr" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$myseed $dr" >> $swarm_file;
+        done;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+And a few variations of PCA:
+
+```bash
+job_name=PCATests;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper perVSrem; do
+    for i in {1..20}; do
+        myseed=$RANDOM;
+        for dr in PCA PCA-elbow PCA-kaiser; do
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $dr" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$myseed $dr" >> $swarm_file;
+        done;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+?? HOW ABOUT DOING ICASSO ON INPUT, AND USING JUST THE STABLE COMPONENTS? WE CAN
+KEEP THE FILE VERY STATIC, AND JUST PLAY WITH THE STABILITY METRIC IF THERE IS
+NOT REALLY A CONSENSUS ON WHAT TO USE. THE MAIN IDEA HERE IS TO DO OPTIMIZATION
+WITHIN DATASETS, AND LOAD IN THE OPTIMIZED DATA, INSTEAD OF OPTIMIZING INSIDE
+THE CLASSIFICATION FRAMEWORK. THIS IS POSSIBLE AS WE'RE ONLY USING UNSUPERVISED
+METHODS. FINALLY, WE SHOULD ALSO CONSIDER HOW TO OPTIMIZE THE AUTOENCODER.
+
+> load('/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz')
+> colnames(data)[1:10]
+ [1] "mask.id" "MRN"     "v00001"  "v00002"  "v00003"  "v00004"  "v00005"  "v00006"  "v00007"  "v00008" 
+> write.csv(data[, 3:ncol(data)], file='~/data/tmp/tmp.csv', row.names=F, col.names=F) 
+
+restoredefaultpath()  
+addpath('/data/NCR_SBRB/software/FastICA_25/') 
+addpath('/data/NCR_SBRB/software/icasso122/') 
+addpath('/data/NCR_SBRB/')  
+Ydd = dlmread(['/data/sudregp/tmp/tmp.csv'], ',', 1, 0);
+sR=icassoEst('both', Ydd, 1000, 'lastEig', size(Ydd, 1), 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
