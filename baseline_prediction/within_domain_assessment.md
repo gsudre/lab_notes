@@ -141,7 +141,7 @@ echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,spec,sens,prec,ratio" > withi
 for dir in DTI_DL Resting_DL SNPs_DL Struct_DL; do
     echo $dir
     for f in `ls trash_within${dir}/*o`; do
-        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}' | cut -d"/" -f 5`;
         target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
         seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
         var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;

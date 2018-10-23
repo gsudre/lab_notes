@@ -594,23 +594,3 @@ sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
 ```
 
-?? HOW ABOUT DOING ICASSO ON INPUT, AND USING JUST THE STABLE COMPONENTS? WE CAN
-KEEP THE FILE VERY STATIC, AND JUST PLAY WITH THE STABILITY METRIC IF THERE IS
-NOT REALLY A CONSENSUS ON WHAT TO USE. THE MAIN IDEA HERE IS TO DO OPTIMIZATION
-WITHIN DATASETS, AND LOAD IN THE OPTIMIZED DATA, INSTEAD OF OPTIMIZING INSIDE
-THE CLASSIFICATION FRAMEWORK. THIS IS POSSIBLE AS WE'RE ONLY USING UNSUPERVISED
-METHODS. FINALLY, WE SHOULD ALSO CONSIDER HOW TO OPTIMIZE THE AUTOENCODER.
-
-> load('/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz')
-> colnames(data)[1:10]
- [1] "mask.id" "MRN"     "v00001"  "v00002"  "v00003"  "v00004"  "v00005"  "v00006"  "v00007"  "v00008" 
-> write.csv(data[, 3:ncol(data)], file='~/data/tmp/tmp.csv', row.names=F, col.names=F) 
-
-restoredefaultpath()  
-addpath('/data/NCR_SBRB/software/FastICA_25/') 
-addpath('/data/NCR_SBRB/software/icasso122/') 
-addpath('/data/NCR_SBRB/')  
-Ydd = dlmread(['/data/sudregp/tmp/tmp.csv'], ',', 1, 0);
-sR=icassoEst('both', Ydd, 1000, 'lastEig', size(Ydd, 1), 'g', 'pow3', 'approach', 'defl');
-sR=icassoExp(sR);
-[iq,A,W,S]=icassoResult(sR);
