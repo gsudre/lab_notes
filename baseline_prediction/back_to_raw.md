@@ -91,3 +91,6 @@ save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_15ics.mat'],'A','S','W',
 That didn't run because of lack of memory, so I'm going with 50 and 40 ICs.
 
 (running both in interactive sessions as myself)
+
+Getting close to 72Gb of memory to get icassoExp...
+
