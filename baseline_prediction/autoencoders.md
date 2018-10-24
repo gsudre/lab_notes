@@ -29,3 +29,13 @@ for m in pheno['mask.id']:
 d = np.array(all_data)
 np.savez('/Users/sudregp/tmp/ad_223_3d.npz', data=d)
 ```
+
+I've been playing with the optimizing autoencoder code (non-convulaiton), but I'm reaching an asymptote of .0317, not overfitting. But that's using a very simple sigmoid model with 50 hidden neurons. I've trying much more complex stuff, deeper and bigger, but nothing is doing better. Maybe try playing with other parameters?
+
+Also, it's true that using GPU makes it muuuuuuch faster.
+
+Just note that we're not making use of the spatial information in the images, so that's why it might be better to use the convolution networks. We just need to understand how to best capture the lower dimensional model.
+
+Use this example instead!!! https://blog.keras.io/building-autoencoders-in-keras.html
+
+they show how to get the low-dimensional representation, and we can always adapt the training later.
