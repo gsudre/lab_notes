@@ -40,7 +40,7 @@ Let's compile some of the raw results with real data.
 
 ```bash
 echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > raw_summary.csv;
-for dir in adRaw rsfmriRaw; do
+for dir in adRaw rsfmriRaw rnd_trainRaw; do
     echo $dir;
     for f in `ls trash_${dir}/*o`; do
         phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
@@ -87,5 +87,7 @@ sR=icassoExp(sR);
 # not run yet
 save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```
+
+That didn't run because of lack of memory, so I'm going with 50 and 40 ICs.
 
 (running both in interactive sessions as myself)

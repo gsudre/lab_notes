@@ -594,3 +594,80 @@ sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
 ```
 
+# 2018-10-24 10:55:27
+
+Now, let's see if there is any difference among those:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dimRed_summary.csv;
+for dir in PCATests dimRedTests; do
+    echo $dir;
+    for f in `ls trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dimRed_summary.csv;
+    done;
+done
+```
+
+So, it looks like for PCA it's a tie between elbow and kaiser, btu I like kaiser more because elbow seems to fail for random data. If we make the scree plots, many times it doesn't have a discernible elbow, while we can always find a kaiser limit as it only depends on the mean. 
+
+![](2018-10-24-11-18-38.png)
+
+However, it doesn't look like these PCA results are better than just using the raw features, right? (for ICA and AE, I'm still playing with the best way to encode the data)
+
+Let's run a few more iterations of PCA to have a better idea.
+
+```bash
+job_name=PCATestsDTI;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper perVSrem; do
+    for i in {1..80}; do
+        myseed=$RANDOM;
+        for dr in PCA PCA-elbow PCA-kaiser; do
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $dr" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$myseed $dr" >> $swarm_file;
+        done;
+    done;
+done;
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 32 --time 1-0:00:00 --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+```bash
+job_name=PCATestsFMRI;
+swarm_file=swarm.automl_${job_name};
+f=/data/NCR_SBRB/baseline_prediction/aparc.a2009s_trimmed_n215_09182018.RData.gz;
+rm -rf $swarm_file;
+for target in nvVSper perVSrem; do
+    for i in {1..100}; do
+        myseed=$RANDOM;
+        for dr in PCA PCA-elbow PCA-kaiser; do
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} $myseed $dr" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/dimRed_autoValidation.R $f /data/NCR_SBRB/baseline_prediction/long_clin_0918.csv ${target} /data/NCR_SBRB/baseline_prediction/models_test_DL/${USER} -$myseed $dr" >> $swarm_file;
+        done;
+    done;
+done;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 32 --time 1-0:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
