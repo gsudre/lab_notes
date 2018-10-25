@@ -78,14 +78,15 @@ addpath('/data/NCR_SBRB/software/FastICA_25/')
 addpath('/data/NCR_SBRB/software/icasso122/')
 addpath('/data/NCR_SBRB/')
 Ydd = dlmread(['/data/sudregp/tmp/tmp.csv'], ',', 1, 0);
+
 sR=icassoEst('both', Ydd, 1000, 'lastEig', size(Ydd, 1), 'g', 'pow3',
 'approach', 'defl');
 # or
 sR=icassoEst('both', Ydd, 1000, 'lastEig', 100, 'g', 'pow3', 'approach', 'defl');
+
 sR=icassoExp(sR);
 [iq,A,W,S]=icassoResult(sR);
-# not run yet
-save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
+save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_40ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```
 
 That didn't run because of lack of memory, so I'm going with 50 and 40 ICs.

@@ -151,3 +151,42 @@ while read s; do
     fi;
 done < ~/tmp/rsfmri.txt
 ```
+
+# 2018-10-25 16:12:30
+
+I had to redo the fMRI data because Aman found an issue that censored TRs were
+still in the errts file, so we need to first remove any TRs with time series 0
+before computing correlations. I changed the compute file today, and now should
+have more accurate correlation matrices.
+
+```bash
+python ~/research_code/fmri/collect_atlas_connectivity_subjectSpace.py
+# renamed old files to _old.csv
+mv ~/tmp/aparc*csv ~/data/baseline_prediction/
+```
+
+And again change the variable names to conform to the algorithms:
+
+```r
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09182018.xlsx')
+df = df[,1:2]
+colnames(df) = c('MRN', 'mask.id')
+for (i in c('', '.a2009s')) {
+    for (j in c('', '_trimmed')) {
+        print(sprintf('%s, %s', i, j))
+        fname = sprintf('~/data/baseline_prediction/aparc%s%s.csv', i, j)
+        data = read.csv(fname)
+        data = merge(df, data, by.x='mask.id', by.y='maskid')
+        data$mask.id = data$MRN
+        var_names = grepl('TO', colnames(data))
+        cnames = sapply(colnames(data)[var_names], function(x) sprintf('v_%s', x))
+        colnames(data)[var_names] = cnames
+        fname = sprintf('~/data/baseline_prediction/aparc%s%s_n215_10252018.RData.gz', i, j)
+        save(data, file=fname, compress=T)
+    }
+}
+```
+
+
+

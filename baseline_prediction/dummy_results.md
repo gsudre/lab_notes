@@ -671,3 +671,64 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-10-25 10:55:44
+
+Collecting the results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > compareDTIRawDimRed_summary.csv;
+for dir in PCATests dimRedTests PCATestsFMRI PCATestsDTI rnd_trainRaw adRaw rsfmriRaw; do
+    echo $dir;
+    for f in `grep -l dti_ad trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> compareDTIRawDimRed_summary.csv;
+    done;
+done
+```
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > compareFMRIRawDimRed_summary.csv;
+for dir in PCATests dimRedTests PCATestsFMRI PCATestsDTI rnd_trainRaw adRaw rsfmriRaw; do
+    echo $dir;
+    for f in `grep -l aparc trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> compareFMRIRawDimRed_summary.csv;
+    done;
+done
+```
+
+Yeah, for DTI it looks like raw is still doing better, despite the variance:
+
+![](2018-10-25-11-24-39.png)
+
+But it doesn't look like there's anything for perVSrem:
+
+![](2018-10-25-11-29-58.png)
+
+How about FMRI?
+
+![](2018-10-25-11-48-50.png)
+
+![](2018-10-25-11-49-04.png)
+
+Doesn't look like there anything there at all...
+
