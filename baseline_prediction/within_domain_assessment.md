@@ -252,7 +252,7 @@ rm -rf $swarm_file;
 for f in aparc.a2009s_n215_10252018.RData.gz \
     aparc.a2009s_trimmed_n215_10252018.RData.gz \
     aparc_n215_10252018.RData.gz \
-    aparc_trimmed__n215_10252018.RData.gz; do
+    aparc_trimmed_n215_10252018.RData.gz; do
     for target in nvVSper nvVSrem perVSrem nvVSadhd; do
         for i in {1..100}; do
             echo "Rscript --vanilla ~/research_code/automl/raw_autoValidation_DL.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} $RANDOM" >> $swarm_file;
@@ -320,3 +320,42 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-10-26 14:50:56
+
+DTI is the only one that is still running. So, we can go ahead and evaluate the
+other ones:
+
+```bash
+dir=withinSNP_rawDL;
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > ${dir}_summary.csv;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> ${dir}_summary.csv;
+done;
+```
+
+Rerunning one of the fMRI trimmed results because of a typo. Also had to re-run
+all struct voxelwise because we ran out of memory.
+
+The issue with structural raw is in converting to h2o... not sure what's going
+on:
+
+```
+dtrain = as.h2o(df[, x])
+Error in h2o.parseSetup(data, pattern = "", destination_frame, header,  : 
+  length of col.names must equal to the number of columns in dataset
+```
+
+need to look more into it...
+
+
