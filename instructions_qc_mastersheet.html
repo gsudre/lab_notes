@@ -51,9 +51,11 @@ DTI-TK, so that whatever processing happens later doesn't affect the QC
 estimates. Since this is a crude estimate, we won't skeletonize it, and just
 create a mask based on FA values, to be used over all other properties.</p>
 <pre class="hljs"><code><div><span class="hljs-comment"># still in caterpie</span>
-<span class="hljs-built_in">cd</span> ~/tmp
+outputDir=/mnt/shaw/dti_subjectSpace_properties
 maskidDir=/mnt/shaw/data_by_maskID/
 maskidFile=~/tmp/maskids.txt
+<span class="hljs-keyword">if</span> [ ! -d <span class="hljs-variable">$outputDir</span> ]; <span class="hljs-keyword">then</span> mkdir <span class="hljs-variable">$outputDir</span>; <span class="hljs-keyword">fi</span>;
+<span class="hljs-built_in">cd</span> <span class="hljs-variable">$outputDir</span>
 <span class="hljs-built_in">echo</span> <span class="hljs-string">"maskid,mean_fa,mean_ad,mean_rd,nvoxInMask"</span> &gt; mean_props.csv;
 <span class="hljs-keyword">while</span> <span class="hljs-built_in">read</span> m; <span class="hljs-keyword">do</span>
     tensorDir=<span class="hljs-variable">${maskidDir}</span>/<span class="hljs-variable">${m}</span>/edti_proc/edti_DMC_DR_R1_SAVE_DTITK/;
@@ -66,14 +68,16 @@ maskidFile=~/tmp/maskids.txt
     <span class="hljs-keyword">if</span> [ ! -d <span class="hljs-variable">$tensorDir</span> ]; <span class="hljs-keyword">then</span>
         <span class="hljs-built_in">echo</span> <span class="hljs-variable">$tensorDir</span> <span class="hljs-string">"does not exist. Skipping..."</span>
     <span class="hljs-keyword">else</span>
-        TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -fa -out ./fa.nii;
-        TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -ad -out ./ad.nii;
-        TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -rd -out ./rd.nii;
-        3dcalc -a fa.nii -prefix mymask.nii -overwrite -expr <span class="hljs-string">"step(a-.2)"</span>;
-        fa=`3dmaskave -q -mask mymask.nii fa.nii`;
-        ad=`3dmaskave -q -mask mymask.nii ad.nii`;
-        rd=`3dmaskave -q -mask mymask.nii rd.nii`;
-        nvox=`3dBrickStat -count -non-zero mymask.nii`;
+        <span class="hljs-keyword">if</span> [ ! -e <span class="hljs-variable">${m}</span>_faLTp2_mask.nii ]; <span class="hljs-keyword">then</span>
+            TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -fa -out ./<span class="hljs-variable">${m}</span>_fa.nii;
+            TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -ad -out ./<span class="hljs-variable">${m}</span>_ad.nii;
+            TVtool -<span class="hljs-keyword">in</span> <span class="hljs-variable">${tensorDir}</span>/<span class="hljs-variable">${tensorFile}</span> -rd -out ./<span class="hljs-variable">${m}</span>_rd.nii;
+            3dcalc -a <span class="hljs-variable">${m}</span>_fa.nii -prefix <span class="hljs-variable">${m}</span>_faLTp2_mask.nii -overwrite -expr <span class="hljs-string">"step(a-.2)"</span>;
+        <span class="hljs-keyword">fi</span>;
+        fa=`3dmaskave -q -mask <span class="hljs-variable">${m}</span>_faLTp2_mask.nii <span class="hljs-variable">${m}</span>_fa.nii`;
+        ad=`3dmaskave -q -mask <span class="hljs-variable">${m}</span>_faLTp2_mask.nii <span class="hljs-variable">${m}</span>_ad.nii`;
+        rd=`3dmaskave -q -mask <span class="hljs-variable">${m}</span>_faLTp2_mask.nii <span class="hljs-variable">${m}</span>_rd.nii`;
+        nvox=`3dBrickStat -count -non-zero <span class="hljs-variable">${m}</span>_faLTp2_mask.nii`;
         <span class="hljs-built_in">echo</span> <span class="hljs-variable">${m}</span>,<span class="hljs-variable">${fa}</span>,<span class="hljs-variable">${ad}</span>,<span class="hljs-variable">${rd}</span>,<span class="hljs-variable">${nvox}</span> &gt;&gt; mean_props.csv;
     <span class="hljs-keyword">fi</span>;
 <span class="hljs-keyword">done</span> &lt; <span class="hljs-variable">$maskidFile</span>
