@@ -41,9 +41,11 @@ create a mask based on FA values, to be used over all other properties.
 
 ```bash
 # still in caterpie
-cd ~/tmp
+outputDir=/mnt/shaw/dti_subjectSpace_properties
 maskidDir=/mnt/shaw/data_by_maskID/
 maskidFile=~/tmp/maskids.txt
+if [ ! -d $outputDir ]; then mkdir $outputDir; fi;
+cd $outputDir
 echo "maskid,mean_fa,mean_ad,mean_rd,nvoxInMask" > mean_props.csv;
 while read m; do
     tensorDir=${maskidDir}/${m}/edti_proc/edti_DMC_DR_R1_SAVE_DTITK/;
@@ -56,14 +58,16 @@ while read m; do
     if [ ! -d $tensorDir ]; then
         echo $tensorDir "does not exist. Skipping..."
     else
-        TVtool -in ${tensorDir}/${tensorFile} -fa -out ./fa.nii;
-        TVtool -in ${tensorDir}/${tensorFile} -ad -out ./ad.nii;
-        TVtool -in ${tensorDir}/${tensorFile} -rd -out ./rd.nii;
-        3dcalc -a fa.nii -prefix mymask.nii -overwrite -expr "step(a-.2)";
-        fa=`3dmaskave -q -mask mymask.nii fa.nii`;
-        ad=`3dmaskave -q -mask mymask.nii ad.nii`;
-        rd=`3dmaskave -q -mask mymask.nii rd.nii`;
-        nvox=`3dBrickStat -count -non-zero mymask.nii`;
+        if [ ! -e ${m}_faLTp2_mask.nii ]; then
+            TVtool -in ${tensorDir}/${tensorFile} -fa -out ./${m}_fa.nii;
+            TVtool -in ${tensorDir}/${tensorFile} -ad -out ./${m}_ad.nii;
+            TVtool -in ${tensorDir}/${tensorFile} -rd -out ./${m}_rd.nii;
+            3dcalc -a ${m}_fa.nii -prefix ${m}_faLTp2_mask.nii -overwrite -expr "step(a-.2)";
+        fi;
+        fa=`3dmaskave -q -mask ${m}_faLTp2_mask.nii ${m}_fa.nii`;
+        ad=`3dmaskave -q -mask ${m}_faLTp2_mask.nii ${m}_ad.nii`;
+        rd=`3dmaskave -q -mask ${m}_faLTp2_mask.nii ${m}_rd.nii`;
+        nvox=`3dBrickStat -count -non-zero ${m}_faLTp2_mask.nii`;
         echo ${m},${fa},${ad},${rd},${nvox} >> mean_props.csv;
     fi;
 done < $maskidFile
@@ -155,7 +159,3 @@ write.csv(m, file=out_fname, row.names=F)
 These instructions show you how to collect QC metrics for a set of mask ids.
 This could be the complete set you're playing with or just a subset, to later be
 concatenated to a master list. Choose your own destiny.
-
-# TODO
-
-- just so it takes less time, save the FA/AD/RD outputs?
