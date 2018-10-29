@@ -58,6 +58,7 @@ while read m; do
     if [ ! -d $tensorDir ]; then
         echo $tensorDir "does not exist. Skipping..."
     else
+        echo "Evaluating QC metrics for $m"
         if [ ! -e ${m}_faLTp2_mask.nii ]; then
             TVtool -in ${tensorDir}/${tensorFile} -fa -out ./${m}_fa.nii;
             TVtool -in ${tensorDir}/${tensorFile} -ad -out ./${m}_ad.nii;
