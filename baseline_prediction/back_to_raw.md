@@ -95,4 +95,20 @@ That didn't run because of lack of memory, so I'm going with 50 and 40 ICs.
 Getting close to 72Gb of memory to get icassoExp... also, note that I cnanot use
 -nojvm because one of the functions dies!
 
+# 2018-10-29 10:06:26
 
+I'll either have to go to an even lower number of ICs, or kill this branch
+completely. I'm running out of time in the interactive sessions even for 40
+ICs... just because we have time, I'll run 30, like what we did for that paper.
+
+```matlab
+restoredefaultpath()
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+addpath('/data/NCR_SBRB/')
+Ydd = dlmread(['/data/sudregp/tmp/tmp.csv'], ',', 1, 0);
+sR=icassoEst('both', Ydd, 1000, 'lastEig', 30, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_30ics.mat'],'A','S','W','iq','sR','-v7.3')
+```

@@ -358,4 +358,78 @@ Error in h2o.parseSetup(data, pattern = "", destination_frame, header,  :
 
 need to look more into it...
 
+# 2018-10-29 10:17:03
+
+```bash
+for dir in withinDTI_rawDL withinResting_rawDL withinSNP_rawDL; do
+    echo $dir;
+    echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > ${dir}_summary.csv;
+    for f in `ls -1 trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> ${dir}_summary.csv;
+    done;
+done;
+```
+
+So, apparently DTI_AD_n223 is still the best, and it does perform much better
+tha random... the actual results is just not as exciting.
+
+![](2018-10-29-11-44-46.png)
+
+It doesn't reallt help with perVSrem though. 
+
+![](2018-10-29-11-46-32.png)
+
+This is what I'm running to plot, btw:
+
+```r
+data = read.csv('~/tmp/withinDTI_rawDL_summary.csv')
+data$group = ''
+data[data$seed<0,]$group = 'rnd'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
+# then, for each target
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=group2, y=acc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+The other two plots, just for giggles:
+
+![](2018-10-29-11-50-13.png)
+
+![](2018-10-29-11-50-50.png)
+
+Plotting other metrics doesn't make that much difference either.
+
+How about fMRI?
+
+![](2018-10-29-13-07-37.png)
+
+![](2018-10-29-13-21-09.png)
+
+So, again, there is some signal there, a bit better than chance, but still
+nothing impressive.
+
+Finally, SNPs. 
+
+![](2018-10-29-13-24-00.png)
+
+![](2018-10-29-13-24-48.png)
+
+As expected, barely better than chance. 
+
+BTW, it looks like it works to have the raw MR data firs tsaved to a tmp .csv
+and then read in with importFile. So, let's change the raw function to do that
+in those cases!
+
+
 

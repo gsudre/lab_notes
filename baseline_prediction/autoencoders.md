@@ -127,3 +127,36 @@ done;
 sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
 swarm -f $swarm_file -g 16 -t 32 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
 ```
+
+# 2018-10-29 10:03:52
+
+Let's see what we get:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > adAE_summary.csv;
+dir=adAE;
+for f in `ls trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> adAE_summary.csv;
+done;
+```
+
+No, this didn't work either (nvVSper ACC):
+
+![](2018-10-29-10-14-40.png)
+
+The last hope in dimensionality reduction is ICA, but that's not looking so hot
+either.
+
+Maybe another way we could reduce our dimensions is by using our results from
+previous papers?
+

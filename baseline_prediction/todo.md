@@ -122,3 +122,19 @@ Some more ideas after playing a bit with the function to plot the results:
 - [ ] re-run nuisance imaging variables just to make the points again using the
   current testing framework
   
+  **2018-10-29 13:12:25**
+
+  Had a quick chat with Philip today. We should use some network parameters for
+  fMRI, see if they help. Also, it might be interesting to check variability
+  within the scan session? Basically, split the session into two and check the
+  absolute difference in correlation (could be over the whole brain or specific
+  regions). We could even derive a difference distribution, and test the mean
+  and standard deviation of that distribution, comparing them between NV and
+  ADHDs.
+
+  Something else Philip suggested was to look at the heritability of network
+  parameters in fMRI (for a future project, using the family data), and also to
+  look at https://www.stats.ox.ac.uk/~snijders/siena/ to look at the evolution
+  of our networks. We could do this within a scan session, or across
+  longitudinal progressions of a correlation matrix, or even using individual
+  levels of a family tree as different time points in the analysis. 
