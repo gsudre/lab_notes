@@ -431,5 +431,10 @@ BTW, it looks like it works to have the raw MR data firs tsaved to a tmp .csv
 and then read in with importFile. So, let's change the raw function to do that
 in those cases!
 
+# 2018-10-30 07:54:01
+
+I was looking at some old notes, and even if I manage to load the structural data in the raw script, it will fail during computations due to lack of memory, even in 120Gb machines. I could use a large memory node, but this might be overkill. Let's invest some time in the same space idea and see what we get.
+
+
 
 

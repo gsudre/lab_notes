@@ -138,3 +138,20 @@ Some more ideas after playing a bit with the function to plot the results:
   of our networks. We could do this within a scan session, or across
   longitudinal progressions of a correlation matrix, or even using individual
   levels of a family tree as different time points in the analysis. 
+
+  **2018-10-30 16:17:25**
+
+  Alright, so our current situation is that there are some (but unimpressive) results from DTI, and same thing but even worse from rsFMRI. Nothing in structural ROIs, SNPs, or an other domain. So, here are some of the plates I have spinning:
+
+ * Downsampling voxelwise structural
+ * Same-space analysis (Calhoun) for all brain data 
+ * ICASSO analysis on data matrices (only AD so far)
+ * Combine raw results that are working to see if we get any boost
+ * Network analysis on fMRI data to use instead of correlation matrix
+
+I don't want to mess too much with ICASSO as I'm seeing some recent literature not as much in favor of it anymore. I do want to explore the downsampling issue, as well as the same space analysis a bit more. Downsampling will be a good compliment to the other results, and will go well with the combininng goal for later.
+
+Of course, network analysis will be worth a try not only for this project, but also for the family heritability project later.
+
+Increasing smoothing didn't help with downsampling the structural data... what if I use something from here? https://brainder.org/2016/05/31/downsampling-decimating-a-brain-surface/
+
