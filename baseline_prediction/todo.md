@@ -155,3 +155,9 @@ Of course, network analysis will be worth a try not only for this project, but a
 
 Increasing smoothing didn't help with downsampling the structural data... what if I use something from here? https://brainder.org/2016/05/31/downsampling-decimating-a-brain-surface/
 
+**2018-10-31 09:25:38**
+
+Just had a chat with Philip, and he suggested I should try FDR again and also a
+spatial filter. I think they're good ideas, and I particularly like the spatial
+filter option that I had previously discarded because it would be somewhat hard
+to implement. Let's see how hard it would actually be, and 
