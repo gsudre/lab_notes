@@ -161,3 +161,124 @@ for i in {1..1000}; do
 done
 ```
 
+Then, in R we calculate our upper limit:
+
+```r
+> x = read.table('~/data/baseline_prediction/top_struct_clusters.txt')[,3]
+> summary(x)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  3.040   4.260   4.940   5.707   6.100  33.530 
+```
+
+So, let's go for 34 just to be conservative.
+
+# 2018-11-01 11:14:04
+
+Time to collect some of the DTI results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > spatialAD_summary.csv;
+dir=spatialAD;
+for f in `ls trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> spatialAD_summary.csv;
+done
+```
+
+The results are slightly better than just using plain raw data, which
+shows how robust we can be to bad variables.
+
+![](2018-11-01-11-29-40.png)
+
+We should probably now run the shuffled version of the tests now, and see how
+much better than that we do.
+
+```bash
+job_name=rndSpatialAD;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+f=dti_ad_voxelwise_n223_09212018.RData.gz;
+for target in nvVSper perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_spatial_test_autoValidation_DL.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_uni_spatial/${USER} -$RANDOM 8" >> $swarm_file;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:10;
+```
+
+Collecting random AD:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > rndSpatialAD_summary.csv;
+dir=rndSpatialAD;
+for f in `ls trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> rndSpatialAD_summary.csv;
+done
+```
+
+The results are quite similar... but I'm not sure if this is a fair test. Let's
+not use it for now.
+
+And we can run some structural results as well, with and without randomness to
+get things going.
+
+```bash
+job_name=spatialThickness;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+f=struct_thickness_09192018_260timeDiff12mo.RData.gz;
+for target in nvVSper perVSrem; do
+    for i in {1..100}; do
+        echo "Rscript --vanilla ~/research_code/automl/uni_spatial_test_autoValidation_DL.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_uni_spatial/${USER} $RANDOM 35" >> $swarm_file;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:10;
+```
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > spatialThickness_summary.csv;
+dir=spatialThickness;
+for f in `ls trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 5`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> spatialThickness_summary.csv;
+done
+```
+
+![](2018-11-01-16-29-44.png)
+
+Results again seem better than chance, but not stellar yet. Maybe a good point
+to start adding modalities together? Or, at least re-riun the within-modality
+tests?
+

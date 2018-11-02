@@ -160,4 +160,10 @@ Increasing smoothing didn't help with downsampling the structural data... what i
 Just had a chat with Philip, and he suggested I should try FDR again and also a
 spatial filter. I think they're good ideas, and I particularly like the spatial
 filter option that I had previously discarded because it would be somewhat hard
-to implement. Let's see how hard it would actually be, and 
+to implement. Let's see how hard it would actually be.
+
+**2018-11-01 09:42:03**
+
+Philip sent me this paper (https://www.nature.com/articles/nn.4179), so I need
+to check if they have an atlas of the network that I can use, or at least I
+should try to reproduce their methods.
