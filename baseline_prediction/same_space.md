@@ -67,3 +67,39 @@ especially important for DTI too, if the property files didn't use the mask when
 being generated.
 
 Of course, STILL NEED TO CHECK THAT TLRC ALIGNMENT WORKED WELL!
+
+# 2018-11-05 11:16:22
+
+I figured that since I'm doing a lot of this work, we might as well usea a
+non-Linear transform, and also produce all the figures automatically. That's
+where the new SSwarp function comes in.
+
+On the same step, I think we'll have better success in ICA if we
+use gray matter masks (or white matter, for DTI, if the files we're using are
+not restricted to that yet). So, for the structural data we'll need to use
+Freesurfer masks and put them into the common space.
+
+Ideally I'd run this in Biowulf, but until I hear from them about Xfvb and
+netpbm, I'l run it locally:
+
+```bash
+cd ~/data/baseline_prediction/same_space/anat;
+for m in `cut -d"," -f 1 ../../struct_rois_09062018_260timeDiff12mo.csv`; do
+    @SSwarper -input ${m2}.nii.gz -base TT_N27_SSW.nii.gz -subid ${m2};
+    3dcalc -a /Volumes/Shaw/freesurfer5.3_subjects/${m2}/SUMA/aparc+aseg_REN_gm.nii.gz \
+        -prefix ${m2}_gm_mask.nii -expr "step(a)";
+    3dNwarpApply -nwarp "anatQQ.${m2}_WARP.nii anatQQ.${m2}.aff12.1D" \
+        -source ${m2}_gm_mask.nii -master anatQQ.${m2}.nii -inter NN \
+        -overwrite -prefix ${m2}_gm_mask_NL_inTLRC.nii;
+done;
+```
+
+For DTI, they're all in the same space already, so I'll just use the FA skeleton
+mask we've been using for the voxelwise analysis.
+
+Just needed to say that using the fa_skeleton masks causes the estimates of ICs
+to be quite low. For both n223 and n272 AD, I get only 4 ICs. For n223 FA, I got
+only 1, so I'm not running faEstimatedMaskedMST200. I'll check n272 and also rd,
+but I might end up skipping those estimated results in the end.
+
+Yep, only one IC for FA n272 as well. Will only run IC20, and then check on RD. 
