@@ -386,13 +386,11 @@ tha random... the actual results is just not as exciting.
 ![](2018-10-29-11-44-46.png)
 
 It doesn't reallt help with perVSrem though. 
-
 ![](2018-10-29-11-46-32.png)
 
 This is what I'm running to plot, btw:
 
 ```r
-data = read.csv('~/tmp/withinDTI_rawDL_summary.csv')
 data$group = ''
 data[data$seed<0,]$group = 'rnd'
 data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
@@ -543,3 +541,73 @@ But let's also plot accuracy, in case it helps with decisions:
 ![](2018-11-02-10-13-17.png)
 
 ![](2018-11-02-10-13-53.png)
+
+# 2018-11-07 12:10:47
+
+Today I thought about averaging the voxels inside a cluster, because that would
+reduce the number of features and sqaush any concerns about overfitting others
+might have. So, let's re-run the different DTI scenarios that way, and then run
+structural as well when the code is ready.
+
+```bash
+job_name=withinDTI_spatialAvgTestDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in dti_fa_voxelwise_n223_09212018.RData.gz dti_fa_voxelwise_n272_09212018.RData.gz \
+    dti_ad_voxelwise_n223_09212018.RData.gz dti_ad_voxelwise_n272_09212018.RData.gz \
+    dti_rd_voxelwise_n223_09212018.RData.gz dti_rd_voxelwise_n272_09212018.RData.gz; do
+    for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_spatialAverage_test_autoValidation_DL.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_spatial_within_DL/${USER} $RANDOM 8" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=withinStruct_spatialAvgTestDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in struct_thickness_09192018_260timeDiff12mo.RData.gz \
+    struct_area_09192018_260timeDiff12mo.RData.gz \
+    struct_volume_09192018_260timeDiff12mo.RData.gz; do
+    for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/uni_spatialAverage_test_autoValidation_DL.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_spatial_within_DL/${USER} $RANDOM 35" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Another thing to try is to log-transform the data (or whatever makes it more
+Gaussian), prior to doing the univariate analysis. I don't think many of the
+algorithms will care that the data is gaussian, but it's worth a try to make it
+look nicer.

@@ -167,3 +167,8 @@ to implement. Let's see how hard it would actually be.
 Philip sent me this paper (https://www.nature.com/articles/nn.4179), so I need
 to check if they have an atlas of the network that I can use, or at least I
 should try to reproduce their methods.
+
+**2018-11-07 10:32:54**
+
+For the spatial filter, what if we averaged within blobs? That would reduce the
+number of variables, and maybe still perform well?
