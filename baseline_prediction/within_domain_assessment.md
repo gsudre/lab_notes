@@ -607,7 +607,62 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2018-11-08 17:01:02
+
+Let's put together the results for the spatialAverage pipeline:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > spatialAverageTest_summary.csv;
+for dir in withinDTI_spatialAvgTestDL withinStruct_spatialAvgTestDL; do
+    echo $dir;
+    for f in `ls -1 trash_${dir}/*o`; do
+        phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 6`;
+        target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}'`;
+        seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $10}'`;
+        var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $5}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+        model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+        auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+        nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+        ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+        f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+        echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> spatialAverageTest_summary.csv;
+    done;
+done;
+```
+
+And for plotting:
+
+```r
+data = read.csv('~/tmp/spatialAverageTest_summary.csv')
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=pheno, y=acc, fill=pheno))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+![](2018-11-08-17-13-49.png)
+
+![](2018-11-08-17-14-46.png)
+
+![](2018-11-08-17-15-09.png)
+
+![](2018-11-08-17-15-34.png)
+
+![](2018-11-08-17-16-07.png)
+
+![](2018-11-08-17-16-37.png)
+
+![](2018-11-08-17-18-00.png)
+
+![](2018-11-08-17-18-27.png)
+
+The results are honestly not that different. It might make a difference later when we start combining datasets and the number of variables might make some difference.
+
 Another thing to try is to log-transform the data (or whatever makes it more
 Gaussian), prior to doing the univariate analysis. I don't think many of the
 algorithms will care that the data is gaussian, but it's worth a try to make it
-look nicer.
+look nicer. I'd probably do some more work on combining these results and fMRI, but this is transformation might be something to be tried later.
+
+Another check we can try is check for outliers. Instead of removing the entire subject (unless it's necessary, of course), we could try setting variables to NA, as out algorithms can handle that.
+
+So, I guess next thing is to write code to combine the domains, and while that is running, to play more with rsfMRI.
