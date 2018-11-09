@@ -109,7 +109,6 @@ swarm_file=swarm.automl_${job_name};
 rm -rf $swarm_file;
 for f in geno3_snps1e04_09192018.RData.gz geno3_snps1e05_09192018.RData.gz \
     geno3_snps1e05_09192018.RData.gz geno3_snps1e07_09192018.RData.gz \
-    geno3_snps1e08_09192018.RData.gz geno3_snps1e09_09192018.RData.gz \
     geno3_prs_09192018.RData.gz;  do
     for target in nvVSper nvVSrem perVSrem nvVSadhd; do
         for i in {1..100}; do
