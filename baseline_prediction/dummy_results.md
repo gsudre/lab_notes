@@ -731,4 +731,3 @@ How about FMRI?
 ![](2018-10-25-11-49-04.png)
 
 Doesn't look like there anything there at all...
-
