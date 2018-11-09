@@ -663,6 +663,11 @@ Gaussian), prior to doing the univariate analysis. I don't think many of the
 algorithms will care that the data is gaussian, but it's worth a try to make it
 look nicer. I'd probably do some more work on combining these results and fMRI, but this is transformation might be something to be tried later.
 
-Another check we can try is check for outliers. Instead of removing the entire subject (unless it's necessary, of course), we could try setting variables to NA, as out algorithms can handle that.
+Another check we can try is check for outliers. Instead of removing the entire
+subject (unless it's necessary, of course), we could try setting variables to
+NA, as out algorithms can handle that. And, of course we could using caret's
+nearZero variance filter and also findCorrelation if we end up too concerned
+about many variables in the raw data. It might help, and still keep
+non-univariate features in the model.
 
 So, I guess next thing is to write code to combine the domains, and while that is running, to play more with rsfMRI.
