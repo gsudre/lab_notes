@@ -172,3 +172,7 @@ should try to reproduce their methods.
 
 For the spatial filter, what if we averaged within blobs? That would reduce the
 number of variables, and maybe still perform well?
+
+**2018-11-09 15:14:21**
+
+Not sure what to do with rsFMRI yet. I don't have a good analogy for spatial averages there. I also don't know if using network metrics won't be better. There doesn't seem to be a consensus in the field. Maybe I just concatenate everything as raw first? Well, struct won't work. Or, the other option is to do ICA there as well. 
