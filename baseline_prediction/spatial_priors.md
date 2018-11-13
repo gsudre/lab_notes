@@ -282,3 +282,46 @@ Results again seem better than chance, but not stellar yet. Maybe a good point
 to start adding modalities together? Or, at least re-riun the within-modality
 tests?
 
+# 2018-11-13 15:58:19
+
+We're back to this analysis, trying to figure out the biggest cluster for any
+specific test, but using shuffled labels and the entire dataset:
+
+```bash
+for i in {1..250}; do
+    Rscript --vanilla ~/research_code/automl/generate_random_uni_spatial.R ~/data/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz ~/data/baseline_prediction/long_clin_0918.csv nvVSadhd $RANDOM;
+done
+```
+
+And change the target to run it other cores as well...
+
+Now we just need to compile the results similar to before:
+
+```bash
+cd ~/data/baseline_prediction/neuroimage
+for f in `ls ~/data/tmp/nvVSper_*_rnd_clusters.txt`; do
+    grep -v \# $f | head -n 1 >> nvVSper_top_clusters.txt
+done
+```
+
+And, in R:
+
+```r
+> x = read.table('~/data/baseline_prediction/neuroimage/nvVSper_top_clusters.txt')[,1]
+> summary(x)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   6.00   11.00   15.00   18.02   20.00   75.00 
+> sum(x>20)/length(x)
+[1] 0.2310757
+> sum(x>40)/length(x)
+[1] 0.05577689
+> sum(x>42)/length(x)
+[1] 0.05179283
+> sum(x>43)/length(x)
+[1] 0.04780876
+> sum(x>32)/length(x)
+[1] 0.09960159
+```
+
+Well, nvVSper with non-shuffled labels has the biggest cluster at size 48, then
+one at 43. Even if we go down to .1 we only get these two.
