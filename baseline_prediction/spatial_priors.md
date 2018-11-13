@@ -325,3 +325,19 @@ And, in R:
 
 Well, nvVSper with non-shuffled labels has the biggest cluster at size 48, then
 one at 43. Even if we go down to .1 we only get these two.
+
+For perVSrem, I'm at:
+
+```r
+> x = read.table('~/data/baseline_prediction/neuroimage/perVSrem_top_clusters.txt')[,1]
+> summary(x)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    6.0    11.0    15.5    18.2    22.0    62.0 
+> sum(x>36)/length(x)
+[1] 0.048
+> sum(x>30)/length(x)
+[1] 0.084
+```
+
+Hum... the biggest cluster we get with non-random data is 10?
+
