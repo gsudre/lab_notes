@@ -67,4 +67,47 @@ while read s; do
 done < finished.txt
 ```
 
+# 2018-11-14 13:46:02
+
+Here are some lines on how to create a downsamples version of the Freesurfer results, vertex-wide. Here are some llustrations: 
+
+https://brainder.org/2016/05/31/downsampling-decimating-a-brain-surface/
+
+But the default options generate 163842 values per hemisphere. For this, I'll use fsaverage4, which gives me 2562 per hemisphere:
+
+```bash
+for meas in volume area thickness; do
+    for h in lh rh; do
+        mris_preproc --f subjects_list.txt --target fsaverage4 --meas $meas --hemi $h --out ${h}.${meas}.ico4.mgh;
+    done;
+done
+```
+
+Of course, to do the usual stuff without downsampling that we used to do, just use the regular fsaverage. But you might also want to smooth it a bit, like:
+
+```bash
+mri_surf2surf --hemi lh --s fsaverage --sval lh.thickness.00.mgh --fwhm 10 --cortex --tval lh.thickness.10.mgh
+```
+
+Finally, let's put it into a format we can read. Bring it back form Biowulf, and run this locally:
+
+```python
+nsubjs = 260
+from rpy2.robjects import r
+from rpy2.robjects.numpy2ri import numpy2ri
+import surfer
+import numpy as np
+for meas in ['area', 'volume', 'thickness']:
+    for h in ['lh', 'rh']:
+        fname = '%s.%s.ico4' % (h, meas)
+        data = surfer.io.read_scalar_data(fname + '.mgh')
+        nvox = data.shape[0]/nsubjs
+        print('%s, nvox = %.2f' % (fname, nvox))
+        data = data.reshape([nsubjs, int(nvox)])
+        array = np.array(data, dtype="float64")
+        ro = numpy2ri(array)
+        r.assign('data', ro)
+        r("save(data, file='%s.gzip', compress=TRUE)" % fname)
+```
+
 

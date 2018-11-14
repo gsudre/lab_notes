@@ -341,3 +341,34 @@ For perVSrem, I'm at:
 
 Hum... the biggest cluster we get with non-random data is 10?
 
+# 2018-11-14 13:59:02
+
+For nvVSrem I get 9, and for nvVSadhd I get 43. In other words, whenever I used the remission group I only got 10 or less voxels with the actual data. Maybe it's a reflexion of the number of subjects (only 38 rem)?
+
+Let's see if we do any better looking at correlations. For OLS_SX_inatt I get 15, same for HI, and only 13 for total. If we restrict it to ADHDonly, we get 18 for inatt, but 20 for HI and 10 for total. Does RD or FA do better? Sticking to ADHDonly, inatt gets 12 for RD and 14 for FA. HI got 14 for RD and 14 for FA. Finally, total got 13 for RD and 14 for FA. So, let's generate some random numbers. IT looks like AD for ADHDonly is still our best candidate...
+
+```bash
+for i in {1..250}; do
+    Rscript --vanilla ~/research_code/automl/generate_random_uni_spatial.R ~/data/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz ~/data/baseline_prediction/long_clin_0918.csv ADHDonly_OLS_HI_slope $RANDOM;
+done
+```
+
+```r
+> x = read.table('~/data/baseline_prediction/neuroimage/inatt_top_clusters.txt')[,1]
+> summary(x)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+      6      12      15      18      20      71
+> sum(x>17)/length(x)
+[1] 0.368
+> x = read.table('~/data/baseline_prediction/neuroimage/hi_top_clusters.txt')[,1]
+> summary(x)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   7.00   12.00   16.00   19.47   23.00   77.00 
+> sum(x>17)/length(x)
+[1] 0.4056225
+> sum(x>19)/length(x)
+[1] 0.3333333
+```
+
+Yeah, this is a no-go. A vanilla neuroiamging analysis won't fly here.
+
