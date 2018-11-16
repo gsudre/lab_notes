@@ -138,3 +138,57 @@ new dataset Wendy is putting together? The trick here is the case when no
 significant cluster comes up. We might need to play with thereholds there. Or
 maybe go back to running older tests, instead of pairwise as we're doing now.
 
+# 2018-11-15 11:08:52
+
+I'm doing some tests with memory needs... so, using DRF and 2 DTI datasets (only 5 models, though), I needed 16Gb. For DeepLearning 56Gb, GBM 41. All nvVSadhd.
+
+Then, using 3 DTI datasets, DRF needed 18Gb, GBM p4, GLM 14, and DL p3.
+
+Using all 3 struct datasets, DRF needed 21Gb, GBM 32, GLM 4, and DL 32.
+
+Finally, using all 6 datasets, DRF needed 31, GBM j4, GLM 20, and DL g4.
+
+All tests run in a 32 core machine (sin). But it's highly possible that other models in the full grid search will take more memory!
+
+Some are taking longer than others, but I haven't seen anything fo above 60 yet...
+
+Let's go ahead and run the entire struct and DTI combination to see what we get:
+
+```bash
+job_name=combinedDTIStructDS_rawDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+f="${mydir}/dti_fa_voxelwise_n223_09212018.RData.gz,${mydir}/dti_ad_voxelwise_n223_09212018.RData.gz,${mydir}/dti_rd_voxelwise_n223_09212018.RData.gz,${mydir}/struct_area_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_volume_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_thickness_11142018_260timeDiff12mo.RData.gz";
+for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+    for i in {1..100}; do
+        myseed=$RANDOM;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  $myseed DeepLearning" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  -$myseed DeepLearning" >> $swarm_file;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+And just for comparison, and because it should run somewhat fast, let's run only DRF:
+
+```bash
+job_name=combinedDTIStructDS_rawDRF;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+f="${mydir}/dti_fa_voxelwise_n223_09212018.RData.gz,${mydir}/dti_ad_voxelwise_n223_09212018.RData.gz,${mydir}/dti_rd_voxelwise_n223_09212018.RData.gz,${mydir}/struct_area_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_volume_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_thickness_11142018_260timeDiff12mo.RData.gz";
+for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+    for i in {1..100}; do
+        myseed=$RANDOM;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  $myseed DRF" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  -$myseed DRF" >> $swarm_file;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+Should we maybe run GBM as well?
+

@@ -709,3 +709,111 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-11-15 10:13:36
+
+Let's compile the downsampled structural results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > structDSRawDL_summary.csv;
+dir=withinStructDS_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}' | cut -d"/" -f 6`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> structDSRawDL_summary.csv;
+done;
+```
+
+Then we plot it in R:
+
+```r
+data = read.csv('~/tmp/structDSRawDL_summary.csv')
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
+# then, for each target
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=group2, y=acc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+![](2018-11-15-10-28-47.png)
+
+![](2018-11-15-10-29-23.png)
+
+![](2018-11-15-10-29-50.png)
+
+![](2018-11-15-10-30-22.png)
+
+![](2018-11-15-10-31-07.png)
+
+![](2018-11-15-10-31-53.png)
+
+![](2018-11-15-10-32-17.png)
+
+![](2018-11-15-10-32-38.png)
+
+Nothing terribly impressive. Maybe if we combine it with DTI?
+
+Before we do that, let's run the combined struct dataset... it's the same as DTI_ALL, but I just didn't create one big file. 
+
+```bash
+job_name=combinedStructDS_rawDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+f="${mydir}/struct_area_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_volume_11142018_260timeDiff12mo.RData.gz,${mydir}/struct_thickness_11142018_260timeDiff12mo.RData.gz";
+for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+    for i in {1..100}; do
+        myseed=$RANDOM;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  $myseed DeepLearning" >> $swarm_file;
+        echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER}  -$myseed DeepLearning" >> $swarm_file;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10;
+```
+
+And we can re-run the within-domain results for fMRI to see if anything pops up:
+
+```bash
+job_name=withinFMRIClean_rawDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls ${mydir}/aparc*11152018*gz`; do
+    for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} $RANDOM DeepLearning None" >> $swarm_file;
+        done;
+    done;
+done
+for f in aparc.a2009s_corr_pearson_n215_11152018.RData.gz aparc_corr_pearson_n215_11152018.RData.gz; do
+    for target in nvVSper nvVSrem perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} -$RANDOM DeepLearning None" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```

@@ -188,5 +188,76 @@ for (i in c('', '.a2009s')) {
 }
 ```
 
+# 2018-11-15 10:18:10
 
+I was taking a look at the number of variables, and aparc has 3919 and aparc.a2009s has about 14K, so neither one is too much bigger than DTI. And that's even before I clean up the datasets by removing meaningless ROIs, so I don't think the number of variables is an issue. Let's clean them up a bit, and then maybe play a bit with within subject normalization. We can explore ICA and graph properties later.
 
+Let's redo the fMRI datasets after cleaning up a bit of the variables that don't make much sense. We can also make the pcorr datasets. 
+
+So, I started by running fmri/make_all_correlations.R and fmri/make_all_partial_correlations.R. Removing ROIs only matter for partial correlations, and we have already done that. For full correlations, we can just remove them when we construct the prediction datasets.
+
+In other words, for the partial_correlation datasets all we need to do is add in the MRNs and rename variables:
+
+```r
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09182018.xlsx')
+df = df[,1:2]
+colnames(df) = c('MRN', 'mask.id')
+for (i in c('kendall', 'pearson', 'spearman')) {
+    for (j in c('', '_trimmed')) {
+        print(sprintf('%s, %s', i, j))
+        fname = sprintf('~/data/baseline_prediction/rsfmri/partial_weighted_%s%s.csv',
+                        i, j)
+        data = read.csv(fname)
+        colnames(data)[1] = 'mask.id'
+        data = merge(df, data, by='mask.id')
+        var_names = grepl('TO', colnames(data))
+        cnames = sapply(colnames(data)[var_names], function(x) sprintf('v_%s', x))
+        colnames(data)[var_names] = cnames
+        fname = sprintf('~/data/baseline_prediction/aparc_pcorr_%s%s_n215_11152018.RData.gz',
+            i, j)
+        save(data, file=fname, compress=T)
+    }
+}
+```
+
+There are a couple subjects that have 100 or so of the 2280 partial connections as NA. I don't think that will screw up the algorithms too much... let's see.
+
+For the full correlation it's a bit trickier, because we'll have both parcelations, and will need to remove any garbage ROIs. Let's see:
+
+(Note that I left a few more ROIs in full correlation because I didn't want to remove some of the thalamic ones. I thought it would be necessary for partial correlations to remove the number of ROIs, but not as much for full correlations)
+
+```r
+rm_rois = c('CSF', 'Ventricle', 'Pallidum', 'Brain.Stem',
+            'Accumbens.area', 'VentralDC', 'vessel', 'Cerebral',
+            'choroid', 'Lat.Vent', 'White.Matter', 'hypointensities',
+            '^CC', 'nknown', 'Chiasm', 'Cerebellum.Cortex', 'undetermined')
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09182018.xlsx')
+df = df[,1:2]
+colnames(df) = c('MRN', 'mask.id')
+for (i in c('kendall', 'pearson', 'spearman')) {
+    for (j in c('', '_trimmed')) {
+        for (p in c('', '.a2009s')) {
+            print(sprintf('%s, %s, %s', i, j, p))
+            fname = sprintf('~/data/baseline_prediction/rsfmri/weighted_aparc%s_%s%s.csv',
+                            p, i, j)
+            data = read.csv(fname)
+            colnames(data)[1] = 'mask.id'
+            rm_me = c()
+            for (r in rm_rois) {
+                rm_me = c(rm_me, which(grepl(r, colnames(data)))) }
+            data = data[, -unique(rm_me)]
+            data = merge(df, data, by='mask.id')
+            var_names = grepl('TO', colnames(data))
+            cnames = sapply(colnames(data)[var_names], function(x) sprintf('v_%s', x))
+            colnames(data)[var_names] = cnames
+            fname = sprintf('~/data/baseline_prediction/aparc%s_corr_%s%s_n215_11152018.RData.gz',
+                p, i, j)
+            save(data, file=fname, compress=T)
+        }
+    }
+}
+```
+
+So, in this clean version I end up with 12923 variables in aparc.a2009s and 3118 in aparc. For pcorr we have 2278. 
