@@ -192,3 +192,35 @@ swarm -f $swarm_file -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_
 
 Should we maybe run GBM as well?
 
+# 2018-11-16 13:23:15
+
+Let's compile the results from yesterday:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > combinedDTIStructDSRawDL_summary.csv;
+dir=combinedDTIStructDS_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen='combinedDTIStructDSRaw';
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> combinedDTIStructDSRawDL_summary.csv;
+done;
+```
+
+Not sure why, but many of the runs didn't print the best model, so we can only
+use the leaderboard output, which only gives AUC. But that should be enough to
+see if the ocmbinations gain us anything:
+
+![](2018-11-16-13-37-38.png)
+
+These results look actually a bit worse than just using the domains by
+themselves. In this case, I wonder if a voting strategy wouldn't be better. For
+example, this modality thinks it's X, that thinks it's Y, etc, combining
+probability with some weights based on CV.

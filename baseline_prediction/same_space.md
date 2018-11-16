@@ -321,3 +321,50 @@ So, these results are slightly worse than doing raw on all features, and about
 5-10% worse than using the spatial filters. Maybe it will be worth it for
 structural and rsFMRI, but not looking good for DTI.
 
+# 2018-11-16 13:47:24
+
+Let's take a look at the MELODIC results in the EPI data in the same space. It
+estimates 208 ICS, which is a lot, but gives the potential number of variables
+we have, might not be too bad. This is what I ran:
+
+```bash
+melodic -i 3min.txt -o groupmelodic_fix.ica -v --nobet --bgthreshold=10 --tr=2.5 --report --Oall -a concat 
+```
+
+But just by looking at the report I can tell that it's crap. Lots of noise in
+non-voxel regions. So, I'll need to define a mask.
+
+Then, combine it across subjects:
+
+```bash
+for m in `cat 3min_clean.txt`; do 3dAutomask -prefix ${m}_automask.nii ${m}_epi_NL_inTLRC.nii; done 
+3dmask_tool -input ????_automask.nii -prefix group_epi_mask_union.nii -frac 0
+3dmask_tool -input ????_automask.nii -prefix group_epi_mask_inter.nii -frac 1
+3dmask_tool -input ????_automask.nii -prefix group_epi_mask_fancy.nii \
+    -dilate_input 5 -5 -frac 0.7 -fill_holes
+```
+
+And re-run it as above, but with correct masks (two options):
+
+```bash
+melodic -i 3min.txt -o groupmelodic_union.ica -v --nobet -m group_epi_mask_union.nii --tr=2.5 --report --Oall -a concat;
+melodic -i 3min.txt -o groupmelodic_fancy.ica -v --nobet -m group_epi_mask_fancy.nii --tr=2.5 --report --Oall -a concat;
+melodic -i 3min.txt -o groupmelodic_inter.ica -v --nobet -m group_epi_mask_inter.nii --tr=2.5 --report --Oall -a concat;
+```
+
+The fancy mask created 89 ICS, which is a bit better. Looking at the report,
+many look artefactual, but there are also many that look quite nice. So, we can
+go ahead and continue the analysis.
+
+So, now we need to do the dual regression and grab the values for each scan.
+
+```bash
+while read s; do
+    echo $s;
+    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d melodic_IC \
+        -o dual/dr_stage1_${s}.txt --demean -m ../group_epi_mask_fancy.nii;
+    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d dual/dr_stage1_${s}.txt \
+        -o dual/dr_stage2_$s --demean -m ../group_epi_mask_fancy.nii --des_norm \
+        --out_z=dual/dr_stage2_${s}_Z;
+done < ../3min_clean.txt
+```

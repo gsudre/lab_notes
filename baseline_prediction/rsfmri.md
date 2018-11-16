@@ -260,4 +260,67 @@ for (i in c('kendall', 'pearson', 'spearman')) {
 }
 ```
 
-So, in this clean version I end up with 12923 variables in aparc.a2009s and 3118 in aparc. For pcorr we have 2278. 
+So, in this clean version I end up with 12923 variables in aparc.a2009s and 3118
+in aparc. For pcorr we have 2278. 
+
+# 2018-11-16 12:45:02
+
+Just to note that I tried GIFT (Calhoun's tool) with the ROI data, and also just
+the NIFTI, and neither worked. The NIFTIs ran out of memory even with 120Gb for
+one subject... not sure if it's worth going higher. The ROI data didn't work at
+all, even after formatted into NIFTI.
+
+Now I'm trying to run ICASSO on the time concatenated (after zscoring each time
+series) of the ROIs. I get that by running:
+
+```bash
+Rscript ~/research_code/fmri/make_roi_niftis.R
+sed -i -e "s/NA//g" tcat_aparc.csv
+```
+
+The resulting CSV is TRs by ROIs, so when loading it in Matlab we need to
+transpose it:
+
+```matlab
+restoredefaultpath()
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+addpath('/data/NCR_SBRB/')
+Ydd = dlmread(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/tcat_aparc.a2009s.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd', 1000, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/aparc.a2009s_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
+```
+
+NEED TO RUN OTHER FILES...
+
+<!-- Of course we could choose just ICs above a certain iQ score. But for now, since
+we're just operating with 15 ICs, let's use all of them and let ML decide which
+ones are helpful or not.
+
+Finally, we compute expression scores:
+
+```python
+import tables
+import numpy as np
+import statsmodels.formula.api as smf
+from scipy import io
+import pandas as pd
+
+suffixes=['aparc', 'aparc.a2009s']
+tsuffixes=[s + '_trimmed' for s in suffixes]
+for suffix in suffixes + tsuffixes:
+     print suffix
+     file = tables.open_file('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/%s_1Kperms_15ics.mat' % suffix)
+     S = file.root.S[:]
+     Ydd = t(np.genfromtxt('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/tcat_%s.csv' % suffix, delimiter=',', skip_header=1))
+     scores = []
+     for s in range(Ydd.shape[0]):
+          est = smf.OLS(Ydd[s,: ],S).fit()
+          scores.append(est.params)
+     exp_scores = np.array(scores)
+     df = pd.DataFrame(exp_scores, columns=['ic%02d' % i for i in range(1, 16)])
+     df.to_csv('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/exp_scores_%s_1Kperms_15ics.csv' % suffix, index=False)
+``` -->
