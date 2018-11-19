@@ -324,3 +324,52 @@ for suffix in suffixes + tsuffixes:
      df = pd.DataFrame(exp_scores, columns=['ic%02d' % i for i in range(1, 16)])
      df.to_csv('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/exp_scores_%s_1Kperms_15ics.csv' % suffix, index=False)
 ``` -->
+
+# 2018-11-19 15:57:19
+
+## Variability
+
+I'm having a quick run with variability, just to see if the absolute difference
+between connections (first and second half of TRs) can tells us anything. So, we
+start by running:
+
+```bash
+ipython ~/research_code/fmri/collect_atlas_connectivityVariation_subjectSpace.py
+```
+
+which creates the trimmed/non-trimmed matrices for the 3 methods and both
+parcellations. Then, the next step is to clean it up and create our data
+matrices:
+
+```r
+rm_rois = c('CSF', 'Ventricle', 'Pallidum', 'Brain.Stem',
+            'Accumbens.area', 'VentralDC', 'vessel', 'Cerebral',
+            'choroid', 'Lat.Vent', 'White.Matter', 'hypointensities',
+            '^CC', 'nknown', 'Chiasm', 'Cerebellum.Cortex', 'undetermined')
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09182018.xlsx')
+df = df[,1:2]
+colnames(df) = c('MRN', 'mask.id')
+for (i in c('kendall', 'pearson', 'spearman')) {
+    for (j in c('', '_trimmed')) {
+        for (p in c('', '.a2009s')) {
+            print(sprintf('%s, %s, %s', i, j, p))
+            fname = sprintf('~/data/baseline_prediction/rsfmri/%sAbsDiff_aparc%s%s.csv',
+                            i, p, j)
+            data = read.csv(fname)
+            colnames(data)[2] = 'mask.id'
+            rm_me = c()
+            for (r in rm_rois) {
+                rm_me = c(rm_me, which(grepl(r, colnames(data)))) }
+            data = data[, -unique(rm_me)]
+            data = merge(df, data, by='mask.id')
+            var_names = grepl('TO', colnames(data))
+            cnames = sapply(colnames(data)[var_names], function(x) sprintf('v_%s', x))
+            colnames(data)[var_names] = cnames
+            fname = sprintf('~/data/baseline_prediction/aparc%s_absDiff_%s%s_n215_11202018.RData.gz',
+                p, i, j)
+            save(data, file=fname, compress=T)
+        }
+    }
+}
+```

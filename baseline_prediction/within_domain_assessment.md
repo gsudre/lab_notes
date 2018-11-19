@@ -818,3 +818,108 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2018-11-19 10:03:43
+
+Let's compile the fMRI results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > withinFMRICleanRawDL_summary.csv;
+dir=withinFMRIClean_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}' | cut -d"/" -f 6`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $6}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> withinFMRICleanRawDL_summary.csv;
+done;
+```
+
+```r
+data = read.csv('~/tmp/withinFMRICleanRawDL_summary.csv')
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
+# then, for each target
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+![](2018-11-19-10-28-47.png)
+
+Even though the overall differences are not that meaningful, it is clear that
+aparc_pcorr_kendall_trimmed is the best AUC for nvVSper, with the pearson non-trimmed
+version as a close third. 
+
+![](2018-11-19-10-32-09.png)
+
+Even though not much better than chance, aparc_pcorr_pearson performs best for
+perVSrem. 
+
+![](2018-11-19-10-34-04.png)
+
+For nvVSrem there wasn't a clear winner, with many apparently better than random
+data. Maybe the best would be aparc.a2009s_corr_kendall? Although the other ones
+are not much different.
+
+![](2018-11-19-10-36-15.png)
+
+As expected, nvVSadhd follows nvVSper and has aparc_pcorr_kendall_trimmed first
+then aparc_pcorr_kendall as the best ones. 
+
+Now, all of those results use AUC. Let's see if they hold for ACC.
+
+![](2018-11-19-10-38-05.png)
+
+![](2018-11-19-10-39-00.png)
+
+![](2018-11-19-10-40-52.png)
+
+![](2018-11-19-10-41-23.png)
+
+They pretty much did, except that for perVSrem there isn't much different than
+random data... maybe aparc_corr_spearman_trimmed?
+
+And also the structed combined results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > combinedStructDSRawDL_summary.csv;
+dir=combinedStructDS_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen='combinedStructDS';
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $8}' | cut -d"/" -f 4 | sed -e "s/\.R//g"`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> combinedStructDSRawDL_summary.csv;
+done;
+```
+
+```r
+data = read.csv('~/tmp/combinedStructDSRawDL_summary.csv')
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
+# then, for each target
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+![](2018-11-19-11-04-55.png)
+
+Those were our best results, and they're clear not much better than chance. We
+also know now that doing data transformations is actually better for structural,
+so maybe the combinations after data transform will be better?
+

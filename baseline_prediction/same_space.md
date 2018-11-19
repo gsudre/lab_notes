@@ -359,12 +359,15 @@ go ahead and continue the analysis.
 So, now we need to do the dual regression and grab the values for each scan.
 
 ```bash
+pipe='fancy';
+cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica
+mkdir dual
 while read s; do
-    echo $s;
+    echo ${pipe} $s;
     $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d melodic_IC \
-        -o dual/dr_stage1_${s}.txt --demean -m ../group_epi_mask_fancy.nii;
+        -o dual/dr_stage1_${s}.txt --demean -m ../group_epi_mask_${pipe}.nii;
     $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d dual/dr_stage1_${s}.txt \
-        -o dual/dr_stage2_$s --demean -m ../group_epi_mask_fancy.nii --des_norm \
+        -o dual/dr_stage2_$s --demean -m ../group_epi_mask_${pipe}.nii --des_norm \
         --out_z=dual/dr_stage2_${s}_Z;
 done < ../3min_clean.txt
 ```

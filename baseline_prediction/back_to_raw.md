@@ -112,3 +112,42 @@ sR=icassoExp(sR);
 [iq,A,W,S]=icassoResult(sR);
 save(['/data/sudregp/tmp/ica_results_dti_ad_223_1Kperms_30ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```
+
+# 2018-11-19 14:08:53
+
+I already have the best raw result for each domain (still waiting on fMRI after
+some transforms, though). But let's just run the bad datasets through the
+current framework once so we can compare all of them in the binary tests:
+
+```bash
+job_name=crappyDomains_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in cog_all_09242018.RData.gz geno3_prs_09192018.RData.gz \
+    social_09262018.RData.gz clinics_binary_sx_baseline_10022018.RData.gz \
+    adhd200_10042018.RData.gz; do
+    for target in nvVSadhd perVSrem nvVSper nvVSrem; do
+        pp=None;
+        algo=DeepLearning;
+        for i in {1..100}; do
+            myseed=$RANDOM;
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_crappy/${USER} $myseed $algo $pp" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_crappy/${USER} -$myseed $algo $pp" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 30 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```

@@ -192,3 +192,157 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2018-11-19 10:41:46
+
+Let's see how the best fMRI run are affected by data transformation:
+
+```bash
+job_name=dataTransformsFMRI_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in aparc_pcorr_kendall_trimmed_n215_11152018.RData.gz \
+    aparc_pcorr_pearson_n215_11152018.RData.gz \
+    aparc.a2009s_corr_kendall_n215_11152018.RData.gz; do
+    for target in nvVSper perVSrem; do
+        for pp in subjScale dataScale subjScale,dataScale None; do
+            for algo in DeepLearning GLM; do
+                for i in {1..100}; do
+                    myseed=$RANDOM;
+                    echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} $myseed $algo $pp" >> $swarm_file;
+                    echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} -$myseed $algo $pp" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+And compile the results of data transformation on DTI plus struct:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dataTransformsDTIStruct_summary.csv;
+dir=dataTransformsDTIStruct_rawCV;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    phen2=`echo $phen | sed -e "s/,/::/g"`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen2,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dataTransformsDTIStruct_summary.csv;
+done;
+sed -i -e "s/subjScale,dataScale/subjScale::dataScale/g" dataTransformsDTIStruct_summary.csv
+```
+
+```r
+data = read.csv('~/tmp/dataTransformsDTIStruct_summary.csv')
+data$pheno2 = 'DTI'
+idx = grepl('struct', data$pheno)
+data[idx, 'pheno2'] = 'Struct'
+idx = grepl('struct', data$pheno) & grepl('dti', data$pheno)
+data[idx, 'pheno2'] = 'DTI+Struct'
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s_%s', data$pheno2[x], data$var[x], data$model[x], data$group[x])} )
+idx = data$target=='nvVSper' & data$pheno2=='DTI'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
+
+![](2018-11-19-11-49-48.png)
+
+This pattern observed in nvVSper is very telling, and resembles what we had seen
+before. The "4 blocks" of results show the 4 different data transformations,
+basically showing that the best results is about the same for all of them when
+combining DTI. DeepLearning is about the same regardless of data transformation,
+but has smaller variance then GLM. DeepLEarning overfits a bit though, when
+compared to GLM, although the results are still better than chance even with the
+overfit. If this is an issue, then maybe using GLMs would be better.
+
+But more importantly, these results are WORSE than the results using single DTI
+(AD), where we were getting a bit above .72 AUC in DeepLearning. How about structural?
+
+![](2018-11-19-11-51-56.png)
+
+As we had seen before, there is a tendency for subjScale to do better in the
+structural dataset. Still, the overfit in DeppLEarning here is very evident. And
+again, the single dataset result in structural was better than the combined one.
+
+![](2018-11-19-11-55-12.png)
+
+Interesting, GLM starts performing slightly better than DLs when combining the
+data. Still, not better than single datasets! I'm starting to think that this
+might need to be some sort of voting, instead of straight up combination of
+datasets?
+
+Let's take a look at perVSrem:
+
+![](2018-11-19-12-55-48.png)
+
+![](2018-11-19-12-56-58.png)
+
+![](2018-11-19-13-00-06.png)
+
+Yep, same as before. DTI doesn't benefit much, Structural does, but combinations
+are still worse than single datasets.
+
+Given these results, should I try to PCA the data again and see how it works in
+this pairwise comparisons? Or I could use the top X features in each model... my
+original hopes for higher level interactions didn't come through in this
+experiment, but it could be just because we don't have enough data to show it.
+Choosing the best X features would be somewhat double-dipping, but it could at
+least demonstrate the principle.
+
+```bash
+job_name=dataTransformsPCA_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in struct_volume_11142018_260timeDiff12mo.RData.gz \
+    dti_ad_voxelwise_n223_09212018.RData.gz\
+    struct_volume_11142018_260timeDiff12mo.RData.gz,dti_ad_voxelwise_n223_09212018.RData.gz; do
+    for target in nvVSadhd perVSrem; do
+        for pp in PCA PCA-elbow PCA-kaiser \
+            subjScale:PCA subjScale:PCA-elbow subjScale:PCA-kaiser; do
+            algo=DeepLearning;
+            for i in {1..100}; do
+                myseed=$RANDOM;
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} $myseed $algo $pp" >> $swarm_file;
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} -$myseed $algo $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
