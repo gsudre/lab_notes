@@ -151,3 +151,81 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-11-20 09:20:42
+
+Let's collect the crappy domain results.
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > crappyDomains_summary.csv;
+dir=crappyDomains_rawCV;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> crappyDomains_summary.csv;
+done;
+```
+
+```r
+data = read.csv('~/tmp/crappyDomains_summary.csv')
+data$pheno = gsub('/data/NCR_SBRB/baseline_prediction//', '', data$pheno)
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s', data$pheno[x], data$group[x])} )
+# then, for each target
+target='nvVSper'
+p1<-ggplot(data[data$target == target,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(target))
+```
+
+![](2018-11-20-10-04-49.png)
+
+I need to change the code so that it's possible to make random data for
+factors... but it's clear that with actual data it's very easy to do nvVSper...
+
+![](2018-11-20-10-07-36.png)
+
+perVSrem is certainly harder, but the cognitive variables don't seem to do
+poorly? huge variation in its random counterpart though...
+
+Let's re-run the random swarms for the datasets with categorical variables:
+
+```bash
+job_name=crappyDomainsRND_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in social_09262018.RData.gz clinics_binary_sx_baseline_10022018.RData.gz \
+    adhd200_10042018.RData.gz; do
+    for target in nvVSadhd perVSrem nvVSper nvVSrem; do
+        pp=None;
+        algo=DeepLearning;
+        for i in {1..100}; do
+            myseed=$RANDOM;
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_crappy/${USER} -$myseed $algo $pp" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 30 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+

@@ -286,12 +286,12 @@ restoredefaultpath()
 addpath('/data/NCR_SBRB/software/FastICA_25/')
 addpath('/data/NCR_SBRB/software/icasso122/')
 addpath('/data/NCR_SBRB/')
-Ydd = dlmread(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/tcat_aparc.a2009s.csv'], ',', 1, 0);
+Ydd = dlmread(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/tcat_aparc.csv'], ',', 1, 0);
 
 sR=icassoEst('both', Ydd', 1000, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
 sR=icassoExp(sR);
 [iq,A,W,S]=icassoResult(sR);
-save(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/aparc.a2009s_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
+save(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/aparc_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```
 
 NEED TO RUN OTHER FILES...
@@ -372,4 +372,77 @@ for (i in c('kendall', 'pearson', 'spearman')) {
         }
     }
 }
+```
+
+I also just remembered that for the PNAS paper we ran ICASSO on the connectivity
+matrices, not on the time series! Time series is still valid, as it's how Matt
+did his MEG paper, and also what Alison did for MEG. But our situation might
+work better to just do the connectivity matrices as well... it's unclear whether
+ICA on subjScaled or regular data will be better, so I'll do both. First, let's
+export our variables into Matlab. 
+
+Actually, not that all of the above can also be said for the absDiff matrices.
+So, let's try those as well.
+
+```r
+rm_rois = c('CSF', 'Ventricle', 'Pallidum', 'Brain.Stem',
+            'Accumbens.area', 'VentralDC', 'vessel', 'Cerebral',
+            'choroid', 'Lat.Vent', 'White.Matter', 'hypointensities',
+            '^CC', 'nknown', 'Chiasm', 'Cerebellum.Cortex', 'undetermined')
+for (i in c('kendall', 'pearson', 'spearman')) {
+    for (j in c('', '_trimmed')) {
+        for (p in c('', '.a2009s')) {
+            print(sprintf('%s, %s, %s', i, j, p))
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/%sAbsDiff_aparc%s%s.csv',
+            #                 i, p, j)
+            fname = sprintf('~/data/baseline_prediction/rsfmri/weighted_aparc%s_%s%s.csv',
+                            p, i, j)
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/partial_weighted_%s%s.csv',
+            #                 i, j)
+            data = read.csv(fname)
+            data[,1:2] = NULL
+            rm_me = c()
+            for (r in rm_rois) {
+                rm_me = c(rm_me, which(grepl(r, colnames(data)))) }
+            data = data[, -unique(rm_me)]
+            data2 = t(scale(t(data)))
+            # NAs screw up matlab, so let's replace them by 0s
+            data[is.na(data)] = 0
+            data2[is.na(data2)] = 0
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_absDiff_%s%s.csv',
+            #     p, i, j)
+            fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_%s%s.csv',
+                p, i, j)
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc_pcorr_%s%s.csv',
+            #     i, j)
+            write.csv(data, file=fname, row.names=F, col.names=F)
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_subjClean_absDiff_%s%s.csv',
+            #     p, i, j)
+            fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_subjClean_%s%s.csv',
+                p, i, j)
+            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc_pcorr_subjClean_%s%s.csv',
+            #     i, j)
+            write.csv(data2, file=fname, row.names=F, col.names=F)
+        }
+    }
+}
+```
+
+Need to do the above for both %sAbsDiff_aparc%s%s.csv and
+weighted_aparc%s_%s%s.csv and partial_weighted files. 
+
+Then, in Matlab, let's loops it as it shouldn't take very long to run:
+
+```matlab
+restoredefaultpath()
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+addpath('/data/NCR_SBRB/')
+
+Ydd = csvread(['/data/sudregp/baseline_prediction/rsfmri/clean/aparc_absDiff_kendall.csv'], 1);
+
+sR=icassoEst('both', Ydd', 5, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['/data/sudregp/baseline_prediction/rsfmri/clean/aparc_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```

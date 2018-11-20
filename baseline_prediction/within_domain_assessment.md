@@ -923,3 +923,42 @@ Those were our best results, and they're clear not much better than chance. We
 also know now that doing data transformations is actually better for structural,
 so maybe the combinations after data transform will be better?
 
+# 2018-11-20 09:21:33
+
+Let's run the fMRI variability features:
+
+```bash
+job_name=withinFMRIAbsDiff_rawDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls ${mydir}/aparc*absDiff*11202018*gz`; do
+    for target in perVSrem nvVSadhd; do
+        for pp in None subjScale; do
+            for i in {1..100}; do
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} $RANDOM DeepLearning $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+for f in aparc_absDiff_spearman_n215_11152018.RData.gz aparc.a2009s_absDiff_spearman_n215_11152018.RData.gz; do
+    for target in perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} -$RANDOM DeepLearning None" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```

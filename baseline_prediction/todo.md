@@ -175,4 +175,30 @@ number of variables, and maybe still perform well?
 
 **2018-11-09 15:14:21**
 
-Not sure what to do with rsFMRI yet. I don't have a good analogy for spatial averages there. I also don't know if using network metrics won't be better. There doesn't seem to be a consensus in the field. Maybe I just concatenate everything as raw first? Well, struct won't work. Or, the other option is to do ICA there as well. 
+Not sure what to do with rsFMRI yet. I don't have a good analogy for spatial
+averages there. I also don't know if using network metrics won't be better.
+There doesn't seem to be a consensus in the field. Maybe I just concatenate
+everything as raw first? Well, struct won't work. Or, the other option is to do
+ICA there as well. 
+
+**2018-11-20 14:27:26**
+
+Just had a catch up chat with Philip. I should keep plowing away with fMRI, see
+if anything else comes out of it. But I should maybe focus on diagnostic, and
+then use those variables for prognostic. Or use our own old results, as a way of
+reducing variables. The story could be: these are good for diagnosis, but not
+for prognosis. These other regions we have found before are also not good. And
+even doing a major ML effort is also not good. But do visualize the diagnostic
+results. Also, try the more simple stuff (not brain), like regressions and
+groupwise tests, maybe even logistic regression, presenting odds-ratio tabls.
+
+I should still explore individual symptoms and voting to reduce variance. Maybe
+use just first and last symptom and define categories within the symptoms. Just
+pick the one or two in each category (inatt, H, I) that has the most variance.
+
+Philip is OK with the voting idea, and also fMRI variability, but be sure for
+controlling for movement there.
+
+I also thought: could I use GLM instead of DL in the spatial results, just to
+reduce overfitting, variance and dependence in the test set size?
+

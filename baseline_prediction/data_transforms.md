@@ -338,7 +338,7 @@ for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
@@ -346,3 +346,99 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-11-20 09:41:21
+
+Let's compile these new PCA runs:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dataTransformsPCA_summary.csv;
+dir=dataTransformsPCA_rawCV;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    phen2=`echo $phen | sed -e "s/,/::/g"`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen2,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dataTransformsPCA_summary.csv;
+done;
+sed -i -e "s/gz,dti/gz::dti/g" dataTransformsPCA_summary.csv
+```
+
+```r
+data = read.csv('~/tmp/dataTransformsPCA_summary.csv')
+data$pheno2 = 'DTI'
+idx = grepl('struct', data$pheno)
+data[idx, 'pheno2'] = 'Struct'
+idx = grepl('struct', data$pheno) & grepl('dti', data$pheno)
+data[idx, 'pheno2'] = 'DTI+Struct'
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno2[x], data$var[x], data$group[x])} )
+idx = data$target=='nvVSper' & data$pheno2=='DTI'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
+
+RERUNNING THE ONE ABOVE!!!
+
+
+And also the clean fMRI tables transformed:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dataTransformsFMRI_summary.csv;
+dir=dataTransformsFMRI_rawCV;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    phen2=`echo $phen | sed -e "s/,/::/g"`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen2,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dataTransformsFMRI_summary.csv;
+done;
+sed -i -e "s/subjScale,dataScale/subjScale::dataScale/g" dataTransformsFMRI_summary.csv
+```
+
+```r
+data = read.csv('~/tmp/dataTransformsFMRI_summary.csv')
+data$pheno = gsub('/data/NCR_SBRB/baseline_prediction//', '', data$pheno)
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s_%s', data$pheno[x], data$var[x], data$model[x], data$group[x])} )
+# then, for each target
+idx = data$target=='nvVSper' & data$model=='DeepLearning'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
+
+![](2018-11-20-11-33-00.png)
+
+In DeepLEarning, aparc_pcorr_kendall_Trimmed does best, and better than its
+random counterpat. 
+
+![](2018-11-20-11-35-07.png)
+
+But for perVSrem, aparc_pcorr_pearson does a bit better, again better than its
+random counterpart. Do we see the same pattern for GLM?
+
+![](2018-11-20-11-37-24.png)
+
+![](2018-11-20-11-38-57.png)
+
+![](2018-11-20-11-39-46.png)
+
+As usual, the GLM results are always significantly different than its random
+counterpart, showing the power to overfit in DL. Still, its best results are not
+better than what we see in DL.
