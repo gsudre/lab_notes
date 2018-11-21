@@ -1161,3 +1161,36 @@ for dir in adhd200 missing; do
     done;
 done
 ```
+
+# 2018-11-21 15:51:25
+
+Before I move on to more descriptive results, I just want to make a plot of our best ML results for the 4 different groupwise comparisons. I'll also include the random data prediction next to it. 
+
+Note that I'm still playing with fMRI ICASSO on connectivity matrices and MELODIC, so there might be something there still. But the current results reflect what we can do best using rawCV and data transforms.
+
+I'm doing this based only on AUC, and then I add the acc plot just for illustration. My strategy here was to look for all _summary.csv files for any specific domain, in that target, and pick the bets we had. Then, it's easy to find the matching seed < 0 for comparison. 
+
+
+nvVSadhd:
+DTI:
+struct:
+rsFMRI:
+
+nvVSper:
+DTI:
+struct:
+rsFMRI:
+
+nvVSrem:
+DTI:
+struct:
+rsFMRI:
+
+perVSrem:
+DTI: .66 DTI_PCA-kaiser (AD)
+struct: .77 struct_subjScale:PCA-kaiser (volume)
+rsFMRI: .67 aparc_pcorr_pearson (let's do subjScale just for consistency, but doesn't make much difference)
+
+So, let's create the CSV and make the barplots in R.
+
+Q: PCA on rsFMRI? helped a lot for struct. 

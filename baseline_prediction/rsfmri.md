@@ -385,6 +385,8 @@ Actually, not that all of the above can also be said for the absDiff matrices.
 So, let's try those as well.
 
 ```r
+in_dir = '~/data/baseline_prediction/rsfmri/'
+out_dir = '~/data/baseline_prediction/rsfmri/clean/'
 rm_rois = c('CSF', 'Ventricle', 'Pallidum', 'Brain.Stem',
             'Accumbens.area', 'VentralDC', 'vessel', 'Cerebral',
             'choroid', 'Lat.Vent', 'White.Matter', 'hypointensities',
@@ -393,15 +395,21 @@ for (i in c('kendall', 'pearson', 'spearman')) {
     for (j in c('', '_trimmed')) {
         for (p in c('', '.a2009s')) {
             print(sprintf('%s, %s, %s', i, j, p))
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/%sAbsDiff_aparc%s%s.csv',
-            #                 i, p, j)
-            fname = sprintf('~/data/baseline_prediction/rsfmri/weighted_aparc%s_%s%s.csv',
-                            p, i, j)
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/partial_weighted_%s%s.csv',
-            #                 i, j)
-            data = read.csv(fname)
-            data[,1:2] = NULL
-            rm_me = c()
+            
+            # fin = sprintf('%s/%sAbsDiff_aparc%s%s.csv', in_dir, i, p, j)
+            # fout1 = sprintf('%s/aparc%s_absDiff_%s%s.csv', out_dir, p, i, j)
+            # fout2 = sprintf('%s/aparc%s_absDiff_subjClean_%s%s.csv', out_dir, p, i, j)
+            
+            # fin = sprintf('%s/weighted_aparc%s_%s%s.csv', in_dir, p, i, j)
+            # fout1 = sprintf('%s/aparc%s_corr_%s%s.csv', out_dir, p, i, j)
+            # fout2 = sprintf('%s/aparc%s_corr_subjClean_%s%s.csv', out_dir, p, i, j)
+            
+            fin = sprintf('%s/partial_weighted_%s%s.csv', in_dir, i, j)
+            fout1 = sprintf('%s/aparc_pcorr_%s%s.csv', out_dir, i, j)
+            fout2 = sprintf('%s/aparc_pcorr_subjClean_%s%s.csv', out_dir, i, j)
+
+            data = read.csv(fin)
+            rm_me = which(grepl('^X', colnames(data)) | grepl('maskid', colnames(data)))
             for (r in rm_rois) {
                 rm_me = c(rm_me, which(grepl(r, colnames(data)))) }
             data = data[, -unique(rm_me)]
@@ -409,27 +417,12 @@ for (i in c('kendall', 'pearson', 'spearman')) {
             # NAs screw up matlab, so let's replace them by 0s
             data[is.na(data)] = 0
             data2[is.na(data2)] = 0
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_absDiff_%s%s.csv',
-            #     p, i, j)
-            fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_%s%s.csv',
-                p, i, j)
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc_pcorr_%s%s.csv',
-            #     i, j)
-            write.csv(data, file=fname, row.names=F, col.names=F)
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_subjClean_absDiff_%s%s.csv',
-            #     p, i, j)
-            fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc%s_corr_subjClean_%s%s.csv',
-                p, i, j)
-            # fname = sprintf('~/data/baseline_prediction/rsfmri/clean/aparc_pcorr_subjClean_%s%s.csv',
-            #     i, j)
-            write.csv(data2, file=fname, row.names=F, col.names=F)
+            write.csv(data, file=fout1, row.names=F, col.names=F)
+            write.csv(data2, file=fout2, row.names=F, col.names=F)
         }
     }
 }
 ```
-
-Need to do the above for both %sAbsDiff_aparc%s%s.csv and
-weighted_aparc%s_%s%s.csv and partial_weighted files. 
 
 Then, in Matlab, let's loops it as it shouldn't take very long to run:
 
@@ -439,10 +432,17 @@ addpath('/data/NCR_SBRB/software/FastICA_25/')
 addpath('/data/NCR_SBRB/software/icasso122/')
 addpath('/data/NCR_SBRB/')
 
-Ydd = csvread(['/data/sudregp/baseline_prediction/rsfmri/clean/aparc_absDiff_kendall.csv'], 1);
-
-sR=icassoEst('both', Ydd', 5, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
-sR=icassoExp(sR);
-[iq,A,W,S]=icassoResult(sR);
-save(['/data/sudregp/baseline_prediction/rsfmri/clean/aparc_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
+mydir = '/data/sudregp/baseline_prediction/rsfmri/clean/';
+files = dir([mydir '*.csv']);
+for file = files'
+    Ydd = csvread([mydir file.name], 1);
+    sR=icassoEst('both', Ydd, 250, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
+    sR=icassoExp(sR);
+    [iq,A,W,S]=icassoResult(sR);
+    size(S)
+    size(iq)
+    out_fname = [mydir file.name(1:end-4) '_250perms_15ics.mat']
+    save(out_fname,'A','S','W','iq','sR','-v7.3')
+end
 ```
+

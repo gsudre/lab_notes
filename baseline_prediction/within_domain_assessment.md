@@ -962,3 +962,44 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-11-21 13:25:05
+
+And we compile the results:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > withinFMRIAbsDiff_summary.csv;
+dir=withinFMRIAbsDiff_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> withinFMRIAbsDiff_summary.csv;
+done;
+```
+
+```r
+data = read.csv('~/tmp/withinFMRIAbsDiff_summary.csv')
+data$pheno = gsub('/data/NCR_SBRB/baseline_prediction//', '', data$pheno)
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno[x], data$var[x], data$group[x])} )
+# then, for each target
+idx = data$target=='nvVSadhd'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
+
+![](2018-11-21-15-59-09.png)
+
+![](2018-11-21-16-00-51.png)
+
+Overall, even though the results weren't great, no subjScale was better than using it for nvVSadhd. It seems to have had the opposite effect in perVSrem.
+

@@ -381,13 +381,26 @@ data[idx, 'pheno2'] = 'DTI+Struct'
 data$group = ''
 data[data$seed<0,]$group = 'RND'
 data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno2[x], data$var[x], data$group[x])} )
-idx = data$target=='nvVSper' & data$pheno2=='DTI'
+idx = data$target=='nvVSadhd' & data$pheno2=='DTI'
 p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-RERUNNING THE ONE ABOVE!!!
+![](2018-11-21-13-57-38.png)
 
+![](2018-11-21-14-23-38.png)
+
+![](2018-11-21-14-33-31.png)
+
+It looks like subjScale does help PCA, especially when we threshold how many PCS to use. Kaiser seems to be better, but elbow (after subjScale) is fine too. That's more pronounced in DTI, but it's also there for struct. But like before, it doesn't look like there are any meaningful interactions among datasets, and subjScale doesn't do as well when combining datasets.
+
+![](2018-11-21-14-34-51.png)
+
+![](2018-11-21-14-36-18.png)
+
+![](2018-11-21-14-36-53.png)
+
+There is an interesting result for perVSrem in struct, but I'm not sure how special it is compired to no data transforms... worth checking for the main plot to send to Philip.
 
 And also the clean fMRI tables transformed:
 
@@ -442,3 +455,43 @@ random counterpart. Do we see the same pattern for GLM?
 As usual, the GLM results are always significantly different than its random
 counterpart, showing the power to overfit in DL. Still, its best results are not
 better than what we see in DL.
+
+# 2018-11-21 16:57:53
+
+Based on our current results, it's worth running the PCA experiment in the best fMRI results:
+
+```bash
+job_name=dataTransformsfMRIPCA_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in aparc_pcorr_kendall_trimmed_n215_11152018.RData.gz \
+    aparc_pcorr_pearson_n215_11152018.RData.gz \
+    aparc.a2009s_corr_kendall_n215_11152018.RData.gz \
+    aparc_absDiff_pearson_n215_11202018.RData.gz; do
+    for target in nvVSadhd perVSrem nvVSper; do
+        for pp in PCA PCA-elbow PCA-kaiser \
+            subjScale:PCA subjScale:PCA-elbow subjScale:PCA-kaiser; do
+            algo=DeepLearning;
+            for i in {1..100}; do
+                myseed=$RANDOM;
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} $myseed $algo $pp" >> $swarm_file;
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_dataTransforms/${USER} -$myseed $algo $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
