@@ -294,37 +294,6 @@ sR=icassoExp(sR);
 save(['/data/sudregp/baseline_prediction/rsfmri/roi_niftis/aparc_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')
 ```
 
-NEED TO RUN OTHER FILES...
-
-<!-- Of course we could choose just ICs above a certain iQ score. But for now, since
-we're just operating with 15 ICs, let's use all of them and let ML decide which
-ones are helpful or not.
-
-Finally, we compute expression scores:
-
-```python
-import tables
-import numpy as np
-import statsmodels.formula.api as smf
-from scipy import io
-import pandas as pd
-
-suffixes=['aparc', 'aparc.a2009s']
-tsuffixes=[s + '_trimmed' for s in suffixes]
-for suffix in suffixes + tsuffixes:
-     print suffix
-     file = tables.open_file('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/%s_1Kperms_15ics.mat' % suffix)
-     S = file.root.S[:]
-     Ydd = t(np.genfromtxt('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/tcat_%s.csv' % suffix, delimiter=',', skip_header=1))
-     scores = []
-     for s in range(Ydd.shape[0]):
-          est = smf.OLS(Ydd[s,: ],S).fit()
-          scores.append(est.params)
-     exp_scores = np.array(scores)
-     df = pd.DataFrame(exp_scores, columns=['ic%02d' % i for i in range(1, 16)])
-     df.to_csv('/data/sudregp/baseline_prediction/rsfmri/roi_niftis/exp_scores_%s_1Kperms_15ics.csv' % suffix, index=False)
-``` -->
-
 # 2018-11-19 15:57:19
 
 ## Variability
@@ -445,4 +414,70 @@ for file = files'
     save(out_fname,'A','S','W','iq','sR','-v7.3')
 end
 ```
+
+# 2018-11-23 09:09:41
+
+And finally get the expression scores. Of course we could choose just ICs above a certain iQ score. But for now, since
+we're just operating with 15 ICs, let's use all of them and let ML decide which
+ones are helpful or not.
+
+```python
+import tables
+import numpy as np
+import statsmodels.formula.api as smf
+from scipy import io
+import pandas as pd
+
+suffixes = ['aparc', 'aparc.a2009s']
+trims = ['', '_trimmed']
+methods = ['kendall', 'pearson', 'spearman']
+mydir = '/data/sudregp/baseline_prediction/rsfmri/clean/'
+for met in methods:
+    for suf in suffixes:
+        for t in trims:
+            print(suf, t, met)
+            file = tables.open_file('%s/%s_absDiff_%s%s_250perms_15ics.mat' % (mydir,
+                                                                               suf,
+                                                                               met,
+                                                                               t))
+            Ydd = pd.read_csv('%s/%s_absDiff_%s%s.csv' % (mydir, suf, met, t))
+            keep_me = [c for c in Ydd.columns if c not in ['Unnamed: 0', 'maskid']]
+            Ydd = Ydd[keep_me]
+            S = file.root.S[:]
+            scores = []
+            for s in range(Ydd.shape[0]):
+                est = smf.OLS(Ydd.iloc[s, :], S).fit()
+                scores.append(est.params)
+            exp_scores = np.array(scores)
+            df = pd.DataFrame(exp_scores, columns=['v_ic%02d' % i for i in range(1, 16)])
+            df.to_csv('%s/exp_scores_absDiff_%s_%s%s_250perms_15ics.csv' % (mydir, suf, met, t),
+                    index=False)
+```
+
+But run the above for pcorr, absDiff and corr. And finally, add in the MRNs and
+create the files ot be run in our decoding framework. Since it was all derived
+from the same subject order, it's as simple as attaching the previous columns to
+it:
+
+```r
+mydir = '~/data/baseline_prediction/'
+load(sprintf('%s/aparc_corr_spearman_n215_11152018.RData.gz', mydir))
+df = data
+for (m in c('kendall', 'pearson', 'spearman')) {
+    for (t in c('', '_trimmed')) {
+        for (p in c('aparc', 'aparc.a2009s')) {
+            fin = sprintf('%s/rsfmri/clean/exp_scores_absDiff_%s_%s%s_250perms_15ics.csv',
+                          mydir, p, m, t)
+            data = read.csv(fin)
+            data = cbind(df[, 'MRN'], data)
+            colnames(data)[1] = 'MRN'
+            fout = sprintf('%s/exp_scores_absDiff_%s_%s%s_n215_11232018.RData.gz',
+                           mydir, p, m, t)
+            save(data, file=fout)
+        }
+    }
+}
+```
+
+And again, run the above for pcorr, corr, and absDiff.
 

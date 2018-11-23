@@ -495,3 +495,42 @@ for f in `/bin/ls ${job_name}_split??`; do
     done;
 done
 ```
+
+# 2018-11-23 10:24:45
+
+Let's now compile them:
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dataTransformsFMRIPCA_summary.csv;
+dir=dataTransformsfMRIPCA_rawCV;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    phen2=`echo $phen | sed -e "s/,/::/g"`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen2,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dataTransformsFMRIPCA_summary.csv;
+done;
+sed -i -e "s/gz,dti/gz::dti/g" dataTransformsFMRIPCA_summary.csv
+```
+
+```r
+data = read.csv('~/tmp/dataTransformsPCA_summary.csv')
+data$pheno2 = 'DTI'
+idx = grepl('struct', data$pheno)
+data[idx, 'pheno2'] = 'Struct'
+idx = grepl('struct', data$pheno) & grepl('dti', data$pheno)
+data[idx, 'pheno2'] = 'DTI+Struct'
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno2[x], data$var[x], data$group[x])} )
+idx = data$target=='nvVSadhd' & data$pheno2=='DTI'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
