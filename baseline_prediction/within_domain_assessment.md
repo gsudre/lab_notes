@@ -1007,8 +1007,6 @@ Overall, even though the results weren't great, no subjScale was better than usi
 
 Let's run the ICASSO features:
 
-Let's run the fMRI variability features:
-
 ```bash
 job_name=withinFMRIICASSO_rawDL;
 mydir=/data/NCR_SBRB/baseline_prediction/;
@@ -1024,6 +1022,76 @@ for f in `/bin/ls ${mydir}/exp_scores*gz`; do
     done;
 done
 for f in exp_scores_absDiff_aparc.a2009s_kendall_n215_11232018.RData.gz exp_scores_absDiff_aparc_kendall_n215_11232018.RData.gz; do
+    for target in perVSrem nvVSadhd; do
+        for i in {1..100}; do
+            echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} -$RANDOM DeepLearning None" >> $swarm_file;
+        done;
+    done;
+done
+sed -i -e "s/^/unset http_proxy; /g" $swarm_file;
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_${job_name} --job-name ${job_name} -m R --gres=lscratch:10 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+echo "target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio" > dataTransformsFMRIICASSO_summary.csv;
+dir=withinFMRIICASSO_rawDL;
+for f in `ls -1 trash_${dir}/*o`; do
+    phen=`head -n 2 $f | tail -1 | awk '{FS=" "; print $7}'`;
+    phen2=`echo $phen | sed -e "s/,/::/g"`;
+    target=`head -n 2 $f | tail -1 | awk '{FS=" "; print $9}'`;
+    seed=`head -n 2 $f | tail -1 | awk '{FS=" "; print $11}'`;
+    var=`head -n 2 $f | tail -1 | awk '{FS=" "; print $13}'`;
+    model=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $2}' | cut -d"_" -f 1`;
+    auc=`grep -A 1 model_id $f | tail -1 | awk '{FS=" "; print $3}'`;
+    nfeat=`grep "Running model on" $f | awk '{FS=" "; print $5}'`;
+    ratio=`grep -A 1 "Class distribution" $f | tail -1 | awk '{FS=" "; {for (i=2; i<=NF; i++) printf $i ";"}}'`;
+    f1=`grep -A 2 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    acc=`grep -A 5 "Maximum Metrics:" $f | tail -1 | awk '{FS=" "; print $5}'`;
+    echo $target,$phen2,$var,$seed,$nfeat,$model,$auc,$f1,$acc,$ratio >> dataTransformsFMRIICASSO_summary.csv;
+done;
+```
+
+```r
+data = read.csv('~/tmp/dataTransformsFMRIICASSO_summary.csv')
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno[x], data$var[x], data$group[x])} )
+idx = data$target=='nvVSadhd'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+```
+
+# 2018-11-26 16:34:41
+
+I noticed I had forgotten to run the ICASSO results of subjClean data. Let's do
+that now:
+
+```bash
+job_name=withinFMRIICASSOsc_rawDL;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls ${mydir}/exp_scores*subjClean*1126*gz`; do
+    for target in perVSrem nvVSadhd; do
+        for pp in None subjScale; do
+            for i in {1..100}; do
+                echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R $f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} $RANDOM DeepLearning $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+for f in exp_scores_aparc.a2009s_absDiff_subjClean_spearman_trimmed_n215_11262018.RData.gz exp_scores_aparc_absDiff_subjClean_spearman_trimmed_n215_11262018.RData.gz; do
     for target in perVSrem nvVSadhd; do
         for i in {1..100}; do
             echo "Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R ${mydir}/$f ${mydir}/long_clin_0918.csv ${target} ${mydir}/models_raw_within_DL/${USER} -$RANDOM DeepLearning None" >> $swarm_file;

@@ -521,16 +521,28 @@ sed -i -e "s/gz,dti/gz::dti/g" dataTransformsFMRIPCA_summary.csv
 ```
 
 ```r
-data = read.csv('~/tmp/dataTransformsPCA_summary.csv')
-data$pheno2 = 'DTI'
-idx = grepl('struct', data$pheno)
-data[idx, 'pheno2'] = 'Struct'
-idx = grepl('struct', data$pheno) & grepl('dti', data$pheno)
-data[idx, 'pheno2'] = 'DTI+Struct'
+data = read.csv('~/tmp/dataTransformsFMRIPCA_summary.csv')
 data$group = ''
 data[data$seed<0,]$group = 'RND'
-data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno2[x], data$var[x], data$group[x])} )
-idx = data$target=='nvVSadhd' & data$pheno2=='DTI'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$phen[x], data$var[x], data$group[x])} )
+idx = data$target=='nvVSadhd' & grepl(pattern = 'pearson', data$group2)
 p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
+
+Let's break it up into the two methods that worked best, just so the barplots
+are more manageable:
+
+![](2018-11-26-16-49-39.png)
+
+![](2018-11-26-16-50-47.png)
+
+aparc_pcorr_kendal_trimmed with PCA-elbow is by far the best transform at .725
+AUC for nvVSadhd, but we still need to compare with the non-transformed data. 
+
+![](2018-11-26-16-52-50.png)
+
+![](2018-11-26-16-54-11.png)
+
+For perVSrem, it is not as clear-cut, but aparc_pcorr_pearson_with PCA-kaiser
+seems to be doing best, at .71 AUC. 

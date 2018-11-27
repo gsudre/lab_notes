@@ -428,56 +428,93 @@ import statsmodels.formula.api as smf
 from scipy import io
 import pandas as pd
 
-suffixes = ['aparc', 'aparc.a2009s']
+parcs = ['aparc', 'aparc.a2009s']
+suffixes = ['%s_%s' % (p, m) for p in parcs for m in ['corr', 'absDiff']]
+suffixes += ['aparc_pcorr']
 trims = ['', '_trimmed']
 methods = ['kendall', 'pearson', 'spearman']
+cleans = ['', '_subjClean']
 mydir = '/data/sudregp/baseline_prediction/rsfmri/clean/'
 for met in methods:
     for suf in suffixes:
         for t in trims:
-            print(suf, t, met)
-            file = tables.open_file('%s/%s_absDiff_%s%s_250perms_15ics.mat' % (mydir,
-                                                                               suf,
-                                                                               met,
-                                                                               t))
-            Ydd = pd.read_csv('%s/%s_absDiff_%s%s.csv' % (mydir, suf, met, t))
-            keep_me = [c for c in Ydd.columns if c not in ['Unnamed: 0', 'maskid']]
-            Ydd = Ydd[keep_me]
-            S = file.root.S[:]
-            scores = []
-            for s in range(Ydd.shape[0]):
-                est = smf.OLS(Ydd.iloc[s, :], S).fit()
-                scores.append(est.params)
-            exp_scores = np.array(scores)
-            df = pd.DataFrame(exp_scores, columns=['v_ic%02d' % i for i in range(1, 16)])
-            df.to_csv('%s/exp_scores_absDiff_%s_%s%s_250perms_15ics.csv' % (mydir, suf, met, t),
-                    index=False)
+            for sc in cleans:
+                print(suf, t, met, sc)
+                file = tables.open_file('%s/%s%s_%s%s_250perms_15ics.mat' % (mydir,
+                                                                             suf,
+                                                                             sc,
+                                                                             met,
+                                                                             t))
+                Ydd = pd.read_csv('%s/%s%s_%s%s.csv' % (mydir, suf, sc, met, t))
+                keep_me = [c for c in Ydd.columns if c not in ['Unnamed: 0', 'maskid']]
+                Ydd = Ydd[keep_me]
+                S = file.root.S[:]
+                scores = []
+                for s in range(Ydd.shape[0]):
+                    est = smf.OLS(Ydd.iloc[s, :], S).fit()
+                    scores.append(est.params)
+                exp_scores = np.array(scores)
+                df = pd.DataFrame(exp_scores, columns=['v_ic%02d' % i for i in range(1, 16)])
+                df.to_csv('%s/exp_scores_%s%s_%s%s_250perms_15ics.csv' % (mydir,
+                                                                          suf,
+                                                                          sc,
+                                                                          met,
+                                                                          t),
+                        index=False)
 ```
 
-But run the above for pcorr, absDiff and corr. And finally, add in the MRNs and
+And finally, add in the MRNs and
 create the files ot be run in our decoding framework. Since it was all derived
 from the same subject order, it's as simple as attaching the previous columns to
 it:
 
 ```r
 mydir = '~/data/baseline_prediction/'
-load(sprintf('%s/aparc_corr_spearman_n215_11152018.RData.gz', mydir))
+load(sprintf('/data/NCR_SBRB/baseline_prediction/aparc_corr_spearman_n215_11152018.RData.gz', mydir))
 df = data
 for (m in c('kendall', 'pearson', 'spearman')) {
     for (t in c('', '_trimmed')) {
-        for (p in c('aparc', 'aparc.a2009s')) {
-            fin = sprintf('%s/rsfmri/clean/exp_scores_absDiff_%s_%s%s_250perms_15ics.csv',
-                          mydir, p, m, t)
-            data = read.csv(fin)
-            data = cbind(df[, 'MRN'], data)
-            colnames(data)[1] = 'MRN'
-            fout = sprintf('%s/exp_scores_absDiff_%s_%s%s_n215_11232018.RData.gz',
-                           mydir, p, m, t)
-            save(data, file=fout)
+        for (p in c('aparc_corr', 'aparc_absDiff', 'aparc_pcorr', 'aparc.a2009s_corr', 'aparc.a2009s_absDiff')) {
+            for (sc in c('', '_subjClean')) {
+                fin = sprintf('%s/rsfmri/clean/exp_scores_%s%s_%s%s_250perms_15ics.csv', mydir, p, sc, m, t)
+                data = read.csv(fin)
+                data = cbind(df[, 'MRN'], data)
+                colnames(data)[1] = 'MRN'
+                fout = sprintf('%s/exp_scores_%s%s_%s%s_n215_11262018.RData.gz', mydir, p, sc, m, t)
+                save(data, file=fout)
+            }
         }
     }
 }
 ```
 
-And again, run the above for pcorr, corr, and absDiff.
+Note that these files should be the exact same as the ones from 11232018, except
+that I had forgotten to create the subjSpace files back then. So, those are new,
+but anything that's not subjClean should be the exactly same.
+
+# 2018-11-27 10:05:48
+
+Aman noticed yesterday that there was a correlation among subject movement and
+the number of significant connections in the connectivity matrices. So, let's
+see if removing the movement estimate makes any difference to our connectivity
+metrics. Hopefully it will remove the noise and let more meaningful features fly?
+
+First, let's copy the movement 1D files:
+
+```bash
+out_dir=~/data/baseline_prediction/rsfmri/
+for s in `cat ~/data/baseline_prediction/rsfmri_3minWithClinical.tsv`; do
+    mylink=`readlink /Volumes/Shaw/data_by_maskID/${s}`;
+    newlink=`echo $mylink | sed "s/\.\./\/Volumes\/Shaw/"`;
+    mydir=${newlink}/afni/${s}.rest.subjectSpace.results;
+    cp -v ${mydir}/motion_${s}_enorm.1D ${out_dir}/${s}_enorm.1D;
+done
+```
+
+Then, we run the improved script to deal with the movement .1D:
+
+```bash
+Rscript ~/research_code/fmri/make_all_correlations.R 
+Rscript ~/research_code/fmri/make_all_partial_correlations.R 
+```
 

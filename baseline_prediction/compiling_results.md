@@ -1172,9 +1172,9 @@ I'm doing this based only on AUC, and then I add the acc plot just for illustrat
 
 
 nvVSadhd:
-DTI:
-struct:
-rsFMRI:
+DTI: DTI_PCA-kaiser (AD) or DTI_PCA-elbow (AD), both at .67 
+struct: thickness_subjScalePCA-kaiser at .62
+rsFMRI: aparc_pcorr_kendal_trimmed with PCA-elbow is by far the best transform at .725
 
 nvVSper:
 DTI:
@@ -1189,8 +1189,71 @@ rsFMRI:
 perVSrem:
 DTI: .66 DTI_PCA-kaiser (AD)
 struct: .77 struct_subjScale:PCA-kaiser (volume)
-rsFMRI: .67 aparc_pcorr_pearson (let's do subjScale just for consistency, but doesn't make much difference)
+rsFMRI: .71 aparc_pcorr_pearson PCA-kaiser
 
 So, let's create the CSV and make the barplots in R.
 
-Q: PCA on rsFMRI? helped a lot for struct. 
+# 2018-11-27 14:29:09
+
+Can we make a massive CSV to plot these best results with the crappy domains
+results?
+
+```bash
+myfile=summary_for_philip_11272018.csv
+head -n 1 dataTransformsFMRIPCA_summary.csv > $myfile;
+grep ,PCA-elbow dataTransformsFMRIPCA_summary.csv | grep adhd | grep aparc_pcorr_kendall_trimmed >> $myfile;
+grep subjScale:PCA-kaiser dataTransformsFMRIPCA_summary.csv | grep perVSrem | grep aparc_pcorr_pearson >> $myfile;
+grep ,PCA-kaiser dataTransformsPCA_summary.csv | grep nvVSadhd | grep /dti_ad >> $myfile;
+grep ,PCA-kaiser dataTransformsPCA_summary.csv | grep perVSrem | grep /dti_ad >> $myfile;
+grep subjScale:PCA-kaiser dataTransformsPCA_summary.csv | grep nvVSadhd | grep /struct_volume | grep -v dti >> $myfile;
+grep subjScale:PCA-kaiser dataTransformsPCA_summary.csv | grep perVSrem | grep /struct | grep -v dti >> $myfile;
+grep -v target crappyDomains_summary.csv >> $myfile;
+```
+
+```r
+data = read.csv('~/tmp/summary_for_philip_11272018.csv')
+data$pheno = gsub('/data/NCR_SBRB/baseline_prediction//', '', data$pheno)
+data$group = ''
+data[data$seed<0,]$group = 'RND'
+data$group2 = sapply(1:nrow(data), function(x) { sprintf('%s_%s_%s', data$pheno[x], data$var[x], data$group[x])} )
+# then, for each target
+idx = data$target=='nvVSadhd'
+p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot(notch=T) + ggtitle(unique(data[idx,]$target))) + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+![](2018-11-27-16-17-49.png)
+
+![](2018-11-27-16-18-38.png)
+
+And now we do accuracy as well:
+
+![](2018-11-27-16-30-22.png)
+
+![](2018-11-27-16-32-58.png)
+
+For these boxplots (from ggplot's documentation): The lower and upper hinges
+correspond to the first and third quartiles (the 25th and 75th percentiles). The
+whiskers extend from the hinge to the largest/smallest value no further than
+1.5*IQR from the hinge (where IQR is the inter-quartile range, or distance
+between the first and third quartiles). Data beyond the end of the whiskers are
+called "outlying" points and are plotted individually. The notches extend
+1.58*IQR / sqrt(n). This gives a roughly 95% confidence interval for comparing
+medians. See McGill et al. (1978) for more details. If notches don't overlap, it
+suggests that the medians are significantly different.
+
+So, here's a list of the things I'm waiting / working on:
+
+ * waiting on decoding results using ICASSO output for ROI connectivity (rsFMRI)
+ * waiting on computation of full and partial correlation matrices using
+   movement residuals (rsFMRI)
+ * work on MELODIC outputs (rsFMRI)
+ * work on individual symptom changes
+ * work on simple descriptives for the different data domains
+ * work on diagnostic results as a "filter" for prognostic analysis
+ * work on our previous published results as a "filter" for prognostic analysis
+ * try domain voting approach instead of loose feature interactions
+ * work on age prediction model, using error magnitude as proxy for ADHD
+
