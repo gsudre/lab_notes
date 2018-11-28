@@ -371,3 +371,105 @@ while read s; do
         --out_z=dual/dr_stage2_${s}_Z;
 done < ../3min_clean.txt
 ```
+
+# 2018-11-28 16:13:39
+
+## MELODIC
+
+Let's give MELODIC another try. I have the results, so it's just a matter of figuring out which ICs to use. Because the known networks can end up split among different ICs, let's work with the top 5 ICs for each of the 4 interesting networks: DMN, cognitive, DAN, and VAN, for a total of 20 ICs if they don't overlap. We'll also look at their plots to make sure they make sense. And that's in each pipeline.
+
+This page has actually been quite helpful in figuring out MELODIC:
+
+http://psych.colorado.edu/~anre8906/guides/01-ica.html
+
+Let's convert the MNI152 space to our template space, then extract the networks as independent masks.
+
+```bash
+#bw
+cd /data/NCR_SBRB/software/Yeo_JNeurophysiol11_MNI152/
+@SSwarper -input FSL_MNI152_FreeSurferConformed_1mm.nii.gz -base TT_N27_SSW.nii.gz -subid FSL_MNI152_inTLRC
+3dNwarpApply -nwarp "anatQQ.FSL_MNI152_inTLRC_WARP.nii anatQQ.FSL_MNI152_inTLRC.aff12.1D" \
+        -source Yeo2011_7Networks_MNI152_FreeSurferConformed1mm_LiberalMask.nii.gz \
+        -master ~/data/baseline_prediction/same_space/epi/0951_epi_NL_inTLRC.nii -inter NN \
+        -overwrite -prefix ~/data/baseline_prediction/same_space/epi/Yeo2011_7Networks_LiberalMask_NL_inTLRC.nii;
+cd ~/data/baseline_prediction/same_space/epi/
+for i in {1..7}; do
+    3dcalc -prefix Yeo_liberal_inTLRC_net${i}.nii \
+        -a Yeo2011_7Networks_LiberalMask_NL_inTLRC.nii -expr "amongst(a,${i})";
+done
+3dTcat -prefix Yeo_liberal_inTLRC_combined.nii Yeo_liberal_inTLRC_net1.nii \
+    Yeo_liberal_inTLRC_net2.nii Yeo_liberal_inTLRC_net3.nii \
+    Yeo_liberal_inTLRC_net4.nii Yeo_liberal_inTLRC_net5.nii \
+    Yeo_liberal_inTLRC_net6.nii Yeo_liberal_inTLRC_net7.nii
+```
+
+Then, for each pipeline, we need to run:
+
+```bash
+#bw
+cd ~/data/baseline_prediction/same_space/epi/groupmelodic_inter.ica/
+3dMatch -inset melodic_IC.nii.gz -refset ../Yeo_liberal_inTLRC_combined.nii \
+    -mask ../group_epi_mask_inter.nii -prefix matches -overwrite
+cat matches_REF_coeff.vals
+```
+
+Now that I think of it, let's stick with only the top IC match for now. That's because it's already 4 networks per pipeline, for a total of 12 new datasets to run. We can always do the top 5 for DMN or other network later.
+
+So, following the steps above, this is what I got for each pipeline:
+
+```
+# inter
+0               17              0.355           0.247
+1               8               0.402           0.168
+2               7               0.453           0.138
+3               11              0.389           0.162
+4               31              0.426           0.031
+5               12              0.311           0.216
+6               2               0.427           0.318
+
+# union
+0               42              0.375           0.067
+1               23              0.335           0.049
+2               65              0.353           0.042
+3               8               0.511           0.039
+4               82              0.452           0.035
+5               3               0.344           0.058
+6               4               0.349           0.093
+
+# fancy
+0               37              0.364           0.133
+1               24              0.345           0.100
+2               57              0.297           0.085
+3               4               0.451           0.079
+4               54              0.365           0.072
+5               1               0.316           0.117
+6               2               0.295           0.184
+```
+
+Let's make some plots to visualize them:
+
+```bash
+for i in 57 4 1 2; do
+    echo $i;
+    flirt -in stats/thresh_zstat${i}.nii.gz \
+        -ref $FSLDIR/data/standard/MNI152_T1_0.5mm -applyxfm -usesqform \
+        -out presentation/thresh_zstat${i}_highres.nii.gz;
+    overlay 1 0 $FSLDIR/data/standard/MNI152_T1_0.5mm \
+        -A presentation/thresh_zstat${i}_highres.nii.gz 2.5 10 \
+        presentation/${i}_overlay.nii.gz;
+    slicer presentation/${i}_overlay.nii.gz -a presentation/${i}_sliced.ppm;
+    convert presentation/${i}_sliced.ppm presentation/${i}_sliced.png;
+    slicer presentation/${i}_overlay.nii.gz -S 24 1200 presentation/${i}_axials.ppm;
+    convert presentation/${i}_axials.ppm presentation/${i}_axials.png;
+done
+```
+
+0: visual
+1: somatomotor
+2: DAN
+3: VAN
+4: limbic
+5: cognitive (frontoparietal)
+6: DMN
+
+Then, we need to output the voxels in each mask, and make our decoding files. But I'm not sure I like those pictures... the thresholding seems a bit weird. Need to check out how I thresholded stuff for the heritability paper!

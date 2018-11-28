@@ -518,3 +518,45 @@ Rscript ~/research_code/fmri/make_all_correlations.R
 Rscript ~/research_code/fmri/make_all_partial_correlations.R 
 ```
 
+# 2018-11-28 14:42:57
+
+Let's check that removing enorm from the ROI timeseries got rid of correlation with movement:
+
+```r
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09282018.xlsx')
+for (m in c('kendall', 'pearson', 'spearman')) {
+    for (t in c('', '_trimmed')) {
+        for (p in c('aparc', 'aparc.a2009s')) {
+            print(sprintf('%s, %s, %s', p, m, t))
+            fname = sprintf('~/data/baseline_prediction/rsfmri/binaryFDR05_%s_%s%s_mvmtRegressed.csv',
+                            p, m, t)
+            a = read.csv(fname)
+            a$total = rowSums(a[, 2:ncol(a)])
+            res = merge(a, df, by.x='X', by.y='Mask.ID...Scan', all.x=T)
+            print(cor.test(res$total, as.numeric(res$enorm)))
+        }
+    }
+}
+```
+
+And we also test it for partial correlations, which was the main reason for removing movement to begin with.
+
+```r
+library(gdata)
+df = read.xls('~/data/baseline_prediction/rsfmri_09282018.xlsx')
+for (m in c('kendall', 'pearson', 'spearman')) {
+    for (t in c('', '_trimmed')) {
+        print(sprintf('%s, %s', m, t))
+        fname = sprintf('~/data/baseline_prediction/rsfmri/partial_binaryP05_%s%s_mvmtRegressed.csv',
+                        m, t)
+        a = read.csv(fname)
+        a$total = rowSums(a[, 2:ncol(a)])
+        res = merge(a, df, by.x='X', by.y='Mask.ID...Scan', all.x=T)
+        print(cor.test(res$total, as.numeric(res$enorm)))
+    }
+}
+```
+
+Yep... still there. Maybe we should focus on full correlation only? Not sure if there is something funky with pcorr...
+
