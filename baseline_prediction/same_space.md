@@ -505,13 +505,13 @@ Let's go ahead and try out these voxel values as predictors, and we can always
 try the top X approach later.
 
 ```bash
-pipe=inter;
+pipe=union;
 cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual
 for maskid in `cat ../../3min_clean.txt`; do
     echo $maskid;
     # for i in 57 4 1 2; do  # fancy
-    for i in 7 11 12 2; do  # inter
-    # for i in 65 8 3 4; do  # union
+    # for i in 7 11 12 2; do  # inter
+    for i in 65 8 3 4; do  # union
         3dmaskdump -mask ../../group_epi_mask_${pipe}.nii \
             -o dumps/${maskid}_IC${i}_Z.txt dr_stage2_${maskid}_Z.nii.gz;
     done;
