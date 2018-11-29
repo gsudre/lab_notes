@@ -472,4 +472,84 @@ done
 5: cognitive (frontoparietal)
 6: DMN
 
-Then, we need to output the voxels in each mask, and make our decoding files. But I'm not sure I like those pictures... the thresholding seems a bit weird. Need to check out how I thresholded stuff for the heritability paper!
+Then, we need to output the voxels in each mask, and make our decoding files.
+But I'm not sure I like those pictures... the thresholding seems a bit weird.
+Need to check out how I thresholded stuff for the heritability paper!
+
+# 2018-11-29 12:26:09
+
+Apparently the only mask I used was for 95th percentile. So, the command to make
+the pictures is more like this:
+
+```bash
+for i in 57 4 1 2; do
+    echo $i;
+    pctile=`3dBrickStat -percentile 0 95 100 melodic_IC.nii.gz[$i] | awk '{FS=" "; print $4}'`;
+    3dcalc -a melodic_IC.nii.gz[$i] -prefix mymask.nii -overwrite -expr "step(a-${pctile})";
+    flirt -in mymask.nii \
+        -ref $FSLDIR/data/standard/MNI152_T1_0.5mm -applyxfm -usesqform \
+        -out presentation/IC${i}_95pctile_highres.nii.gz;
+    overlay 1 0 $FSLDIR/data/standard/MNI152_T1_0.5mm \
+        -A presentation/IC${i}_95pctile_highres.nii.gz .9 1.1 \
+        presentation/${i}_overlay.nii.gz;
+    slicer presentation/${i}_overlay.nii.gz -a presentation/${i}_sliced.ppm;
+    convert presentation/${i}_sliced.ppm presentation/${i}_sliced.png;
+    slicer presentation/${i}_overlay.nii.gz -S 24 1200 presentation/${i}_axials.ppm;
+    convert presentation/${i}_axials.ppm presentation/${i}_axials.png;
+done
+```
+
+That didn't work so well either, because it's not taking the absolute value into
+consideration. Well, let's stick with the report pictures, which don't look bad.
+Let's go ahead and try out these voxel values as predictors, and we can always
+try the top X approach later.
+
+```bash
+pipe=inter;
+cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual
+for maskid in `cat ../../3min_clean.txt`; do
+    echo $maskid;
+    # for i in 57 4 1 2; do  # fancy
+    for i in 7 11 12 2; do  # inter
+    # for i in 65 8 3 4; do  # union
+        3dmaskdump -mask ../../group_epi_mask_${pipe}.nii \
+            -o dumps/${maskid}_IC${i}_Z.txt dr_stage2_${maskid}_Z.nii.gz;
+    done;
+done
+```
+
+And need to do the same for the other pipelines, making sure to change the for
+loop through ics!
+
+```r
+library(gdata)
+clin = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx', 'mprage')
+clin = clin[, c(1,4)]
+colnames(clin) = c('MRN', 'mask.id')
+pipes = c('inter', 'union', 'fancy')
+ics = c(c(7, 11, 12, 2), c(65, 8, 3, 4), c(57, 4, 1, 2)) # same order as pipes!
+for (n in 1:length(pipes)) {
+    junk = read.table(sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual/dumps/0691_IC%d_Z.txt', ics[n][1]))
+    nvox = nrow(junk)
+    for (m in ics[n]) {
+        print(m)
+        fmri_data = matrix(nrow=nrow(pheno), ncol=nvox)
+        for (s in 1:nrow(dti_data)) {
+            fname = sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual/dumps/%s_IC%d_Z.txt', pheno[s,]$mask.id, ics[n][1])
+            a = read.table(fname)
+            fmri_data[s, ] = a[, 4]
+        }
+        data = cbind(pheno$mask.id, fmri_data)
+        cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%05d', d)))
+        colnames(data) = cnames
+        data = merge(clin, data, by='mask.id')
+        save(data, file=sprintf('~/data/baseline_prediction/melodic_%s_IC%d_09212018.RData.gz', m, n),
+             compress=T)
+    }
+}
+
+    a='';
+    while read s; do
+        a=$a' ';
+done < ~/data/fmri_example11_all/3min.txt;
+3dbucket -overwrite -prefix tmp $a;
