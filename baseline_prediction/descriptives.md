@@ -41,7 +41,135 @@ computing significant clusters for covariates (i.e. brain-behavior
 correlations)...
 
 Humpf, OK, let's just code it in R, and have it generate the results using
-permuted data. This way we know exactly what it's doing...
+permuted data. This way we know exactly what it's doing... 
+
+Also, might be a good idea to try the data transforms here as well, just to see
+what we get.
+
+# 2018-11-30 12:30:12
+
+Now that we have functions to run at least the DTI, let's swarm it in the
+cluster.
+
+```bash
+job_name=dti;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
+    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
+        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
+        for pp in None subjScale log subjScale-log; do
+            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+The structural analysis follows the same idea as the DTI analysis, except that
+we call a different script because it needs to use SurfClust:
+
+```bash
+job_name=struct;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls struct_*_11142018_260timeDiff12mo.RData.gz`; do
+    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
+        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
+        for pp in None subjScale log subjScale-log; do
+            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Note that we need lscratch here because read.xls uses it to convert the file to
+csv!
+
+For fMRI it's very similar, except that we can play with the MELODIC outputs
+here, since we're doing a straight-up neuroimaging clustering analysis. Note
+that we'll need bigger machines too, and more time, as the fmri voxelwise data
+is much bigger.
+
+```bash
+job_name=melodic;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
+        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
+        for pp in None subjScale log subjScale-log; do
+            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 20 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+(waiting to finish generating the RData files, then need to see how much memory
+we'l need.)
+
+Finally, I created a generic function to run all the crappy domains, and also
+some of the fMRI transformations. I might need to expand that generic script for
+fMRI though, if I want to include movement in the covariates.
+
+# TODO
+ * crappy domains descriptives
+ * rsfmri connectivity matrices
+ * rsfmri icasso
+
+
+
+
+
+
+
 
 
 ```bash

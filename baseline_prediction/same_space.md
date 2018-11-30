@@ -521,35 +521,45 @@ done
 And need to do the same for the other pipelines, making sure to change the for
 loop through ics!
 
+# 2018-11-30 15:33:08
+
 ```r
 library(gdata)
+# assuming all fmri scans also have a mprage
 clin = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx', 'mprage')
 clin = clin[, c(1,4)]
 colnames(clin) = c('MRN', 'mask.id')
 pipes = c('inter', 'union', 'fancy')
-ics = c(c(7, 11, 12, 2), c(65, 8, 3, 4), c(57, 4, 1, 2)) # same order as pipes!
+ics = list(c(7, 11, 12, 2), c(65, 8, 3, 4), c(57, 4, 1, 2)) # same order as pipes!
+pheno = read.table('~/data/baseline_prediction/same_space/epi/3min_clean.txt')[, 1]
 for (n in 1:length(pipes)) {
-    junk = read.table(sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual/dumps/0691_IC%d_Z.txt', ics[n][1]))
+    mydir = sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_%s.ica/dual/dumps/', pipes[n])
+    junk = read.table(sprintf('%s/0691_IC%d_Z.txt', mydir, ics[[n]][1]))
     nvox = nrow(junk)
-    for (m in ics[n]) {
-        print(m)
-        fmri_data = matrix(nrow=nrow(pheno), ncol=nvox)
-        for (s in 1:nrow(dti_data)) {
-            fname = sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual/dumps/%s_IC%d_Z.txt', pheno[s,]$mask.id, ics[n][1])
+    for (m in ics[[n]]) {
+        fmri_data = matrix(nrow=length(pheno), ncol=nvox)
+        for (s in 1:nrow(fmri_data)) {
+            print(sprintf('%s %d %04d', pipes[n], m, pheno[s]))
+            fname = sprintf('%s/%04d_IC%d_Z.txt', mydir, pheno[s], m)
             a = read.table(fname)
             fmri_data[s, ] = a[, 4]
         }
-        data = cbind(pheno$mask.id, fmri_data)
-        cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%05d', d)))
+        data = cbind(pheno, fmri_data)
+        cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
         colnames(data) = cnames
         data = merge(clin, data, by='mask.id')
-        save(data, file=sprintf('~/data/baseline_prediction/melodic_%s_IC%d_09212018.RData.gz', m, n),
+        save(data, file=sprintf('~/data/baseline_prediction/melodic_%s_IC%d_09212018.RData.gz', pipes[n], m),
              compress=T)
     }
 }
+```
 
-    a='';
-    while read s; do
-        a=$a' ';
-done < ~/data/fmri_example11_all/3min.txt;
-3dbucket -overwrite -prefix tmp $a;
+The code above takes a long time to run, so use it wisely!
+
+I also ran these to create the ijks:
+
+```bash
+cut -d" " -f 1-4 groupmelodic_fancy.ica/dual/dumps/0415_IC1_Z.txt > ~/data/baseline_prediction/melodic_fancy_ijk.txt
+cut -d" " -f 1-4 groupmelodic_inter.ica/dual/dumps/0415_IC7_Z.txt > ~/data/baseline_prediction/melodic_inter_ijk.txt
+cut -d" " -f 1-4 groupmelodic_union.ica/dual/dumps/0415_IC65_Z.txt > ~/data/baseline_prediction/melodic_union_ijk.txt
+```
