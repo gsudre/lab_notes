@@ -159,7 +159,43 @@ Finally, I created a generic function to run all the crappy domains, and also
 some of the fMRI transformations. I might need to expand that generic script for
 fMRI though, if I want to include movement in the covariates.
 
+So, while we wait for some stuff to run, we can go ahead and grab the top 5
+clusters of each result:
+
+```bash
+myfile=dti_descriptives.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+So, some things that are good to know from these preliminary results. There's no
+difference between None and log results. And it looks like there are some good
+results, at least based on number of voxels. But we need to see what's actually
+significant, and for that we need to wait for the random runs to finish
+running...
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*_42_clusters.txt > result_files.txt;
+for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
+    collect_name=${root_file}_top_rnd_clusters.txt;
+    echo $collect_name;
+    if [ -e $collect_name ]; then
+        rm $collect_name;
+    fi;
+    for f in `ls ${root_file}*rnd*clusters.txt`; do
+        grep -v \# $f | head -n 1 >> $collect_name;
+    done
+done
+```
+
+Now we can just write something in R to compute the p-value for each of the
+clusters in the descriptives file from above.
+
 # TODO
+ * compute p-values
  * crappy domains descriptives
  * rsfmri connectivity matrices
  * rsfmri icasso
