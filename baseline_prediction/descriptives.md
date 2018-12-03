@@ -122,39 +122,6 @@ here, since we're doing a straight-up neuroimaging clustering analysis. Note
 that we'll need bigger machines too, and more time, as the fmri voxelwise data
 is much bigger.
 
-```bash
-job_name=melodic;
-mydir=/data/NCR_SBRB/baseline_prediction/;
-swarm_file=swarm.desc_${job_name};
-rm -rf $swarm_file;
-for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
-    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
-        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
-        for pp in None subjScale log subjScale-log; do
-            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
-            for i in {1..250}; do
-                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
-            done;
-        done;
-    done;
-done
-split -l 3000 $swarm_file ${job_name}_split;
-for f in `/bin/ls ${job_name}_split??`; do
-    echo "ERROR" > swarm_wait_${USER}
-    while grep -q ERROR swarm_wait_${USER}; do
-        echo "Trying $f"
-        swarm -f $f -g 20 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
-        if grep -q ERROR swarm_wait_${USER}; then
-            echo -e "\tError, sleeping..."
-            sleep 10m;
-        fi;
-    done;
-done
-```
-
-(waiting to finish generating the RData files, then need to see how much memory
-we'l need.)
-
 Finally, I created a generic function to run all the crappy domains, and also
 some of the fMRI transformations. I might need to expand that generic script for
 fMRI though, if I want to include movement in the covariates.
@@ -189,107 +156,219 @@ for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
         grep -v \# $f | head -n 1 >> $collect_name;
     done
 done
+tar -zcvf dti_top_rnd_clusters.tar.gz dti_??_voxelwise_n2??_09212018/*top_rnd_clusters.txt
 ```
 
 Now we can just write something in R to compute the p-value for each of the
 clusters in the descriptives file from above.
 
+# 2018-12-03 10:26:58
+
+```r
+res_fname = '~/tmp/dti_descriptives.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    rnd_results = read.table(rnd_fname)[, 1]
+    nperms = length(rnd_results)
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms))
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval))
+    if (pval < .05) {
+      cat(' *')
+    }
+    if (pval < .01) {
+      cat('*')
+    }
+    cat('\n')
+  }
+}
+```
+
+This spits out a whole lot of result. Unfortunately, the only significant or close to nominal ones were (cropped for better reading):
+
+```
+dti_ad_voxelwise_n223_09212018: SX_inatt_baseline_subjScale (499 perms)
+Cluster size: 43, p<0.026 *
+dti_ad_voxelwise_n223_09212018: SX_inatt_baseline_subjScale-log (250 perms)
+Cluster size: 41, p<0.020 *
+dti_fa_voxelwise_n272_09212018: SX_HI_baseline_subjScale (499 perms)
+Cluster size: 40, p<0.034 *
+```
+
+Say that result is good (particularly the AD result, which seems robust), then where is it? And, going with the current idea, does it correlate with outcome as well, or is it mostly related to baseline?
+
+## structural
+
+And we run the same thing for structural runs, except that some file names change, and we have to deal with LH and RH:
+
+```bash
+myfile=struct_descriptives.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*_42_?h_ClstTable_e1_a1.0.1D`; do
+    if ! grep -q 'rnd' $f; then
+        echo $f >> $myfile;
+        grep -v \# $f | head -n 5 >> $myfile;
+    fi
+done
+```
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*_42_?h_ClstTable_e1_a1.0.1D | grep -v rnd > result_files.txt;
+sed -i -e 's/_42_lh_ClstTable_e1_a1.0.1D//g' result_files.txt;
+sed -i -e 's/_42_rh_ClstTable_e1_a1.0.1D//g' result_files.txt;
+for root_file in `cat result_files.txt`; do
+    collect_name_lh=${root_file}_lh_top_rnd_clusters.txt;
+    collect_name_rh=${root_file}_rh_top_rnd_clusters.txt;
+    echo $collect_name_lh;
+    echo $collect_name_rh;
+    if [ -e $collect_name_lh ]; then
+        rm $collect_name_lh $collect_name_rh;
+    fi;
+    for f in `ls ${root_file}_rnd*lh_ClstTable_e1_a1.0.1D`; do
+        grep -v \# $f | head -n 1 >> $collect_name_lh;
+    done
+    for f in `ls ${root_file}_rnd*rh_ClstTable_e1_a1.0.1D`; do
+        grep -v \# $f | head -n 1 >> $collect_name_rh;
+    done
+done
+tar -zcvf struct_top_rnd_clusters.tar.gz struct_*_11142018_260timeDiff12mo/*top_rnd_clusters.txt
+```
+
+And finally, in R:
+
+```r
+res_fname = '~/tmp/struct_descriptives.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='data', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-5)], sep='', collapse='_')
+    if (grepl(pattern='lh', line)) {
+      rnd_fname = sprintf('~/tmp/%s/%s_lh_top_rnd_clusters.txt', dir_name, root_fname)
+    } else {
+      rnd_fname = sprintf('~/tmp/%s/%s_rh_top_rnd_clusters.txt', dir_name, root_fname)
+    }
+    rnd_results = read.table(rnd_fname)[, 3]
+    nperms = length(rnd_results)
+    if (grepl(pattern='lh', line)) {
+      cat(sprintf('%s (LH): %s (%d perms)\n', dir_name, root_fname, nperms))
+    } else {
+      cat(sprintf('%s (RH): %s (%d perms)\n', dir_name, root_fname, nperms))
+    }
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][4])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %.2f, p<%.3f', clus_size, pval))
+    if (pval < .05) {
+      cat(' *')
+    }
+    if (pval < .01) {
+      cat('*')
+    }
+    cat('\n')
+  }
+}
+```
+
+We get these results:
+
+```
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_log (248 perms)
+Cluster size: 1303.41, p<0.008 **
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_log (248 perms)
+Cluster size: 1632.22, p<0.012 *
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 1279.53, p<0.040 *
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 1727.71, p<0.024 *
+struct_area_11142018_260timeDiff12mo (LH): SX_HI_baseline_log (247 perms)
+Cluster size: 1939.40, p<0.004 **
+Cluster size: 1215.41, p<0.020 *
+Cluster size: 1091.86, p<0.036 *
+struct_area_11142018_260timeDiff12mo (RH): SX_HI_baseline_log (247 perms)
+Cluster size: 2534.08, p<0.000 **
+Cluster size: 1458.02, p<0.012 *
+Cluster size: 1068.31, p<0.045 *
+struct_area_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (248 perms)
+Cluster size: 1827.40, p<0.000 **
+Cluster size: 1249.68, p<0.012 *
+Cluster size: 1074.18, p<0.036 *
+struct_area_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (248 perms)
+Cluster size: 2754.37, p<0.004 **
+Cluster size: 1510.89, p<0.012 *
+struct_area_11142018_260timeDiff12mo (LH): SX_inatt_baseline_log (249 perms)
+Cluster size: 1058.70, p<0.040 *
+struct_area_11142018_260timeDiff12mo (LH): SX_inatt_baseline_None (249 perms)
+Cluster size: 1273.39, p<0.032 *
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_SX_inatt_baseline_log (250 perms)
+Cluster size: 311.79, p<0.004 **
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_SX_inatt_baseline_None (249 perms)
+Cluster size: 311.79, p<0.016 *
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_SX_HI_baseline_log (249 perms)
+Cluster size: 326.75, p<0.024 *
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_log (250 perms)
+Cluster size: 552.79, p<0.012 *
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_log (250 perms)
+Cluster size: 842.26, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 728.74, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 861.03, p<0.012 *
+struct_volume_11142018_260timeDiff12mo (LH): SX_HI_baseline_log (246 perms)
+Cluster size: 506.76, p<0.028 *
+struct_volume_11142018_260timeDiff12mo (RH): SX_HI_baseline_log (246 perms)
+Cluster size: 844.02, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (250 perms)
+Cluster size: 506.76, p<0.036 *
+struct_volume_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (250 perms)
+Cluster size: 937.94, p<0.004 **
+```
+
+We have lots of results, but they're mostly showing that baseline and log don't differ much, as we had noticed before. It also looks like the cluster sizes with no transformation are a bit bigger, regardless of cluster significance, so let's go with that.
+
+Like DTI, we still need to plot those results to see if they are in neat regions.
+
+## fmri
+
+It might be faster if I run permutations only for the results with big clusters... just to save some time. I'll do that starting with fMRI.
+
+```bash
+job_name=melodic;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
+        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
+        for pp in None subjScale log subjScale-log; do
+            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
+        done;
+    done;
+done
+swarm -f $swarm_file -g 20 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
+```
+
+
+
 # TODO
- * compute p-values
- * crappy domains descriptives
- * rsfmri connectivity matrices
- * rsfmri icasso
 
-
-
-
-
-
-
-
-
-```bash
-for i in {1..250}; do
-    Rscript --vanilla ~/research_code/automl/generate_random_uni_spatial.R ~/data/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz ~/data/baseline_prediction/long_clin_0918.csv nvVSadhd $RANDOM;
-done
-```
-
-And change the target to run it other cores as well...
-
-Now we just need to compile the results similar to before:
-
-```bash
-cd ~/data/baseline_prediction/neuroimage
-for f in `ls ~/data/tmp/nvVSper_*_rnd_clusters.txt`; do
-    grep -v \# $f | head -n 1 >> nvVSper_top_clusters.txt
-done
-```
-
-And, in R:
-
-```r
-> x = read.table('~/data/baseline_prediction/neuroimage/nvVSper_top_clusters.txt')[,1]
-> summary(x)
-   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-   6.00   11.00   15.00   18.02   20.00   75.00 
-> sum(x>20)/length(x)
-[1] 0.2310757
-> sum(x>40)/length(x)
-[1] 0.05577689
-> sum(x>42)/length(x)
-[1] 0.05179283
-> sum(x>43)/length(x)
-[1] 0.04780876
-> sum(x>32)/length(x)
-[1] 0.09960159
-```
-
-Well, nvVSper with non-shuffled labels has the biggest cluster at size 48, then
-one at 43. Even if we go down to .1 we only get these two.
-
-For perVSrem, I'm at:
-
-```r
-> x = read.table('~/data/baseline_prediction/neuroimage/perVSrem_top_clusters.txt')[,1]
-> summary(x)
-   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-    6.0    11.0    15.5    18.2    22.0    62.0 
-> sum(x>36)/length(x)
-[1] 0.048
-> sum(x>30)/length(x)
-[1] 0.084
-```
-
-Hum... the biggest cluster we get with non-random data is 10?
-
-# 2018-11-14 13:59:02
-
-For nvVSrem I get 9, and for nvVSadhd I get 43. In other words, whenever I used the remission group I only got 10 or less voxels with the actual data. Maybe it's a reflexion of the number of subjects (only 38 rem)?
-
-Let's see if we do any better looking at correlations. For OLS_SX_inatt I get 15, same for HI, and only 13 for total. If we restrict it to ADHDonly, we get 18 for inatt, but 20 for HI and 10 for total. Does RD or FA do better? Sticking to ADHDonly, inatt gets 12 for RD and 14 for FA. HI got 14 for RD and 14 for FA. Finally, total got 13 for RD and 14 for FA. So, let's generate some random numbers. IT looks like AD for ADHDonly is still our best candidate...
-
-```bash
-for i in {1..250}; do
-    Rscript --vanilla ~/research_code/automl/generate_random_uni_spatial.R ~/data/baseline_prediction/dti_ad_voxelwise_n223_09212018.RData.gz ~/data/baseline_prediction/long_clin_0918.csv ADHDonly_OLS_HI_slope $RANDOM;
-done
-```
-
-```r
-> x = read.table('~/data/baseline_prediction/neuroimage/inatt_top_clusters.txt')[,1]
-> summary(x)
-   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
-      6      12      15      18      20      71
-> sum(x>17)/length(x)
-[1] 0.368
-> x = read.table('~/data/baseline_prediction/neuroimage/hi_top_clusters.txt')[,1]
-> summary(x)
-   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-   7.00   12.00   16.00   19.47   23.00   77.00 
-> sum(x>17)/length(x)
-[1] 0.4056225
-> sum(x>19)/length(x)
-[1] 0.3333333
-```
-
-Yeah, this is a no-go. A vanilla neuroiamging analysis won't fly here.
- -->
+* compute p-values
+* crappy domains descriptives
+* rsfmri connectivity matrices
+* rsfmri icasso

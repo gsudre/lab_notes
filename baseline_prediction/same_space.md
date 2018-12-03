@@ -563,3 +563,4 @@ cut -d" " -f 1-4 groupmelodic_fancy.ica/dual/dumps/0415_IC1_Z.txt > ~/data/basel
 cut -d" " -f 1-4 groupmelodic_inter.ica/dual/dumps/0415_IC7_Z.txt > ~/data/baseline_prediction/melodic_inter_ijk.txt
 cut -d" " -f 1-4 groupmelodic_union.ica/dual/dumps/0415_IC65_Z.txt > ~/data/baseline_prediction/melodic_union_ijk.txt
 ```
+
