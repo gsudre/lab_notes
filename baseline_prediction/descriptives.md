@@ -364,10 +364,221 @@ done
 swarm -f $swarm_file -g 20 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
 ```
 
+# Whole brain outcome
 
+
+Before I test the results on outcome, let's see if any regions in the whole brain analysis also work for outcome. I'm gonna skip the latent class groups for now because they not only involve the entire dataset, but also would involve extra coding in our functions. I can play with them later.
+
+```bash
+job_name=dtiOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for pp in None subjScale; do
+                for t in perVSrem nvVSper nvVSrem \
+                    OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 $pp" >> $swarm_file;
+                done;
+                for sx in inatt HI total; do
+                    for t in nvVSimp nvVSnonimp impVSnonimp; do
+                        echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 $pp" >> $swarm_file;
+                    done;
+                done;
+            done;
+        done;
+    done;
+done
+swarm -f $swarm_file -g 4 -t 2 --time 30:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
+```
+
+And let's also run structural:
+
+```bash
+job_name=structOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls struct_*_11142018_260timeDiff12mo.RData.gz`; do
+    for nn in nonew_ ''; do
+        for g in ADHDonly_ ''; do
+            for pp in None subjScale; do
+                for t in perVSrem nvVSper nvVSrem \
+                    OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 $pp" >> $swarm_file;
+                done;
+                for sx in inatt HI total; do
+                    for t in nvVSimp nvVSnonimp impVSnonimp; do
+                        echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}groupOLS_${sx}_slope_${t} 42 $pp" >> $swarm_file;
+                    done;
+                done;
+            done;
+        done;
+    done;
+done;
+swarm -f $swarm_file -g 4 -t 2 --time 30:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
+```
+
+Let's collect the results:
+
+```bash
+myfile=dti_descriptives_outcome.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls \
+    /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*VS*_42_clusters.txt \
+    /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*OLS*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+Based on those results, we should run the random tests for several of them.
+
+```bash
+job_name=dtiOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
+    for nn in nonew_ ''; do
+        for pp in None subjScale; do
+            for t in perVSrem nvVSper nvVSrem \
+                OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${t} -${RANDOM} $pp" >> $swarm_file;
+                done;
+            done;
+            for t in perVSrem OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}ADHDonly_${t} -${RANDOM} $pp" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+And how did structural look?
+
+```bash
+myfile=struct_descriptives_outcome.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*VS*_42_?h_ClstTable_e1_a1.0.1D \
+    /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*OLS*_42_?h_ClstTable_e1_a1.0.1D`; do
+    if ! grep -q 'rnd' $f; then
+        echo $f >> $myfile;
+        grep -v \# $f | head -n 5 >> $myfile;
+    fi
+done
+```
+
+Well, things are certainly clustering, but it's hard to tell if the sizes will be significant. Let's run the perms then.
+
+```bash
+job_name=structOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls struct_*_11142018_260timeDiff12mo.RData.gz`; do
+    for nn in nonew_ ''; do
+        for pp in None subjScale; do
+            for t in perVSrem nvVSper nvVSrem \
+                OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${t} -${RANDOM} $pp" >> $swarm_file;
+                done;
+            done;
+            for t in perVSrem OLS_inatt_slope OLS_HI_slope OLS_total_slope; do
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}ADHDonly_${t} -${RANDOM} $pp" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+**NOTE THAT I DIDN'T RUN THE IMPVSNONIMP BINARY TESTS FOR PERMUTATIONS, MOSTLY BECAUSE I'M NOT SURE IF IT WORKE FOR DTI. BUT IT THE OTHER RESULTS DON'T LOOK GOOD, I SHOULD RUN THOSE TOO**
+
+OK, while those are running, let's investigate the MELODIC results. It doesn't look like the union mask results finished running, which is a shame. I'll have to increase the time and run those separately if nothing comes out of the intersection and fancy masks.
+
+```bash
+myfile=melodic_descriptives.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls /data/NCR_SBRB/tmp/melodic_*_IC*_09212018/*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+Well, there are many big clusters, but it's hard to get an idea of what random looks like. So, let's run the random ones, but not include the union ICs. If nothing comes out of this, we can run union and also its respective randomizations:
+
+```bash
+job_name=melodic;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+    for target in nvVSadhd SX_inatt_baseline SX_HI_baseline \
+        ADHDonly_SX_inatt_baseline ADHDonly_SX_HI_baseline; do
+        for pp in None subjScale; do
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+grep -v union $swarm_file > ${swarm_file}2;
+split -l 3000 ${swarm_file}2 ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 5 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
 
 # TODO
 
+* run randomization for baseline melodic (no run in cluster at this time)
+* if needed, run baseline melodic union with 1d of walltime
+* monitor permutations for dti outcomes
+* monitor permutations for structural outcomes
+* run baby stats on average of dti baseline clusters
+* run baby stats on average of structural baseline clusters
+* visualize dti baseline clusters
+* visualize structural baseline clusters
 * compute p-values
 * crappy domains descriptives
 * rsfmri connectivity matrices

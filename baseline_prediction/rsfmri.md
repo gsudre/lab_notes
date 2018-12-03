@@ -560,3 +560,29 @@ for (m in c('kendall', 'pearson', 'spearman')) {
 
 Yep... still there. Maybe we should focus on full correlation only? Not sure if there is something funky with pcorr...
 
+
+
+
+library(gdata)
+rm_rois = c('CSF', 'Ventricle', 'Pallidum', 'Brain.Stem',
+            'Accumbens.area', 'VentralDC', 'vessel', 'Cerebral',
+            'choroid', 'Lat.Vent', 'White.Matter', 'hypointensities',
+            '^CC', 'nknown', 'Chiasm', 'Cerebellum.Cortex', 'undetermined')
+df = read.xls('~/data/baseline_prediction/rsfmri_09282018.xlsx')
+for (m in c('pearson')) {
+    for (t in c('', '_trimmed')) {
+        for (p in c('aparc')) {
+            print(sprintf('%s, %s, %s', p, m, t))
+            fname = sprintf('~/tmp/binaryP05_%s_%s%s.csv',
+                            p, m, t)
+            a = read.csv(fname)
+            rm_me = c()
+            for (r in rm_rois) {
+                rm_me = c(rm_me, which(grepl(r, colnames(a)))) }
+            a = a[, -unique(rm_me)]
+            a$total = rowSums(a[, 2:ncol(a)])
+            res = merge(a, df, by.x='X', by.y='Mask.ID...Scan', all.x=T)
+            print(cor.test(res$total, as.numeric(res$enorm)))
+        }
+    }
+}
