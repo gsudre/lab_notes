@@ -166,6 +166,7 @@ clusters in the descriptives file from above.
 
 ```r
 res_fname = '~/tmp/dti_descriptives.txt'
+out_file = '~/tmp/pvals.txt'
 res_lines = readLines(res_fname)
 for (line in res_lines) {
   # starting new file summary
@@ -177,20 +178,22 @@ for (line in res_lines) {
     rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
     rnd_results = read.table(rnd_fname)[, 1]
     nperms = length(rnd_results)
-    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms))
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
   } 
   else {
     parsed = strsplit(line, ' +')
     clus_size = as.numeric(parsed[[1]][2])
     pval = sum(rnd_results >= clus_size) / nperms
-    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval))
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
     if (pval < .05) {
-      cat(' *')
+      cat(' *', file=out_file, append=T)
     }
     if (pval < .01) {
-      cat('*')
+      cat('*', file=out_file, append=T)
     }
-    cat('\n')
+    cat('\n', file=out_file, append=T)
   }
 }
 ```
@@ -569,17 +572,747 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2018-12-04 10:44:24
+
+Let's compute p-values for the outcome results in DTI:
+
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*VS*_42_clusters.txt \
+    /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/*OLS*_42_clusters.txt > result_files.txt;
+for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
+    collect_name=${root_file}_top_rnd_clusters.txt;
+    echo $collect_name;
+    if [ -e $collect_name ]; then
+        rm $collect_name;
+    fi;
+    for f in `ls ${root_file}*rnd*clusters.txt`; do
+        grep -v \# $f | head -n 1 >> $collect_name;
+    done
+done
+tar -zcvf dti_top_rnd_clusters.tar.gz dti_??_voxelwise_n2??_09212018/*top_rnd_clusters.txt
+```
+
+Now we can just write something in R to compute the p-value for each of the
+clusters in the descriptives file from above.
+
+```r
+res_fname = '~/tmp/dti_descriptives_outcome.txt'
+out_file = '~/tmp/pvals.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 1]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if (pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if (pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+```
+
+And there are some results as well:
+
+```bash
+sudregp@HG-02070684-DM2:~$ grep -B 1 "*" tmp/pvals.txt 
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 33, p<0.040 *
+--
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_subjScale (248 perms)
+Cluster size: 27, p<0.048 *
+--
+dti_ad_voxelwise_n272_09212018: OLS_inatt_slope_None (250 perms)
+Cluster size: 44, p<0.044 *
+--
+dti_fa_voxelwise_n223_09212018: ADHDonly_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 32, p<0.044 *
+--
+dti_fa_voxelwise_n272_09212018: nonew_nvVSper_subjScale (250 perms)
+Cluster size: 44, p<0.036 *
+--
+dti_fa_voxelwise_n272_09212018: nvVSper_subjScale (250 perms)
+Cluster size: 51, p<0.024 *
+--
+dti_rd_voxelwise_n272_09212018: nonew_OLS_HI_slope_None (249 perms)
+Cluster size: 75, p<0.004 **
+--
+dti_rd_voxelwise_n272_09212018: nonew_OLS_inatt_slope_None (250 perms)
+Cluster size: 49, p<0.044 *
+--
+dti_rd_voxelwise_n272_09212018: OLS_HI_slope_None (250 perms)
+Cluster size: 79, p<0.012 *
+```
+
+Sure, we'll need to run more permutations, and many of these won't survive if we
+correct across modalities. Still, somewhat cool that we have some results!
+
+But do note that most of the results use the 272 dataset, which might be saying
+something about the number of subjects we need to actually see osme result here.
+
+But let's do something similar for structural:
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*VS*_42_?h_ClstTable_e1_a1.0.1D \
+    /data/NCR_SBRB/tmp/struct_*_11142018_260timeDiff12mo/*OLS*_42_?h_ClstTable_e1_a1.0.1D | grep -v rnd > result_files.txt;
+sed -i -e 's/_42_lh_ClstTable_e1_a1.0.1D//g' result_files.txt;
+sed -i -e 's/_42_rh_ClstTable_e1_a1.0.1D//g' result_files.txt;
+for root_file in `cat result_files.txt`; do
+    collect_name_lh=${root_file}_lh_top_rnd_clusters.txt;
+    collect_name_rh=${root_file}_rh_top_rnd_clusters.txt;
+    echo $collect_name_lh;
+    echo $collect_name_rh;
+    if [ -e $collect_name_lh ]; then
+        rm $collect_name_lh $collect_name_rh;
+    fi;
+    for f in `ls ${root_file}_rnd*lh_ClstTable_e1_a1.0.1D`; do
+        grep -v \# $f | head -n 1 >> $collect_name_lh;
+    done
+    for f in `ls ${root_file}_rnd*rh_ClstTable_e1_a1.0.1D`; do
+        grep -v \# $f | head -n 1 >> $collect_name_rh;
+    done
+done
+tar -zcvf struct_top_rnd_clusters.tar.gz struct_*_11142018_260timeDiff12mo/*top_rnd_clusters.txt
+```
+
+And finally, in R:
+
+```r
+res_fname = '~/tmp/struct_descriptives_outcome.txt'
+out_file = '~/tmp/pvals.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='data', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-5)], sep='', collapse='_')
+    if (grepl(pattern='lh', line)) {
+      rnd_fname = sprintf('~/tmp/%s/%s_lh_top_rnd_clusters.txt', dir_name, root_fname)
+    } else {
+      rnd_fname = sprintf('~/tmp/%s/%s_rh_top_rnd_clusters.txt', dir_name, root_fname)
+    }
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 3]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    if (grepl(pattern='lh', line)) {
+      cat(sprintf('%s (LH): %s (%d perms)\n', dir_name, root_fname, nperms),
+          file=out_file, append=T)
+    } else {
+      cat(sprintf('%s (RH): %s (%d perms)\n', dir_name, root_fname, nperms),
+          file=out_file, append=T)
+    }
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][4])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %.2f, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if ( !is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if ( !is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+```
+
+Again, lots of interesting results:
+
+```bash
+sudregp@HG-02070684-DM2:~$ grep -B 1 "*" tmp/pvals.txt
+
+struct_area_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_None (249 perms)
+Cluster size: 841.63, p<0.040 *
+--
+struct_area_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_subjScale (249 perms)
+Cluster size: 692.90, p<0.044 *
+--
+struct_area_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 1048.74, p<0.016 *
+--
+struct_area_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 1062.79, p<0.028 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (248 perms)
+Cluster size: 995.08, p<0.004 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_subjScale (249 perms)
+Cluster size: 751.48, p<0.004 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (250 perms)
+Cluster size: 692.31, p<0.032 *
+Cluster size: 579.43, p<0.044 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1315.12, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_nvVSrem_subjScale (250 perms)
+Cluster size: 1010.10, p<0.020 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_None (250 perms)
+Cluster size: 1742.82, p<0.008 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_subjScale (250 perms)
+Cluster size: 1133.07, p<0.004 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 1437.90, p<0.028 *
+--
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_log (248 perms)
+Cluster size: 1303.41, p<0.008 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_log (248 perms)
+Cluster size: 1632.22, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 1279.53, p<0.040 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 1727.71, p<0.024 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSrem_None (248 perms)
+Cluster size: 1315.12, p<0.040 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSrem_subjScale (249 perms)
+Cluster size: 1010.10, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (RH): OLS_HI_slope_None (247 perms)
+Cluster size: 1552.68, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (RH): OLS_HI_slope_subjScale (250 perms)
+Cluster size: 908.16, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (LH): OLS_inatt_slope_None (249 perms)
+Cluster size: 1627.58, p<0.020 *
+--
+struct_area_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (249 perms)
+Cluster size: 1420.76, p<0.036 *
+--
+struct_thickness_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 273.30, p<0.032 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 389.19, p<0.012 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (248 perms)
+Cluster size: 225.26, p<0.036 *
+--
+struct_thickness_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 210.05, p<0.028 *
+--
+struct_thickness_11142018_260timeDiff12mo (LH): nonew_OLS_HI_slope_None (250 perms)
+Cluster size: 360.90, p<0.040 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 397.49, p<0.028 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 397.49, p<0.020 *
+--
+struct_thickness_11142018_260timeDiff12mo (LH): OLS_HI_slope_None (250 perms)
+Cluster size: 452.84, p<0.008 **
+--
+struct_thickness_11142018_260timeDiff12mo (LH): OLS_HI_slope_subjScale (248 perms)
+Cluster size: 459.04, p<0.024 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (250 perms)
+Cluster size: 468.09, p<0.028 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): OLS_inatt_slope_subjScale (248 perms)
+Cluster size: 448.87, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_None (249 perms)
+Cluster size: 1006.68, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_subjScale (250 perms)
+Cluster size: 614.54, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 728.22, p<0.004 **
+Cluster size: 492.98, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 769.79, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 509.24, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 546.76, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (250 perms)
+Cluster size: 1020.10, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_subjScale (248 perms)
+Cluster size: 628.92, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 598.67, p<0.000 **
+Cluster size: 359.05, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 740.79, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_subjScale (250 perms)
+Cluster size: 450.98, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_subjScale (250 perms)
+Cluster size: 447.35, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1009.11, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_nvVSrem_subjScale (250 perms)
+Cluster size: 733.58, p<0.028 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_None (249 perms)
+Cluster size: 1352.98, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_subjScale (249 perms)
+Cluster size: 896.88, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 642.39, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 846.94, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 461.62, p<0.044 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 674.01, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_log (250 perms)
+Cluster size: 552.79, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_log (250 perms)
+Cluster size: 842.26, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 728.74, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 861.03, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (LH): nvVSper_None (250 perms)
+Cluster size: 526.39, p<0.048 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSrem_None (249 perms)
+Cluster size: 1009.11, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSrem_subjScale (250 perms)
+Cluster size: 733.58, p<0.016 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): OLS_HI_slope_None (250 perms)
+Cluster size: 1151.93, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): OLS_HI_slope_subjScale (247 perms)
+Cluster size: 717.01, p<0.016 *
+--
+struct_volume_11142018_260timeDiff12mo (LH): OLS_inatt_slope_None (247 perms)
+Cluster size: 767.86, p<0.012 *
+Cluster size: 626.10, p<0.024 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (247 perms)
+Cluster size: 891.56, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 505.37, p<0.032 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 600.50, p<0.016 *
+```
+
+Wow, way more results than I was expecting. That's a good thing, though? Let's
+look at the actual plots before we say much. And once again, no data
+transformation was better than using subjScale.
+
+But it is somewhat concerning that perVSrem never came up as a good result, so I
+wonder if there is something wrong with the regressions?
+
+Well, let's do some plotting.
+
+# Compiling results
+
+So, the story is to first find regions in the brain related to baseline DX or
+SX, using the standard approaches. So, here are the formulas I'm using:
+
+**structural:** ```y ~ %s + Sex...Subjects + ext_avg_freesurfer5.3 +
+int_avg_freesurfer5.3 + mprage_QC + age_at_scan + I(age_at_scan^2)```
+
+**DTI:** ```y ~ %s + Sex + mvmt + I(mvmt^2) + age_at_scan + I(age_at_scan^2)```, where
+mvmt is ```rowMeans(scale(norm.trans), scale(norm.rot))```
+
+**FMRI:** ```y ~ %s + Sex...Subjects + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + age_at_scan + I(age_at_scan^2)```
+
+And I'm using LME, with nuclear ID as the random term, and y is the voxel value.
+
+## DTI
+
+In DTI, the baseline results weren't great. We had a couple in AD223, and one in
+FA272, which would be better to use given the outcome results. But what if we
+focused on the outcome results right away? 
+
+```
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 33, p<0.040 *
+--
+dti_rd_voxelwise_n272_09212018: nonew_OLS_HI_slope_None (249 perms)
+Cluster size: 75, p<0.004 **
+--
+dti_rd_voxelwise_n272_09212018: nonew_OLS_inatt_slope_None (250 perms)
+Cluster size: 49, p<0.044 *
+```
+
+I did some filtering on the previous results trying to make some sense of them.
+I could even remove the AD result too, as it's ADHDonly. But let's keep it for
+now.
+
+Let's plot them:
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mymask.nii nonew_OLS_HI_slope_None_42+orig
+3dmaskdump -mask /data/NCR_SBRB/baseline_prediction/mean_272_fa_skeleton_mask.nii.gz mymask.nii > out.txt
+```
+
+```r
+load('/data/NCR_SBRB/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+a = read.table('/data/NCR_SBRB/tmp/dti_rd_voxelwise_n272_09212018/out.txt')[,4]
+idx = which(a==1)
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+plot(df$OLS_HI_slope, rowMeans(df[,x[idx]]))
+```
+
+![](2018-12-04-14-18-26.png)
+
+Now, even though I'm not sure the slope 0 column is driving the result, it looks
+ugly. So, maybe we should focus only on ADHDonly results. Which gives us:
+
+```bash
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 33, p<0.040 *
+--
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_subjScale (248 perms)
+Cluster size: 27, p<0.048 *
+--
+dti_fa_voxelwise_n223_09212018: ADHDonly_OLS_inatt_slope_subjScale (249 perms)
+Cluster size: 32, p<0.044 *
+--
+dti_fa_voxelwise_n272_09212018: nonew_nvVSper_subjScale (250 perms)
+Cluster size: 44, p<0.036 *
+--
+dti_fa_voxelwise_n272_09212018: nvVSper_subjScale (250 perms)
+Cluster size: 51, p<0.024 *
+--
+```
+
+And in a way it also goes with the baseline results:
+
+```
+dti_ad_voxelwise_n223_09212018: SX_inatt_baseline_subjScale (499 perms)
+Cluster size: 43, p<0.026 *
+dti_ad_voxelwise_n223_09212018: SX_inatt_baseline_subjScale-log (250 perms)
+Cluster size: 41, p<0.020 *
+dti_fa_voxelwise_n272_09212018: SX_HI_baseline_subjScale (499 perms)
+Cluster size: 40, p<0.034 *
+```
+
+## structural
+
+Let's see if we can summarize the structural baseline results a bit more:
+
+```
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 1279.53, p<0.040 *
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 1727.71, p<0.024 *
+struct_area_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (248 perms)
+Cluster size: 1827.40, p<0.000 **
+Cluster size: 1249.68, p<0.012 *
+Cluster size: 1074.18, p<0.036 *
+struct_area_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (248 perms)
+Cluster size: 2754.37, p<0.004 **
+Cluster size: 1510.89, p<0.012 *
+struct_area_11142018_260timeDiff12mo (LH): SX_inatt_baseline_None (249 perms)
+Cluster size: 1273.39, p<0.032 *
+
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_SX_inatt_baseline_None (249 perms)
+Cluster size: 311.79, p<0.016 *
+
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 728.74, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 861.03, p<0.012 *
+struct_volume_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (250 perms)
+Cluster size: 506.76, p<0.036 *
+struct_volume_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (250 perms)
+Cluster size: 937.94, p<0.004 **
+```
+
+Removed the log ones first. Most of results are related to area, and some
+volume. Before we filter any further, let's see what's in the outcome set:
+
+```
+struct_area_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_None (249 perms)
+Cluster size: 841.63, p<0.040 *
+struct_area_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 1048.74, p<0.016 *
+struct_area_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 1062.79, p<0.028 *
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (248 perms)
+Cluster size: 995.08, p<0.004 **
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (250 perms)
+Cluster size: 692.31, p<0.032 *
+Cluster size: 579.43, p<0.044 *
+struct_area_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1315.12, p<0.012 *
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_None (250 perms)
+Cluster size: 1742.82, p<0.008 **
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 1437.90, p<0.028 *
+struct_area_11142018_260timeDiff12mo (RH): nvVSrem_None (248 perms)
+Cluster size: 1315.12, p<0.040 *
+struct_area_11142018_260timeDiff12mo (RH): OLS_HI_slope_None (247 perms)
+Cluster size: 1552.68, p<0.012 *
+struct_area_11142018_260timeDiff12mo (LH): OLS_inatt_slope_None (249 perms)
+Cluster size: 1627.58, p<0.020 *
+struct_area_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (249 perms)
+Cluster size: 1420.76, p<0.036 *
+
+struct_thickness_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 273.30, p<0.032 *
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 389.19, p<0.012 *
+struct_thickness_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (248 perms)
+Cluster size: 225.26, p<0.036 *
+struct_thickness_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 210.05, p<0.028 *
+struct_thickness_11142018_260timeDiff12mo (LH): nonew_OLS_HI_slope_None (250 perms)
+Cluster size: 360.90, p<0.040 *
+struct_thickness_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 397.49, p<0.028 *
+struct_thickness_11142018_260timeDiff12mo (LH): OLS_HI_slope_None (250 perms)
+Cluster size: 452.84, p<0.008 **
+struct_thickness_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (250 perms)
+Cluster size: 468.09, p<0.028 *
+
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_None (249 perms)
+Cluster size: 1006.68, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 728.22, p<0.004 **
+Cluster size: 492.98, p<0.012 *
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_None (249 perms)
+Cluster size: 769.79, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_None (250 perms)
+Cluster size: 1020.10, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 598.67, p<0.000 **
+Cluster size: 359.05, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (248 perms)
+Cluster size: 740.79, p<0.004 **
+struct_volume_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1009.11, p<0.004 **
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_None (249 perms)
+Cluster size: 1352.98, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (LH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 642.39, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_inatt_slope_None (249 perms)
+Cluster size: 846.94, p<0.008 **
+struct_volume_11142018_260timeDiff12mo (LH): nvVSper_None (250 perms)
+Cluster size: 526.39, p<0.048 *
+struct_volume_11142018_260timeDiff12mo (RH): nvVSrem_None (249 perms)
+Cluster size: 1009.11, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (RH): OLS_HI_slope_None (250 perms)
+Cluster size: 1151.93, p<0.000 **
+struct_volume_11142018_260timeDiff12mo (LH): OLS_inatt_slope_None (247 perms)
+Cluster size: 767.86, p<0.012 *
+Cluster size: 626.10, p<0.024 *
+struct_volume_11142018_260timeDiff12mo (RH): OLS_inatt_slope_None (247 perms)
+Cluster size: 891.56, p<0.000 **
+```
+
+So, removed the subjScale results. And we do have quite a few results correlated
+within ADHD only. Let's plot those:
+
+```bash
+awk 'NR>=13 && NR<2575' struct_volume_11142018_260timeDiff12mo/ADHDonly_OLS_HI_slope_None_42_rh_ClstMsk_e1_a1.0.niml.dset > clusters.txt
+```
+
+```r
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('/data/NCR_SBRB/tmp/clusters.txt')[,1]
+idx = which(a==1)
+idx2 = df$diag_group != 'unaffect'
+plot(df[idx2,]$OLS_HI_slope, rowMeans(df[idx2, x[idx]]))
+```
+
+![](2018-12-04-16-21-09.png)
+
+So, it looks like that one scan is driving the result... **ARRRGH!! I forgot to
+winsorize the SX!** Gotta re-run everything related to outcome :(
+
+# Re-running winsozired outcome
+
+```bash
+job_name=dtiOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
+    for pp in None subjScale; do
+        for nn in nonew_ ''; do
+            g='';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                for t in nvVSimp nvVSnonimp impVSnonimp; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                    for i in {1..250}; do
+                        echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                    done;
+                done;
+            done;
+            g='ADHDonly_';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                t='impVSnonimp';
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Also, structural:
+
+```bash
+job_name=structOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls struct_*_11142018_260timeDiff12mo.RData.gz`; do
+    for pp in None subjScale; do
+        for nn in nonew_ ''; do
+            g='';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                for t in nvVSimp nvVSnonimp impVSnonimp; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                    for i in {1..250}; do
+                        echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                    done;
+                done;
+            done;
+            g='ADHDonly_';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                t='impVSnonimp';
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+split -l 3000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+
 # TODO
 
-* run randomization for baseline melodic (no run in cluster at this time)
+* monitor randomization for baseline melodic
+* monitor winsorized randomization of outcome
 * if needed, run baseline melodic union with 1d of walltime
-* monitor permutations for dti outcomes
-* monitor permutations for structural outcomes
 * run baby stats on average of dti baseline clusters
 * run baby stats on average of structural baseline clusters
 * visualize dti baseline clusters
 * visualize structural baseline clusters
-* compute p-values
+* visualize dti outcome clusters
+* visualize structural outcome clusters
 * crappy domains descriptives
 * rsfmri connectivity matrices
 * rsfmri icasso
