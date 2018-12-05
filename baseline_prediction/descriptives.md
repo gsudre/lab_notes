@@ -1412,10 +1412,6 @@ Cluster size: 930.60, p<0.024 *
 struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
 Cluster size: 743.72, p<0.004 **
 --
-struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (250 perms)
-Cluster size: 692.31, p<0.032 *
-Cluster size: 579.43, p<0.044 *
---
 struct_area_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
 Cluster size: 1315.12, p<0.012 *
 --
@@ -1465,9 +1461,6 @@ Cluster size: 895.28, p<0.000 **
 struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
 Cluster size: 569.00, p<0.000 **
 --
-struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_SX_HI_baseline_log (249 perms)
-Cluster size: 326.75, p<0.024 *
---
 struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (247 perms)
 Cluster size: 632.68, p<0.000 **
 --
@@ -1513,6 +1506,134 @@ Cluster size: 937.94, p<0.004 **
 
 Same cleaning as in DTI. When given the option, I kept the None clusters instead of the subjScale because None clusters were usually bigger.
 
+Let's do some plotting to make sure it's not driven by outliers again:
+
+```bash
+awk 'NR>=13 && NR<2575' struct_volume_11142018_260timeDiff12mo/nonew_ADHDonly_OLS_HI_slope_winsorize_None_42_rh_ClstMsk_e1_a1.0.niml.dset > clusters.txt
+```
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('/data/NCR_SBRB/tmp/clusters.txt')[,1]
+idx = which(a==1)
+idx2 = df$diag_group != 'unaffect'
+tgt = winsorize(df[idx2,]$OLS_HI_slope)
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+```
+
+![](2018-12-05-15-56-00.png)
+
+Well, we still have a few outliers, but it looks more well behaved then before. Also, as expected, tgt is mostly negative, showing that SX is going down. Specifically, the smaller the volume at baseline, the more the kid got better. Which is honestly what one would predict: if we go by Philip's cortical trajectories paper, if the trajectories need to normalize to the normal level, the more steps one needs to take, the harder it will be.
+
+Let's be even more selective on our results, plot them in the brain, and see if we can come uo with a story. Also, it'd be neat if when plotting NVs at baseline, they'd be closer to the kids that get better.
+
+These are the results I want to focus on to tell the story. Partly, because if they're around the same regions, it'll be a neat story to tell. 
+
+```
+struct_volume_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (250 perms)
+Cluster size: 506.76, p<0.036 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (250 perms)
+Cluster size: 937.94, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (247 perms)
+Cluster size: 632.68, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 432.36, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 299.92, p<0.024 *
+```
+
+Is this RH region the same? 
+
+```bash
+# single out the one region
+awk '{ if ($1 != 1 ) print 0; else print 1 }' clusters.txt > clus1.txt
+```
+
+This is OLS region:
+
+![](2018-12-05-16-54-23.png)
+
+And this is SX_HI at baseline:
+
+![](2018-12-05-16-57-14.png)
+
+Nope... very different.
+
+So, we could make this into a recovery paper then. It would be nice if we had some results for perVSrem, but that's not the case... 
+
+In this case, let's focus on all regions that show some sort of recovery:
+
+```bash
+$ grep -B 1 \* pvals.txt | grep winso | grep nonew | grep None | grep ADHDonly
+
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (247 perms)
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+
+$ grep -B 1 \* pvals.txt | grep winso | grep -v nonew | grep None | grep ADHDonly
+struct_area_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+```
+
+These are quite similar, so let's stick to the nonew just to make life easier.
+
+For DTI:
+
+```bash
+odlw02056472:tmp sudregp$ grep -B 1 \* pvals.txt | grep winso | grep nonew | grep ADHDonly
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+odlw02056472:tmp sudregp$ grep -B 1 \* pvals.txt | grep winso | grep -v nonew | grep ADHDonly
+dti_fa_voxelwise_n223_09212018: ADHDonly_OLS_inatt_slope_winsorize_subjScale (250 perms)
+```
+
+Very different datasets. Might need th MELODIC results to help decide this. It'd be nice to just go with FA in DTI, especially if it's a nice region. And the nonew results in volume are quite the same. Maybe making the scatterplots would help as well?
+
+```r
+> a = read.table('~/tmp/clusters.txt')[,1]
+> idx = which(a==1)
+> tgt = winsorize(df[idx2,]$OLS_HI_slope)
+> b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+> plot(tgt, rowMeans(df[idx2, x[idx]]))
+> title(sprintf('ADHDonly volume RH HI, r=%.2f, p<%.2f', b$estimate, b$p.value))
+```
+
+![](2018-12-05-17-21-20.png)
+![](2018-12-05-17-23-29.png)
+
+It looks like we have some structural outliers odminating this again! I wonder if I should do a non-parametric regression first, and only deal with family relations afterwards... Or at least check if it's the same scan screwing up everything and just remove that?
+
+![](2018-12-05-17-26-18.png)
+
+This one doesn't look so bad, though. LEt's make the nonew pictures too, just in case:
+
+```r
+idx2 = df$diag_group != 'unaffect' & df$diag_group != 'new_onset'
+```
+
+![](2018-12-05-17-30-35.png)
+![](2018-12-05-17-31-57.png)
+![](2018-12-05-17-32-53.png)
+
+
 
 # TODO
 
@@ -1528,6 +1649,7 @@ Same cleaning as in DTI. When given the option, I kept the None clusters instead
 * crappy domains descriptives
 * rsfmri connectivity matrices
 * rsfmri icasso
+* Q: should we run this only with slopes computed in the time point of second scan?
 
 
 
