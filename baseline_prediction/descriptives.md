@@ -1301,12 +1301,224 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2018-12-05 09:45:39
+
+Let's now collect the winsorized results, and also start running them for MELODIC as well.
+
+For collection, I'm using the exact same code as the beginning of this note, so I can have all results in the same .txt file.
+
+To run the MELODIC outcome results, we do (ignoring union again... will run it later if no results come out of inter and fancy pipelines):
+
+```bash
+job_name=melodicOutcome;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+    for pp in None subjScale; do
+        for nn in nonew_ ''; do
+            g='';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                for t in nvVSimp nvVSnonimp impVSnonimp; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                    for i in {1..250}; do
+                        echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                    done;
+                done;
+            done;
+            for t in nvVSper nvVSrem perVSrem; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 ${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} ${pp}" >> $swarm_file;
+                done;
+            done;
+            g='ADHDonly_';
+            for t in OLS_inatt_slope OLS_HI_slope; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+            for sx in inatt HI; do
+                t='impVSnonimp';
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} 42 winsorize_${pp}" >> $swarm_file;
+                for i in {1..250}; do
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${nn}${g}${t}groupOLS_${sx}_slope_${t} -${RANDOM} winsorize_${pp}" >> $swarm_file;
+                done;
+            done;
+        done;
+    done;
+done
+grep -v union $swarm_file > ${swarm_file}2;
+split -l 3000 ${swarm_file}2 ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 8 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+## DTI
+
+```
+dti_ad_voxelwise_n223_09212018: SX_inatt_baseline_subjScale (500 perms)
+Cluster size: 43, p<0.026 *
+---
+dti_ad_voxelwise_n272_09212018: nonew_ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 33, p<0.040 *
+--
+dti_ad_voxelwise_n272_09212018: OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 45, p<0.032 *
+--
+dti_fa_voxelwise_n223_09212018: ADHDonly_OLS_inatt_slope_winsorize_subjScale (250 perms)
+Cluster size: 27, p<0.048 *
+--
+dti_fa_voxelwise_n272_09212018: nonew_nvVSper_subjScale (250 perms)
+Cluster size: 44, p<0.036 *
+--
+dti_fa_voxelwise_n272_09212018: nvVSper_subjScale (250 perms)
+Cluster size: 51, p<0.024 *
+--
+dti_fa_voxelwise_n272_09212018: SX_HI_baseline_subjScale (500 perms)
+Cluster size: 40, p<0.036 *
+--
+dti_rd_voxelwise_n272_09212018: nonew_OLS_HI_slope_winsorize_None (250 perms)
+Cluster size: 71, p<0.024 *
+--
+dti_rd_voxelwise_n272_09212018: OLS_HI_slope_winsorize_None (250 perms)
+Cluster size: 71, p<0.008 **
+```
+
+Above are all the results, after removing some log transforms, then the OLS results driven by outliers (non-winsorized).
+
+## Structural
+
+```
+struct_area_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 930.60, p<0.024 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 743.72, p<0.004 **
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_None (250 perms)
+Cluster size: 692.31, p<0.032 *
+Cluster size: 579.43, p<0.044 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1315.12, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_winsorize_None (250 perms)
+Cluster size: 1311.63, p<0.020 *
+--
+struct_area_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 1279.53, p<0.040 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 1727.71, p<0.024 *
+--
+struct_area_11142018_260timeDiff12mo (RH): nvVSrem_None (248 perms)
+Cluster size: 1315.12, p<0.040 *
+--
+struct_area_11142018_260timeDiff12mo (RH): OLS_HI_slope_winsorize_None (250 perms)
+Cluster size: 1133.55, p<0.044 *
+--
+struct_area_11142018_260timeDiff12mo (LH): OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 1296.21, p<0.028 *
+Cluster size: 1011.36, p<0.044 *
+--
+struct_area_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (248 perms)
+Cluster size: 1827.40, p<0.000 **
+Cluster size: 1249.68, p<0.012 *
+Cluster size: 1074.18, p<0.036 *
+--
+struct_area_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (248 perms)
+Cluster size: 2754.37, p<0.004 **
+Cluster size: 1510.89, p<0.012 *
+--
+struct_area_11142018_260timeDiff12mo (LH): SX_inatt_baseline_None (249 perms)
+Cluster size: 1273.39, p<0.032 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): ADHDonly_SX_inatt_baseline_None (249 perms)
+Cluster size: 311.79, p<0.016 *
+--
+struct_thickness_11142018_260timeDiff12mo (RH): OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 438.50, p<0.028 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 496.51, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 895.28, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 569.00, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): ADHDonly_SX_HI_baseline_log (249 perms)
+Cluster size: 326.75, p<0.024 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_HI_slope_winsorize_None (247 perms)
+Cluster size: 632.68, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 432.36, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 299.92, p<0.024 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_nvVSrem_None (250 perms)
+Cluster size: 1009.11, p<0.004 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nonew_OLS_HI_slope_winsorize_None (247 perms)
+Cluster size: 1386.25, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): nonew_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 549.75, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (LH): nvVSadhd_None (250 perms)
+Cluster size: 728.74, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSadhd_None (250 perms)
+Cluster size: 861.03, p<0.012 *
+--
+struct_volume_11142018_260timeDiff12mo (LH): nvVSper_None (250 perms)
+Cluster size: 526.39, p<0.048 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): nvVSrem_None (249 perms)
+Cluster size: 1009.11, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (RH): OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 992.11, p<0.000 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 675.22, p<0.008 **
+--
+struct_volume_11142018_260timeDiff12mo (LH): SX_HI_baseline_None (250 perms)
+Cluster size: 506.76, p<0.036 *
+--
+struct_volume_11142018_260timeDiff12mo (RH): SX_HI_baseline_None (250 perms)
+Cluster size: 937.94, p<0.004 **
+```
+
+Same cleaning as in DTI. When given the option, I kept the None clusters instead of the subjScale because None clusters were usually bigger.
+
 
 # TODO
 
 * monitor randomization for baseline melodic
-* monitor winsorized randomization of outcome
-* if needed, run baseline melodic union with 1d of walltime
+* monitor runs for outcome melodic
+* if needed, run baseline and outcome melodic union with 1 day of walltime
 * run baby stats on average of dti baseline clusters
 * run baby stats on average of structural baseline clusters
 * visualize dti baseline clusters
@@ -1316,3 +1528,109 @@ done
 * crappy domains descriptives
 * rsfmri connectivity matrices
 * rsfmri icasso
+
+
+
+---
+
+
+job_name=melodicOutcome;
+for f in `/bin/ls ${job_name}_splitb?`; do
+    sed -i -e "s/sudregp/shawp/g" $f
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 8 -t 2 --time 5:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+
+
+res_fname = '~/tmp/dti_descriptives.txt'
+out_file = '~/tmp/pvals.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 1]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if (!is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if (!is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+
+
+
+
+res_fname = '~/tmp/struct_descriptives.txt'
+out_file = '~/tmp/pvals.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='data', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-5)], sep='', collapse='_')
+    if (grepl(pattern='lh', line)) {
+      rnd_fname = sprintf('~/tmp/%s/%s_lh_top_rnd_clusters.txt', dir_name, root_fname)
+    } else {
+      rnd_fname = sprintf('~/tmp/%s/%s_rh_top_rnd_clusters.txt', dir_name, root_fname)
+    }
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 3]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    if (grepl(pattern='lh', line)) {
+      cat(sprintf('%s (LH): %s (%d perms)\n', dir_name, root_fname, nperms),
+          file=out_file, append=T)
+    } else {
+      cat(sprintf('%s (RH): %s (%d perms)\n', dir_name, root_fname, nperms),
+          file=out_file, append=T)
+    }
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][4])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %.2f, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if ( !is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if ( !is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
