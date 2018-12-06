@@ -115,7 +115,7 @@ dti_fname = '~/tmp/mean_dti_movement.csv'
 dtiprops_fname = '~/tmp/mean_props.csv'
 fmri01_fname = '~/tmp/good_trs.csv'
 fmri05_fname = '~/tmp/good_trs.csv'
-out_fname = '~/tmp/master_qc.csv'
+out_fname = '/Volumes/Shaw/MasterQC/master_qc_YYYYMMDD.csv'  # change to today's date
 
 mprage = read.csv(mprage_fname)
 # collapse the mprage scores to only get the best one
