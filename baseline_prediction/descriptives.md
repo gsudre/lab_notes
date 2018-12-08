@@ -624,10 +624,10 @@ for (line in res_lines) {
     pval = sum(rnd_results >= clus_size) / nperms
     cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
         file=out_file, append=T)
-    if (pval < .05) {
+    if ( !is.na(pval) && pval < .05) {
       cat(' *', file=out_file, append=T)
     }
-    if (pval < .01) {
+    if ( !is.na(pval) && pval < .01) {
       cat('*', file=out_file, append=T)
     }
     cat('\n', file=out_file, append=T)
@@ -1633,7 +1633,112 @@ idx2 = df$diag_group != 'unaffect' & df$diag_group != 'new_onset'
 ![](2018-12-05-17-31-57.png)
 ![](2018-12-05-17-32-53.png)
 
+# 2018-12-07 14:38:51
 
+I used much of the same code as DTI, and it looks like we have some quite good results for MELODIC as well. Here they are, before we start plotting them:
+
+```
+HG-01898523-LM1:tmp sudregp$ grep -B 1 "*" pvals_melodic.txt 
+melodic_fancy_IC1_09212018: ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 68, p<0.000 **
+--
+melodic_fancy_IC1_09212018: ADHDonly_SX_inatt_baseline_None (246 perms)
+Cluster size: 44, p<0.024 *
+--
+melodic_fancy_IC1_09212018: nonew_ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 29, p<0.020 *
+--
+Cluster size: 5, p<0.616
+Cluster size: 51, p<0.028 *
+--
+melodic_fancy_IC1_09212018: nonew_OLS_inatt_slope_winsorize_subjScale (246 perms)
+Cluster size: 145, p<0.012 *
+--
+melodic_fancy_IC1_09212018: OLS_inatt_slope_winsorize_subjScale (250 perms)
+Cluster size: 218, p<0.000 **
+Cluster size: 113, p<0.040 *
+--
+melodic_fancy_IC2_09212018: ADHDonly_OLS_HI_slope_winsorize_None (248 perms)
+Cluster size: 41, p<0.044 *
+--
+melodic_fancy_IC2_09212018: ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 68, p<0.012 *
+--
+melodic_fancy_IC2_09212018: ADHDonly_SX_inatt_baseline_None (250 perms)
+Cluster size: 44, p<0.028 *
+--
+melodic_fancy_IC2_09212018: nonew_ADHDonly_OLS_HI_slope_winsorize_None (248 perms)
+Cluster size: 29, p<0.024 *
+--
+Cluster size: 5, p<0.613
+Cluster size: 51, p<0.036 *
+--
+melodic_fancy_IC2_09212018: nonew_OLS_inatt_slope_winsorize_subjScale (246 perms)
+Cluster size: 145, p<0.008 **
+--
+Cluster size: 6, p<0.653
+Cluster size: 44, p<0.036 *
+--
+melodic_fancy_IC2_09212018: OLS_inatt_slope_winsorize_subjScale (249 perms)
+Cluster size: 218, p<0.000 **
+Cluster size: 113, p<0.020 *
+--
+melodic_fancy_IC4_09212018: ADHDonly_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 68, p<0.008 **
+--
+melodic_fancy_IC4_09212018: ADHDonly_SX_inatt_baseline_None (249 perms)
+Cluster size: 44, p<0.016 *
+--
+melodic_fancy_IC4_09212018: nonew_ADHDonly_OLS_HI_slope_winsorize_None (248 perms)
+Cluster size: 29, p<0.028 *
+--
+Cluster size: 5, p<0.620
+Cluster size: 51, p<0.016 *
+--
+melodic_fancy_IC4_09212018: nonew_OLS_inatt_slope_winsorize_subjScale (247 perms)
+Cluster size: 145, p<0.000 **
+--
+melodic_fancy_IC4_09212018: OLS_inatt_slope_winsorize_subjScale (250 perms)
+Cluster size: 218, p<0.004 **
+Cluster size: 113, p<0.044 *
+--
+melodic_fancy_IC57_09212018: ADHDonly_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 68, p<0.000 **
+--
+melodic_fancy_IC57_09212018: nonew_ADHDonly_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 29, p<0.032 *
+--
+Cluster size: 5, p<0.648
+Cluster size: 51, p<0.020 *
+--
+melodic_fancy_IC57_09212018: nonew_OLS_inatt_slope_winsorize_subjScale (248 perms)
+Cluster size: 145, p<0.000 **
+--
+melodic_fancy_IC57_09212018: OLS_inatt_slope_winsorize_subjScale (249 perms)
+Cluster size: 218, p<0.000 **
+Cluster size: 113, p<0.004 **
+--
+melodic_inter_IC11_09212018: nonew_OLS_inatt_slope_winsorize_None (248 perms)
+Cluster size: 143, p<0.040 *
+--
+melodic_inter_IC11_09212018: OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 165, p<0.024 *
+--
+melodic_inter_IC12_09212018: OLS_inatt_slope_winsorize_None (247 perms)
+Cluster size: 165, p<0.024 *
+--
+melodic_inter_IC2_09212018: nonew_OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 143, p<0.028 *
+--
+melodic_inter_IC2_09212018: OLS_inatt_slope_winsorize_None (249 perms)
+Cluster size: 165, p<0.016 *
+--
+melodic_inter_IC7_09212018: nonew_OLS_inatt_slope_winsorize_None (248 perms)
+Cluster size: 143, p<0.048 *
+--
+melodic_inter_IC7_09212018: OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 165, p<0.024 *
+```
 
 # TODO
 
