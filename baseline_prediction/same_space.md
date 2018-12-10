@@ -564,3 +564,52 @@ cut -d" " -f 1-4 groupmelodic_inter.ica/dual/dumps/0415_IC7_Z.txt > ~/data/basel
 cut -d" " -f 1-4 groupmelodic_union.ica/dual/dumps/0415_IC65_Z.txt > ~/data/baseline_prediction/melodic_union_ijk.txt
 ```
 
+# 2018-12-10 15:29:58
+
+Philip asked me to include all 7 networks, so let's add the remaining 3 in each
+pipeline:
+
+```bash
+pipe=union;
+cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual
+for maskid in `cat ../../3min_clean.txt`; do
+    echo $maskid;
+    # for i in 37 24 54; do  # fancy
+    # for i in 17 8 31; do  # inter
+    for i in 42 23 82; do  # union
+        3dmaskdump -mask ../../group_epi_mask_${pipe}.nii \
+            -o dumps/${maskid}_IC${i}_Z.txt dr_stage2_${maskid}_Z.nii.gz;
+    done;
+done
+```
+
+```r
+library(gdata)
+# assuming all fmri scans also have a mprage
+clin = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx', 'mprage')
+clin = clin[, c(1,4)]
+colnames(clin) = c('MRN', 'mask.id')
+pipes = c('inter', 'fancy', 'union')
+ics = list(c(17, 8, 31), c(37, 24, 54), c(42, 23, 82)) # same order as pipes!
+pheno = read.table('~/data/baseline_prediction/same_space/epi/3min_clean.txt')[, 1]
+for (n in 1:length(pipes)) {
+    mydir = sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_%s.ica/dual/dumps/', pipes[n])
+    junk = read.table(sprintf('%s/0691_IC%d_Z.txt', mydir, ics[[n]][1]))
+    nvox = nrow(junk)
+    for (m in ics[[n]]) {
+        fmri_data = matrix(nrow=length(pheno), ncol=nvox)
+        for (s in 1:nrow(fmri_data)) {
+            print(sprintf('%s %d %04d', pipes[n], m, pheno[s]))
+            fname = sprintf('%s/%04d_IC%d_Z.txt', mydir, pheno[s], m)
+            a = read.table(fname)
+            fmri_data[s, ] = a[, 4]
+        }
+        data = cbind(pheno, fmri_data)
+        cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
+        colnames(data) = cnames
+        data = merge(clin, data, by='mask.id')
+        save(data, file=sprintf('~/data/baseline_prediction/melodic_%s_IC%d_12102018.RData.gz', pipes[n], m),
+             compress=T)
+    }
+}
+```
