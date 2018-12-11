@@ -48,3 +48,18 @@ done < ~/tmp/dmaskids3.txt
 ```
 
 I'm keeping the transformed tract maps in ~/data for now.
+
+# 2018-12-11 11:51:20
+
+We should also put the aging template into the space where the JHU labels are defined, in case we ever want to figure out where our voxelwise results are located.
+
+```bash
+flirt -in ~/data/ixi_aging_template_v3.0/template/ixi_aging_template_brain_mask.nii.gz -ref /usr/local/fsl/data/standard/MNI152_T1_1mm_brain_mask.nii.gz -out agingTemplate_brain_mask_IN_MNI152.nii.gz -omat aging_to_MNI152.mat -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear
+```
+
+Then, we can convert results using (e.g.):
+
+```bash
+3dcopy /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_None_42+orig myres.nii
+flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.nii.gz -out myres_inMNI152.nii.gz -applyxfm -init ~/data/aging_to_MNI152.mat -interp nearestneighbour
+```
