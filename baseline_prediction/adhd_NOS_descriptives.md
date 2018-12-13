@@ -74,20 +74,19 @@ job_name=NOSmelodic;
 mydir=/data/NCR_SBRB/baseline_prediction/;
 swarm_file=swarm.desc_${job_name};
 rm -rf $swarm_file;
-for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+for f in `/bin/ls melodic_fancy_IC*.RData.gz melodic_inter_IC*.RData.gz`; do
     for nn in nonew_ ''; do
         for pp in None subjScale; do
             for target in OLS_inatt_slope OLS_HI_slope; do
-                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} 42 winsorize_$pp" >> $swarm_file;
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} 42 winsorize_$pp" >> $swarm_file;
                 for i in {1..250}; do
-                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} -${RANDOM} winsorize_$pp" >> $swarm_file;
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} -${RANDOM} winsorize_$pp" >> $swarm_file;
                 done;
             done;
         done;
     done;
 done
-grep -v union $swarm_file > ${swarm_file}2;
-split -l 3000 ${swarm_file}2 ${job_name}_split;
+split -l 3000 ${swarm_file} ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
@@ -487,6 +486,73 @@ suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
 
 ![](2018-12-11-11-46-27.png)
 ![](2018-12-11-11-47-22.png)
+
+# 2018-12-13 13:11:17
+
+Let's run some crappy domain descriptives.
+
+```bash
+mydir=~/data/baseline_prediction/;
+for f in cog_all_09242018.RData.gz geno3_prs_09192018.RData.gz \
+    social_09262018.RData.gz clinics_binary_sx_baseline_10022018.RData.gz \
+    adhd200_10042018.RData.gz; do
+    for target in OLS_inatt_slope OLS_HI_slope; do
+        echo ==== $f $target ====;
+        Rscript --vanilla ~/research_code/baseline_prediction/descriptives/generic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_nonew_${target} 42 winsorize_None;
+    done;
+done
+```
+
+Note that I'm only running that for the nonew subset, conforming to the previous
+results. I used script to output the results, and here are the main findings:
+
+```
+==== cog_all_09242018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 2 / 25"
+[1] "v_Raw_SS_total" "v_Raw_SSB"
+==== geno3_prs_09192018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 2 / 13"
+[1] "v_PROFILES.0.0001.profile" "v_PROFILES.0.0005.profile"
+==== geno3_prs_09192018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 1 / 13"
+[1] "v_PROFILES.0.00001.profile"
+==== social_09262018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 1 / 18"
+[1] "v_Priv_School"
+==== clinics_binary_sx_baseline_10022018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 8 / 8"
+[1] "v_SX_inatt"          "v_SX_HI"             "vCateg_diff.organ"  
+[4] "vCateg_avoids"       "vCateg_loses"        "vCateg_easily.distr"
+[7] "vCateg_forgetful"    "vCateg_waiting.turn"
+==== clinics_binary_sx_baseline_10022018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 3 / 11"
+[1] "v_SX_HI"             "vCateg_fidgety"      "vCateg_waiting.turn"
+[1] "Variables at q<.05: 2 / 11"
+[1] "v_SX_HI"             "vCateg_waiting.turn"
+==== adhd200_10042018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 1 / 3"
+[1] "v_Age"
+[1] "Variables at q<.05: 1 / 3"
+[1] "v_Age"
+```
+
+I decided to report only the nominal p-values because I didn't want to restrict
+the number of variables we're using for FDR or Meff. If they're crappy in the
+end, the ML algorithm will likely throw it away. The results not listed did not
+have any nominal results. Also, I think we could probably get rid of the
+socioeconomic variables for now.
+
+The baseline SX results are interesting, especially the individual binary
+symptoms. The baseline SX makes sense, as one cannot have negative OLS at zero,
+not positive at 9, so that makes the distribution somewhat diagonal, creating a
+correlation. One could also argue that the more symptoms at baseline, the more
+one has to lose, so there's your correlation.
+
+![](2018-12-13-15-10-49.png)
+
+Now, it's a matter of putting those variables together in a model, to combine
+with the neural cluster averages.
+
 
 
 
