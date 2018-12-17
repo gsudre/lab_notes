@@ -74,20 +74,19 @@ job_name=NOSmelodic;
 mydir=/data/NCR_SBRB/baseline_prediction/;
 swarm_file=swarm.desc_${job_name};
 rm -rf $swarm_file;
-for f in `/bin/ls melodic_*_IC*_09212018.RData.gz`; do
+for f in `/bin/ls melodic_fancy_IC*12142018.RData.gz melodic_inter_IC*12142018.RData.gz`; do
     for nn in nonew_ ''; do
         for pp in None subjScale; do
             for target in OLS_inatt_slope OLS_HI_slope; do
-                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} 42 winsorize_$pp" >> $swarm_file;
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} 42 winsorize_$pp" >> $swarm_file;
                 for i in {1..250}; do
-                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} -${RANDOM} winsorize_$pp" >> $swarm_file;
+                    echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_${nn}${target} -${RANDOM} winsorize_$pp" >> $swarm_file;
                 done;
             done;
         done;
     done;
 done
-grep -v union $swarm_file > ${swarm_file}2;
-split -l 3000 ${swarm_file}2 ${job_name}_split;
+split -l 3000 ${swarm_file} ${job_name}_split;
 for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
@@ -488,6 +487,194 @@ suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
 ![](2018-12-11-11-46-27.png)
 ![](2018-12-11-11-47-22.png)
 
+# 2018-12-13 13:11:17
+
+Let's run some crappy domain descriptives.
+
+```bash
+mydir=~/data/baseline_prediction/;
+for f in cog_all_09242018.RData.gz geno3_prs_09192018.RData.gz \
+    social_09262018.RData.gz clinics_binary_sx_baseline_10022018.RData.gz \
+    adhd200_10042018.RData.gz; do
+    for target in OLS_inatt_slope OLS_HI_slope; do
+        echo ==== $f $target ====;
+        Rscript --vanilla ~/research_code/baseline_prediction/descriptives/generic.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ADHDNOS_nonew_${target} 42 winsorize_None;
+    done;
+done
+```
+
+Note that I'm only running that for the nonew subset, conforming to the previous
+results. I used script to output the results, and here are the main findings:
+
+```
+==== cog_all_09242018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 2 / 25"
+[1] "v_Raw_SS_total" "v_Raw_SSB"
+==== geno3_prs_09192018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 2 / 13"
+[1] "v_PROFILES.0.0001.profile" "v_PROFILES.0.0005.profile"
+==== geno3_prs_09192018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 1 / 13"
+[1] "v_PROFILES.0.00001.profile"
+==== social_09262018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 1 / 18"
+[1] "v_Priv_School"
+==== clinics_binary_sx_baseline_10022018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 8 / 8"
+[1] "v_SX_inatt"          "v_SX_HI"             "vCateg_diff.organ"  
+[4] "vCateg_avoids"       "vCateg_loses"        "vCateg_easily.distr"
+[7] "vCateg_forgetful"    "vCateg_waiting.turn"
+==== clinics_binary_sx_baseline_10022018.RData.gz OLS_HI_slope ====
+[1] "Variables at p<.05: 3 / 11"
+[1] "v_SX_HI"             "vCateg_fidgety"      "vCateg_waiting.turn"
+[1] "Variables at q<.05: 2 / 11"
+[1] "v_SX_HI"             "vCateg_waiting.turn"
+==== adhd200_10042018.RData.gz OLS_inatt_slope ====
+[1] "Variables at p<.05: 1 / 3"
+[1] "v_Age"
+[1] "Variables at q<.05: 1 / 3"
+[1] "v_Age"
+```
+
+I decided to report only the nominal p-values because I didn't want to restrict
+the number of variables we're using for FDR or Meff. If they're crappy in the
+end, the ML algorithm will likely throw it away. The results not listed did not
+have any nominal results. Also, I think we could probably get rid of the
+socioeconomic variables for now.
+
+The baseline SX results are interesting, especially the individual binary
+symptoms. The baseline SX makes sense, as one cannot have negative OLS at zero,
+not positive at 9, so that makes the distribution somewhat diagonal, creating a
+correlation. One could also argue that the more symptoms at baseline, the more
+one has to lose, so there's your correlation.
+
+![](2018-12-13-15-10-49.png)
+
+Now, it's a matter of putting those variables together in a model, to combine
+with the neural cluster averages.
+
+# 2018-12-14 09:37:15
+
+##melodic
+
+```bash
+myfile=melodic_NOSdescriptives.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls \
+    /data/NCR_SBRB/tmp/melodic_*IC*/ADHDNOS*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/melodic_*_IC*/ADHDNOS*_42_clusters.txt > result_files.txt;
+for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
+    collect_name=${root_file}_top_rnd_clusters.txt;
+    echo $collect_name;
+    if [ -e $collect_name ]; then
+        rm $collect_name;
+    fi;
+    for f in `ls ${root_file}*rnd*clusters.txt`; do
+        grep -v \# $f | head -n 1 >> $collect_name;
+    done
+done
+tar -zcvf melodic_ADHDNOS_top_rnd_clusters.tar.gz melodic_*_IC*/ADHDNOS*top_rnd_clusters.txt
+```
+
+```r
+res_fname = '~/tmp/melodic_NOSdescriptives.txt'
+out_file = '~/tmp/pvals_NOSmelodic.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 1]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if (!is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if (!is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+```
+
+Overall, every time there was a subjScale and None results, the subjScale
+clusters were bigger, but the actual p-value for None was smaller. So, let's
+focus on those for now. 
+
+But there might be something odd here, as all results are either
+ADHDNOS_nonew_OLS_HI with 40 voxels, or ADHDNOS_OLS_inatt for 56 voxels. Across
+all 7 ICs in fancy, but nothing in inter.
+
+
+```bash
+hg-02127244-lw0:tmp sudregp$ grep -B 1 "*" pvals_NOSmelodic.txt
+dti_ad_voxelwise_n272_09212018: ADHDNOS_nonew_OLS_inatt_slope_winsorize_None (248 perms)
+Cluster size: 41, p<0.012 *
+Cluster size: 31, p<0.044 *
+--
+dti_ad_voxelwise_n272_09212018: ADHDNOS_OLS_inatt_slope_winsorize_None (250 perms)
+Cluster size: 38, p<0.036 *
+--
+dti_rd_voxelwise_n272_09212018: ADHDNOS_nonew_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 92, p<0.004 **
+--
+dti_rd_voxelwise_n272_09212018: ADHDNOS_OLS_HI_slope_winsorize_None (249 perms)
+Cluster size: 87, p<0.012 *
+```
+
+It looks like the nonew results are stronger. Let's start doing scatterplots of those results then, both in structural and DTI results, while we wait for MELODIC.
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_None_42+orig
+3dmaskdump -mask /data/NCR_SBRB/baseline_prediction/mean_272_fa_skeleton_mask.nii.gz mycluster.nii > out.txt
+```
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+load('/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n272_09212018.RData.gz')
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+idx2 = df$diag_group != 'new_onset' & df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_inatt_slope)
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('ADHDNOS nonew AD272 inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
+```
 
 # 2018-12-17 15:14:56
 

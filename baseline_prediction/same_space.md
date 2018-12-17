@@ -613,3 +613,53 @@ for (n in 1:length(pipes)) {
     }
 }
 ```
+
+# 2018-12-14 10:12:15
+
+Well, there was an error in the code, so I had to redo all ICs...
+
+```bash
+pipe=fancy;
+cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica/dual
+for maskid in `cat ../../3min_clean.txt`; do
+    echo $maskid;
+    rm dumps/${maskid}_*.txt
+    for i in 37 24 57 4 54 1 2; do  # fancy
+    # for i in 17 8 7 11 31 12 2; do  # inter
+    # for i in 42 23 65 8 82 3 4; do  # union
+        3dmaskdump -mask ../../group_epi_mask_${pipe}.nii \
+            -o dumps/${maskid}_IC${i}_Z.txt dr_stage2_${maskid}_Z.nii.gz[${i}];
+    done;
+done
+```
+
+```r
+library(gdata)
+# assuming all fmri scans also have a mprage
+clin = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx', 'mprage')
+clin = clin[, c(1,4)]
+colnames(clin) = c('MRN', 'mask.id')
+pipes = c('inter', 'fancy', 'union')
+ics = list(c(17, 8, 7, 11, 31, 12, 2), c(37, 24, 57, 4, 54, 1, 2), c(42, 23, 65, 8, 82, 3, 4)) # same order as pipes!
+pheno = read.table('~/data/baseline_prediction/same_space/epi/3min_clean.txt')[, 1]
+for (n in 1:length(pipes)) {
+    mydir = sprintf('~/data/baseline_prediction/same_space/epi/groupmelodic_%s.ica/dual/dumps/', pipes[n])
+    junk = read.table(sprintf('%s/0691_IC%d_Z.txt', mydir, ics[[n]][1]))
+    nvox = nrow(junk)
+    for (m in ics[[n]]) {
+        fmri_data = matrix(nrow=length(pheno), ncol=nvox)
+        for (s in 1:nrow(fmri_data)) {
+            print(sprintf('%s %d %04d', pipes[n], m, pheno[s]))
+            fname = sprintf('%s/%04d_IC%d_Z.txt', mydir, pheno[s], m)
+            a = read.table(fname)
+            fmri_data[s, ] = a[, 4]
+        }
+        data = cbind(pheno, fmri_data)
+        cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
+        colnames(data) = cnames
+        data = merge(clin, data, by='mask.id')
+        save(data, file=sprintf('~/data/baseline_prediction/melodic_%s_IC%d_12142018.RData.gz', pipes[n], m),
+             compress=T)
+    }
+}
+```
