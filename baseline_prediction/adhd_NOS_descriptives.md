@@ -489,6 +489,137 @@ suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
 ![](2018-12-11-11-47-22.png)
 
 
+# 2018-12-17 15:14:56
+
+##melodic
+
+```bash
+myfile=melodic_NOSdescriptives.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls \
+    /data/NCR_SBRB/tmp/melodic_*_IC*12142018/ADHDNOS*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/melodic_*_IC*_12142018/ADHDNOS*_42_clusters.txt > result_files.txt;
+for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
+    collect_name=${root_file}_top_rnd_clusters.txt;
+    echo $collect_name;
+    if [ -e $collect_name ]; then
+        rm $collect_name;
+    fi;
+    for f in `ls ${root_file}*rnd*clusters.txt`; do
+        grep -v \# $f | head -n 1 >> $collect_name;
+    done
+done
+tar -zcvf melodic_ADHDNOS_top_rnd_clusters.tar.gz melodic_*_IC*_12142018/ADHDNOS*top_rnd_clusters.txt
+```
+
+```r
+res_fname = '~/tmp/melodic_NOSdescriptives.txt'
+out_file = '~/tmp/pvals_NOSmelodic.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 1]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if (!is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if (!is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+```
+
+For melodic our results using subjScale were actually better. 
+
+```bash
+hg-02127244-lw0:tmp sudregp$ grep -B 1 "*" pvals_NOSmelodic.txt | grep nonew
+melodic_fancy_IC37_12142018: ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale (249 perms)
+melodic_fancy_IC57_12142018: ADHDNOS_nonew_OLS_HI_slope_winsorize_None (250 perms)
+melodic_inter_IC11_12142018: ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale (249 perms)
+melodic_inter_IC2_12142018: ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale (248 perms)
+melodic_inter_IC31_12142018: ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale (250 perms)
+```
+
+Those networks are VAN, limbic, and DMN. Let's make the usual scatterplots.
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/melodic_inter_IC31_12142018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale_42+tlrc
+3dmaskdump -mask ~/data/baseline_prediction/same_space/epi/group_epi_mask_inter.nii mycluster.nii > out.txt
+```
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+load('/data/NCR_SBRB/baseline_prediction/melodic_inter_IC31_12142018.RData.gz')
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+idx2 = df$diag_group != 'new_onset' & df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_inatt_slope)
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('ADHDNOS inter IC 31 limbic inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
+```
+
+![](2018-12-17-16-06-39.png)
+![](2018-12-17-16-07-52.png)
+![](2018-12-17-16-09-04.png)
+
+And we should probably check out where in the brain they are, before setting them up for classification. I'm not going to make the 95 percentile masks we used in the paper for now, but we can have an idea of where the cluster is base don the pictures, and then compare to the actual networks in the Yeo paper to see if they make sense.
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/melodic_inter_IC31_12142018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale_42+tlrc
+3dcalc -a mycluster.nii -prefix res31.nii -overwrite -expr "amongst(a, 1)"
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/melodic_inter_IC2_12142018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale_42+tlrc
+3dcalc -a mycluster.nii -prefix res2.nii -overwrite -expr "amongst(a, 1)"
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/melodic_inter_IC11_12142018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_subjScale_42+tlrc
+3dcalc -a mycluster.nii -prefix res11.nii -overwrite -expr "amongst(a, 1)"
+```
+
+![](2018-12-17-16-25-34.png)
+![](2018-12-17-16-26-20.png)
+![](2018-12-17-16-27-21.png)
+
+We got a couple hard hits there. For DMN (IC2), we got LMFG, which is neat. But limbic (IC31) we got left ACC, quite inferior, and VAN (IC11) we got cerebellum. We coudl restrict it to DMN, so we'll see.
+
+
 
 # TODO
 * plot clusters in the brain
