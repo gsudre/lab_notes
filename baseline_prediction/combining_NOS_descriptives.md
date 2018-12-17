@@ -92,3 +92,41 @@ for (sx in c('HI', 'inatt')) {
 Yep, looking good! Just need to add MELODIC clusters later. But for now, we can
 start playing with data combination. Or, at least figure out the subjects we can
 use for testing.
+
+# 2018-12-17 16:50:21
+
+Let's add the MELODIC clusters.
+
+```r
+# struct
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/melodic_inter_IC31_12142018.RData.gz')
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+inatt_melodic_limbic = rowMeans(df[, x[idx]])
+# some cluster work in bash
+load('/data/NCR_SBRB/baseline_prediction/melodic_inter_IC2_12142018.RData.gz')
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+inatt_melodic_DMN = rowMeans(df[, x[idx]])
+# some cluster work in bash
+load('/data/NCR_SBRB/baseline_prediction/melodic_inter_IC11_12142018.RData.gz')
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+inatt_melodic_VAN = rowMeans(df[, x[idx]])
+melodic = cbind(df$MRN, inatt_melodic_limbic, inatt_melodic_DMN,
+                inatt_melodic_VAN)
+colnames(melodic)[1] = 'MRN'
+load('/data/NCR_SBRB/baseline_prediction/combined_descriptives_12122018.RData.gz')
+m = merge(data, melodic, by='MRN', all.x=T, all.y=T)
+data=m
+save(data, file='/data/NCR_SBRB/baseline_prediction/combined_descriptives_12172018.RData.gz', compressed=T)
+```
+
+I also re-ran the code ago and the regressions still look good!
