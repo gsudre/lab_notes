@@ -786,6 +786,9 @@ title(sprintf('ADHDNOS inter IC 31 limbic inatt, r=%.2f, p<%.2f', b$estimate, b$
 ```
 
 ![](2018-12-17-16-06-39.png)
+
+
+
 ![](2018-12-17-16-07-52.png)
 ![](2018-12-17-16-09-04.png)
 
@@ -806,7 +809,197 @@ And we should probably check out where in the brain they are, before setting the
 
 We got a couple hard hits there. For DMN (IC2), we got LMFG, which is neat. But limbic (IC31) we got left ACC, quite inferior, and VAN (IC11) we got cerebellum. We coudl restrict it to DMN, so we'll see.
 
+# 2018-12-19 14:39:43
+
+Philip asked me to re-run the results, but this time keeping the new_onset folks
+and also plotting NVs in the scatterplots. Let's do it
+
+## DTI
+
+```bash
+sudregp@HG-02070684-DM2:~/tmp$ grep -B 1 "*" pvals_NOSdti.txt | grep S_O -A 1
+dti_ad_voxelwise_n272_09212018: ADHDNOS_OLS_inatt_slope_winsorize_None (250 perms)
+dti_rd_voxelwise_n272_09212018: ADHDNOS_OLS_HI_slope_winsorize_None (249 perms)
+```
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_OLS_inatt_slope_winsorize_None_42+orig
+3dmaskdump -mask /data/NCR_SBRB/baseline_prediction/mean_272_fa_skeleton_mask.nii.gz mycluster.nii > out_AD_inatt.txt
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_rd_voxelwise_n272_09212018/ADHDNOS_OLS_HI_slope_winsorize_None_42+orig
+3dmaskdump -mask /data/NCR_SBRB/baseline_prediction/mean_272_fa_skeleton_mask.nii.gz mycluster.nii > out_RD_HI.txt
+```
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/dti_ad_voxelwise_n272_09212018.RData.gz')
+a = read.table('~/tmp/out_AD_inatt.txt')[,4]
+idx = which(a==1)
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+idx2 = df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_inatt_slope)
+par(mfrow=c(1,2))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('ADHDNOS AD272 inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+idx3 = df$DX == 'NV'
+points(df[idx3,]$OLS_inatt_slope, rowMeans(df[idx3, x[idx]]), pch=2)
+title('adding NVs as triangles')
+
+dev.new()
+load('/data/NCR_SBRB/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+a = read.table('~/tmp/out_RD_HI.txt')[,4]
+idx = which(a==1)
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+idx2 = df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_HI_slope)
+par(mfrow=c(1,2))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('ADHDNOS RD272 HI, r=%.2f, p<%.2f', b$estimate, b$p.value))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+idx3 = df$DX == 'NV'
+points(df[idx3,]$OLS_HI_slope, rowMeans(df[idx3, x[idx]]), pch=2)
+title('adding NVs as triangles')
+```
+
+![](2018-12-19-16-42-56.png)
+
+![](2018-12-19-16-44-43.png)
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_OLS_inatt_slope_winsorize_None_42+orig
+3dcalc -a mycluster.nii -prefix myres.nii -overwrite -expr "amongst(a, 1)"
+flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.nii.gz -out ad_inatt_inMNI152.nii.gz -applyxfm -init ~/data/aging_to_MNI152.mat -interp nearestneighbour
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_rd_voxelwise_n272_09212018/ADHDNOS_OLS_HI_slope_winsorize_None_42+orig
+3dcalc -a mycluster.nii -prefix myres.nii -overwrite -expr "amongst(a, 1)"
+flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.nii.gz -out rd_HI_inMNI152.nii.gz -applyxfm -init ~/data/aging_to_MNI152.mat -interp nearestneighbour
+
+# just to get the COM for labeling
+3dclust -NN1 1 -orient LPI ad_inatt_inMNI152.nii.gz
+3dclust -NN1 1 -orient LPI rd_HI_inMNI152.nii.gz
+```
+
+inattention (AD):
+![](2018-12-19-16-55-03.png)
+
+HI (RD):
+![](2018-12-19-16-56-24.png)
+
+## structural
+
+```bash
+sudregp@HG-02070684-DM2:~/tmp$ grep -B 1 "*" pvals_NOSstruct.txt | grep S_O | grep None
+struct_area_11142018_260timeDiff12mo (LH): ADHDNOS_OLS_inatt_slope_winsorize_None (248 perms)
+struct_thickness_11142018_260timeDiff12mo (LH): ADHDNOS_OLS_inatt_slope_winsorize_None (249 perms)
+struct_volume_11142018_260timeDiff12mo (RH): ADHDNOS_OLS_HI_slope_winsorize_None (249 perms)
+struct_volume_11142018_260timeDiff12mo (LH): ADHDNOS_OLS_inatt_slope_winsorize_None (248 perms)
+struct_volume_11142018_260timeDiff12mo (RH): ADHDNOS_OLS_inatt_slope_winsorize_None (248 perms)
+```
+
+The None results were stronger overall. Like before, we focus on volume. So, we
+do:
+
+```bash
+awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_volume_11142018_260timeDiff12mo/ADHDNOS_OLS_HI_slope_winsorize_None_42_rh_ClstMsk_e1_a1.0.niml.dset > vol_HI_rh.txt
+awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_volume_11142018_260timeDiff12mo/ADHDNOS_OLS_inatt_slope_winsorize_None_42_lh_ClstMsk_e1_a1.0.niml.dset > vol_inatt_lh.txt
+awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_volume_11142018_260timeDiff12mo/ADHDNOS_OLS_inatt_slope_winsorize_None_42_rh_ClstMsk_e1_a1.0.niml.dset > vol_inatt_rh.txt
+```
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+df = merge(clin, data, by='MRN')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('~/tmp/vol_HI_rh.txt')[,1]
+idx = which(a==1)
+idx2 = df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_HI_slope)
+par(mfrow=c(1,2))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('volume RH HI, r=%.2f, p<%.2f', b$estimate, b$p.value))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+idx3 = df$DX == 'NV'
+points(df[idx3,]$OLS_HI_slope, rowMeans(df[idx3, x[idx]]), pch=2)
+title('adding NVs as triangles')
+dev.new()
+x = colnames(df)[grepl(pattern = '^v_lh', colnames(df))]
+a = read.table('~/tmp/vol_inatt_lh.txt')[,1]
+idx = which(a==1)
+idx2 = df$DX != 'NV'
+tgt = winsorize(df[idx2,]$OLS_inatt_slope)
+par(mfrow=c(2,2))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('volume LH inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+idx3 = df$DX == 'NV'
+points(df[idx3,]$OLS_inatt_slope, rowMeans(df[idx3, x[idx]]), pch=2)
+title('adding NVs as triangles')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('~/tmp/vol_inatt_rh.txt')[,1]
+idx = which(a==1)
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
+title(sprintf('volume RH inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
+plot(tgt, rowMeans(df[idx2, x[idx]]))
+idx3 = df$DX == 'NV'
+points(df[idx3,]$OLS_inatt_slope, rowMeans(df[idx3, x[idx]]), pch=2)
+title('adding NVs as triangles')
+```
+
+![](2018-12-19-17-01-40.png)
+![](2018-12-19-17-04-42.png)
+
+The RH inatt result is clearly driven by outliers, so let's not go through with it.
+
+```bash
+awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/vol_HI_rh.txt > rh_HI.txt
+awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/vol_inatt_lh.txt > lh_inatt.txt
+suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
+```
+
+![](2018-12-19-17-22-02.png)
+
+![](2018-12-19-17-22-58.png)
+
+
+## MELODIC
+
+```bash
+sudregp@HG-02070684-DM2:~/tmp$ grep -B 1 "*" pvals_NOSmelodic.txt | grep 1214 | grep S_O | grep subjS
+melodic_fancy_IC24_12142018: ADHDNOS_OLS_inatt_slope_winsorize_subjScale (250 perms)
+melodic_fancy_IC37_12142018: ADHDNOS_OLS_inatt_slope_winsorize_subjScale (248 perms)
+melodic_fancy_IC54_12142018: ADHDNOS_OLS_inatt_slope_winsorize_subjScale (250 perms)
+melodic_inter_IC31_12142018: ADHDNOS_OLS_inatt_slope_winsorize_subjScale (250 perms)
+```
+
+The subjScale results were stronger overall. Now I'm getting 3 networks with the
+fancy mask: 24 (somatomotor), 37 (visual), and 54 (limbic). Not great... The
+None results also didn't have any DMN in it. The only way to get it is excluding
+new_onset...
 
 
 # TODO
-* plot clusters in the brain
+ * plot resting state/melodic results even though they're in crappy networks?
