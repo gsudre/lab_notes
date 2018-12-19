@@ -59,6 +59,7 @@ done < ~/tmp/finished.txt
 When all done, run something like this in biowulf for cleanup:
 
 ```bash
+cd ~/freesurfer_logs
 while read s; do
     echo $s;
     mv ${s}_freesurfer.log old/;
@@ -110,4 +111,28 @@ for meas in ['area', 'volume', 'thickness']:
         r("save(data, file='%s.gzip', compress=TRUE)" % fname)
 ```
 
+# 2018-12-18 10:28:32
 
+## Generating QC pictures
+
+We use the ENIGMA scripts to generate the Freesurfer QC pictures. There are
+internal and external pictures. For external, it's simple:
+
+```bash
+for i in {2404..2435}; do echo $i >> ~/tmp/fs_ids.txt; done
+cd /Volumes/Shaw/segmentation_qc/enigma_external_freesurfer5.3/3t/
+bash ~/enigma/fsqc_noLowRes.sh ~/tmp/fs_ids.txt
+```
+
+For internal, we need Matlab. Then, we run something like this:
+
+```matlab
+addpath(genpath('~/enigma/QC_ENIGMA/'))
+a = dlmread('~/tmp/fs_ids.txt');
+FS_directory = '/Volumes/Shaw/freesurfer5.3_subjects/';
+QC_output_directory='/Volumes/Shaw/segmentation_qc/enigma_internal_freesurfer5.3/3t/';
+for x = 1:size(a,1)
+b=sprintf('%04d', a(x));
+func_make_corticalpngs_ENIGMA_QC_erasmus(QC_output_directory, b, [FS_directory,'/',b,'/mri/orig.mgz'], [FS_directory,'/',b,'/mri/aparc+aseg.mgz']);
+end
+```
