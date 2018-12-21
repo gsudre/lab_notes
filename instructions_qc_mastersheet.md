@@ -25,9 +25,8 @@ mask ids we currently have, and the script will take care of letting you know
 what it cannot find to have DTI:
 
 ```bash
-# in caterpie
-/bin/ls -1 /mnt/shaw/data_by_maskID/ | grep -E "^....$" > ~/tmp/maskids.txt;
-python ~/research_code/dti/get_dti_motion.py ~/tmp/maskids.txt /mnt/shaw/
+/bin/ls -1 /Volumes/Shaw/MR_data_by_maskid/ | grep -E "^....$" > ~/tmp/maskids.txt;
+python ~/research_code/dti/get_dti_motion.py ~/tmp/maskids.txt /Volumes/Shaw/
 ```
 
 Note that the first argument to the script is the list of mask ids. All we do
@@ -40,9 +39,8 @@ estimates. Since this is a crude estimate, we won't skeletonize it, and just
 create a mask based on FA values, to be used over all other properties.
 
 ```bash
-# still in caterpie
-outputDir=/mnt/shaw/dti_subjectSpace_properties
-maskidDir=/mnt/shaw/data_by_maskID/
+outputDir=/Volumes/Shaw/dti_subjectSpace_properties
+maskidDir=/Volumes/Shaw/MR_data_by_maskid/
 maskidFile=~/tmp/maskids.txt
 if [ ! -d $outputDir ]; then mkdir $outputDir; fi;
 cd $outputDir
@@ -79,10 +77,10 @@ Finally, to gather the fMRI parameters we do (using the same list of all mask
 ids used for DTI):
 
 ```bash
-# again in caterpie
+# need AFNI!
 echo "maskid,totalTRs,usedTRs,enormGoodTRs" > ~/tmp/good_trs.csv;
 while read s; do
-    mydir=/mnt/shaw/data_by_maskID/${s}/afni/${s}.rest.subjectSpace.results;
+    mydir=/Volumes/Shaw/MR_data_by_maskid/${s}/afni/${s}.rest.subjectSpace.results;
     if [ -e ${mydir}/errts.${s}.fanaticor+orig.HEAD ]; then
         echo $s;
         used=`1d_tool.py -infile ${mydir}//X.xmat.1D -show_rows_cols -verb 0 | cut -d " " -f 1 -`;
