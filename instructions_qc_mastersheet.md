@@ -5,14 +5,14 @@
 Start with a simple Query in Labmatrix for Scans of type = MPRAGE. Output all
 columns and save the results as CSV. 
 
-![](2018-10-26-15-25-53.png)
+![](images/2018-10-26-15-25-53.png)
 
 Next, we gather the Freesurfer cortical scores from Labmatrix. Again, a simple
 Query of QualityControl custom
 data, with subsets of Type = Freesurfer5.3_ext_avg OR Type =
 Freesurfer5.3_int_avg. Save the results as CSV again.
 
-![](2018-10-26-15-23-59.png)
+![](images/2018-10-26-15-23-59.png)
 
 ## DTI
 For DTI, we need to run get_dti_movement.py to get all variables for us. They
