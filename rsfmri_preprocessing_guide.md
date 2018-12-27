@@ -110,6 +110,83 @@ swarm -f swarm.ss -g 4 --time 4:00:00 --partition quick --logdir trash \
 
 The last stage is to figure out who finished properly and needs to be copied
 back. To do that, we need to check for the final files, and also for
-alignment...
+alignment.
 
-REMEMBER TO COPY BACK SUMA FILES AS WELL!!!
+```bash
+net_dir=/scratch/${USER}/rsfmri
+while read m; do
+    if [ -e ${net_dir}/${m}/${m}.rest.subjectSpace.results/errts.${m}.fanaticor+orig.HEAD ]; then
+        echo $m >> ~/tmp/need_qc.txt;
+    fi;
+done < ~/tmp/maskids.txt
+```
+
+We could also run the negative of the command above to figure out which mask ids
+didn't run and check the output file inside the mask id folder for the reasons.
+Most of the time:
+
+* there are rest runs without enough TRs to even get started (e.g. started and
+  stoped the sequence fast); OR
+* after censoring outlier and motion TRs, there weren't enough TRs left for the
+  deconvolution procedure
+  
+Check the log and update the tracker spreadsheet accordingly. You might be able
+to recover from the first problem above by just renaming the bad rest run and
+re-running the preprocessing. For example:
+
+```bash
+m=2441;
+cd /scratch/${USER}/rsfmri/${m}/
+rm *subjectSpace*
+3drename rest1+orig ignore_rest1
+bash ~/research_code/fmri/run_resting_afni_proc_subjectSpace.sh ${m}
+```
+
+But not having enough TRs for the deconvolution can only be fixed by relaxing
+our censoring limits...
+
+Then we prepare the alignment QC images:
+
+```bash
+net_dir=/scratch/${USER}/rsfmri
+mkdir ${net_dir}/resting_alignment/
+Xvfb :88 -screen 0 1024x768x24 &
+while read s; do
+  cd ${net_dir}/${s}/${s}.rest.subjectSpace.results;
+  \@snapshot_volreg ${s}_SurfVol_al_junk+orig vr_base_min_outlier+orig align 88;
+  mv -v align.jpg ${net_dir}/resting_alignment/${s}.jpg;
+done < ~/tmp/need_qc.txt
+```
+
+If there are mask ids that didn't align properly, we need to check which is the
+best alignment to go with next:
+
+```bash
+net_dir=/scratch/${USER}/rsfmri
+while read s; do
+  cd ${net_dir}/${s}/${s}.rest.subjectSpace.results;
+  uber_align_test.py -no_gui -save_script align.test  \
+     -uvar anat ${s}_SurfVol_al_junk+orig                      \
+     -uvar epi  vr_base_min_outlier+orig                     \
+     -uvar epi_base 0                                 \
+     -uvar anat_has_skull no                  \
+     -uvar align_centers yes                          \
+     -uvar giant_move yes
+  ./align.test;
+  cd align.results;
+  for f in `ls anat*HEAD`; do
+      \@snapshot_volreg $f epi+orig ${s}_${f};
+      mv *jpg net_dir=/scratch/${USER}/resting_alignment/;
+  done;
+done < ~/tmp/need_realign.txt
+```
+
+REMEMBER TO COPY BACK SUMA FILES, ALIGNMENT QC IMAGES, AS WELL!!!
+
+TODO
+
+* check how many scans all mask ids have and their status of true and false
+* visual QC on all last scans
+* re-align if necessary
+* re-run all QC metrics for all IDs
+* check who needs to be called for rsFMRI test set
