@@ -53,7 +53,7 @@ interactive node.
 for m in `cat ~/tmp/maskids.txt`; do
    echo "bash ~/research_code/fmri/convert_sorted_rest_files.sh ${m} /data/NCR_SBRB/tmp/dcm_mprage /data/NCR_SBRB/tmp/dcm_rsfmri/ /scratch/${USER}/rsfmri/" >> swarm.convert
 done
-swarm -f swarm.convert -g 4 -t 2 --time 30:00 --partition quick --logdir trash --job-name afni_convert -m afni
+swarm -f swarm.convert -g 4 -t 2 --time 30:00 --partition quick --logdir trash_convert --job-name afni_convert -m afni
 ```
 
 And after this much work, let's go ahead and copy back to the shared drive all
@@ -73,10 +73,10 @@ When everything is converted, it's time to update the QC spreadsheet with the
 number of resting files converted.
 
 ```bash
-echo maskid,converted > ~/tmp/converted.txt
+echo maskid,converted > ~/tmp/converted.csv
 for m in `cat ~/tmp/maskids.txt`; do
    nconvert=`/bin/ls -1 /mnt/shaw/MR_data_by_maskid/${m}/afni/rest*HEAD | wc -l`;
-   echo ${m},${nconvert} >> ~/tmp/converted.txt;
+   echo ${m},${nconvert} >> ~/tmp/converted.csv;
 done
 ```
 
@@ -104,7 +104,7 @@ rm swarm.ss
 while read m; do 
     echo "source /usr/local/apps/freesurfer/5.3.0/SetUpFreeSurfer.sh; bash ~/research_code/fmri/run_resting_afni_proc_subjectSpace.sh ${m}" >> swarm.ss;
 done < ~/tmp/maskids.txt
-swarm -f swarm.ss -g 4 --time 4:00:00 --partition quick --logdir trash \
+swarm -f swarm.ss -g 4 --time 4:00:00 --partition quick --logdir trash_ss \
     --job-name afni_proc -m afni,freesurfer/5.3.0
 ```
 
@@ -158,28 +158,31 @@ while read s; do
 done < ~/tmp/need_qc.txt
 ```
 
-If there are mask ids that didn't align properly, we need to check which is the
-best alignment to go with next:
+To do the visual QC in biowulf, use eog. Look here for guidance on how to
+interpret alignment:
+https://afni.nimh.nih.gov/pub/dist/doc/htmldoc/tutorials/auto_image/auto_@snapshot_volreg.html#tut-auto-snapshot-volreg
+
 
 ```bash
-net_dir=/scratch/${USER}/rsfmri
-while read s; do
-  cd ${net_dir}/${s}/${s}.rest.subjectSpace.results;
-  uber_align_test.py -no_gui -save_script align.test  \
-     -uvar anat ${s}_SurfVol_al_junk+orig                      \
-     -uvar epi  vr_base_min_outlier+orig                     \
-     -uvar epi_base 0                                 \
-     -uvar anat_has_skull no                  \
-     -uvar align_centers yes                          \
-     -uvar giant_move yes
-  ./align.test;
-  cd align.results;
-  for f in `ls anat*HEAD`; do
-      \@snapshot_volreg $f epi+orig ${s}_${f};
-      mv *jpg net_dir=/scratch/${USER}/resting_alignment/;
-  done;
-done < ~/tmp/need_realign.txt
+cd /scratch/${USER}/rsfmri/resting_alignment/
+eog ????.jpg
 ```
+
+If there are mask ids that didn't align properly, we need to check which is the
+best alignment to go with next. But in fact, we should always check if there is
+a better alignment than the one we used. So, we can swarm the script to make the
+other options:
+
+```bash
+#biowulf
+rm swarm.uber
+while read m; do 
+    echo "bash ~/research_code/fmri/make_alignment_options.sh ${m} /scratch/sudregp/rsfmri" >> swarm.uber;
+done < ~/tmp/maskids.txt
+swarm -f swarm.uber -g 4 --time 4:00:00 --partition quick --logdir trash_uber \
+    --job-name afni_uber -m afni
+```
+
 
 REMEMBER TO COPY BACK SUMA FILES, ALIGNMENT QC IMAGES, AS WELL!!!
 
