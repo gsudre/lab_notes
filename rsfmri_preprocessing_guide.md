@@ -50,6 +50,7 @@ can construct the swarm file, and then use each line individually in an
 interactive node.
 
 ```bash
+rm swarm.convert
 for m in `cat ~/tmp/maskids.txt`; do
    echo "bash ~/research_code/fmri/convert_sorted_rest_files.sh ${m} /data/NCR_SBRB/tmp/dcm_mprage /data/NCR_SBRB/tmp/dcm_rsfmri/ /scratch/${USER}/rsfmri/" >> swarm.convert
 done
@@ -137,7 +138,7 @@ re-running the preprocessing. For example:
 ```bash
 m=2441;
 cd /scratch/${USER}/rsfmri/${m}/
-rm *subjectSpace*
+rm -rf *subjectSpace*
 3drename rest1+orig ignore_rest1
 bash ~/research_code/fmri/run_resting_afni_proc_subjectSpace.sh ${m}
 ```
