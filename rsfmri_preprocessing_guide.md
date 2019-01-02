@@ -146,6 +146,7 @@ bash ~/research_code/fmri/run_resting_afni_proc_subjectSpace.sh ${m}
 But not having enough TRs for the deconvolution can only be fixed by relaxing
 our censoring limits...
 
+Then, we compute osme of the metrics that will determine 
 Then we prepare the alignment QC images:
 
 ```bash
