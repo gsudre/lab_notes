@@ -56,8 +56,7 @@ if we use the actual model we used in finding the voxels?
 
 ```r
 library(nlme)
-library(gdata
-)
+library(gdata)
 load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
 struct = merge(struct, data, by='MRN')
 mprage = read.xls('/data/NCR_SBRB/baseline_prediction/long_scans_08072018.xlsx',
@@ -209,13 +208,378 @@ For HI it gets a bit more complicated:
 -0.7769565 -0.1767975 
 ```
 
-In other words,
-> dim(imaging)
-[1] 162  44
-> sum(imaging$OLS_inatt_slope>=0)
-[1] 68
-> sum(imaging$OLS_HI_slope>=0)
-[1] 42
-> 
+And we do have 162 people in this pool (SX >= 3 and no new_onset).
+
+# 2019-01-07 09:57:28
+
+Philip suggested I should go with inatt marked improvent at 0.33 (1 symtom every
+three years). Deterioration anything over zero. And mild improvement 0 to 0.33.
+For HI, I could have marked improvement at 0.5 (1 symtom every 2 years). Mild at
+zero to 0.5, and deterioration anything above zero.
+
+Let's see how many participants I get using those cut-offs:
 
 ```
+> sum(imaging$OLS_HI_slope <= -.5)
+[1] 83
+> sum(imaging$OLS_HI_slope > -.5 & imaging$OLS_HI_slope <= 0)
+[1] 46
+> sum(imaging$OLS_HI_slope > 0)
+[1] 33
+> sum(imaging$OLS_inatt_slope <= -.33)
+[1] 60
+> sum(imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0)
+[1] 39
+> sum(imaging$OLS_inatt_slope > 0)
+[1] 63
+```
+
+The splits in HI are not great, and will also change based on different imaging
+modalities, but we have to go with what we have.
+
+## struct inattention
+
+```
+> imaging[imaging$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+> imaging[imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+> imaging[imaging$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+> imaging$OLS_inatt_categ = as.factor(imaging$OLS_inatt_categ)
+> table(imaging$OLS_inatt_categ)
+ deter marked   mild 
+    63     60     39 
+```
+
+So, a few things I learned:
+
+* (of course) scaling the independent variable doesn't change the model quality, only the
+  interpretation of the coefficients
+* changing the reference level for the factor doesn;t change the relationships
+  or quality of the model; just the information that gets output.
+* like in a lmfit, adding more independent variables changes how goodness of the
+  model, but the coefficients and their significance of other variables doesn't
+  change as much (of course, it depends on how correlated the new variables are
+  to old ones). But a good approach could be starting with all the variables we
+  used in selecting the voxels, and then trim it down to just the significant
+  bits for the final model.
+* it might be better to scale the brain variables because the model
+  interpretation is based on a one-unit increase. One unit in a scaled variable
+  equals one standard deviation, which is more meaningful than one FA, for
+  example. 
+
+```r
+library(gdata)
+library(nnet)
+
+load('/data/NCR_SBRB/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset' & df$DX != 'NV'
+idx2 = !is.na(df$inatt_vol_lh) | !is.na(df$inatt_AD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging = df[idx & idx2,]
+idx = df$diag_group != 'new_onset' & df$DX != 'NV'
+idx2 = !is.na(df$HI_vol_rh) | !is.na(df$HI_RD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging = df[idx & idx2,]
+imaging[imaging$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+imaging[imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+imaging[imaging$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+imaging$OLS_inatt_categ = as.factor(imaging$OLS_inatt_categ)
+imaging$OLS_inatt_categ = relevel(imaging$OLS_inatt_categ, ref='mild')
+
+load('/data/NCR_SBRB/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset' & df$DX != 'NV'
+struct = df[!is.na(df$HI_vol_rh) & idx,]
+load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+struct = merge(struct, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('/data/NCR_SBRB/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+struct = merge(struct, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('/data/NCR_SBRB/baseline_prediction/master_qc.csv')
+struct = merge(struct, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(struct, imaging, by='MRN')
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+fit2 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, na.action=na.omit)
+z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
+p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
+rr2 = exp(coef(fit2))
+pp2 = fitted(fit2)
+print(p1)
+print(p2)
+print(fit1)
+print(fit2)
+print(rr1)
+print(rr2)
+```
+
+```
+> print(p1)
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter    0.3828907             0.2333736   0.2604044        0.4003971          0.3339381             0.3739630             0.5228205 0.6061446
+marked   0.1018484             0.0548929   0.1381211        0.1536405          0.3888484             0.7775766             0.6703084 0.6208475
+> print(p2)
+       (Intercept) scale(inatt_vol_lh.x)
+deter   0.04058375            0.17085696
+marked  0.38821970            0.07587068
+> print(fit1)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x) + 
+    age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + 
+    int_avg_freesurfer5.3 + mprage_QC, data = df, na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3  mprage_QC
+deter     3.866763            -0.3087101  -0.9746556       0.03787411          0.5063154             0.6252584             0.4661391 -0.2744336
+marked    7.295847             0.4806992  -1.2774435       0.06239427         -0.4437234            -0.2108567            -0.3215006  0.2800994
+
+Residual Deviance: 279.0317 
+AIC: 311.0317 
+> print(fit2)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, 
+    na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x)
+deter    0.4423328            -0.3222614
+marked   0.1966899             0.4105336
+
+Residual Deviance: 294.0507 
+AIC: 302.0507 
+> print(rr1)
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter     47.78743             0.7343936   0.3773223         1.038600          1.6591666             1.8687287             1.5938286 0.7600025
+marked  1474.16557             1.6172047   0.2787490         1.064382          0.6416429             0.8098901             0.7250602 1.3232614
+> print(rr2)
+       (Intercept) scale(inatt_vol_lh.x)
+deter     1.556334             0.7245088
+marked    1.217367             1.5076220
+
+```
+
+I'd have expected the brain variable to be more significant. It's trending, but
+not there yet. Likely because the significance we got in the regression didn't
+transfer to the categorical model. We should also put in the results of a
+similar model, but using the regressions:
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+library(nlme)
+df$wInatt = winsorize(df$OLS_inatt_slope.x)
+fm = as.formula("wInatt ~ inatt_vol_lh.x + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC + age_at_scan + I(age_at_scan^2)")
+fit3 = lme(fm, random=~1|nuclearFamID.x, data=df)
+p3 = predict(fit3)
+m = mean(df$wInatt)
+fit4 = lm(wInatt ~ inatt_vol_lh.x, data=df)
+p4 = predict(fit4)
+```
+
+```
+> mean(abs(df$wInatt - p3))
+[1] 0.4527394
+> mean(abs(df$wInatt - p4))
+[1] 0.4709515
+> mean(abs(df$wInatt - m))
+[1] 0.4983164
+```
+
+So, what does it all mean?
+
+* The models that predict inatt winsorized OLS performs slightly better than
+  chance (i.e. using the mean for prediction). Still not great though, with an
+  MAE of .45 for the full model, and .47 for the model that uses only brain
+  data.
+* When using the categories, the model with just brain data performs better. It
+  was not significant (alpha = .05) in either one, though.
+* Interpreting the coefficients in the best model, a one-unit increase in the
+  volume of the left hemisphere cluster variable (i.e. increase by 1 SD) is
+  associated with an increase in the log odds of deteriorating vs mild
+  improvement in the amount of .17. That one-unit increase is also associated
+  with a .08 increase in the log odds of a marked improvement vs mild
+  improvement.
+* In terms of relative risk ratio, a one-unit increase in the the volume of that
+  brain cluster yields a relative risk ratio of .72 for deteriorating vs. mild
+  improvement. The relative risk ratio for a one-unit increase is 1.51 for
+  marked improvement vs. mild improvement.
+* In other words, the odds of marked improvement, compared to just mild
+  improvement, is 1.5 times higher for every 1 SD we increase in that brain
+  region. However, it's not really significant.
+* We can also look at a plot of the predicted probabilities of being in each
+  category, given the brain volume:
+
+```r
+a = cbind(pp2, df$inatt_vol_lh.x)
+colnames(a)[4] = 'brain'
+lpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
+ggplot(lpp, aes(x=brain, y=probability, color=variable)) + geom_line()
+```
+
+![](2019-01-07-15-21-30.png)
+
+So, it doesn't look great overall. I know these are probabilities, but I'd
+expect at some point for it to be more likely to be in the mild group. At least
+it increases in the middle and not in the extremes, which I guess it;s somewhat
+expected given how we found the brain clusters.
+
+Let's take a look at the HI cluster now.
+
+## struct HI
+
+```r
+imaging[imaging$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+imaging[imaging$OLS_HI_slope > -.5 & imaging$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+imaging[imaging$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+imaging$OLS_HI_categ = as.factor(imaging$OLS_HI_categ)
+imaging$OLS_HI_categ = relevel(imaging$OLS_HI_categ, ref='mild')
+
+df = merge(struct, imaging, by='MRN')
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+fit2 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x), data = df, na.action=na.omit)
+z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
+p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
+rr2 = exp(coef(fit2))
+pp2 = fitted(fit2)
+print(p1)
+print(p2)
+print(fit1)
+print(fit2)
+print(rr1)
+print(rr2)
+```
+
+```
+> print(p1)
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter    0.3828907             0.2333736   0.2604044        0.4003971          0.3339381             0.3739630             0.5228205 0.6061446
+marked   0.1018484             0.0548929   0.1381211        0.1536405          0.3888484             0.7775766             0.6703084 0.6208475
+> print(p2)
+       (Intercept) scale(inatt_vol_lh.x)
+deter   0.04058375            0.17085696
+marked  0.38821970            0.07587068
+> print(fit1)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x) + 
+    age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + 
+    int_avg_freesurfer5.3 + mprage_QC, data = df, na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3  mprage_QC
+deter     3.866763            -0.3087101  -0.9746556       0.03787411          0.5063154             0.6252584             0.4661391 -0.2744336
+marked    7.295847             0.4806992  -1.2774435       0.06239427         -0.4437234            -0.2108567            -0.3215006  0.2800994
+
+Residual Deviance: 279.0317 
+AIC: 311.0317 
+> print(fit2)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, 
+    na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x)
+deter    0.4423328            -0.3222614
+marked   0.1966899             0.4105336
+
+Residual Deviance: 294.0507 
+AIC: 302.0507 
+> print(rr1)
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter     47.78743             0.7343936   0.3773223         1.038600          1.6591666             1.8687287             1.5938286 0.7600025
+marked  1474.16557             1.6172047   0.2787490         1.064382          0.6416429             0.8098901             0.7250602 1.3232614
+> print(rr2)
+       (Intercept) scale(inatt_vol_lh.x)
+deter     1.556334             0.7245088
+marked    1.217367             1.5076220
+
+```
+
+I'd have expected the brain variable to be more significant. It's trending, but
+not there yet. Likely because the significance we got in the regression didn't
+transfer to the categorical model. We should also put in the results of a
+similar model, but using the regressions:
+
+```r
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+library(nlme)
+df$wInatt = winsorize(df$OLS_inatt_slope.x)
+fm = as.formula("wInatt ~ inatt_vol_lh.x + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC + age_at_scan + I(age_at_scan^2)")
+fit3 = lme(fm, random=~1|nuclearFamID.x, data=df)
+p3 = predict(fit3)
+m = mean(df$wInatt)
+fit4 = lm(wInatt ~ inatt_vol_lh.x, data=df)
+p4 = predict(fit4)
+```
+
+```
+> mean(abs(df$wInatt - p3))
+[1] 0.4527394
+> mean(abs(df$wInatt - p4))
+[1] 0.4709515
+> mean(abs(df$wInatt - m))
+[1] 0.4983164
+```
+
+So, what does it all mean?
+
+* The models that predict inatt winsorized OLS performs slightly better than
+  chance (i.e. using the mean for prediction). Still not great though, with an
+  MAE of .45 for the full model, and .47 for the model that uses only brain
+  data.
+* When using the categories, the model with just brain data performs better. It
+  was not significant (alpha = .05) in either one, though.
+* Interpreting the coefficients in the best model, a one-unit increase in the
+  volume of the left hemisphere cluster variable (i.e. increase by 1 SD) is
+  associated with an increase in the log odds of deteriorating vs mild
+  improvement in the amount of .17. That one-unit increase is also associated
+  with a .08 increase in the log odds of a marked improvement vs mild
+  improvement.
+* In terms of relative risk ratio, a one-unit increase in the the volume of that
+  brain cluster yields a relative risk ratio of .72 for deteriorating vs. mild
+  improvement. The relative risk ratio for a one-unit increase is 1.51 for
+  marked improvement vs. mild improvement.
+* In other words, the odds of marked improvement, compared to just mild
+  improvement, is 1.5 times higher for every 1 SD we increase in that brain
+  region. However, it's not really significant.
+* We can also look at a plot of the predicted probabilities of being in each
+  category, given the brain volume:
+
+```r
+a = cbind(pp2, df$inatt_vol_lh.x)
+colnames(a)[4] = 'brain'
+lpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
+ggplot(lpp, aes(x=brain, y=probability, color=variable)) + geom_line()
+```
+
+![](2019-01-07-15-21-30.png)
+
+So, it doesn't look great overall. I know these are probabilities, but I'd
+expect at some point for it to be more likely to be in the mild group. At least
+it increases in the middle and not in the extremes, which I guess it;s somewhat
+expected given how we found the brain clusters.
+
+Let's take a look at the HI cluster now.
+
+# 
