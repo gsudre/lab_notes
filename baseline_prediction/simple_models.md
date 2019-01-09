@@ -580,6 +580,149 @@ expect at some point for it to be more likely to be in the mild group. At least
 it increases in the middle and not in the extremes, which I guess it;s somewhat
 expected given how we found the brain clusters.
 
-Let's take a look at the HI cluster now.
+# 2019-01-09 14:36:29
 
-# 
+After chatting with Philip, it makes sense to use the NVs here for contrast. So,
+let's redo the whole group contrast analysis and see what we get (we can keep
+the regression the same way, with only SX >= 3).
+
+```r
+library(gdata)
+library(nnet)
+
+load('/data/NCR_SBRB/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+idx2 = !is.na(df$inatt_vol_lh) | !is.na(df$inatt_AD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging = df[idx & idx2,]
+imaging[imaging$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+imaging[imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+imaging[imaging$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+imaging[imaging$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+imaging$OLS_inatt_categ = as.factor(imaging$OLS_inatt_categ)
+imaging$OLS_inatt_categ = relevel(imaging$OLS_inatt_categ, ref='NV')
+
+load('/data/NCR_SBRB/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+struct = df[!is.na(df$HI_vol_rh) & idx,]
+load('/data/NCR_SBRB/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+struct = merge(struct, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('/data/NCR_SBRB/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+struct = merge(struct, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('/data/NCR_SBRB/baseline_prediction/master_qc.csv')
+struct = merge(struct, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(struct, imaging, by='MRN')
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+fit2 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, na.action=na.omit)
+z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
+p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
+rr2 = exp(coef(fit2))
+pp2 = fitted(fit2)
+print(p1)
+print(p2)
+print(fit1)
+print(fit2)
+print(rr1)
+print(rr2)
+```
+
+```
+> print(p1)
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter  0.022533183            0.04738121  0.41395270       0.24891252        0.002623146             0.1023966            0.01002034 0.7713876
+marked 0.337080723            0.02818612  0.93171828       0.89479522        0.494204426             0.8607885            0.27814406 0.4239574
+mild   0.006545162            0.60732068  0.05893088       0.06125219        0.101269117             0.6581011            0.12028105 0.8247601
+> print(p2)
+        (Intercept) scale(inatt_vol_lh.x)
+deter  8.712702e-04            0.09716676
+marked 9.768048e-06            0.01820195
+mild   2.037821e-07            0.94229659
+> print(fit1)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x) + 
+    age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + 
+    int_avg_freesurfer5.3 + mprage_QC, data = df, na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3  mprage_QC
+deter    -6.899292            -0.4151225  0.46099773      -0.03412653          1.2462371            0.87482698             1.4453837 -0.1236049
+marked   -2.875338             0.4059156  0.04827447      -0.00376367          0.2702481            0.09481253             0.6029639  0.3579345
+mild    -10.399575            -0.1157071  1.36308372      -0.06779776          0.7354048            0.26550164             0.9610721  0.1064069
+
+Residual Deviance: 583.6821 
+AIC: 631.6821 
+> print(fit2)
+Call:
+multinom(formula = OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, 
+    na.action = na.omit)
+
+Coefficients:
+       (Intercept) scale(inatt_vol_lh.x)
+deter   -0.5649501           -0.30315866
+marked  -0.8210424            0.41183896
+mild    -1.0113611            0.01456543
+
+Residual Deviance: 620.0299 
+AIC: 632.0299 
+> print(rr1)
+        (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale ext_avg_freesurfer5.3 int_avg_freesurfer5.3 mprage_QC
+deter  1.008499e-03             0.6602594    1.585655        0.9664492           3.477234              2.398460              4.243480  0.883729
+marked 5.639710e-02             1.5006759    1.049459        0.9962434           1.310289              1.099453              1.827527  1.430372
+mild   3.044543e-05             0.8907361    3.908227        0.9344494           2.086326              1.304085              2.614498  1.112274
+> print(rr2)
+       (Intercept) scale(inatt_vol_lh.x)
+deter    0.5683885             0.7384819
+marked   0.4399728             1.5095913
+mild     0.3637236             1.0146720
+```
+
+With more subjects we start seeing more interesting things. Some of the
+covariates start approaching significance, so we can play a bit more with them:
+
+```
+> fitx <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
+# weights:  28 (18 variable)
+initial  value 334.096941 
+iter  10 value 301.149045
+iter  20 value 294.358135
+iter  30 value 293.727260
+final  value 293.727240 
+converged
+> zx <- summary(fitx)$coefficients/summary(fitx)$standard.errors
+> (1 - pnorm(abs(zx), 0, 1)) * 2
+       (Intercept) scale(inatt_vol_lh.x) age_at_scan I(age_at_scan^2) Sex...SubjectsMale int_avg_freesurfer5.3
+deter  0.051819699            0.03447798  0.44552792       0.29232510        0.001060536           0.004887488
+marked 0.404715564            0.03039763  0.96011932       0.91086332        0.484470738           0.136182084
+mild   0.007982884            0.57712954  0.06031023       0.06380006        0.094448976           0.076196413
+```
+
+That puts the difference between deterioration and normals, as well as marked
+improvement and nvs, significant. What are the relative risks, and probability
+plots?
+
+```r
+library(reshape2)
+library(ggplot2)
+myfit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
+myz <- summary(myfit)$coefficients/summary(myfit)$standard.errors
+myp = (1 - pnorm(abs(zx), 0, 1)) * 2
+myrr = exp(coef(myfit))
+mypp = fitted(myfit)
+a = cbind(mypp, df$inatt_vol_lh.x)
+colnames(a)[4] = 'brain'
+mylpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
+ggplot(mylpp, aes(x=brain, y=probability, color=variable)) + geom_line()
+print(myfit)
+print(myp)
+print(myrr)
+```
+
+Moving it to RStudio...
