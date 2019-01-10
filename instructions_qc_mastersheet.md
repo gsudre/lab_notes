@@ -30,7 +30,7 @@ python ~/research_code/dti/get_dti_motion.py ~/tmp/maskids.txt /Volumes/Shaw/
 ```
 
 Note that the first argument to the script is the list of mask ids. All we do
-there is list the mask id directory and keep only the entires that have 4 of any
+there is list the mask id directory and keep only the entries that have 4 of any
 characters (more likely than not, the mask id directories).
 
 To get the mean FA/AD/RD, we need to access the tensors before they go into
