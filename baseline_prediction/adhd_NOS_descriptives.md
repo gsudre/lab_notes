@@ -785,12 +785,12 @@ b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
 title(sprintf('ADHDNOS inter IC 31 limbic inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
 ```
 
-![](2018-12-17-16-06-39.png)
+![](images/2018-12-17-16-06-39.png)
 
 
 
-![](2018-12-17-16-07-52.png)
-![](2018-12-17-16-09-04.png)
+![](images/2018-12-17-16-07-52.png)
+![](images/2018-12-17-16-09-04.png)
 
 And we should probably check out where in the brain they are, before setting them up for classification. I'm not going to make the 95 percentile masks we used in the paper for now, but we can have an idea of where the cluster is base don the pictures, and then compare to the actual networks in the Yeo paper to see if they make sense.
 
@@ -803,9 +803,9 @@ And we should probably check out where in the brain they are, before setting the
 3dcalc -a mycluster.nii -prefix res11.nii -overwrite -expr "amongst(a, 1)"
 ```
 
-![](2018-12-17-16-25-34.png)
-![](2018-12-17-16-26-20.png)
-![](2018-12-17-16-27-21.png)
+![](images/2018-12-17-16-25-34.png)
+![](images/2018-12-17-16-26-20.png)
+![](images/2018-12-17-16-27-21.png)
 
 We got a couple hard hits there. For DMN (IC2), we got LMFG, which is neat. But limbic (IC31) we got left ACC, quite inferior, and VAN (IC11) we got cerebellum. We coudl restrict it to DMN, so we'll see.
 
@@ -874,9 +874,9 @@ points(df[idx3,]$OLS_HI_slope, rowMeans(df[idx3, x[idx]]), pch=2)
 title('adding NVs as triangles')
 ```
 
-![](2018-12-19-16-42-56.png)
+![](images/2018-12-19-16-42-56.png)
 
-![](2018-12-19-16-44-43.png)
+![](images/2018-12-19-16-44-43.png)
 
 ```bash
 3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_OLS_inatt_slope_winsorize_None_42+orig
@@ -892,10 +892,10 @@ flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.n
 ```
 
 inattention (AD):
-![](2018-12-19-16-55-03.png)
+![](images/2018-12-19-16-55-03.png)
 
 HI (RD):
-![](2018-12-19-16-56-24.png)
+![](images/2018-12-19-16-56-24.png)
 
 ## structural
 
@@ -969,8 +969,8 @@ points(df[idx3,]$OLS_inatt_slope, rowMeans(df[idx3, x[idx]]), pch=2)
 title('adding NVs as triangles')
 ```
 
-![](2018-12-19-17-01-40.png)
-![](2018-12-19-17-04-42.png)
+![](images/2018-12-19-17-01-40.png)
+![](images/2018-12-19-17-04-42.png)
 
 The RH inatt result is clearly driven by outliers, so let's not go through with it.
 
@@ -980,9 +980,9 @@ awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/vol_inatt_lh.txt > lh_inatt.
 suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
 ```
 
-![](2018-12-19-17-22-02.png)
+![](images/2018-12-19-17-22-02.png)
 
-![](2018-12-19-17-22-58.png)
+![](images/2018-12-19-17-22-58.png)
 
 
 ## MELODIC

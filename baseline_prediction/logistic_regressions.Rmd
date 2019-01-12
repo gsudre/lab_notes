@@ -42,104 +42,89 @@ df = merge(struct, imaging, by='MRN')
 dim(df)
 ```
 
-Now, let's compare the simplest of models with the same one we used to get the clusters, a bit more complicated:
+First, let's check if any of the variables we used as covariates before has a relationship with the categories:
+
+```{R}
+for (t in c('age_at_scan', 'I(age_at_scan^2)', 'ext_avg_freesurfer5.3', 'int_avg_freesurfer5.3', 'mprage_QC', 'as.numeric(Sex...Subjects)')) {
+  fm_str = sprintf('%s ~ OLS_inatt_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
+
+So, we should probably include the variables that have some relationship to the inattention categories:
 
 ```{r}
-fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df, na.action=na.omit)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + int_avg_freesurfer5.3 + Sex...Subjects, data = df, na.action=na.omit)
 z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
 p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
 rr1 = exp(coef(fit1))
 pp1 = fitted(fit1)
-fit2 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, na.action=na.omit)
-z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
-p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
-rr2 = exp(coef(fit2))
-pp2 = fitted(fit2)
 print(p1)
-print(p2)
 print(fit1)
-print(fit2)
 print(rr1)
-print(rr2)
 ```
 
-AIC of the more complex model is slightly better, but it has many terms that are not significant for any of the conditions. Let's scrape off anything > .1 one by one, and see if the model gets better:
+OK, so these make sense. If we assume all Freesurfer QC is good, what does it look like?
 
 ```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-rr = exp(coef(fit))
-pp = fitted(fit)
-print(p)
-print(fit$AIC)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + Sex...Subjects, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
 ```
 
-This is better. What if we take it down to .05?
+Not as good. Alright, let's interpret the better model then:
 
 ```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-rr = exp(coef(fit))
-pp = fitted(fit)
-print(p)
-print(fit$AIC)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + int_avg_freesurfer5.3 + Sex...Subjects, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
 ```
 
-I wanted to keep at least one age terms. Also, it looks weird to include just internal QC, and ideally we have already eliminated all bad scans, so let's see what happens if we remove that.
+Let's just worry about the two significant categories, deterioration and marked improvement:
 
-```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + Sex...Subjects, data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-pp = fitted(fit)
-print(p)
-print(fit$AIC)
-```
+* A one-unit increase in the volume of the left hemisphere cluster variable (i.e. increase by 1 SD) is associated with a decrease in the log odds of deteriorating (vs normals) in the amount of .42. That one-unit increase is also associated with a .41 increase in the log odds of a marked improvement.
+* In terms of relative risk ratio, a one-unit decrease in the the volume of that brain cluster yields a relative risk ratio of .66 of deterioration (vs normals). The relative risk ratio for a one-unit increase is 1.50 for marked improvement. In other words, the odds of marked improvement, compared to normals, is 1.5 times higher for every 1 SD we increase in that brain region.
 
-Not really. So, the best model actually has age, sex, and freesurfer QC in it. What are the metrics to consider then?
-
-```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + age_at_scan + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-rr = exp(coef(fit))
-pp = fitted(fit)
-print('p-values')
-print(p)
-print(fit)
-print('risk ratio')
-print(rr)
-```
-
-Now, let's interpret it:
-
-* A one-unit increase in the volume of the left hemisphere cluster variable (i.e. increase by 1 SD) is associated with a decrease in the log odds of deteriorating (vs normals) in the amount of .39. That one-unit increase is also associated with a .41 increase in the log odds of a marked improvement, and .04 decrease in the log odds of mild improvement. However, only the marked improvement category in this sbest model was significant at p < .05, but deterioration was approach it.
-* In terms of relative risk ratio, a one-unit increase in the the volume of that brain cluster yields a relative risk ratio of .67 of deterioration (vs normals). The relative risk ratio for a one-unit increase is 1.51 for marked improvement, and .96 for mild improvement. In other words, the odds of marked improvement, compared to normals, is 1.5 times higher for every 1 SD we increase in that brain region.
-
-Let's make a much simpler (but not too far off) model, and look at probabilities:
+Let's make a simpler (but not too far off) model, and look at probabilities:
 
 ```{r}
 library(reshape2)
 library(ggplot2)
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x), data = df, na.action=na.omit)
+fit <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + Sex...Subjects, data = df, na.action=na.omit)
 z <- summary(fit)$coefficients/summary(fit)$standard.errors
 p <- (1 - pnorm(abs(z), 0, 1)) * 2
-pp = fitted(fit)
-a = cbind(pp, scale(df$inatt_vol_lh.x))
-colnames(a)[5] = 'brain'
-lpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
-ggplot(lpp, aes(x=brain, y=probability, color=variable)) + geom_line()
+
+dbrain = data.frame(Sex...Subjects=rep(c('Male', 'Female'), length(df$inatt_vol_lh.x)), inatt_vol_lh.x=rep(df$inatt_vol_lh.x, 2))
+pp.dbrain = cbind(dbrain, predict(fit, newdata = dbrain, type='probs', se=T))
+lpp = melt(pp.dbrain, id.vars=c('Sex...Subjects', 'inatt_vol_lh.x'), value.name='probability')
+ggplot(lpp, aes(x = scale(inatt_vol_lh.x), y = probability, colour = variable)) + geom_line() + facet_grid(Sex...Subjects ~
+    ., scales = "free")
 print(p)
 print(fit$AIC)
 ```
 
-## HI, volume
-
-We repeat the same strategy but now for the relationship between volume and HI:
+Still, we'll eventually have to compare all models, even though some have more subjects than others. As we're not doing this in a cross-validation framework, the next best thing is to check how well we can predict our training set. If we're doing too well, there's a high risk of overfitting. But we need to be doing somewhat well, to show some evidence of modeling the data correctly. So, let's do that with our best model:
 
 ```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh.x) + int_avg_freesurfer5.3 + Sex...Subjects, data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
+## HI, volume
+
+```{R}
 imaging$OLS_HI_categ = NULL
 imaging[imaging$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
 imaging[imaging$OLS_HI_slope > -.5 & imaging$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
@@ -149,12 +134,22 @@ imaging$OLS_HI_categ = as.factor(imaging$OLS_HI_categ)
 imaging$OLS_HI_categ = relevel(imaging$OLS_HI_categ, ref='NV')
 df = merge(struct, imaging, by='MRN')
 
-fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df, na.action=na.omit)
+for (t in c('age_at_scan', 'I(age_at_scan^2)', 'ext_avg_freesurfer5.3', 'int_avg_freesurfer5.3', 'mprage_QC', 'as.numeric(Sex...Subjects)')) {
+  fm_str = sprintf('%s ~ OLS_HI_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
+
+Internal Freesurfer popped up again, but Sex is not as impressive. Let's try it both ways to see what happens: 
+
+```{r}
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
 z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
 p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
 rr1 = exp(coef(fit1))
 pp1 = fitted(fit1)
-fit2 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x), data = df, na.action=na.omit)
+fit2 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + int_avg_freesurfer5.3, data = df, na.action=na.omit)
 z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
 p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
 rr2 = exp(coef(fit2))
@@ -165,17 +160,17 @@ print(fit1$AIC)
 print(fit2$AIC)
 ```
 
-Very small AIC difference. Let's see if we can remove some variables that don't seem to contribute much:
+Using Sex is definitely better, and it's actuall better as it is more similar to the inattention model:
 
 ```{r}
-fit <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + age_at_scan + I(age_at_scan^2) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
+fit <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
 z <- summary(fit)$coefficients/summary(fit)$standard.errors
 p <- (1 - pnorm(abs(z), 0, 1)) * 2
 print(p)
 print(fit$AIC)
 ```
 
-This is actually a much better fit. So, what does it mean?
+So, what does it mean?
 
 ```{R}
 rr = exp(coef(fit))
@@ -186,26 +181,35 @@ print('risk ratio')
 print(rr)
 ```
 
-Now, let's interpret it:
+Again, we focus on the two significant categories, deterioration and marked improvement:
 
-* A one-unit increase in the volume of the right hemisphere cluster variable (i.e. increase by 1 SD) is associated with an increase in the log odds of deteriorating (vs normals) in the amount of .55. That one-unit increase is also associated with a .44 decrease in the log odds of a marked improvement, and .03 decrease in the log odds of mild improvement. Of those, only the mild improvement category is not significant at p < .05.
-* In terms of relative risk ratio, a one-unit increase in the the volume of that brain cluster yields a relative risk ratio of 1.74 of deterioration (vs normals). The relative risk ratio for a one-unit increase is .63 for marked improvement, and 1.03 for mild improvement. In other words, the odds of deterioration, compared to normals, is 1.74 times higher for every 1 SD we increase in that brain region.
+* A one-unit increase in the volume of the right hemisphere cluster variable (i.e. increase by 1 SD) is associated with an increase in the log odds of deteriorating (vs normals) in the amount of .55. That one-unit increase is also associated with a .44 decrease in the log odds of a marked improvement.
+* In terms of relative risk ratio, a one-unit increase in the volume of that brain cluster yields a relative risk ratio of 1.73 of deterioration (vs normals). The relative risk ratio for a one-unit decrease is .65 for marked improvement. In other words, the odds of deterioration, compared to normals, is 1.74 times higher for every 1 SD we increase in that brain region; conversely, the odds of marked improvement is .65 lower for every 1 SD we increase in that brain region.
 
-Let's make a much simpler (but not too far off) model, and look at probabilities:
+Let's make a much simpler (but not too far off) model again, and look at probabilities:
 
 ```{r}
 library(reshape2)
 library(ggplot2)
-fit <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x), data = df, na.action=na.omit)
+fit <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + Sex...Subjects, data = df, na.action=na.omit)
 z <- summary(fit)$coefficients/summary(fit)$standard.errors
 p <- (1 - pnorm(abs(z), 0, 1)) * 2
-pp = fitted(fit)
-a = cbind(pp, scale(df$HI_vol_rh.x))
-colnames(a)[5] = 'brain'
-lpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
-ggplot(lpp, aes(x=brain, y=probability, color=variable)) + geom_line()
+
+dbrain = data.frame(Sex...Subjects=rep(c('Male', 'Female'), length(df$HI_vol_rh.x)), HI_vol_rh.x=rep(df$HI_vol_rh.x, 2))
+pp.dbrain = cbind(dbrain, predict(fit, newdata = dbrain, type='probs', se=T))
+lpp = melt(pp.dbrain, id.vars=c('Sex...Subjects', 'HI_vol_rh.x'), value.name='probability')
+ggplot(lpp, aes(x = scale(HI_vol_rh.x), y = probability, colour = variable)) + geom_line() + facet_grid(Sex...Subjects ~
+    ., scales = "free")
 print(p)
 print(fit$AIC)
+```
+
+And for future comparisons, this is the model AUC on training data:
+
+```{r}
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh.x) + Sex...Subjects + int_avg_freesurfer5.3, data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
 ```
 
 ## inattention, DTI
@@ -228,42 +232,61 @@ df$mvmt = rowMeans(scale(df$norm.trans), scale(df$norm.rot))
 dim(df)
 ```
 
-Now, let's compare the simplest of models with the same one we used to get the clusters, a bit more complicated:
+```{r}
+for (t in c('age_at_scan', 'I(age_at_scan^2)', 'mvmt', 'I(mvmt^2)', 'as.numeric(Sex)')) {
+  fm_str = sprintf('%s ~ OLS_inatt_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
+
+So, it looks like for this only the two age terms are significant (not even sex). So:
 
 ```{r}
-fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + scale(inatt_AD_clu2.x) + Sex + mvmt + I(mvmt^2) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + scale(inatt_AD_clu2.x) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
 z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
 p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
 rr1 = exp(coef(fit1))
 pp1 = fitted(fit1)
-fit2 <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + scale(inatt_AD_clu2.x), data = df, na.action=na.omit)
-z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
-p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
-rr2 = exp(coef(fit2))
-pp2 = fitted(fit2)
 print(p1)
-print(p2)
 print(fit1)
-print(fit2)
 print(rr1)
-print(rr2)
 ```
 
-The more complex model does slightly better. Let's see if removing some of the unrelated variables does anything:
+But it also doesn't look like cluster 2 is doing well. Let's try it without it:
 
 ```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + Sex + age_at_scan, data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-pp = fitted(fit)
-print(p)
-print(fit$AIC)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
 ```
 
-This model is a bit simpler, and does better than the more complex one. Also interesting that one of the DTI clusters was a bit useless. But let's look at the coefficients for this model:
+It also looks like the two age terms are not contributing much... is it better without them?
 
-```{R}
+```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x), data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
+```
+
+Not really. So let's keep them:
+
+```{r}
+fit <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
 rr = exp(coef(fit))
+pp1 = fitted(fit)
 print('p-values')
 print(p)
 print(fit)
@@ -271,10 +294,10 @@ print('risk ratio')
 print(rr)
 ```
 
-Now, let's interpret it:
+And it looks like deterioration is the only significant category:
 
-* A one-unit increase in AD for that cluster (i.e. increase by 1 SD) is associated with a decrease in the log odds of deteriorating (vs normals) in the amount of .45. That one-unit increase is also associated with a .12 increase in the log odds of a marked improvement, and .2 decrease in the log odds of mild improvement. Of those, only the deteriorating category is significant at p < .05.
-* In terms of relative risk ratio, a one-unit decrease in the AD of that brain cluster yields a relative risk ratio of 1.74 of deterioration (vs normals). In other words, the odds of deterioration, compared to normals, is 1.74 times higher for every 1 SD we decrease in that brain region.
+* A one-unit increase in AD for that cluster (i.e. increase by 1 SD) is associated with a decrease in the log odds of deteriorating (vs normals) in the amount of .40. 
+* In terms of relative risk ratio, a one-unit decrease in the AD of that brain cluster yields a relative risk ratio of .67 of deterioration (vs normals). In other words, the odds of deterioration, compared to normals, is .67 times higher for every 1 SD we decrease in that brain region.
 
 Let's make a much simpler (but not too far off) model, and look at probabilities:
 
@@ -293,41 +316,31 @@ print(p)
 print(fit$AIC)
 ```
 
+And for future comparisons, this is the model AUC on training data:
+
+```{r}
+fit <- multinom(OLS_inatt_categ ~ scale(inatt_AD_clu1.x) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
 ## HI, DTI
 
 ```{r}
-fit1 <- multinom(OLS_HI_categ ~ scale(HI_RD_clu1.x) + Sex + mvmt + I(mvmt^2) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
-z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
-p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
-rr1 = exp(coef(fit1))
-pp1 = fitted(fit1)
-fit2 <- multinom(OLS_HI_categ ~ scale(HI_RD_clu1.x), data = df, na.action=na.omit)
-z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
-p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
-rr2 = exp(coef(fit2))
-pp2 = fitted(fit2)
-print(p1)
-print(p2)
-print(fit1)
-print(fit2)
-print(rr1)
-print(rr2)
+for (t in c('age_at_scan', 'I(age_at_scan^2)', 'mvmt', 'I(mvmt^2)', 'as.numeric(Sex)')) {
+  fm_str = sprintf('%s ~ OLS_HI_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
 ```
 
-The simple model is a bit, better, but let's see if we can play with the other terms based on their significance, and both make AIC better and also the cluster terms more significant.
+Well, nothing seems to matter for the HI categories... this makes the model rather simple:
 
 ```{r}
-fit <- multinom(OLS_HI_categ ~ scale(HI_RD_clu1.x) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+fit <- multinom(OLS_HI_categ ~ scale(HI_RD_clu1.x), data = df, na.action=na.omit)
 z <- summary(fit)$coefficients/summary(fit)$standard.errors
 p <- (1 - pnorm(abs(z), 0, 1)) * 2
 pp = fitted(fit)
-print(p)
-print(fit$AIC)
-```
-
-OK, so this does a bit of both. Let's take a look at the coefficients:
-
-```{R}
 rr = exp(coef(fit))
 print('p-values')
 print(p)
@@ -336,27 +349,7 @@ print('risk ratio')
 print(rr)
 ```
 
-Now, let's interpret it:
-
-* This is a unique result so far as it's only significant for the mild improvement group. Not sure how to interpret that...
-* In any case, a one-unit increase in the RD of that brain cluster yields a relative risk ratio of 1.53 of mild-improvement (vs normals). 
-
-Let's make a much simpler (but not too far off) model, and look at probabilities:
-
-```{r}
-library(reshape2)
-library(ggplot2)
-fit <- multinom(OLS_HI_categ ~ scale(HI_RD_clu1.x), data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-pp = fitted(fit)
-a = cbind(pp, scale(df$HI_RD_clu1.x))
-colnames(a)[5] = 'brain'
-lpp = melt(as.data.frame(a), value.name='probability', id.vars=c('brain'))
-ggplot(lpp, aes(x=brain, y=probability, color=variable)) + geom_line()
-print(p)
-print(fit$AIC)
-```
+Nothing seems significant here... I wonder if the relationship to continuous OLS wasn't strong enough to begin with, and then the categorization completely vanished it?
 
 ## inattention, rsFMRI
 
@@ -377,48 +370,241 @@ df = merge(fmri, imaging, by='MRN')
 dim(df)
 ```
 
-Now, let's compare the simplest of models with the same one we used to get the clusters, a bit more complicated:
+And we check the different covariates:
+
+First, let's check if any of the variables we used as covariates before has a relationship with the categories:
+
+```{R}
+for (t in c('age_at_scan', 'I(age_at_scan^2)', 'enormGoodTRs_fmri01', 'I(enormGoodTRs_fmri01^2)', 'as.numeric(Sex...Subjects)')) {
+  fm_str = sprintf('%s ~ OLS_inatt_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
+
+It looks like we need to keep the movement variables:
 
 ```{r}
-fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_DMN.x) + scale(inatt_melodic_VAN.x) + Sex...Subjects + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_DMN.x) + scale(inatt_melodic_VAN.x)  + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2), data = df, na.action=na.omit)
 z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
 p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
 rr1 = exp(coef(fit1))
 pp1 = fitted(fit1)
-fit2 <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_DMN.x) + scale(inatt_melodic_VAN.x), data = df, na.action=na.omit)
-z2 <- summary(fit2)$coefficients/summary(fit2)$standard.errors
-p2 <- (1 - pnorm(abs(z2), 0, 1)) * 2
-rr2 = exp(coef(fit2))
-pp2 = fitted(fit2)
 print(p1)
-print(p2)
 print(fit1)
-print(fit2)
 print(rr1)
-print(rr2)
 ```
 
-The simpler module is better, but let's see if we can trim the more complex model a bit.
+They don't seem to be contributing much at all. Not even the DMN cluster. Let's then try to remove some of the variables ot get a better fit:
 
 ```{r}
-fit <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_VAN.x) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + age_at_scan + I(age_at_scan^2), data = df, na.action=na.omit)
-z <- summary(fit)$coefficients/summary(fit)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-print(p)
-print(fit$AIC)
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_VAN.x)  + enormGoodTRs_fmri01, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
 ```
+
+Yeah, that's a better model. Let's interpret it, keeping in mind that both the limbic and VAN clusters are significant for the deterioration and marked improvement conditions:
+
+* The results of the two clusters go in opposite ways. A one-unit increase in the limbic cluster (i.e. increase by 1 SD) is associated with an increase in the log odds of deteriorating (vs normals) in the amount of .41, and a decrease in the log odds ratio of marked improvement of .75. On the other hand, one-unit increase in the VAN cluster is associated with an decrease in the log odds of deteriorating in the amount of .64, and an increase in the log odds ratio of marked improvement of .82.
+* In terms of relative risk ratio, a one-unit increase in the limbic cluster yields a relative risk ratio of 1.51 of deterioration (vs normals). In other words, the odds of deterioration compared to normals is 1.5 times higher for every 1 SD we decrease in that brain region, and .53 lower for a unit increase in the VAN cluster. Conversely, every unit increase in the VAN cluster makes the odds of marked improvement 2.28 times higher.
+
+And this is the overall AUC:
+
+```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_melodic_limbic.x) + scale(inatt_melodic_VAN.x)  + enormGoodTRs_fmri01, data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
+The numbers are certainly not impressive, but fMRI is the best modality so far.
+
+Note that there's no significant clusters for HI rsFMRI...
 
 ## inattention, all imaging combined
 
+The first step here is to impute the data across modalities. Then, we'll need to decide which age variable to run (maybe median age?), and finally decide on which variables and models to use. The main question is whether we get better models, and better predictions, when combining across modalities.
+
+Let's start by making a Venn diagram to assess how much data we have across modalities.
+
+```{r}
+library(VennDiagram)
+venn.plot = venn.diagram(list(volume = which(!is.na(imaging$inatt_vol_lh)),
+                              dti = which(!is.na(imaging$inatt_AD_clu1)),
+                              rsfmri = which(!is.na(imaging$inatt_melodic_DMN))),
+                         euler.d=TRUE, fill=c('red','green', 'blue'), filename='myvenn.tiff')
+
+```
+![Here is the Venn plott](myvenn.tiff)
+
+We might actually be able to test it with only the kids that have everything, and then try the imputed dataset.
+
+```{r}
+idx = imaging$diag_group != 'new_onset'
+idx2 = !is.na(imaging$inatt_AD_clu1) & !is.na(imaging$inatt_melodic_DMN) & !is.na(imaging$inatt_vol_lh)
+df = imaging[idx2 & idx,]
+load('~/data/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+df = merge(df, data[, 1:2], by='MRN') # put mask ids in combined dataset
+demo = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                sheet='dti')
+df = merge(df, demo, by.x='mask.id', by.y='Mask.ID') # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df$mvmt = rowMeans(scale(df$norm.trans), scale(df$norm.rot))
+load('~/data/baseline_prediction/melodic_inter_IC11_12142018.RData.gz')
+df = merge(df, data[, 1:2], by='MRN', suffixes = c('.dti', '.rsfmri')) # put mask ids in combined dataset
+demo = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                sheet='mprage')
+df = merge(df, demo, by.x='mask.id.rsfmri', by.y='Mask.ID...Scan', suffixes = c('.dti', '.rsfmri')) # get demographics
+df = merge(df, qc, by.x='mask.id.rsfmri', by.y='Mask.ID', suffixes = c('.dti', '.rsfmri')) # get QC scores
+load('~/data/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+df = merge(df, data[, 1:2], by='MRN', suffixes = c('.dtiAndrsFMRI', '.vol')) # put mask ids in combined dataset
+df = merge(df, demo, by.x='mask.id', by.y='Mask.ID...Scan', suffixes = c('.dtiAndrsfmri', 'vol')) # get demographics
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID', suffixes = c('.dtiAndrsfmri', 'vol')) # get QC scores
+dim(df)
+```
+
+```{r}
+for (t in c(# volume
+            'age_at_scan', 'I(age_at_scan^2)', 'ext_avg_freesurfer5.3', 'int_avg_freesurfer5.3', 'mprage_QC', 'as.numeric(Sex)',
+            # DTI
+           'age_at_scan.dti', 'I(age_at_scan.dti^2)', 'mvmt', 'I(mvmt^2)', # 'as.numeric(Sex)',
+           # rsfmri
+           'age_at_scan.rsfmri', 'I(age_at_scan.rsfmri^2)', 'enormGoodTRs_fmri01', 'I(enormGoodTRs_fmri01^2)')) { #}, 'as.numeric(Sex)')) {
+  fm_str = sprintf('%s ~ OLS_inatt_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
+
+OK, so a couple of the QC variables seem significant. Let's include them in the model:
+
+```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh) + scale(inatt_AD_clu1) + scale(inatt_melodic_limbic) + scale(inatt_melodic_VAN) + int_avg_freesurfer5.3 + enormGoodTRs_fmri01, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
+```
+
+It's a completely different sample, so I'm not comfortable using AIC here. Let's see if AUC is any better:
+
+```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh) + scale(inatt_AD_clu1) + scale(inatt_melodic_limbic) + scale(inatt_melodic_VAN) + int_avg_freesurfer5.3 + enormGoodTRs_fmri01, data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
+Yep, considerably better AUC than any imaging modality by itself.
+
 ## HI, all imaging combined
 
+```{r}
+for (t in c(# volume
+            'age_at_scan', 'I(age_at_scan^2)', 'ext_avg_freesurfer5.3', 'int_avg_freesurfer5.3', 'mprage_QC', 'as.numeric(Sex)',
+            # DTI
+           'age_at_scan.dti', 'I(age_at_scan.dti^2)', 'mvmt', 'I(mvmt^2)', #'as.numeric(Sex)',
+           # rsfmri
+           'age_at_scan.rsfmri', 'I(age_at_scan.rsfmri^2)', 'enormGoodTRs_fmri01', 'I(enormGoodTRs_fmri01^2)')) { #}, 'as.numeric(Sex)')) {
+  fm_str = sprintf('%s ~ OLS_HI_categ', t)
+  print(fm_str)
+  print(summary(aov(lm(as.formula(fm_str), data=df))))
+}
+```
 
+Only the fMRI QC variables were significant. But since we have no fMRI clusters, I won't include them.
 
+```{r}
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh) + scale(HI_RD_clu1), data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
+```
 
+```{r}
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh) + scale(HI_RD_clu1), data = df, na.action=na.omit)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
 
+Not much gained here.
 
+## inatt, all imaging imputed
+
+```{r}
+idx = imaging$diag_group != 'new_onset'
+library(VIM)
+brain_cols = c("HI_vol_rh", "inatt_vol_lh", "HI_RD_clu1", "inatt_AD_clu1", "inatt_AD_clu2", "inatt_melodic_limbic", "inatt_melodic_DMN", "inatt_melodic_VAN")
+imputed_brain = irmi(imaging[idx, brain_cols])
+df = imaging[idx, ]
+df[, brain_cols] = imputed_brain
+load('~/data/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+df = merge(df, data[, 1:2], by='MRN', all.x=T) # put mask ids in combined dataset
+demo = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                sheet='dti')
+df = merge(df, demo, by.x='mask.id', by.y='Mask.ID', all.x=T) # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID', all.x=T) # get QC scores
+df$mvmt = rowMeans(scale(df$norm.trans), scale(df$norm.rot))
+load('~/data/baseline_prediction/melodic_inter_IC11_12142018.RData.gz')
+df = merge(df, data[, 1:2], by='MRN', suffixes = c('.dti', '.rsfmri'), all.x=T) # put mask ids in combined dataset
+demo = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                sheet='mprage')
+df = merge(df, demo, by.x='mask.id.rsfmri', by.y='Mask.ID...Scan', suffixes = c('.dti', '.rsfmri'), all.x=T) # get demographics
+df = merge(df, qc, by.x='mask.id.rsfmri', by.y='Mask.ID', suffixes = c('.dti', '.rsfmri'), all.x=T) # get QC scores
+load('~/data/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+df = merge(df, data[, 1:2], by='MRN', suffixes = c('.dtiAndrsFMRI', '.vol'), all.x=T) # put mask ids in combined dataset
+df = merge(df, demo, by.x='mask.id', by.y='Mask.ID...Scan', suffixes = c('.dtiAndrsfmri', 'vol'), all.x=T) # get demographics
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID', suffixes = c('.dtiAndrsfmri', 'vol'), all.x=T) # get QC scores
+dim(df)
+```
+
+I dont' expect the covariate search to change here, as it's only between the category and the covariate, and we only imputed brain data. Let's jump straight into the model:
+
+```{r}
+fit1 <- multinom(OLS_inatt_categ ~ scale(inatt_vol_lh) + scale(inatt_AD_clu1) + scale(inatt_melodic_limbic) + scale(inatt_melodic_VAN) + int_avg_freesurfer5.3 + enormGoodTRs_fmri01, data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
+Imputation doesn't seem to help inattention too much, and AUC is not as good.
+
+## HI, all imaging imputed
+
+```{r}
+fit1 <- multinom(OLS_HI_categ ~ scale(HI_vol_rh) + scale(HI_RD_clu1), data = df, na.action=na.omit)
+z1 <- summary(fit1)$coefficients/summary(fit1)$standard.errors
+p1 <- (1 - pnorm(abs(z1), 0, 1)) * 2
+rr1 = exp(coef(fit1))
+pp1 = fitted(fit1)
+print(p1)
+print(fit1)
+print(rr1)
+res.roc = multiclass.roc(df$OLS_inatt_categ, as.numeric(predict(fit1, newdata=df, type='class')))
+print(sprintf('AUC: %f', auc(res.roc)))
+```
+
+Slightly better for HI, but not great.
 
 # Questions
 
-* Add pictures of where the brain regions actually are
-* Should we go for mixel effects given the family structure in the data (and also used to gett he clusters)?
+* Should we do this using mixel effects given the family structure in the data (and also because that's how we obtained the clusters)? Or simply jump into ML and get the test data ready?
+* Can we gain anything by selecting the clusters based on the categorical data? (i.e. use the same logistical model for cluster selection and here?)

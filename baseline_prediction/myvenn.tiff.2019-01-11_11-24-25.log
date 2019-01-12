@@ -1,0 +1,13 @@
+INFO [2019-01-11 11:24:25] [[1]]
+INFO [2019-01-11 11:24:25] list(volume = which(!is.na(imaging$inatt_vol_lh)), dti = which(!is.na(imaging$inatt_AD_clu1)), 
+INFO [2019-01-11 11:24:25]     rsfmri = which(!is.na(imaging$inatt_melodic_DMN)))
+INFO [2019-01-11 11:24:25] 
+INFO [2019-01-11 11:24:25] $euler.d
+INFO [2019-01-11 11:24:25] [1] TRUE
+INFO [2019-01-11 11:24:25] 
+INFO [2019-01-11 11:24:25] $fill
+INFO [2019-01-11 11:24:25] c("redn", "green", "blue")
+INFO [2019-01-11 11:24:25] 
+INFO [2019-01-11 11:24:25] $filename
+INFO [2019-01-11 11:24:25] [1] "myvenn.tiff"
+INFO [2019-01-11 11:24:25] 
