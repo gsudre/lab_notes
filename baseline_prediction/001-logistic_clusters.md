@@ -327,9 +327,7 @@ eventually visualize them too.
 Had to re-run melodic because many of them were killed due to lack of time.
 Increased it from 5 to 10h.
 
-
-# ALL STUFF OLD FROM HERE ON
-## rsfmri
+# 2019-01-17 11:57:02
 
 ```bash
 myfile=melodic_categOLSdescriptives.txt
@@ -357,8 +355,8 @@ tar -zcvf melodic_OLS_categ_top_rnd_clusters.tar.gz melodic_*_IC*/OLS*categ*top_
 ```
 
 ```r
-res_fname = '~/tmp/melodic_NOSdescriptives.txt'
-out_file = '~/tmp/pvals_NOSmelodic.txt'
+res_fname = '~/tmp/melodic_categOLSdescriptives.txt'
+out_file = '~/tmp/pvals_melodic_categOLSdescriptives.txt'
 res_lines = readLines(res_fname)
 for (line in res_lines) {
   # starting new file summary
@@ -394,6 +392,28 @@ for (line in res_lines) {
   }
 }
 ```
+
+```
+(base) sudregp@HG-02070684-DM2:~/tmp$ grep -B 1 "*" pvals_melodic_categOLSdescriptives.txt 
+melodic_fancy_IC54_12142018: OLS_inatt_categ_subjScale (88 perms)
+Cluster size: 93, p<0.045 *
+--
+melodic_inter_IC2_12142018: OLS_HI_categ_None (496 perms)
+Cluster size: 144, p<0.038 *
+--
+melodic_inter_IC31_12142018: OLS_inatt_categ_None (499 perms)
+Cluster size: 263, p<0.000 **
+```
+
+Wel, the intersection mask is good enough. And we get DMN (IC2) and limbic
+(IC31), also not bad, but we do need to check where the clusters are.  
+
+# ALL STUFF OLD FROM HERE ON
+## rsfmri
+
+
+
+
 
 Overall, every time there was a subjScale and None results, the subjScale
 clusters were bigger, but the actual p-value for None was smaller. So, let's

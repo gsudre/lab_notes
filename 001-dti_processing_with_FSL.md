@@ -17,3 +17,7 @@ For each subject. That generates 71 bvals, 71 vecs, and a .nii.gz with 71 bricks
 (each 128 x 128 x 70). Now, we can go on with either the FATCAT or the FSL
 pipeline, knowing that there is no need for DRBUDDI.
 
+# 2019-01-16 16:08:17
+
+Following Paul's recommendations by e-mail, let's run one subject all the way.
+
