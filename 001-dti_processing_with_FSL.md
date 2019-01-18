@@ -31,10 +31,31 @@ Dimon -infile_prefix "600009963128/T1_3DAXIAL/Dicoms/*.dcm" -gert_to3d_prefix 60
 fat_proc_convert_dcm_dwis -indir  "600009963128/DTI_35dir/* 600009963128/DTI_36dir/*" -prefix 600009963128_dwi
 rm -rf 600009963128
 @SSwarper -input 600009963128_t1.nii.gz -base TT_N27_SSW.nii.gz -subid 600009963128
+fat_proc_imit2w_from_t1w -inset 600009963128_t1_ax.nii.gz -prefix 600009963128_t2_ax_immi -mask anatSS.600009963128.nii
+# I got the phase information after using ImportDICOM tool from TORTOISE and checking the .list file
+DIFFPREP --dwi 600009963128_dwi.nii --bvecs 600009963128_dwi_rvec.dat --bvals 600009963128_dwi_bval.dat --structural 600009963128_t2_ax_immi.nii --phase vertical
+@GradFlipTest -in_dwi 600009963128_dwi_DMC.nii -in_col_matT 600009963128_dwi_DMC.bmtxt -prefix 600009963128_GradFlipTest_rec.txt
+my_flip=`cat 600009963128_GradFlipTest_rec.txt`;
+fat_proc_dwi_to_dt \
+    -in_dwi       600009963128_dwi_DMC.nii                    \
+    -in_col_matT  600009963128_dwi_DMC.bmtxt                  \
+    -in_struc_res 600009963128_dwi_DMC_structural.nii               \
+    -in_ref_orig  600009963128_dwi_DMC_template.nii          \
+    -prefix       600009963128_dwi                           \
+    -mask_from_struc                                   \
+    $my_flip
+fat_proc_decmap                                     \
+    -in_fa       dt_FA.nii.gz     \
+    -in_v1       dt_V1.nii.gz     \
+    -mask        600009963128_dwi_mask.nii.gz  \
+    -prefix      DEC
 ```
 
 Note that we'll need to stop in the middle to allow for the IRTAs to do the
-visual QC. In any case, to swarm it we will do:
+visual QC. So, let's create a wrapper script that does some of the steps above:
+
+
+In any case, to swarm it we will do:
 
 <!-- 
 ```bash
