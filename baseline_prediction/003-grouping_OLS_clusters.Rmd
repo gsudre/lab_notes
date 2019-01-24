@@ -1,0 +1,348 @@
+---
+title: "Grouping OLS predictions"
+output: html_notebook
+---
+
+Philip suggested I should try grouping the results I had using OLS regressions
+into the 4 groups, and see if there is any difference there.
+
+```{r}
+library(gdata)
+library(nnet)
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+idx2 = !is.na(df$inatt_vol_lh) | !is.na(df$inatt_AD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging = df[idx & idx2,]
+imaging[imaging$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+imaging[imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+imaging[imaging$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+imaging[imaging$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+imaging$OLS_inatt_categ = as.factor(imaging$OLS_inatt_categ)
+imaging$OLS_inatt_categ = relevel(imaging$OLS_inatt_categ, ref='NV')
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+struct = df[!is.na(df$HI_vol_rh) & idx,]
+load('~/data/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+struct = merge(struct, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+struct = merge(struct, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+struct = merge(struct, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(struct, imaging, by='MRN')
+dim(df)
+
+pairwise.t.test(df$inatt_vol_lh.x, df$OLS_inatt_categ, p.adjust.method='none')
+
+fm = as.formula(df$inatt_vol_lh.x ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume LH inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+
+```
+
+So, the idea now is to regress out some of these significant variables to see what happens, and also try to make the NVs a bit more pure (i.e. flat OLS only).
+
+```{r}
+bad_nvs = df$OLS_inatt_categ == 'NV' & df$OLS_inatt_slope.x != 0
+df_clean = df[!bad_nvs, ]
+dim(df_clean)
+```
+
+Now we figure out how the cluster looks like without any possible significant variables:
+
+```{r}
+library(MASS)
+res.lm <- lm(inatt_vol_lh.x ~ Sex...Subjects + int_avg_freesurfer5.3 + age_at_scan + I(age_at_scan^2) + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume LH inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+And of course the last thing is to run the logistic model:
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_inatt_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+The only significant category when compared to NVs is marked improvement:
+
+* A one-unit increase in the volume of the left hemisphere cluster variable (i.e. increase by 1 SD) is associated with an increase in the log odds of markedly improving (vs normals) in the amount of .41.
+* In terms of relative risk ratio, a one-unit increase in the the volume of that brain cluster yields a relative risk ratio of 1.5 of marked improvement. In other words, the odds of marked improvement, compared to normals, is 1.5 times higher for every 1 SD we increase in that brain region.
+
+We should also look at the right hemisphere results as well. Those were for HI though:
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+idx2 = !is.na(df$inatt_vol_lh) | !is.na(df$inatt_AD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging$OLS_HI_categ = NULL
+imaging[imaging$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+imaging[imaging$OLS_HI_slope > -.5 & imaging$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+imaging[imaging$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+imaging[imaging$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+imaging$OLS_HI_categ = as.factor(imaging$OLS_HI_categ)
+imaging$OLS_HI_categ = relevel(imaging$OLS_HI_categ, ref='NV')
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+struct = df[!is.na(df$HI_vol_rh) & idx,]
+load('~/data/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+struct = merge(struct, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+struct = merge(struct, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+struct = merge(struct, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(struct, imaging, by='MRN')
+dim(df)
+
+pairwise.t.test(df$HI_vol_rh.x, df$OLS_HI_categ, p.adjust.method='none')
+
+fm = as.formula(df$HI_vol_rh.x ~ df$OLS_HI_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume RH HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Like before, let's clean it up and run it again:
+
+```{r}
+bad_nvs = df$OLS_HI_categ == 'NV' & df$OLS_HI_slope.x != 0
+df_clean = df[!bad_nvs, ]
+library(MASS)
+res.lm <- lm(HI_vol_rh.x ~ Sex...Subjects + int_avg_freesurfer5.3 + age_at_scan + I(age_at_scan^2) + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC, data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_HI_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_HI_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_HI_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume RH HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+And finally, the logistic regression:
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_HI_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+Now both deterioration and marked improvement are significant when compared to NVs:
+
+* A one-unit increase in the volume of the right hemisphere cluster variable (i.e. increase by 1 SD) is associated with an decrease in the log odds of markedly improving (vs normals) in the amount of .52. Conversely, a one-unit increase is associated with an increase in the log odds of deterioration of .41.
+* In terms of relative risk ratio, a one-unit increase in the the volume of that brain cluster yields a relative risk ratio of 1.5 of deterioration, and .6 marked improvement.
+
+## DTI
+
+Let's move on to the DTI clusters:
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+dti = df[!is.na(df$inatt_AD_clu1) & idx,]
+load('~/data/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+dti = merge(dti, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='dti')
+dti = merge(dti, mprage, by.x='mask.id', by.y='Mask.ID') # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+dti = merge(dti, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(dti, imaging, by='MRN')
+df$mvmt = rowMeans(scale(df$norm.trans), scale(df$norm.rot))
+dim(df)
+
+pairwise.t.test(df$inatt_AD_clu1.x, df$OLS_inatt_categ, p.adjust.method='none')
+
+fm = as.formula(df$inatt_AD_clu1.x ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('AD inatt clu1, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Groups are barely different. What if we residualize them?
+
+```{r}
+bad_nvs = df$OLS_inatt_categ == 'NV' & df$OLS_inatt_slope.x != 0
+df_clean = df[!bad_nvs, ]
+library(MASS)
+res.lm <- lm(inatt_AD_clu1.x ~ Sex + age_at_scan + I(age_at_scan^2) + mvmt + I(mvmt^2), data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('AD inatt clu1, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Well, group differences did increase when running the brain residuals. Let's check how the logistic model runs:
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_inatt_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+Only the deterioration group is significantly different than NVs:
+
+* A one-unit increase in this first AD cluster is associated with a decrease in the log odds of deterioration in the amount of .49.
+* In terms of relative risk ratio, a one-unit decrease in that cluster ields a relative risk ratio of .67 deterioration.
+
+Apparently I didn't even plot the second AD inatt cluster in adhd_NOS_descriptives.md. So, let's switch right to the RD HI cluster:
+
+```{r}
+res.lm <- lm(HI_RD_clu1.x ~ Sex + age_at_scan + I(age_at_scan^2) + mvmt + I(mvmt^2), data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_HI_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_HI_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_HI_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('RD HI clu1, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+This one looks a bit funky. The only significant difference is between marked and mild??? I'll skip the logistic model for this one.
+
+## rsFMRI
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+fmri = df[!is.na(df$inatt_melodic_limbic) & idx,]
+load('~/data/baseline_prediction/melodic_inter_IC11_12142018.RData.gz')
+fmri = merge(fmri, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+fmri = merge(fmri, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('~/data/baseline_prediction/master_qc.csv')
+fmri = merge(fmri, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(fmri, imaging, by='MRN')
+dim(df)
+
+bad_nvs = df$OLS_inatt_categ == 'NV' & df$OLS_inatt_slope.x != 0
+df_clean = df[!bad_nvs, ]
+library(MASS)
+res.lm <- lm(inatt_melodic_limbic.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects, data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('limbic inatt clu, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_inatt_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+res.lm <- lm(inatt_melodic_VAN.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects, data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('VAN inatt clu, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_inatt_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+res.lm <- lm(inatt_melodic_DMN.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects, data = df_clean)
+step <- stepAIC(res.lm, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df_clean$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df_clean$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df_clean$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('DMN inatt clu, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+```{r}
+library(nnet)
+fit <- multinom(df_clean$OLS_inatt_categ ~ scale(mycluster), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+
+TODO:
+
+* where is that structural cluster actually? (whereami)
+* what if we residualize the brain to begin with, using our step function? use lme? 

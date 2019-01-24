@@ -244,7 +244,7 @@ The subjScale result is a bit better, but let's see if this pattern remains
 across modalities before going further with it. Interestingly, we didn't see
 anything in volume or area, only thickness.
 
-##DTI
+## DTI
 
 ```bash
 myfile=dti_categOLSdescriptives.txt
@@ -407,6 +407,73 @@ Cluster size: 263, p<0.000 **
 
 Wel, the intersection mask is good enough. And we get DMN (IC2) and limbic
 (IC31), also not bad, but we do need to check where the clusters are.  
+
+# 2019-01-23 13:43:02
+
+Let's check the cluster locations and their scatterplots before we combine them
+for single cluster decoding.
+
+# structural
+
+So, the only result is:
+
+struct_thickness_11142018_260timeDiff12mo (RH): OLS_inatt_categ_None (249 perms)
+Cluster size: 513.80, p<0.012 *
+
+```bash
+awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_thickness_11142018_260timeDiff12mo/OLS_inatt_categ_None_42_rh_ClstMsk_e1_a1.0.niml.dset > ~/tmp/clusters.txt
+```
+
+```r
+clin = read.csv('/data/NCR_SBRB/baseline_prediction/long_clin_11302018.csv')
+load('/data/NCR_SBRB/baseline_prediction/struct_thickness_11142018_260timeDiff12mo.RData.gz')
+df = merge(clin, data, by='MRN')
+df$OLS_inatt_categ = NULL
+df[df$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+df[df$OLS_inatt_slope > -.33 & df$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+df[df$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+df[df$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('~/tmp/clusters.txt')[,1]
+idx = which(a==1)
+mycluster = rowMeans(df[, x[idx]])
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('thickness RH inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+![](images/2019-01-23-14-07-42.png)
+
+Nice pattern with marked improvement approaching NVs. But keep in mind that it
+means that the region in the brain already looks like NVs at baseline... protective?
+
+```bash
+awk 'NR>=13 && NR<2575' ~/tmp/struct_thickness_11142018_260timeDiff12mo/OLS_inatt_categ_None_42_rh_ClstMsk_e1_a1.0.niml.dset > ~/tmp/clusters.txt
+# single out the one region
+awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/clusters.txt > rh_inatt.txt
+# in Lubuntu
+suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/rh.pial.asc
+```
+
+![](2019-01-23-14-27-25.png)
+
+Not a particularly good location, though. 
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ALL STUFF OLD FROM HERE ON
 ## rsfmri

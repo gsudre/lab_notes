@@ -292,7 +292,7 @@ done
 
 Alright, now we're back to compiling results. struct is above, so let's look at DTI, and then we can take the first peek at MELODIC when the last ICs finish running so we don't have to repeat it.
 
-##DTI
+## DTI
 
 ```bash
 myfile=dti_NOSdescriptives.txt
@@ -404,19 +404,19 @@ b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
 title(sprintf('ADHDNOS nonew AD272 inatt, r=%.2f, p<%.2f', b$estimate, b$p.value))
 ```
 
-![](2018-12-11-11-05-50.png)
-![](2018-12-11-11-07-09.png)
-![](2018-12-11-11-09-55.png)
+![](images/2018-12-11-11-05-50.png)
+![](images/2018-12-11-11-07-09.png)
+![](images/2018-12-11-11-09-55.png)
 
 It's hard to say if those are truly outliers. Out of curiosity, even though the clusters are not as big, let's see how the scatterplots look when including the new_onset cases:
 
-![](2018-12-11-11-16-59.png)
-![](2018-12-11-11-13-41.png)
+![](images/2018-12-11-11-16-59.png)
+![](images/2018-12-11-11-13-41.png)
 
 Not much difference. Might as well stick with nonew for now.
 
 ```bash
-3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_09212018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_None_42+orig
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/dti_ad_voxelwise_n272_0921images/2018/ADHDNOS_nonew_OLS_inatt_slope_winsorize_None_42+orig
 3dcalc -a mycluster.nii -prefix myres.nii -overwrite -expr "amongst(a, 1)"
 flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.nii.gz -out myres_inMNI152.nii.gz -applyxfm -init ~/data/aging_to_MNI152.mat -interp nearestneighbour
 # just to get the COM for labeling
@@ -424,10 +424,10 @@ flirt -in myres.nii -ref /usr/local/apps/fsl/6.0.0/data/standard/MNI152_T1_1mm.n
 ```
 
 inattention (AD):
-![](2018-12-11-12-19-15.png)
+![](images/2018-12-11-12-19-15.png)
 
 HI (RD):
-![](2018-12-11-12-22-02.png)
+![](images/2018-12-11-12-22-02.png)
 
 
 
@@ -468,12 +468,12 @@ b = cor.test(tgt, rowMeans(df[idx2, x[idx]]))
 title(sprintf('ADHDNOS nonew volume RH HI, r=%.2f, p<%.2f', b$estimate, b$p.value))
 ```
 
-![](2018-12-11-11-31-56.png)
-![](2018-12-11-11-33-37.png)
+![](images/2018-12-11-11-31-56.png)
+![](images/2018-12-11-11-33-37.png)
 
 This second one is clearly moved by outliers...
 
-![](2018-12-11-11-35-09.png)
+![](images/2018-12-11-11-35-09.png)
 
 ```bash
 awk 'NR>=13 && NR<2575' ~/tmp/struct_volume_11142018_260timeDiff12mo/ADHDNOS_nonew_OLS_HI_slope_winsorize_None_42_rh_ClstMsk_e1_a1.0.niml.dset > ~/tmp/clusters.txt
@@ -484,8 +484,8 @@ awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/clusters.txt > lh_inatt.txt
 suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/lh.pial.asc
 ```
 
-![](2018-12-11-11-46-27.png)
-![](2018-12-11-11-47-22.png)
+![](images/2018-12-11-11-46-27.png)
+![](images/2018-12-11-11-47-22.png)
 
 # 2018-12-13 13:11:17
 
@@ -548,14 +548,14 @@ not positive at 9, so that makes the distribution somewhat diagonal, creating a
 correlation. One could also argue that the more symptoms at baseline, the more
 one has to lose, so there's your correlation.
 
-![](2018-12-13-15-10-49.png)
+![](images/2018-12-13-15-10-49.png)
 
 Now, it's a matter of putting those variables together in a model, to combine
 with the neural cluster averages.
 
 # 2018-12-14 09:37:15
 
-##melodic
+## melodic
 
 ```bash
 myfile=melodic_NOSdescriptives.txt
@@ -678,7 +678,7 @@ title(sprintf('ADHDNOS nonew AD272 inatt, r=%.2f, p<%.2f', b$estimate, b$p.value
 
 # 2018-12-17 15:14:56
 
-##melodic
+## melodic
 
 ```bash
 myfile=melodic_NOSdescriptives.txt
