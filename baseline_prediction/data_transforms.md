@@ -71,16 +71,16 @@ p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-16-14-43-12.png)
+![](images/2018-11-16-14-43-12.png)
 
-![](2018-11-16-14-44-57.png)
+![](images/2018-11-16-14-44-57.png)
 
 It looks like subjScaling has a slight effect on DeepLearning for structural,
 but not necessarily for DTI. 
 
-![](2018-11-16-14-47-31.png)
+![](images/2018-11-16-14-47-31.png)
 
-![](2018-11-16-14-48-45.png)
+![](images/2018-11-16-14-48-45.png)
 
 That's particularly obvious in perVSrem. Let's see if other algorithms are as
 affected. GBM doesn't do as well as DeepLearning, but the best results there are
@@ -106,15 +106,15 @@ print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 For struct nvVSper, subjScale DL, with None DL as a close second. For DTI it's
 actually inverted, with None slightly better. Interestingly, GLM is not too bad either.
 
-![](2018-11-16-15-28-29.png)
+![](images/2018-11-16-15-28-29.png)
 
-![](2018-11-16-15-29-28.png)
+![](images/2018-11-16-15-29-28.png)
 
 That DTI trend is also true for perVSrem, and struct still prefers subjScale.
 
-![](2018-11-16-15-30-27.png)
+![](images/2018-11-16-15-30-27.png)
 
-![](2018-11-16-15-31-12.png)
+![](images/2018-11-16-15-31-12.png)
 
 Does Deep Learning tend to overfit more?
 
@@ -124,13 +124,13 @@ p1<-ggplot(data[idx,], aes(x=group3, y=auc, fill=group3))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-16-15-24-42.png)
+![](images/2018-11-16-15-24-42.png)
 
-![](2018-11-16-15-25-45.png)
+![](images/2018-11-16-15-25-45.png)
 
-![](2018-11-16-15-26-44.png)
+![](images/2018-11-16-15-26-44.png)
 
-![](2018-11-16-15-27-15.png)
+![](images/2018-11-16-15-27-15.png)
 
 Yep, it definitely does, regardless of dataset or target. We just need to make sure whatever results we're
 getting are not there with random data:
@@ -141,10 +141,10 @@ p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-16-15-34-26.png)
-![](2018-11-16-15-35-14.png)
-![](2018-11-16-15-36-35.png)
-![](2018-11-16-15-37-02.png)
+![](images/2018-11-16-15-34-26.png)
+![](images/2018-11-16-15-35-14.png)
+![](images/2018-11-16-15-36-35.png)
+![](images/2018-11-16-15-37-02.png)
 
 Maybe with nvVSper in structural, but definitely not in perVSrem, especially if
 we do subjScale. For DTI the story is different: not much for perVSrem, but very
@@ -268,7 +268,7 @@ p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-19-11-49-48.png)
+![](images/2018-11-19-11-49-48.png)
 
 This pattern observed in nvVSper is very telling, and resembles what we had seen
 before. The "4 blocks" of results show the 4 different data transformations,
@@ -281,13 +281,13 @@ overfit. If this is an issue, then maybe using GLMs would be better.
 But more importantly, these results are WORSE than the results using single DTI
 (AD), where we were getting a bit above .72 AUC in DeepLearning. How about structural?
 
-![](2018-11-19-11-51-56.png)
+![](images/2018-11-19-11-51-56.png)
 
 As we had seen before, there is a tendency for subjScale to do better in the
 structural dataset. Still, the overfit in DeppLEarning here is very evident. And
 again, the single dataset result in structural was better than the combined one.
 
-![](2018-11-19-11-55-12.png)
+![](images/2018-11-19-11-55-12.png)
 
 Interesting, GLM starts performing slightly better than DLs when combining the
 data. Still, not better than single datasets! I'm starting to think that this
@@ -296,11 +296,11 @@ datasets?
 
 Let's take a look at perVSrem:
 
-![](2018-11-19-12-55-48.png)
+![](images/2018-11-19-12-55-48.png)
 
-![](2018-11-19-12-56-58.png)
+![](images/2018-11-19-12-56-58.png)
 
-![](2018-11-19-13-00-06.png)
+![](images/2018-11-19-13-00-06.png)
 
 Yep, same as before. DTI doesn't benefit much, Structural does, but combinations
 are still worse than single datasets.
@@ -386,19 +386,19 @@ p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-21-13-57-38.png)
+![](images/2018-11-21-13-57-38.png)
 
-![](2018-11-21-14-23-38.png)
+![](images/2018-11-21-14-23-38.png)
 
-![](2018-11-21-14-33-31.png)
+![](images/2018-11-21-14-33-31.png)
 
 It looks like subjScale does help PCA, especially when we threshold how many PCS to use. Kaiser seems to be better, but elbow (after subjScale) is fine too. That's more pronounced in DTI, but it's also there for struct. But like before, it doesn't look like there are any meaningful interactions among datasets, and subjScale doesn't do as well when combining datasets.
 
-![](2018-11-21-14-34-51.png)
+![](images/2018-11-21-14-34-51.png)
 
-![](2018-11-21-14-36-18.png)
+![](images/2018-11-21-14-36-18.png)
 
-![](2018-11-21-14-36-53.png)
+![](images/2018-11-21-14-36-53.png)
 
 There is an interesting result for perVSrem in struct, but I'm not sure how special it is compired to no data transforms... worth checking for the main plot to send to Philip.
 
@@ -436,21 +436,21 @@ p1<-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
 print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 ```
 
-![](2018-11-20-11-33-00.png)
+![](images/2018-11-20-11-33-00.png)
 
 In DeepLEarning, aparc_pcorr_kendall_Trimmed does best, and better than its
 random counterpat. 
 
-![](2018-11-20-11-35-07.png)
+![](images/2018-11-20-11-35-07.png)
 
 But for perVSrem, aparc_pcorr_pearson does a bit better, again better than its
 random counterpart. Do we see the same pattern for GLM?
 
-![](2018-11-20-11-37-24.png)
+![](images/2018-11-20-11-37-24.png)
 
-![](2018-11-20-11-38-57.png)
+![](images/2018-11-20-11-38-57.png)
 
-![](2018-11-20-11-39-46.png)
+![](images/2018-11-20-11-39-46.png)
 
 As usual, the GLM results are always significantly different than its random
 counterpart, showing the power to overfit in DL. Still, its best results are not
@@ -533,16 +533,16 @@ print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
 Let's break it up into the two methods that worked best, just so the barplots
 are more manageable:
 
-![](2018-11-26-16-49-39.png)
+![](images/2018-11-26-16-49-39.png)
 
-![](2018-11-26-16-50-47.png)
+![](images/2018-11-26-16-50-47.png)
 
 aparc_pcorr_kendal_trimmed with PCA-elbow is by far the best transform at .725
 AUC for nvVSadhd, but we still need to compare with the non-transformed data. 
 
-![](2018-11-26-16-52-50.png)
+![](images/2018-11-26-16-52-50.png)
 
-![](2018-11-26-16-54-11.png)
+![](images/2018-11-26-16-54-11.png)
 
 For perVSrem, it is not as clear-cut, but aparc_pcorr_pearson_with PCA-kaiser
 seems to be doing best, at .71 AUC. 

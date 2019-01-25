@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+    <html>
+    <head>
+        <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+        <title>2018-11-15 13:20:34</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.10.0/dist/katex.min.css" integrity="sha384-9eLZqc9ds8eNjO3TmqPeYcDj8n+Qfa4nuSiGYa6DjLNcv9BtN69ZIulL9+8CqC9Y" crossorigin="anonymous">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+        <link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <style>
+.task-list-item { list-style-type: none; } .task-list-item-checkbox { margin-left: -20px; vertical-align: middle; }
+</style>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        
+        <script src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+    </head>
+    <body>
+        <h1 id="2018-11-15-132034">2018-11-15 13:20:34</h1>
+<p>Running some tests to see if data transformations make things look better. I coded a within-subject normalization, and also a within-variable normalization. Let's see if it makes any difference for our best resul in each of the 2 brain modalities. Maybe try different algorithms too. We can try it with fMRI later.</p>
+<pre><code class="language-bash"><div>job_name=dataTransforms_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_<span class="hljs-variable">${job_name}</span>;
+rm -rf <span class="hljs-variable">$swarm_file</span>;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> struct_volume_11142018_260timeDiff12mo.RData.gz dti_ad_voxelwise_n223_09212018.RData.gz; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> target <span class="hljs-keyword">in</span> nvVSper perVSrem; <span class="hljs-keyword">do</span>
+        <span class="hljs-keyword">for</span> pp <span class="hljs-keyword">in</span> subjScale dataScale subjScale,dataScale None; <span class="hljs-keyword">do</span>
+            <span class="hljs-keyword">for</span> algo <span class="hljs-keyword">in</span> DeepLearning DRF GBM GLM; <span class="hljs-keyword">do</span>
+                <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> {1..100}; <span class="hljs-keyword">do</span>
+                    myseed=<span class="hljs-variable">$RANDOM</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> <span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> -<span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                <span class="hljs-keyword">done</span>;
+            <span class="hljs-keyword">done</span>;
+        <span class="hljs-keyword">done</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+sed -i -e <span class="hljs-string">"s/^/unset http_proxy; /g"</span> <span class="hljs-variable">$swarm_file</span>;
+split -l 1000 <span class="hljs-variable">$swarm_file</span> <span class="hljs-variable">${job_name}</span>_split;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `/bin/ls <span class="hljs-variable">${job_name}</span>_split??`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"ERROR"</span> &gt; swarm_wait_<span class="hljs-variable">${USER}</span>
+    <span class="hljs-keyword">while</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">do</span>
+        <span class="hljs-built_in">echo</span> <span class="hljs-string">"Trying <span class="hljs-variable">$f</span>"</span>
+        swarm -f <span class="hljs-variable">$f</span> -g 40 -t 16 --time 3:00:00 --partition quick --logdir trash_<span class="hljs-variable">${job_name}</span> --job-name <span class="hljs-variable">${job_name}</span> -m R --gres=lscratch:10 2&gt; swarm_wait_<span class="hljs-variable">${USER}</span>;
+        <span class="hljs-keyword">if</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">then</span>
+            <span class="hljs-built_in">echo</span> -e <span class="hljs-string">"\tError, sleeping..."</span>
+            sleep 10m;
+        <span class="hljs-keyword">fi</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<h1 id="2018-11-16-141003">2018-11-16 14:10:03</h1>
+<p>Let's compile the results to see if data transformations make any difference:</p>
+<pre><code class="language-bash"><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio"</span> &gt; dataTransforms_summary.csv;
+dir=dataTransforms_rawCV;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `ls -1 trash_<span class="hljs-variable">${dir}</span>/*o`; <span class="hljs-keyword">do</span>
+    phen=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $7}'</span> | cut -d<span class="hljs-string">"/"</span> -f 6`;
+    target=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $9}'</span>`;
+    seed=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $11}'</span>`;
+    var=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $13}'</span>`;
+    model=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $2}'</span> | cut -d<span class="hljs-string">"_"</span> -f 1`;
+    auc=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $3}'</span>`;
+    nfeat=`grep <span class="hljs-string">"Running model on"</span> <span class="hljs-variable">$f</span> | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    ratio=`grep -A 1 <span class="hljs-string">"Class distribution"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; {for (i=2; i&lt;=NF; i++) printf $i ";"}}'</span>`;
+    f1=`grep -A 2 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    acc=`grep -A 5 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$target</span>,<span class="hljs-variable">$phen</span>,<span class="hljs-variable">$var</span>,<span class="hljs-variable">$seed</span>,<span class="hljs-variable">$nfeat</span>,<span class="hljs-variable">$model</span>,<span class="hljs-variable">$auc</span>,<span class="hljs-variable">$f1</span>,<span class="hljs-variable">$acc</span>,<span class="hljs-variable">$ratio</span> &gt;&gt; dataTransforms_summary.csv;
+<span class="hljs-keyword">done</span>;
+</div></code></pre>
+<p>There are many variables here. First, let's stick to AD, and see if any
+algorithm is particularly sensitive to the 4 different data transforms:</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/tmp/dataTransforms_summary.csv'</span>)
+data$group = <span class="hljs-string">''</span>
+data[data$seed&lt;<span class="hljs-number">0</span>,]$group = <span class="hljs-string">'RND'</span>
+data$group2 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s'</span>, data$var[x], data$group[x])} )
+<span class="hljs-comment"># then, for each target</span>
+idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; data$model==<span class="hljs-string">'DeepLearning'</span> &amp; data$pheno==<span class="hljs-string">'struct_volume_11142018_260timeDiff12mo.RData.gz'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-14-43-12.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-14-44-57.png" alt=""></p>
+<p>It looks like subjScaling has a slight effect on DeepLearning for structural,
+but not necessarily for DTI.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-14-47-31.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-14-48-45.png" alt=""></p>
+<p>That's particularly obvious in perVSrem. Let's see if other algorithms are as
+affected. GBM doesn't do as well as DeepLearning, but the best results there are
+actually with DTI and no transformation. Not that much better than random
+though. Not much difference in structural.</p>
+<p>Not much improvement in DRF, which is also not better than deep learning.</p>
+<p>The GLM results are actually much better than its random counterpart, but will
+need to check against other algorithms. subjScale and None are somewhat tied.
+But for structural, particularly in perVSrem, subjScale trumps the rest. So, it
+looks like we need to do some subject scaling after all. Let's see how results
+compare across algorithms. We can do it for None and subjScale just for kicks:</p>
+<pre><code class="language-r"><div>data[data$model==<span class="hljs-string">'XRT'</span>,<span class="hljs-string">'model'</span>] = <span class="hljs-string">'DRF'</span>
+data$group3 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s'</span>, data$var[x], data$model[x])} )
+idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; (data$var==<span class="hljs-string">'None'</span> | data$var==<span class="hljs-string">'subjScale'</span>) &amp; data$seed&gt;<span class="hljs-number">0</span> &amp; data$pheno==<span class="hljs-string">'struct_volume_11142018_260timeDiff12mo.RData.gz'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group3, y=auc, fill=group3))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p>For struct nvVSper, subjScale DL, with None DL as a close second. For DTI it's
+actually inverted, with None slightly better. Interestingly, GLM is not too bad either.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-28-29.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-29-28.png" alt=""></p>
+<p>That DTI trend is also true for perVSrem, and struct still prefers subjScale.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-30-27.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-31-12.png" alt=""></p>
+<p>Does Deep Learning tend to overfit more?</p>
+<pre><code class="language-r"><div>idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; (data$var==<span class="hljs-string">'None'</span> | data$var==<span class="hljs-string">'subjScale'</span>) &amp; data$seed&lt;<span class="hljs-number">0</span> &amp; data$pheno==<span class="hljs-string">'struct_volume_11142018_260timeDiff12mo.RData.gz'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group3, y=auc, fill=group3))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-24-42.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-25-45.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-26-44.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-27-15.png" alt=""></p>
+<p>Yep, it definitely does, regardless of dataset or target. We just need to make sure whatever results we're
+getting are not there with random data:</p>
+<pre><code class="language-r"><div>idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; (data$var==<span class="hljs-string">'None'</span> | data$var==<span class="hljs-string">'subjScale'</span>) &amp; data$model==<span class="hljs-string">'DeepLearning'</span> &amp; data$pheno==<span class="hljs-string">'struct_volume_11142018_260timeDiff12mo.RData.gz'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-34-26.png" alt="">
+<img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-35-14.png" alt="">
+<img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-36-35.png" alt="">
+<img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-16-15-37-02.png" alt=""></p>
+<p>Maybe with nvVSper in structural, but definitely not in perVSrem, especially if
+we do subjScale. For DTI the story is different: not much for perVSrem, but very
+good for nvVSper.</p>
+<p>So, across the board, DeepLearning does better, and it doesn't seem to care too
+much whether it's subjScaled or not, at least not for DTI. I wonder
+if this will change when we include rsFMRI, and if we combine data across
+domains? We could also keep subjScale for structural (and maybe fMRI) but not
+DTI?</p>
+<pre><code class="language-bash"><div>job_name=dataTransformsDTIStruct_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_<span class="hljs-variable">${job_name}</span>;
+rm -rf <span class="hljs-variable">$swarm_file</span>;
+f1=<span class="hljs-string">"<span class="hljs-variable">${mydir}</span>/dti_fa_voxelwise_n223_09212018.RData.gz,<span class="hljs-variable">${mydir}</span>/dti_ad_voxelwise_n223_09212018.RData.gz,<span class="hljs-variable">${mydir}</span>/dti_rd_voxelwise_n223_09212018.RData.gz"</span>;
+f2=<span class="hljs-string">"<span class="hljs-variable">${mydir}</span>/struct_area_11142018_260timeDiff12mo.RData.gz,<span class="hljs-variable">${mydir}</span>/struct_volume_11142018_260timeDiff12mo.RData.gz,<span class="hljs-variable">${mydir}</span>/struct_thickness_11142018_260timeDiff12mo.RData.gz"</span>;
+f3=<span class="hljs-string">"<span class="hljs-variable">${mydir}</span>/dti_fa_voxelwise_n223_09212018.RData.gz,<span class="hljs-variable">${mydir}</span>/dti_ad_voxelwise_n223_09212018.RData.gz,<span class="hljs-variable">${mydir}</span>/dti_rd_voxelwise_n223_09212018.RData.gz,<span class="hljs-variable">${mydir}</span>/struct_area_11142018_260timeDiff12mo.RData.gz,<span class="hljs-variable">${mydir}</span>/struct_volume_11142018_260timeDiff12mo.RData.gz,<span class="hljs-variable">${mydir}</span>/struct_thickness_11142018_260timeDiff12mo.RData.gz"</span>;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> <span class="hljs-variable">$f1</span> <span class="hljs-variable">$f2</span> <span class="hljs-variable">$f3</span>; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> target <span class="hljs-keyword">in</span> nvVSper perVSrem; <span class="hljs-keyword">do</span>
+        <span class="hljs-keyword">for</span> pp <span class="hljs-keyword">in</span> subjScale dataScale subjScale,dataScale None; <span class="hljs-keyword">do</span>
+            <span class="hljs-keyword">for</span> algo <span class="hljs-keyword">in</span> DeepLearning GLM; <span class="hljs-keyword">do</span>
+                <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> {1..100}; <span class="hljs-keyword">do</span>
+                    myseed=<span class="hljs-variable">$RANDOM</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> <span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> -<span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                <span class="hljs-keyword">done</span>;
+            <span class="hljs-keyword">done</span>;
+        <span class="hljs-keyword">done</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+sed -i -e <span class="hljs-string">"s/^/unset http_proxy; /g"</span> <span class="hljs-variable">$swarm_file</span>;
+split -l 1000 <span class="hljs-variable">$swarm_file</span> <span class="hljs-variable">${job_name}</span>_split;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `/bin/ls <span class="hljs-variable">${job_name}</span>_split??`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"ERROR"</span> &gt; swarm_wait_<span class="hljs-variable">${USER}</span>
+    <span class="hljs-keyword">while</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">do</span>
+        <span class="hljs-built_in">echo</span> <span class="hljs-string">"Trying <span class="hljs-variable">$f</span>"</span>
+        swarm -f <span class="hljs-variable">$f</span> -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_<span class="hljs-variable">${job_name}</span> --job-name <span class="hljs-variable">${job_name}</span> -m R --gres=lscratch:10 2&gt; swarm_wait_<span class="hljs-variable">${USER}</span>;
+        <span class="hljs-keyword">if</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">then</span>
+            <span class="hljs-built_in">echo</span> -e <span class="hljs-string">"\tError, sleeping..."</span>
+            sleep 10m;
+        <span class="hljs-keyword">fi</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<h1 id="2018-11-19-104146">2018-11-19 10:41:46</h1>
+<p>Let's see how the best fMRI run are affected by data transformation:</p>
+<pre><code class="language-bash"><div>job_name=dataTransformsFMRI_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_<span class="hljs-variable">${job_name}</span>;
+rm -rf <span class="hljs-variable">$swarm_file</span>;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> aparc_pcorr_kendall_trimmed_n215_11152018.RData.gz \
+    aparc_pcorr_pearson_n215_11152018.RData.gz \
+    aparc.a2009s_corr_kendall_n215_11152018.RData.gz; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> target <span class="hljs-keyword">in</span> nvVSper perVSrem; <span class="hljs-keyword">do</span>
+        <span class="hljs-keyword">for</span> pp <span class="hljs-keyword">in</span> subjScale dataScale subjScale,dataScale None; <span class="hljs-keyword">do</span>
+            <span class="hljs-keyword">for</span> algo <span class="hljs-keyword">in</span> DeepLearning GLM; <span class="hljs-keyword">do</span>
+                <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> {1..100}; <span class="hljs-keyword">do</span>
+                    myseed=<span class="hljs-variable">$RANDOM</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> <span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                    <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> -<span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                <span class="hljs-keyword">done</span>;
+            <span class="hljs-keyword">done</span>;
+        <span class="hljs-keyword">done</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+sed -i -e <span class="hljs-string">"s/^/unset http_proxy; /g"</span> <span class="hljs-variable">$swarm_file</span>;
+split -l 1000 <span class="hljs-variable">$swarm_file</span> <span class="hljs-variable">${job_name}</span>_split;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `/bin/ls <span class="hljs-variable">${job_name}</span>_split??`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"ERROR"</span> &gt; swarm_wait_<span class="hljs-variable">${USER}</span>
+    <span class="hljs-keyword">while</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">do</span>
+        <span class="hljs-built_in">echo</span> <span class="hljs-string">"Trying <span class="hljs-variable">$f</span>"</span>
+        swarm -f <span class="hljs-variable">$f</span> -g 60 -t 16 --time 3:00:00 --partition norm --logdir trash_<span class="hljs-variable">${job_name}</span> --job-name <span class="hljs-variable">${job_name}</span> -m R --gres=lscratch:10 2&gt; swarm_wait_<span class="hljs-variable">${USER}</span>;
+        <span class="hljs-keyword">if</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">then</span>
+            <span class="hljs-built_in">echo</span> -e <span class="hljs-string">"\tError, sleeping..."</span>
+            sleep 10m;
+        <span class="hljs-keyword">fi</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<p>And compile the results of data transformation on DTI plus struct:</p>
+<pre><code class="language-bash"><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio"</span> &gt; dataTransformsDTIStruct_summary.csv;
+dir=dataTransformsDTIStruct_rawCV;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `ls -1 trash_<span class="hljs-variable">${dir}</span>/*o`; <span class="hljs-keyword">do</span>
+    phen=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $7}'</span>`;
+    phen2=`<span class="hljs-built_in">echo</span> <span class="hljs-variable">$phen</span> | sed -e <span class="hljs-string">"s/,/::/g"</span>`;
+    target=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $9}'</span>`;
+    seed=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $11}'</span>`;
+    var=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $13}'</span>`;
+    model=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $2}'</span> | cut -d<span class="hljs-string">"_"</span> -f 1`;
+    auc=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $3}'</span>`;
+    nfeat=`grep <span class="hljs-string">"Running model on"</span> <span class="hljs-variable">$f</span> | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    ratio=`grep -A 1 <span class="hljs-string">"Class distribution"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; {for (i=2; i&lt;=NF; i++) printf $i ";"}}'</span>`;
+    f1=`grep -A 2 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    acc=`grep -A 5 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$target</span>,<span class="hljs-variable">$phen2</span>,<span class="hljs-variable">$var</span>,<span class="hljs-variable">$seed</span>,<span class="hljs-variable">$nfeat</span>,<span class="hljs-variable">$model</span>,<span class="hljs-variable">$auc</span>,<span class="hljs-variable">$f1</span>,<span class="hljs-variable">$acc</span>,<span class="hljs-variable">$ratio</span> &gt;&gt; dataTransformsDTIStruct_summary.csv;
+<span class="hljs-keyword">done</span>;
+sed -i -e <span class="hljs-string">"s/subjScale,dataScale/subjScale::dataScale/g"</span> dataTransformsDTIStruct_summary.csv
+</div></code></pre>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/tmp/dataTransformsDTIStruct_summary.csv'</span>)
+data$pheno2 = <span class="hljs-string">'DTI'</span>
+idx = grepl(<span class="hljs-string">'struct'</span>, data$pheno)
+data[idx, <span class="hljs-string">'pheno2'</span>] = <span class="hljs-string">'Struct'</span>
+idx = grepl(<span class="hljs-string">'struct'</span>, data$pheno) &amp; grepl(<span class="hljs-string">'dti'</span>, data$pheno)
+data[idx, <span class="hljs-string">'pheno2'</span>] = <span class="hljs-string">'DTI+Struct'</span>
+data$group = <span class="hljs-string">''</span>
+data[data$seed&lt;<span class="hljs-number">0</span>,]$group = <span class="hljs-string">'RND'</span>
+data$group2 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s_%s_%s'</span>, data$pheno2[x], data$var[x], data$model[x], data$group[x])} )
+idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; data$pheno2==<span class="hljs-string">'DTI'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-11-49-48.png" alt=""></p>
+<p>This pattern observed in nvVSper is very telling, and resembles what we had seen
+before. The &quot;4 blocks&quot; of results show the 4 different data transformations,
+basically showing that the best results is about the same for all of them when
+combining DTI. DeepLearning is about the same regardless of data transformation,
+but has smaller variance then GLM. DeepLEarning overfits a bit though, when
+compared to GLM, although the results are still better than chance even with the
+overfit. If this is an issue, then maybe using GLMs would be better.</p>
+<p>But more importantly, these results are WORSE than the results using single DTI
+(AD), where we were getting a bit above .72 AUC in DeepLearning. How about structural?</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-11-51-56.png" alt=""></p>
+<p>As we had seen before, there is a tendency for subjScale to do better in the
+structural dataset. Still, the overfit in DeppLEarning here is very evident. And
+again, the single dataset result in structural was better than the combined one.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-11-55-12.png" alt=""></p>
+<p>Interesting, GLM starts performing slightly better than DLs when combining the
+data. Still, not better than single datasets! I'm starting to think that this
+might need to be some sort of voting, instead of straight up combination of
+datasets?</p>
+<p>Let's take a look at perVSrem:</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-12-55-48.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-12-56-58.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-19-13-00-06.png" alt=""></p>
+<p>Yep, same as before. DTI doesn't benefit much, Structural does, but combinations
+are still worse than single datasets.</p>
+<p>Given these results, should I try to PCA the data again and see how it works in
+this pairwise comparisons? Or I could use the top X features in each model... my
+original hopes for higher level interactions didn't come through in this
+experiment, but it could be just because we don't have enough data to show it.
+Choosing the best X features would be somewhat double-dipping, but it could at
+least demonstrate the principle.</p>
+<pre><code class="language-bash"><div>job_name=dataTransformsPCA_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_<span class="hljs-variable">${job_name}</span>;
+rm -rf <span class="hljs-variable">$swarm_file</span>;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> struct_volume_11142018_260timeDiff12mo.RData.gz \
+    dti_ad_voxelwise_n223_09212018.RData.gz\
+    struct_volume_11142018_260timeDiff12mo.RData.gz,dti_ad_voxelwise_n223_09212018.RData.gz; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> target <span class="hljs-keyword">in</span> nvVSadhd perVSrem; <span class="hljs-keyword">do</span>
+        <span class="hljs-keyword">for</span> pp <span class="hljs-keyword">in</span> PCA PCA-elbow PCA-kaiser \
+            subjScale:PCA subjScale:PCA-elbow subjScale:PCA-kaiser; <span class="hljs-keyword">do</span>
+            algo=DeepLearning;
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> {1..100}; <span class="hljs-keyword">do</span>
+                myseed=<span class="hljs-variable">$RANDOM</span>;
+                <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> <span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> -<span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+            <span class="hljs-keyword">done</span>;
+        <span class="hljs-keyword">done</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+sed -i -e <span class="hljs-string">"s/^/unset http_proxy; /g"</span> <span class="hljs-variable">$swarm_file</span>;
+split -l 1000 <span class="hljs-variable">$swarm_file</span> <span class="hljs-variable">${job_name}</span>_split;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `/bin/ls <span class="hljs-variable">${job_name}</span>_split??`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"ERROR"</span> &gt; swarm_wait_<span class="hljs-variable">${USER}</span>
+    <span class="hljs-keyword">while</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">do</span>
+        <span class="hljs-built_in">echo</span> <span class="hljs-string">"Trying <span class="hljs-variable">$f</span>"</span>
+        swarm -f <span class="hljs-variable">$f</span> -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_<span class="hljs-variable">${job_name}</span> --job-name <span class="hljs-variable">${job_name}</span> -m R --gres=lscratch:10 2&gt; swarm_wait_<span class="hljs-variable">${USER}</span>;
+        <span class="hljs-keyword">if</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">then</span>
+            <span class="hljs-built_in">echo</span> -e <span class="hljs-string">"\tError, sleeping..."</span>
+            sleep 10m;
+        <span class="hljs-keyword">fi</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<h1 id="2018-11-20-094121">2018-11-20 09:41:21</h1>
+<p>Let's compile these new PCA runs:</p>
+<pre><code class="language-bash"><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio"</span> &gt; dataTransformsPCA_summary.csv;
+dir=dataTransformsPCA_rawCV;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `ls -1 trash_<span class="hljs-variable">${dir}</span>/*o`; <span class="hljs-keyword">do</span>
+    phen=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $7}'</span>`;
+    phen2=`<span class="hljs-built_in">echo</span> <span class="hljs-variable">$phen</span> | sed -e <span class="hljs-string">"s/,/::/g"</span>`;
+    target=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $9}'</span>`;
+    seed=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $11}'</span>`;
+    var=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $13}'</span>`;
+    model=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $2}'</span> | cut -d<span class="hljs-string">"_"</span> -f 1`;
+    auc=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $3}'</span>`;
+    nfeat=`grep <span class="hljs-string">"Running model on"</span> <span class="hljs-variable">$f</span> | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    ratio=`grep -A 1 <span class="hljs-string">"Class distribution"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; {for (i=2; i&lt;=NF; i++) printf $i ";"}}'</span>`;
+    f1=`grep -A 2 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    acc=`grep -A 5 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$target</span>,<span class="hljs-variable">$phen2</span>,<span class="hljs-variable">$var</span>,<span class="hljs-variable">$seed</span>,<span class="hljs-variable">$nfeat</span>,<span class="hljs-variable">$model</span>,<span class="hljs-variable">$auc</span>,<span class="hljs-variable">$f1</span>,<span class="hljs-variable">$acc</span>,<span class="hljs-variable">$ratio</span> &gt;&gt; dataTransformsPCA_summary.csv;
+<span class="hljs-keyword">done</span>;
+sed -i -e <span class="hljs-string">"s/gz,dti/gz::dti/g"</span> dataTransformsPCA_summary.csv
+</div></code></pre>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/tmp/dataTransformsPCA_summary.csv'</span>)
+data$pheno2 = <span class="hljs-string">'DTI'</span>
+idx = grepl(<span class="hljs-string">'struct'</span>, data$pheno)
+data[idx, <span class="hljs-string">'pheno2'</span>] = <span class="hljs-string">'Struct'</span>
+idx = grepl(<span class="hljs-string">'struct'</span>, data$pheno) &amp; grepl(<span class="hljs-string">'dti'</span>, data$pheno)
+data[idx, <span class="hljs-string">'pheno2'</span>] = <span class="hljs-string">'DTI+Struct'</span>
+data$group = <span class="hljs-string">''</span>
+data[data$seed&lt;<span class="hljs-number">0</span>,]$group = <span class="hljs-string">'RND'</span>
+data$group2 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s_%s'</span>, data$pheno2[x], data$var[x], data$group[x])} )
+idx = data$target==<span class="hljs-string">'nvVSadhd'</span> &amp; data$pheno2==<span class="hljs-string">'DTI'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-13-57-38.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-14-23-38.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-14-33-31.png" alt=""></p>
+<p>It looks like subjScale does help PCA, especially when we threshold how many PCS to use. Kaiser seems to be better, but elbow (after subjScale) is fine too. That's more pronounced in DTI, but it's also there for struct. But like before, it doesn't look like there are any meaningful interactions among datasets, and subjScale doesn't do as well when combining datasets.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-14-34-51.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-14-36-18.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-21-14-36-53.png" alt=""></p>
+<p>There is an interesting result for perVSrem in struct, but I'm not sure how special it is compired to no data transforms... worth checking for the main plot to send to Philip.</p>
+<p>And also the clean fMRI tables transformed:</p>
+<pre><code class="language-bash"><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio"</span> &gt; dataTransformsFMRI_summary.csv;
+dir=dataTransformsFMRI_rawCV;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `ls -1 trash_<span class="hljs-variable">${dir}</span>/*o`; <span class="hljs-keyword">do</span>
+    phen=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $7}'</span>`;
+    phen2=`<span class="hljs-built_in">echo</span> <span class="hljs-variable">$phen</span> | sed -e <span class="hljs-string">"s/,/::/g"</span>`;
+    target=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $9}'</span>`;
+    seed=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $11}'</span>`;
+    var=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $13}'</span>`;
+    model=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $2}'</span> | cut -d<span class="hljs-string">"_"</span> -f 1`;
+    auc=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $3}'</span>`;
+    nfeat=`grep <span class="hljs-string">"Running model on"</span> <span class="hljs-variable">$f</span> | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    ratio=`grep -A 1 <span class="hljs-string">"Class distribution"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; {for (i=2; i&lt;=NF; i++) printf $i ";"}}'</span>`;
+    f1=`grep -A 2 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    acc=`grep -A 5 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$target</span>,<span class="hljs-variable">$phen2</span>,<span class="hljs-variable">$var</span>,<span class="hljs-variable">$seed</span>,<span class="hljs-variable">$nfeat</span>,<span class="hljs-variable">$model</span>,<span class="hljs-variable">$auc</span>,<span class="hljs-variable">$f1</span>,<span class="hljs-variable">$acc</span>,<span class="hljs-variable">$ratio</span> &gt;&gt; dataTransformsFMRI_summary.csv;
+<span class="hljs-keyword">done</span>;
+sed -i -e <span class="hljs-string">"s/subjScale,dataScale/subjScale::dataScale/g"</span> dataTransformsFMRI_summary.csv
+</div></code></pre>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/tmp/dataTransformsFMRI_summary.csv'</span>)
+data$pheno = gsub(<span class="hljs-string">'/data/NCR_SBRB/baseline_prediction//'</span>, <span class="hljs-string">''</span>, data$pheno)
+data$group = <span class="hljs-string">''</span>
+data[data$seed&lt;<span class="hljs-number">0</span>,]$group = <span class="hljs-string">'RND'</span>
+data$group2 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s_%s_%s'</span>, data$pheno[x], data$var[x], data$model[x], data$group[x])} )
+<span class="hljs-comment"># then, for each target</span>
+idx = data$target==<span class="hljs-string">'nvVSper'</span> &amp; data$model==<span class="hljs-string">'DeepLearning'</span>
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-20-11-33-00.png" alt=""></p>
+<p>In DeepLEarning, aparc_pcorr_kendall_Trimmed does best, and better than its
+random counterpat.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-20-11-35-07.png" alt=""></p>
+<p>But for perVSrem, aparc_pcorr_pearson does a bit better, again better than its
+random counterpart. Do we see the same pattern for GLM?</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-20-11-37-24.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-20-11-38-57.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-20-11-39-46.png" alt=""></p>
+<p>As usual, the GLM results are always significantly different than its random
+counterpart, showing the power to overfit in DL. Still, its best results are not
+better than what we see in DL.</p>
+<h1 id="2018-11-21-165753">2018-11-21 16:57:53</h1>
+<p>Based on our current results, it's worth running the PCA experiment in the best fMRI results:</p>
+<pre><code class="language-bash"><div>job_name=dataTransformsfMRIPCA_rawCV;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.automl_<span class="hljs-variable">${job_name}</span>;
+rm -rf <span class="hljs-variable">$swarm_file</span>;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> aparc_pcorr_kendall_trimmed_n215_11152018.RData.gz \
+    aparc_pcorr_pearson_n215_11152018.RData.gz \
+    aparc.a2009s_corr_kendall_n215_11152018.RData.gz \
+    aparc_absDiff_pearson_n215_11202018.RData.gz; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> target <span class="hljs-keyword">in</span> nvVSadhd perVSrem nvVSper; <span class="hljs-keyword">do</span>
+        <span class="hljs-keyword">for</span> pp <span class="hljs-keyword">in</span> PCA PCA-elbow PCA-kaiser \
+            subjScale:PCA subjScale:PCA-elbow subjScale:PCA-kaiser; <span class="hljs-keyword">do</span>
+            algo=DeepLearning;
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> {1..100}; <span class="hljs-keyword">do</span>
+                myseed=<span class="hljs-variable">$RANDOM</span>;
+                <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> <span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+                <span class="hljs-built_in">echo</span> <span class="hljs-string">"Rscript --vanilla ~/research_code/automl/raw_multiDomain_autoValidation_oneAlgo.R <span class="hljs-variable">${mydir}</span>/<span class="hljs-variable">$f</span> <span class="hljs-variable">${mydir}</span>/long_clin_0918.csv <span class="hljs-variable">${target}</span> <span class="hljs-variable">${mydir}</span>/models_raw_dataTransforms/<span class="hljs-variable">${USER}</span> -<span class="hljs-variable">$myseed</span> <span class="hljs-variable">$algo</span> <span class="hljs-variable">$pp</span>"</span> &gt;&gt; <span class="hljs-variable">$swarm_file</span>;
+            <span class="hljs-keyword">done</span>;
+        <span class="hljs-keyword">done</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+sed -i -e <span class="hljs-string">"s/^/unset http_proxy; /g"</span> <span class="hljs-variable">$swarm_file</span>;
+split -l 1000 <span class="hljs-variable">$swarm_file</span> <span class="hljs-variable">${job_name}</span>_split;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `/bin/ls <span class="hljs-variable">${job_name}</span>_split??`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-string">"ERROR"</span> &gt; swarm_wait_<span class="hljs-variable">${USER}</span>
+    <span class="hljs-keyword">while</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">do</span>
+        <span class="hljs-built_in">echo</span> <span class="hljs-string">"Trying <span class="hljs-variable">$f</span>"</span>
+        swarm -f <span class="hljs-variable">$f</span> -g 40 -t 16 --time 3:00:00 --partition norm --logdir trash_<span class="hljs-variable">${job_name}</span> --job-name <span class="hljs-variable">${job_name}</span> -m R --gres=lscratch:10 2&gt; swarm_wait_<span class="hljs-variable">${USER}</span>;
+        <span class="hljs-keyword">if</span> grep -q ERROR swarm_wait_<span class="hljs-variable">${USER}</span>; <span class="hljs-keyword">then</span>
+            <span class="hljs-built_in">echo</span> -e <span class="hljs-string">"\tError, sleeping..."</span>
+            sleep 10m;
+        <span class="hljs-keyword">fi</span>;
+    <span class="hljs-keyword">done</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<h1 id="2018-11-23-102445">2018-11-23 10:24:45</h1>
+<p>Let's now compile them:</p>
+<pre><code class="language-bash"><div><span class="hljs-built_in">echo</span> <span class="hljs-string">"target,pheno,var,seed,nfeat,model,auc,f1,acc,ratio"</span> &gt; dataTransformsFMRIPCA_summary.csv;
+dir=dataTransformsfMRIPCA_rawCV;
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> `ls -1 trash_<span class="hljs-variable">${dir}</span>/*o`; <span class="hljs-keyword">do</span>
+    phen=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $7}'</span>`;
+    phen2=`<span class="hljs-built_in">echo</span> <span class="hljs-variable">$phen</span> | sed -e <span class="hljs-string">"s/,/::/g"</span>`;
+    target=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $9}'</span>`;
+    seed=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $11}'</span>`;
+    var=`head -n 2 <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $13}'</span>`;
+    model=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $2}'</span> | cut -d<span class="hljs-string">"_"</span> -f 1`;
+    auc=`grep -A 1 model_id <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $3}'</span>`;
+    nfeat=`grep <span class="hljs-string">"Running model on"</span> <span class="hljs-variable">$f</span> | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    ratio=`grep -A 1 <span class="hljs-string">"Class distribution"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; {for (i=2; i&lt;=NF; i++) printf $i ";"}}'</span>`;
+    f1=`grep -A 2 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    acc=`grep -A 5 <span class="hljs-string">"Maximum Metrics:"</span> <span class="hljs-variable">$f</span> | tail -1 | awk <span class="hljs-string">'{FS=" "; print $5}'</span>`;
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$target</span>,<span class="hljs-variable">$phen2</span>,<span class="hljs-variable">$var</span>,<span class="hljs-variable">$seed</span>,<span class="hljs-variable">$nfeat</span>,<span class="hljs-variable">$model</span>,<span class="hljs-variable">$auc</span>,<span class="hljs-variable">$f1</span>,<span class="hljs-variable">$acc</span>,<span class="hljs-variable">$ratio</span> &gt;&gt; dataTransformsFMRIPCA_summary.csv;
+<span class="hljs-keyword">done</span>;
+sed -i -e <span class="hljs-string">"s/gz,dti/gz::dti/g"</span> dataTransformsFMRIPCA_summary.csv
+</div></code></pre>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/tmp/dataTransformsFMRIPCA_summary.csv'</span>)
+data$group = <span class="hljs-string">''</span>
+data[data$seed&lt;<span class="hljs-number">0</span>,]$group = <span class="hljs-string">'RND'</span>
+data$group2 = sapply(<span class="hljs-number">1</span>:nrow(data), <span class="hljs-keyword">function</span>(x) { sprintf(<span class="hljs-string">'%s_%s_%s'</span>, data$phen[x], data$var[x], data$group[x])} )
+idx = data$target==<span class="hljs-string">'nvVSadhd'</span> &amp; grepl(pattern = <span class="hljs-string">'pearson'</span>, data$group2)
+p1&lt;-ggplot(data[idx,], aes(x=group2, y=auc, fill=group2))
+print(p1+geom_boxplot() + ggtitle(unique(data[idx,]$target)))
+</div></code></pre>
+<p>Let's break it up into the two methods that worked best, just so the barplots
+are more manageable:</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-26-16-49-39.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-26-16-50-47.png" alt=""></p>
+<p>aparc_pcorr_kendal_trimmed with PCA-elbow is by far the best transform at .725
+AUC for nvVSadhd, but we still need to compare with the non-transformed data.</p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-26-16-52-50.png" alt=""></p>
+<p><img src="file:///Users/sudregp/lab_notes/baseline_prediction/images/2018-11-26-16-54-11.png" alt=""></p>
+<p>For perVSrem, it is not as clear-cut, but aparc_pcorr_pearson_with PCA-kaiser
+seems to be doing best, at .71 AUC.</p>
+
+    </body>
+    </html>
