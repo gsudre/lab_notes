@@ -59,3 +59,7 @@ for f in `/bin/ls melodic_fancy_IC*12142018.RData.gz melodic_inter_IC*12142018.R
 done
 swarm -f $swarm_file -g 4 -t 2 --time 30:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
 ```
+
+PHILIP SUGGESTED I SHOULD TRY NOT USING THE NVS AS THE REFERENCE GROUP. JUST FOR PLOTTING! USE ONE OF THE EXTREME GROUPS TO MAKE RISK RATIO BIGGER
+
+THEN, MAYBE DOING QUADRATIC AND CUBIC FITS WITH ALL 4 GROUPS.
