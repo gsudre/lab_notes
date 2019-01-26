@@ -60,6 +60,69 @@ done
 swarm -f $swarm_file -g 4 -t 2 --time 30:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
 ```
 
+Just because it's right before the weekend, I should leave the permutations running:
+
+```bash
+job_name=residANOVAstructRnd;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls struct_*_11142018_260timeDiff12mo.RData.gz`; do
+    for pp in None subjScale; do
+        for target in OLS_inatt_categ OLS_HI_categ; do
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/structural_resids_anova.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 300 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+job_name=residANOVAdtiRND;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
+    for pp in None subjScale; do
+        for target in OLS_inatt_categ OLS_HI_categ; do
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/dti_resids_anova.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 300 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Running DTI RND as Philip.
+
+
+
+
 PHILIP SUGGESTED I SHOULD TRY NOT USING THE NVS AS THE REFERENCE GROUP. JUST FOR PLOTTING! USE ONE OF THE EXTREME GROUPS TO MAKE RISK RATIO BIGGER
 
 THEN, MAYBE DOING QUADRATIC AND CUBIC FITS WITH ALL 4 GROUPS.
