@@ -25,7 +25,8 @@ swarm -f $swarm_file -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_d
 ```
 
 For DTI it's taking less than 1min for 50 voxels, and we have 12K. So, this
-should be about 4h as well.
+should be about 4h as well. But that didn't work, so I had to increase it to 8h
+just to be safe.
 
 ```bash
 job_name=residANOVAdti;
@@ -39,7 +40,7 @@ for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
         done;
     done;
 done
-swarm -f $swarm_file -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
+swarm -f $swarm_file -g 4 -t 2 --time 8:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
 ```
 
 In rsFMRI I have 44211 voxels in the intersection mask. As I know that took a
@@ -53,7 +54,7 @@ rm -rf $swarm_file;
 for f in `/bin/ls melodic_fancy_IC*12142018.RData.gz melodic_inter_IC*12142018.RData.gz`; do
     for pp in None subjScale; do
         for target in OLS_inatt_categ OLS_HI_categ; do
-            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic_anova.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
+            echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic_resids_anova.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} 42 $pp" >> $swarm_file;
         done;
     done;
 done
@@ -81,7 +82,7 @@ for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        swarm -f $f -g 4 -t 2 --time 8:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
@@ -91,7 +92,7 @@ done
 ```
 
 ```bash
-job_name=residANOVAdtiRND;
+job_name=residANOVAdtiRnd;
 mydir=/data/NCR_SBRB/baseline_prediction/;
 swarm_file=swarm.desc_${job_name};
 rm -rf $swarm_file;
@@ -109,7 +110,7 @@ for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 4 -t 2 --time 4:00:00 --partition quick --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        swarm -f $f -g 4 -t 2 --time 8:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
@@ -120,6 +121,33 @@ done
 
 Running DTI RND as Philip.
 
+```bash
+job_name=residANOVArsfmriRnd;
+mydir=/data/NCR_SBRB/baseline_prediction/;
+swarm_file=swarm.desc_${job_name};
+rm -rf $swarm_file;
+for f in `/bin/ls melodic_fancy_IC*12142018.RData.gz melodic_inter_IC*12142018.RData.gz`; do
+    for pp in None subjScale; do
+        for target in OLS_inatt_categ OLS_HI_categ; do
+            for i in {1..250}; do
+                echo "Rscript --vanilla ~/research_code/baseline_prediction/descriptives/melodic_resids_anova.R ${mydir}/${f} ${mydir}/long_clin_11302018.csv ${target} -${RANDOM} $pp" >> $swarm_file;
+            done;
+        done;
+    done;
+done
+split -l 300 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 4 -t 2 --time 30:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
 
 
 
