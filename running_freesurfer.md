@@ -196,7 +196,8 @@ Actually, I didn't run the above in the cluster. I ended up just doing a massive
 call to mriqc, without specifying oatient labs, which calls al possible
 subjects. I ran it in lscratch in an interactive session. The problem is
 that I didn't specify a maximum number of processes, so it's doubling what it
-can use. If no one complains, I'll leave it like that.
+can use. If no one complains, I'll leave it like that. (nevermind, it broke...
+ran out of room).
 
 Otherwise, it looks like mriqc is a module in Biowulf now, so I can simply do
 something like:
@@ -207,3 +208,22 @@ mriqc /scratch/sudregp/BIDS /scratch/sudregp/out.ds001/ participant --participan
 ```
 
 And do the above in a swarm (i.e. I don't need my wrapper anymore).
+
+The swarm looks like this:
+
+```bash
+for s in `cat /data/NCR_SBRB/pnc/have_imaging.txt`; do
+    echo "mriqc /scratch/sudregp/BIDS /scratch/sudregp/mriqc_output participant --participant_label ${s} -m T1w -w /scratch/sudregp/mriqc_work" >> swarm.mriqc;
+done
+swarm -g 8 -f swarm.mriqc --job-name mriqc --time 4:00:00 --logdir trash_mriqc -m mriqc --partition quick --gres=lscratch:40
+```
+
+And then we need to collect all results:
+
+```bash
+module load singularity
+export SINGULARITY_CACHEDIR=/data/sudregp/singularity/
+singularity exec -B /scratch/sudregp:/mnt docker://poldracklab/mriqc:latest mriqc /mnt/BIDS /mnt/mriqc_output group --no-sub -w /mnt/mriqc_work -m T1w
+```
+
+I saved everything back in the shared drive in PNC_structural.

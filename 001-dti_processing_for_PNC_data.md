@@ -61,3 +61,63 @@ for m in `cat have_imaging.txt`; do
 done;
 swarm -g 10 -t 16 --job-name tortoise --time 4:00:00 -f swarm.tortoise \
     -m afni,TORTOISE --partition quick --logdir trash
+```
+
+# 2019-01-29 10:38:23
+
+I was chatting with Ryan, and apparently their approach for GenR is to process
+all volumes all the time. Then, use quantitative variables to figure out which
+subjects to remove. We can try that approach here, especially considering that
+we will likely run DTIPrep to get some additional QC metrics, and we rarely ever
+use the subjects when we remove more than a couple volumes anyways.
+
+So, let's run the first 100 subjects in the new TORTOISE pipeline, then we can do
+the same for the FSL pipeline once I have that working.
+
+```bash
+cd /data/NCR_SBRB/pnc
+for m in `cat first100.txt`; do
+    echo "bash ~/research_code/dti/tortoise_pnc_wrapper.sh ${m}" >> swarm.tortoise;
+done;
+swarm -g 10 -t 16 --job-name tortoise --time 4:00:00 -f swarm.tortoise \
+    -m afni,TORTOISE --partition quick --logdir trash
+```
+
+For the FSL pipeline, we can do something like this:
+
+```bash
+fslroi dwi b0 0 1
+bet b0 b0_brain -m -f 0.2
+idx=''; for i in {1..71}; do a=$a' '1; done; echo $a > index.txt
+echo "0 -1 0 0.102" > acqparams.txt
+eddy_openmp --imain=dwi --mask=b0_brain_mask --index=index.txt --acqp=acqparams.txt --bvecs=dwi_cvec.dat --bvals=dwi_bval.dat --fwhm=0 --flm=quadratic --out=eddy_unwarped_images --cnr_maps --repol --mporder=6
+
+# OR
+
+sinteractive --gres=gpu:k20x:1
+module load CUDA/7.5
+eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=dwi_cvec.dat --out=eddy_s2v_unwarped_images --niter=8 --fwhm=10,6,4,2,0,0,0,0 --repol --ol_type=both --mporder=8 --s2v_niter=8 --slspec=my_slspec.txt --cnr_maps
+
+dtifit --data=eddy_s2v_unwarped_images --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=dwi_cvec.dat --sse --out=dti
+
+```
+
+I got the parameters for acquisition from running dcm2niix_afni on both DTI
+sequences (35 and 35), and then looking for Phase, PE, and Echo in the jsons. In
+the end, they matched the example in
+https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/eddy/Faq#How_do_I_know_what_to_put_into_my_--acqp_file.
+
+I also used the json to construct the myslspec.txt file, using the Matlab code
+from
+https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/eddy/Faq#How_should_my_--slspec_file_look.3F
+
+So, I put all of that in a script, which I ran like this:
+
+```bash
+cd /data/NCR_SBRB/pnc
+for m in `cat first100.txt`; do
+    echo "bash ~/research_code/dti/fdt_pnc_wrapper.sh ${m}" >> swarm.fdt;
+done;
+swarm -g 4 --job-name fdt --time 4:00:00 -f swarm.fdt --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
