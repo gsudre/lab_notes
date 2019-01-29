@@ -136,3 +136,74 @@ b=sprintf('%04d', a(x));
 func_make_corticalpngs_ENIGMA_QC_erasmus(QC_output_directory, b, [FS_directory,'/',b,'/mri/orig.mgz'], [FS_directory,'/',b,'/mri/aparc+aseg.mgz']);
 end
 ```
+
+# 2019-01-28 13:08:43
+
+I needed to extract the Euler number for each subject. Freesurfer extracts one
+per hemisphere, and more information can be seen here: 
+
+https://www.sciencedirect.com/science/article/pii/S1053811917310832?via%3Dihub
+
+https://vitallongevity.utdallas.edu/cnl/wp-content/uploads/2015/10/FREESURFER_GUIDE_CNL_2015Oct.pdf
+
+The idea is that more holes in the original surface gives a more negative
+number. So, we average the numbers in both hemispheres, and the higher the
+number, the better the original result (before any corrections):
+
+```bash
+res_file=~/tmp/euler_numbers.csv
+echo subjid,euler_LH,euler_RH,mean_euler > $res_file;
+for s in `cat ~/tmp/have_imaging.txt`; do
+    euler_lh=`grep -A 1 "Computing euler" /Volumes/Shaw/freesurfer_pnc/${s}/scripts/recon-all.log | tail -1 | awk '{ print $4 }' | sed "s/,//"`;
+    euler_rh=`grep -A 1 "Computing euler" /Volumes/Shaw/freesurfer_pnc/${s}/scripts/recon-all.log | tail -1 | awk '{ print $7 }' | sed "s/,//"`;
+    mean_euler=`echo "( $euler_lh + $euler_rh ) / 2" | bc`;
+    echo $s,$euler_lh,$euler_rh,$mean_euler >> $res_file;
+done
+```
+
+And then we can also run MRIQC. That's a bit tricky, as it needs a BIDS root. We
+have not converted our data ot the BIDS format yet, so we need to fake it. One
+of the requirements is a .json for each .nii, so I'll need to recreate
+everything that was already done for Freesurfer...
+
+```bash
+module load jo
+module load afni
+mkdir /scratch/sudregp/BIDS
+cd /scratch/sudregp/BIDS
+# installed jo through homebrew
+jo -p "Name"="Some bogus name" "BIDSVersion"="1.0.2" >> dataset_description.json;
+for s in `cat /data/NCR_SBRB/pnc/have_imaging.txt`; do
+    mkdir sub-${s};
+    m=001;
+    mkdir sub-${s}/ses-${m};
+    mkdir sub-${s}/ses-${m}/anat;
+    # assuming the .tar.gz have been decompressed already
+    dcm2niix_afni -o sub-${s}/ses-${m}/anat/ -f sub-${s}_ses-${m}_T1w /data/NCR_SBRB/pnc/${s}/T1_3DAXIAL/Dicoms/;
+done
+```
+
+Then, we need to run it in the cluster:
+
+```bash
+for s in `cat /data/NCR_SBRB/pnc/have_imaging.txt`; do
+    echo "bash ~/research_code/lab_mgmt/run_mriqc.sh ${s}" >> swarm.mriqc;
+done
+swarm -g 8 -f swarm.mriqc --job-name mriqc --time 8:00:00 --logdir trash_mriqc --gres=lscratch:40
+```
+
+Actually, I didn't run the above in the cluster. I ended up just doing a massive
+call to mriqc, without specifying oatient labs, which calls al possible
+subjects. I ran it in lscratch in an interactive session. The problem is
+that I didn't specify a maximum number of processes, so it's doubling what it
+can use. If no one complains, I'll leave it like that.
+
+Otherwise, it looks like mriqc is a module in Biowulf now, so I can simply do
+something like:
+
+```bash
+module load mriqc
+mriqc /scratch/sudregp/BIDS /scratch/sudregp/out.ds001/ participant --participant_label 608720575588 -m T1w -w MRIqc.work.ds001/
+```
+
+And do the above in a swarm (i.e. I don't need my wrapper anymore).
