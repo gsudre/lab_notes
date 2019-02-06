@@ -40,7 +40,7 @@ for f in `/bin/ls dti_??_voxelwise_n2??_09212018.RData.gz`; do
         done;
     done;
 done
-swarm -f $swarm_file -g 4 -t 2 --time 8:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
+swarm -f $swarm_file -g 4 -t 2 --time 12:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2
 ```
 
 In rsFMRI I have 44211 voxels in the intersection mask. As I know that took a
@@ -110,7 +110,7 @@ for f in `/bin/ls ${job_name}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -f $f -g 4 -t 2 --time 8:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
+        swarm -f $f -g 4 -t 2 --time 12:00:00 --partition norm --logdir trash_desc_${job_name} --job-name ${job_name} -m R,afni --gres=lscratch:2 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
@@ -441,11 +441,13 @@ Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’
 
 Hum... back of the brain... not good. Maybe we stick with volume?
 
-
-
 ## DTI
 
-WAIT... DIDN'T I RUN THE ANOVA PERMUTATIONS???
+Well, DTI failed again, because splitting the movement terms increased the
+runtime, and most of my jobs ended up expired. But some did run, so I won't need
+to increase much. Still, unlikely to finish today. Increased to 12h.
+
+
 
 ```bash
 myfile=dti_resids_anova.txt

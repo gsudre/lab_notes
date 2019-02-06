@@ -1,0 +1,250 @@
+---
+title: "Logistic classification"
+output: html_notebook
+---
+
+Let's see what happens when I try a ROC curve for a simple logistic prediction. How trashy does it look?
+
+```{r}
+library(gdata)
+library(nnet)
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+idx2 = !is.na(df$inatt_vol_lh) | !is.na(df$inatt_AD_clu1) | !is.na(df$inatt_melodic_DMN)
+imaging = df[idx & idx2,]
+imaging[imaging$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+imaging[imaging$OLS_inatt_slope > -.33 & imaging$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+imaging[imaging$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+imaging[imaging$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+imaging$OLS_inatt_categ = as.factor(imaging$OLS_inatt_categ)
+imaging$OLS_inatt_categ = relevel(imaging$OLS_inatt_categ, ref='NV')
+imaging$OLS_HI_categ = NULL
+imaging[imaging$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+imaging[imaging$OLS_HI_slope > -.5 & imaging$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+imaging[imaging$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+imaging[imaging$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+imaging$OLS_HI_categ = as.factor(imaging$OLS_HI_categ)
+imaging$OLS_HI_categ = relevel(imaging$OLS_HI_categ, ref='NV')
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+struct = df[!is.na(df$HI_vol_rh) & idx,]
+load('~/data/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz')
+struct = merge(struct, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+struct = merge(struct, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190110.csv')
+struct = merge(struct, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(struct, imaging, by='MRN')
+dim(df)
+```
+
+So, the idea now is to regress out some of the garbage to see what happens:
+
+```{r}
+library(MASS)
+library(nlme)
+fm = as.formula('inatt_vol_lh.x ~ Sex...Subjects + int_avg_freesurfer5.3 + age_at_scan + I(age_at_scan^2) + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume LH inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+So, the marked improvement group is significantly better (nominally) than all other groups. If we were to make a ROC plot one vs everything for all groups, would the curve for marked be somewhat decent? I'm not sure how to do that in R... so, let's save all variables into a CSV and do it in Python!
+
+```{r}
+out_df = data.frame(MRN=df$MRN, inatt_struct=mycluster, OLS_inatt_categ=df$OLS_inatt_categ,
+                    OLS_HI_categ=df$OLS_HI_categ)
+head(out_df)
+```
+
+And do the same thing for other clusters:
+
+```{r}
+fm = as.formula('HI_vol_rh.x ~ Sex...Subjects + int_avg_freesurfer5.3 + age_at_scan + I(age_at_scan^2) + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_HI_categ)))
+pairwise.t.test(mycluster, df$OLS_HI_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_HI_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume RH HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+out_df$HI_struct = mycluster
+```
+
+## DTI
+
+Let's move on to the DTI clusters:
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+dti = df[!is.na(df$inatt_AD_clu1) & idx,]
+load('~/data/baseline_prediction/dti_rd_voxelwise_n272_09212018.RData.gz')
+dti = merge(dti, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='dti')
+dti = merge(dti, mprage, by.x='mask.id', by.y='Mask.ID') # get demographics
+qc = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190110.csv')
+dti = merge(dti, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(dti, imaging, by='MRN')
+```
+
+And like before we residualize the cluster prior to looking for differences:
+
+```{r}
+fm = as.formula('inatt_AD_clu1.x ~ Sex + norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) + age_at_scan + I(age_at_scan^2)')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('AD clu1 inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Now the deteriorating group is worse than most of the other groups. Let's include it in our output:
+
+```{r}
+tmp_df = data.frame(MRN=df$MRN, inatt_AD=mycluster)
+out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
+dim(out_df)
+```
+
+How about the other AD cluster? Apparently I didn't even plot the second AD inatt cluster in adhd_NOS_descriptives.md. So, let's switch right to the RD HI cluster:
+
+```{r}
+fm = as.formula('HI_RD_clu1.x ~ Sex + norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) + age_at_scan + I(age_at_scan^2)')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_HI_categ)))
+pairwise.t.test(mycluster, df$OLS_HI_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_HI_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('RD clu1 HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+This one looks a bit funky. The only significant difference is between marked and mild??? The ANOVA is not really signifcant either, so I won't include it in the output.
+
+## rsFMRI
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+idx = df$diag_group != 'new_onset'
+fmri = df[!is.na(df$inatt_melodic_limbic) & idx,]
+load('~/data/baseline_prediction/melodic_inter_IC11_12142018.RData.gz')
+fmri = merge(fmri, data, by='MRN') # put mask ids in combined dataset
+mprage = read.xls('~/data/baseline_prediction/long_scans_08072018.xlsx',
+                  sheet='mprage')
+fmri = merge(fmri, mprage, by.x='mask.id', by.y='Mask.ID...Scan') # get demographics
+qc = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190110.csv')
+fmri = merge(fmri, qc, by.x='mask.id', by.y='Mask.ID') # get QC scores
+df = merge(fmri, imaging, by='MRN')
+dim(df)
+```
+
+Like before, we residualize the cluster before evaluating it:
+
+```{r}
+fm = as.formula('inatt_melodic_limbic.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('limbic clu inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Yep, that's decent enough. Let's add it to the output. 
+
+```{r}
+tmp_df = data.frame(MRN=df$MRN, inatt_limbic=mycluster)
+out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
+dim(out_df)
+```
+
+Let's try another cluster:
+
+```{r}
+fm = as.formula('inatt_melodic_VAN.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('VAN clu inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Yep, quite good as well. Going in...
+
+```{r}
+tmp_df = data.frame(MRN=df$MRN, inatt_VAN=mycluster)
+out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
+dim(out_df)
+```
+
+And the final rsFMRI cluster:
+
+```{r}
+fm = as.formula('inatt_melodic_DMN.x ~ age_at_scan + I(age_at_scan^2) + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + Sex...Subjects')
+res.lme = lme(fm, random=~1|nuclearFamID.x, data=df, na.action=na.omit, method='ML')
+step <- stepAIC(res.lme, direction = "both", trace = F)
+print(summary(step))
+mycluster = residuals(step)
+summary(aov(lm(mycluster ~ df$OLS_inatt_categ)))
+pairwise.t.test(mycluster, df$OLS_inatt_categ, p.adjust.method='none')
+fm = as.formula(mycluster ~ df$OLS_inatt_categ)
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('DMN clu inatt, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+Not as good as the other two, but at least it's the marked improvement group that's different. Let's include it too:
+
+```{r}
+tmp_df = data.frame(MRN=df$MRN, inatt_DMN=mycluster)
+out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
+dim(out_df)
+```
+
+```{r}
+write.csv(out_df, file='~/data/baseline_prediction/residualized_combined_OLS_descriptives_02062019.csv',
+          row.names=F)
+```
+
+OK, let's try the predictions in Python then.
+
+The goal is to generate different ROC curves to compare the combined model with the individual modality models. We can come back to R to generate logs odds and other descriptives later.
+
