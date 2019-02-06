@@ -286,6 +286,163 @@ exposome guy did in his paper:
 https://www.sciencedirect.com/science/article/pii/S0092867418311218
 https://ars.els-cdn.com/content/image/1-s2.0-S0092867418311218-gr4_lrg.jpg
 
+# 2019-02-06 10:31:27
+
+While I wait for the DTI to finish, let's take a closer look at the structural
+result.
+
+```bash
+awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_volume_11142018_260timeDiff12mo/resids_anova_OLS_HI_categ_None_42_rh_ClstMsk_e1_a1.0.niml.dset > ~/tmp/clusters.txt
+```
+
+```r
+base_name = '/data/NCR_SBRB'
+sx = 'HI'
+clin = read.csv(sprintf('%s/baseline_prediction/long_clin_11302018.csv', base_name))
+load(sprintf('%s/baseline_prediction/struct_volume_11142018_260timeDiff12mo.RData.gz', base_name))
+df = merge(clin, data, by='MRN')
+qc = read.csv(sprintf('%s/baseline_prediction/master_qc.csv', base_name))
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID')
+library(gdata)
+mprage = read.xls(sprintf('%s/baseline_prediction/long_scans_08072018.xlsx', base_name),
+                  sheet='mprage')
+df = merge(df, mprage, by.x='mask.id', by.y='Mask.ID...Scan')
+target = sprintf('OLS_%s_categ', sx)
+slope = sprintf('OLS_%s_slope', sx)
+df[, target] = NULL
+df[df[, slope] <= -.5, target] = 'marked'
+df[df[, slope] > -.5 & df[, slope] <= 0, target] = 'mild'
+df[df[, slope] > 0, target] = 'deter'
+df[df$DX == 'NV', target] = 'NV'
+df[, target] = as.factor(df[, target])
+df[, target] = relevel(df[, target], ref='NV')
+x = colnames(df)[grepl(pattern = '^v_rh', colnames(df))]
+a = read.table('~/tmp/clusters.txt')[,1]
+idx = which(a==1)
+clean_data = c()
+library(nlme)
+library(MASS)
+for (v in x[idx]) {
+    print(v)
+    mydata = df[, c(target, 'Sex...Subjects', 'ext_avg_freesurfer5.3',
+                    'int_avg_freesurfer5.3', 'mprage_QC',
+                    'age_at_scan', 'nuclearFamID')]
+    mydata$y = df[,v]
+    fm = as.formula("y ~ Sex...Subjects + ext_avg_freesurfer5.3 + int_avg_freesurfer5.3 + mprage_QC + age_at_scan + I(age_at_scan^2)")
+    fit = try(lme(fm, random=~1|nuclearFamID, data=mydata, na.action=na.omit, method='ML'))
+    if (length(fit) > 1) {
+        step = try(stepAIC(fit, direction = "both", trace = F))
+        if (length(step) > 1) {
+            mydata$y = residuals(step)
+        } else {
+            mydata$y = residuals(fit)
+        }
+    }
+    clean_data = cbind(clean_data, mydata$y)
+}
+mycluster = rowMeans(clean_data)
+fm = as.formula(mycluster ~ df[, target])
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('volume RH HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+```
+> pairwise.t.test(mycluster, df[, target], p.adjust.method='none')
+
+	Pairwise comparisons using t tests with pooled SD 
+
+data:  mycluster and df[, target] 
+
+       NV      deter  marked 
+deter  0.3740  -      -      
+marked 2.0e-06 0.0047 -      
+mild   0.9951  0.4307 7.2e-05
+
+P value adjustment method: none 
+> summary(fit)
+              Df Sum Sq Mean Sq F value   Pr(>F)    
+df[, target]   3   8834  2944.6   9.291 7.46e-06 ***
+Residuals    256  81133   316.9                     
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+![](2019-02-06-10-58-00.png)
+
+And to plot it in the brain:
+
+```bash
+awk '{ if ($1 != 1 ) print 0; else print 1 }' ~/tmp/clusters.txt > rh_inatt.txt
+# in laptop
+suma -i_fs /Volumes/Shaw/freesurfer5.3_subjects/fsaverage4/SUMA/rh.pial.asc
+```
+
+![](2019-02-06-11-06-11.png)
+
+At least it looks like the idea here is that we can tell who will have a marked
+improvement from everybody else. This could be useful.
+
+And then I also calculated scatterplot and brain plots for the area clusters
+above.
+
+```
+> pairwise.t.test(mycluster, df[, target], p.adjust.method='none')
+
+	Pairwise comparisons using t tests with pooled SD 
+
+data:  mycluster and df[, target] 
+
+       NV      deter   marked 
+deter  0.02510 -       -      
+marked 4.1e-06 0.15843 -      
+mild   0.73599 0.08792 0.00043
+
+P value adjustment method: none 
+> summary(fit)
+              Df Sum Sq Mean Sq F value   Pr(>F)    
+df[, target]   3    468  156.13   8.511 2.07e-05 ***
+Residuals    256   4696   18.34                     
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+![](2019-02-06-11-10-48.png)
+
+![](2019-02-06-11-15-11.png)
+
+It looks to be the same region for HI in area and volume, which makes sense as
+area makes up volume. How about inatt?
+
+```
+> pairwise.t.test(mycluster, df[, target], p.adjust.method='none')
+
+	Pairwise comparisons using t tests with pooled SD 
+
+data:  mycluster and df[, target] 
+
+       NV      deter   marked 
+deter  0.00122 -       -      
+marked 0.17531 0.30871 -      
+mild   0.26151 0.00011 0.03788
+
+P value adjustment method: none 
+> summary(fit)
+              Df Sum Sq Mean Sq F value   Pr(>F)    
+df[, target]   3    576  191.84   6.135 0.000482 ***
+Residuals    256   8005   31.27                     
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+![](2019-02-06-11-19-15.png)
+
+![](2019-02-06-11-19-38.png)
+
+Hum... back of the brain... not good. Maybe we stick with volume?
+
+
+
 ## DTI
 
 WAIT... DIDN'T I RUN THE ANOVA PERMUTATIONS???
