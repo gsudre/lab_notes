@@ -273,6 +273,19 @@ good.
 
 We do need to plot it to see if it's worth pursuing.
 
+# 2019-02-05 16:35:27
+
+Had to re-run all DTI because Marine brouth up a good point that we should only
+combine movement variables after taking their absolute value. Because I don't
+want to mess with it, I just won't combine them anymore. Before re-running it
+(as Philip), I deleted all the resids_anova* results to avoid further confusion.
+
+Also, a good way to visualize our results would be something like what the
+exposome guy did in his paper:
+
+https://www.sciencedirect.com/science/article/pii/S0092867418311218
+https://ars.els-cdn.com/content/image/1-s2.0-S0092867418311218-gr4_lrg.jpg
+
 ## DTI
 
 WAIT... DIDN'T I RUN THE ANOVA PERMUTATIONS???
