@@ -295,6 +295,9 @@ result.
 awk 'NR>=13 && NR<2575' /data/NCR_SBRB/tmp/struct_volume_11142018_260timeDiff12mo/resids_anova_OLS_HI_categ_None_42_rh_ClstMsk_e1_a1.0.niml.dset > ~/tmp/clusters.txt
 ```
 
+**Careful because this code only works for HI! Because of the OLS thresholds we're
+using...**
+
 ```r
 base_name = '/data/NCR_SBRB'
 sx = 'HI'
@@ -447,7 +450,171 @@ Well, DTI failed again, because splitting the movement terms increased the
 runtime, and most of my jobs ended up expired. But some did run, so I won't need
 to increase much. Still, unlikely to finish today. Increased to 12h.
 
+# 2019-02-07 13:32:39
 
+While the DTI finishes, let's summarize the melodic results then. The fancy
+results never finished, so I'll likely need more than 1.5 days there. But if
+there's nothing for inter, I'll stop this analysis anyways.
+
+## melodic
+
+```bash
+myfile=melodic_resids_anova.txt
+rm $myfile; touch $myfile;
+for f in `/bin/ls \
+    /data/NCR_SBRB/tmp/melodic_*IC*/resids_anova*_42_clusters.txt`; do
+    echo $f >> $myfile;
+    grep -v \# $f | head -n 5 >> $myfile;
+done
+```
+
+```bash
+/bin/ls -1 /data/NCR_SBRB/tmp/melodic_*_IC*/resids_anova*_42_clusters.txt > result_files.txt;
+for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
+    collect_name=${root_file}_top_rnd_clusters.txt;
+    echo $collect_name;
+    if [ -e $collect_name ]; then
+        rm $collect_name;
+    fi;
+    for f in `ls ${root_file}*rnd*clusters.txt`; do
+        grep -v \# $f | head -n 1 >> $collect_name;
+    done
+done
+tar -zcvf melodic_resids_anova_top_rnd_clusters.tar.gz ../tmp/melodic_*_IC*/resids_anova*top_rnd_clusters.txt
+```
+
+Then, bring both results and .tar.gz for local storage, and:
+
+```r
+res_fname = '~/data/baseline_prediction/melodic_resids_anova.txt'
+out_file = '~/data/baseline_prediction/pvals_melodic_resids_anovas.txt'
+res_lines = readLines(res_fname)
+for (line in res_lines) {
+  # starting new file summary
+  if (grepl(pattern='clusters', line)) {
+    root_fname = strsplit(line, '/')[[1]]
+    dir_name = root_fname[length(root_fname)-1]
+    root_fname = strsplit(root_fname[length(root_fname)], '_')[[1]]
+    root_fname = paste0(root_fname[1:(length(root_fname)-2)], sep='', collapse='_')
+    rnd_fname = sprintf('~/tmp/%s/%s_top_rnd_clusters.txt', dir_name, root_fname)
+    if (file.exists(rnd_fname)) {
+        rnd_results = read.table(rnd_fname)[, 1]
+        nperms = length(rnd_results)
+    } else {
+        rnd_results = NA
+        nperms = NA
+    }
+    cat(sprintf('%s: %s (%d perms)\n', dir_name, root_fname, nperms),
+        file=out_file, append=T)
+  } 
+  else {
+    parsed = strsplit(line, ' +')
+    clus_size = as.numeric(parsed[[1]][2])
+    pval = sum(rnd_results >= clus_size) / nperms
+    cat(sprintf('Cluster size: %d, p<%.3f', clus_size, pval),
+        file=out_file, append=T)
+    if (!is.na(pval) && pval < .05) {
+      cat(' *', file=out_file, append=T)
+    }
+    if (!is.na(pval) && pval < .01) {
+      cat('*', file=out_file, append=T)
+    }
+    cat('\n', file=out_file, append=T)
+  }
+}
+```
+
+```
+sudregp@HG-02070684-DM2:~/tmp$ grep -B 1 "*" ~/data/baseline_prediction/pvals_melodic_resids_anovas.txt
+melodic_inter_IC2_12142018: resids_anova_OLS_HI_categ_None (250 perms)
+Cluster size: 147, p<0.036 *
+```
+
+Hum... this might be a bit tricky, as it might not survive more permutations.
+But at least is in the DMN (IC2). Let's check if it's in a good place, though.
+
+```bash
+3dclust -NN1 1 -orient LPI -savemask mycluster.nii -overwrite /data/NCR_SBRB/tmp/melodic_inter_IC2_12142018/resids_anova_OLS_HI_categ_None_42+tlrc
+3dcalc -a mycluster.nii -prefix res2.nii -overwrite -expr "amongst(a, 1)"
+3dmaskdump -mask ~/data/baseline_prediction/same_space/epi/group_epi_mask_inter.nii mycluster.nii > out.txt
+```
+
+![](2019-02-07-13-59-21.png)
+
+That's actually a quite good hit. Let's see how the scaterplot looks like:
+
+```r
+base_name = '/data/NCR_SBRB'
+sx = 'HI'
+clin = read.csv(sprintf('%s/baseline_prediction/long_clin_11302018.csv', base_name))
+load(sprintf('%s/baseline_prediction/melodic_inter_IC2_12142018.RData.gz', base_name))
+df = merge(clin, data, by='MRN')
+qc = read.csv(sprintf('%s/baseline_prediction/master_qc.csv', base_name))
+df = merge(df, qc, by.x='mask.id', by.y='Mask.ID')
+library(gdata)
+mprage = read.xls(sprintf('%s/baseline_prediction/long_scans_08072018.xlsx', base_name),
+                  sheet='mprage')
+df = merge(df, mprage, by.x='mask.id', by.y='Mask.ID...Scan')
+target = sprintf('OLS_%s_categ', sx)
+slope = sprintf('OLS_%s_slope', sx)
+df[, target] = NULL
+df[df[, slope] <= -.5, target] = 'marked'
+df[df[, slope] > -.5 & df[, slope] <= 0, target] = 'mild'
+df[df[, slope] > 0, target] = 'deter'
+df[df$DX == 'NV', target] = 'NV'
+df[, target] = as.factor(df[, target])
+df[, target] = relevel(df[, target], ref='NV')
+x = colnames(df)[grepl(pattern = '^v', colnames(df))]
+a = read.table('~/tmp/out.txt')[,4]
+idx = which(a==1)
+clean_data = c()
+library(nlme)
+library(MASS)
+for (v in x[idx]) {
+    print(v)
+    mydata = df[, c(target, 'Sex...Subjects', 'enormGoodTRs_fmri01',
+                    'age_at_scan', 'nuclearFamID')]
+    mydata$y = df[,v]
+    fm = as.formula("y ~ Sex...Subjects + enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2) + age_at_scan + I(age_at_scan^2)")
+    fit = try(lme(fm, random=~1|nuclearFamID, data=mydata, na.action=na.omit, method='ML'))
+    if (length(fit) > 1) {
+        step = try(stepAIC(fit, direction = "both", trace = F))
+        if (length(step) > 1) {
+            mydata$y = residuals(step)
+        } else {
+            mydata$y = residuals(fit)
+        }
+    }
+    clean_data = cbind(clean_data, mydata$y)
+}
+mycluster = rowMeans(clean_data)
+fm = as.formula(mycluster ~ df[, target])
+fit = aov(lm(fm))
+boxplot(fm)
+title(sprintf('DMN HI, p<%.4f', summary(fit)[[1]][1, 'Pr(>F)']))
+```
+
+![](2019-02-07-15-19-56.png)
+
+```
+> pairwise.t.test(mycluster, df[, target], p.adjust.method='none')
+
+	Pairwise comparisons using t tests with pooled SD 
+
+data:  mycluster and df[, target] 
+
+       NV     deter   marked 
+deter  0.0073 -       -      
+marked 0.0999 0.1717  -      
+mild   0.0022 3.2e-06 3.3e-05
+
+P value adjustment method: none 
+```
+
+The mild group is the different one? Weird...
+
+
+## DTI
 
 ```bash
 myfile=dti_resids_anova.txt
@@ -460,7 +627,7 @@ done
 ```
 
 ```bash
-/bin/ls -1 /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/OLS*categ*_42_clusters.txt > result_files.txt;
+/bin/ls -1 /data/NCR_SBRB/tmp/dti_??_voxelwise_n2??_09212018/resids_anova*_42_clusters.txt > result_files.txt;
 for root_file in `cat result_files.txt | sed -e 's/_42_clusters.txt//g'`; do
     collect_name=${root_file}_top_rnd_clusters.txt;
     echo $collect_name;
@@ -475,7 +642,11 @@ cd /data/NCR_SBRB/tmp/
 tar -zcvf dti_OLS_categ_top_rnd_clusters.tar.gz dti_??_voxelwise_n2??_09212018/OLS*categ*top_rnd_clusters.txt
 ```
 
-```r
+I won't even continue this one. The structural results are not great, the fMRI
+one is weird, so I'm not taking too much hope on DTI.
+
+
+<!-- ```r
 res_fname = '~/tmp/dti_categOLSdescriptives.txt'
 out_file = '~/tmp/pvals_dti_categOLSdescriptives.txt'
 res_lines = readLines(res_fname)
@@ -518,9 +689,4 @@ for (line in res_lines) {
 HG-01982271-LM1:tmp sudregp$ grep -B 1 "*" pvals_dti_categOLSdescriptives.txt
 dti_ad_voxelwise_n223_09212018: OLS_inatt_categ_None (250 perms)
 Cluster size: 31, p<0.044 *
-```
-
-Unfortunately not much going on in DTI. Maybe if we run more permutations...
-let's wait to do that after we residualize the cluster results. We should
-eventually visualize them too.
-
+``` -->

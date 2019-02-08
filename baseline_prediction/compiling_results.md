@@ -1224,15 +1224,15 @@ print(p1+geom_boxplot(notch=T) + ggtitle(unique(data[idx,]$target))) + theme(axi
         axis.ticks.x=element_blank())
 ```
 
-![](2018-11-27-16-17-49.png)
+![](images/2018-11-27-16-17-49.png)
 
-![](2018-11-27-16-18-38.png)
+![](images/2018-11-27-16-18-38.png)
 
 And now we do accuracy as well:
 
-![](2018-11-27-16-30-22.png)
+![](images/2018-11-27-16-30-22.png)
 
-![](2018-11-27-16-32-58.png)
+![](images/2018-11-27-16-32-58.png)
 
 For these boxplots (from ggplot's documentation): The lower and upper hinges
 correspond to the first and third quartiles (the 25th and 75th percentiles). The

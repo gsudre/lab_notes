@@ -239,8 +239,14 @@ out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
 dim(out_df)
 ```
 
+Now we make sure everything has labels and export it:
+
 ```{r}
-write.csv(out_df, file='~/data/baseline_prediction/residualized_combined_OLS_descriptives_02062019.csv',
+m = merge(out_df, imaging[, c('MRN', 'OLS_inatt_categ', 'OLS_HI_categ')], by='MRN', all.x=T, all.y=F)
+m$OLS_inatt_categ = m$OLS_inatt_categ.y
+m$OLS_HI_categ = m$OLS_HI_categ.y
+m[, c('OLS_HI_categ.x', 'OLS_HI_categ.y', 'OLS_inatt_categ.x', 'OLS_inatt_categ.y')] = NULL
+write.csv(m, file='~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv',
           row.names=F)
 ```
 

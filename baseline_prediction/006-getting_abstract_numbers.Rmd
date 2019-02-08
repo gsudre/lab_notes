@@ -1,0 +1,181 @@
+---
+title: "Abstract numbers"
+output: html_notebook
+---
+
+We'll use the residualized clusters I output in the 005 note to grab logistic regression numbers for the abstract. 
+
+```{r}
+df = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
+df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')
+```
+
+# Logistic regressions
+
+```{r}
+library(nnet)
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_struct), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_HI_categ ~ scale(df$HI_struct), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_AD), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_DMN), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+# Combined imaging, intersection
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_inter = df[keep_me, ]
+fit <- multinom(df_inter$OLS_inatt_categ ~ scale(df_inter$inatt_DMN) + scale(df_inter$inatt_struct) + scale(df_inter$inatt_AD), na.action=na.omit)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+Combined model is better.
+
+# Combined imaging, imputation
+
+```{r}
+library(VIM)
+df_imp = df
+tmp = irmi(df[, 2:7])
+df_imp[, colnames(tmp)] = tmp
+```
+
+
+```{r}
+fit <- multinom(df_imp$OLS_inatt_categ ~ scale(df_imp$inatt_DMN) + scale(df_imp$inatt_struct) + scale(df_imp$inatt_AD), na.action=na.omit)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+Combined model is better.
+
+# Trying other variables by themselves
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+df = merge(clin, data, by='MRN')
+df[df$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+df[df$OLS_inatt_slope > -.33 & df$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+df[df$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+df[df$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+df$OLS_HI_categ = NULL
+df[df$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+df[df$OLS_HI_slope > -.5 & df$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+df[df$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+df[df$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
+df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')
+```
+
+```{r}
+x = colnames(df)[grepl(pattern = 'geno3prs', colnames(df))]
+df[, x] = scale(df[, x])
+keep_me = rowSums(is.na(df[, x])) == 0
+fit <- multinom(df[keep_me, ]$OLS_inatt_categ ~ ., data=df[keep_me, x])
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+x = colnames(df)[grepl(pattern = 'inatt_adhd200', colnames(df))]
+df[, x] = scale(df[, x])
+fit <- multinom(df$OLS_inatt_categ ~ df$inatt_adhd200_Age)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+KEEP TESTING OTHER DATASETS!!!
+
+# Check if overall combined model is better
+
+```{r}
+tmp_df = data.frame(MRN=df$MRN, inatt_DMN=mycluster)
+out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
+dim(out_df)
+```
+
+Now we make sure everything has labels and export it:
+
+```{r}
+m = merge(out_df, imaging[, c('MRN', 'OLS_inatt_categ', 'OLS_HI_categ')], by='MRN', all.x=T, all.y=F)
+m$OLS_inatt_categ = m$OLS_inatt_categ.y
+m$OLS_HI_categ = m$OLS_HI_categ.y
+m[, c('OLS_HI_categ.x', 'OLS_HI_categ.y', 'OLS_inatt_categ.x', 'OLS_inatt_categ.y')] = NULL
+write.csv(m, file='~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv',
+          row.names=F)
+```
+
+OK, let's try the predictions in Python then.
+
+The goal is to generate different ROC curves to compare the combined model with the individual modality models. We can come back to R to generate logs odds and other descriptives later.
+
