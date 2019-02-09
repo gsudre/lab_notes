@@ -1929,8 +1929,13 @@ mild     0.3470013           1.2620272</code></pre>
 <h1>Combined imaging, intersection</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxua2VlcF9tZSA9IHJvd1N1bXMoaXMubmEoZGYpKT09MFxuZGZfaW50ZXIgPSBkZltrZWVwX21lLCBdXG5maXQgPC0gbXVsdGlub20oZGZfaW50ZXIkT0xTX2luYXR0X2NhdGVnIH4gc2NhbGUoZGZfaW50ZXIkaW5hdHRfRE1OKSArIHNjYWxlKGRmX2ludGVyJGluYXR0X3N0cnVjdCkgKyBzY2FsZShkZl9pbnRlciRpbmF0dF9BRCksIG5hLmFjdGlvbj1uYS5vbWl0KVxuYGBgIn0= -->
-<pre class="r"><code>keep_me = rowSums(is.na(df))==0
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGYgPSByZWFkLmNzdignfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vcmVzaWR1YWxpemVkX2NvbWJpbmVkX09MU19kZXNjcmlwdGl2ZXNfMDIwNzIwMTkuY3N2JylcbmRmJE9MU19pbmF0dF9jYXRlZyA9IGFzLmZhY3RvcihkZiRPTFNfaW5hdHRfY2F0ZWcpXG5kZiRPTFNfaW5hdHRfY2F0ZWcgPSByZWxldmVsKGRmJE9MU19pbmF0dF9jYXRlZywgcmVmPSdOVicpXG5kZiRPTFNfSElfY2F0ZWcgPSBhcy5mYWN0b3IoZGYkT0xTX0hJX2NhdGVnKVxuZGYkT0xTX0hJX2NhdGVnID0gcmVsZXZlbChkZiRPTFNfSElfY2F0ZWcsIHJlZj0nTlYnKVxua2VlcF9tZSA9IHJvd1N1bXMoaXMubmEoZGYpKT09MFxuZGZfaW50ZXIgPSBkZltrZWVwX21lLCBdXG5maXQgPC0gbXVsdGlub20oZGZfaW50ZXIkT0xTX2luYXR0X2NhdGVnIH4gc2NhbGUoZGZfaW50ZXIkaW5hdHRfRE1OKSArIHNjYWxlKGRmX2ludGVyJGluYXR0X3N0cnVjdCkgKyBzY2FsZShkZl9pbnRlciRpbmF0dF9BRCksIG5hLmFjdGlvbj1uYS5vbWl0KVxuYGBgIn0= -->
+<pre class="r"><code>df = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
+df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')
+keep_me = rowSums(is.na(df))==0
 df_inter = df[keep_me, ]
 fit &lt;- multinom(df_inter$OLS_inatt_categ ~ scale(df_inter$inatt_DMN) + scale(df_inter$inatt_struct) + scale(df_inter$inatt_AD), na.action=na.omit)</code></pre>
 <!-- rnb-source-end -->
@@ -2025,6 +2030,12 @@ deter    0.4994251                 0.8389839                    0.6610934
 marked   0.3726206                 1.5997499                    1.4665511
 mild     0.3724276                 1.3108177                    0.7399020</code></pre>
 <!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoZGltKGRmX2ludGVyKSlcbmBgYCJ9 -->
+<pre class="r"><code>print(dim(df_inter))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIDE3OCAgIDlcbiJ9 -->
+<pre><code>[1] 178   9</code></pre>
+<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <p>Combined model is better.</p>
@@ -2033,12 +2044,16 @@ mild     0.3724276                 1.3108177                    0.7399020</code>
 <h1>Combined imaging, imputation</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeShWSU0pXG5kZl9pbXAgPSBkZlxudG1wID0gaXJtaShkZlssIDI6N10pXG5kZl9pbXBbLCBjb2xuYW1lcyh0bXApXSA9IHRtcFxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeShWSU0pXG5kZl9pbXAgPSBkZlxudG1wID0gaXJtaShkZlssIDI6N10pXG5kZl9pbXBbLCBjb2xuYW1lcyh0bXApXSA9IHRtcFxucHJpbnQoZGltKGRmX2ltcCkpXG5gYGAifQ== -->
 <pre class="r"><code>library(VIM)
 df_imp = df
 tmp = irmi(df[, 2:7])
-df_imp[, colnames(tmp)] = tmp</code></pre>
+df_imp[, colnames(tmp)] = tmp
+print(dim(df_imp))</code></pre>
 <!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIDI3NSAgIDlcbiJ9 -->
+<pre><code>[1] 275   9</code></pre>
+<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
@@ -2137,104 +2152,50 @@ mild     0.3438758                  0.8895987              0.9045991</code></pre
 <!-- rnb-text-begin -->
 <p>Combined model is better.</p>
 </div>
-<div id="trying-other-variables-by-themselves" class="section level1">
-<h1>Trying other variables by themselves</h1>
+<div id="trying-other-variables-but-only-in-the-imaging-intersection-data" class="section level1">
+<h1>Trying other variables, but only in the imaging intersection data</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubG9hZCgnfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vY29tYmluZWRfZGVzY3JpcHRpdmVzXzEyMTcyMDE4LlJEYXRhLmd6JylcbmNsaW4gPSByZWFkLmNzdignfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vbG9uZ19jbGluXzExMzAyMDE4LmNzdicpXG5kZiA9IG1lcmdlKGNsaW4sIGRhdGEsIGJ5PSdNUk4nKVxuZGZbZGYkT0xTX2luYXR0X3Nsb3BlIDw9IC0uMzMsICdPTFNfaW5hdHRfY2F0ZWcnXSA9ICdtYXJrZWQnXG5kZltkZiRPTFNfaW5hdHRfc2xvcGUgPiAtLjMzICYgZGYkT0xTX2luYXR0X3Nsb3BlIDw9IDAsICdPTFNfaW5hdHRfY2F0ZWcnXSA9ICdtaWxkJ1xuZGZbZGYkT0xTX2luYXR0X3Nsb3BlID4gMCwgJ09MU19pbmF0dF9jYXRlZyddID0gJ2RldGVyJ1xuZGZbZGYkRFggPT0gJ05WJywgJ09MU19pbmF0dF9jYXRlZyddID0gJ05WJ1xuZGYkT0xTX2luYXR0X2NhdGVnID0gYXMuZmFjdG9yKGRmJE9MU19pbmF0dF9jYXRlZylcbmRmJE9MU19pbmF0dF9jYXRlZyA9IHJlbGV2ZWwoZGYkT0xTX2luYXR0X2NhdGVnLCByZWY9J05WJylcbmRmJE9MU19ISV9jYXRlZyA9IE5VTExcbmRmW2RmJE9MU19ISV9zbG9wZSA8PSAtLjUsICdPTFNfSElfY2F0ZWcnXSA9ICdtYXJrZWQnXG5kZltkZiRPTFNfSElfc2xvcGUgPiAtLjUgJiBkZiRPTFNfSElfc2xvcGUgPD0gMCwgJ09MU19ISV9jYXRlZyddID0gJ21pbGQnXG5kZltkZiRPTFNfSElfc2xvcGUgPiAwLCAnT0xTX0hJX2NhdGVnJ10gPSAnZGV0ZXInXG5kZltkZiREWCA9PSAnTlYnLCAnT0xTX0hJX2NhdGVnJ10gPSAnTlYnXG5kZiRPTFNfSElfY2F0ZWcgPSBhcy5mYWN0b3IoZGYkT0xTX0hJX2NhdGVnKVxuZGYkT0xTX0hJX2NhdGVnID0gcmVsZXZlbChkZiRPTFNfSElfY2F0ZWcsIHJlZj0nTlYnKVxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubG9hZCgnfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vY29tYmluZWRfZGVzY3JpcHRpdmVzXzEyMTcyMDE4LlJEYXRhLmd6JylcbmRmX2FsbCA9IG1lcmdlKGRmX2ludGVyLCBkYXRhLCBieT0nTVJOJylcbmBgYCJ9 -->
 <pre class="r"><code>load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
-clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
-df = merge(clin, data, by='MRN')
-df[df$OLS_inatt_slope &lt;= -.33, 'OLS_inatt_categ'] = 'marked'
-df[df$OLS_inatt_slope &gt; -.33 &amp; df$OLS_inatt_slope &lt;= 0, 'OLS_inatt_categ'] = 'mild'
-df[df$OLS_inatt_slope &gt; 0, 'OLS_inatt_categ'] = 'deter'
-df[df$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
-df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
-df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
-df$OLS_HI_categ = NULL
-df[df$OLS_HI_slope &lt;= -.5, 'OLS_HI_categ'] = 'marked'
-df[df$OLS_HI_slope &gt; -.5 &amp; df$OLS_HI_slope &lt;= 0, 'OLS_HI_categ'] = 'mild'
-df[df$OLS_HI_slope &gt; 0, 'OLS_HI_categ'] = 'deter'
-df[df$DX == 'NV', 'OLS_HI_categ'] = 'NV'
-df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
-df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')</code></pre>
+df_all = merge(df_inter, data, by='MRN')</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueCA9IGNvbG5hbWVzKGRmKVtncmVwbChwYXR0ZXJuID0gJ2dlbm8zcHJzJywgY29sbmFtZXMoZGYpKV1cbmRmWywgeF0gPSBzY2FsZShkZlssIHhdKVxua2VlcF9tZSA9IHJvd1N1bXMoaXMubmEoZGZbLCB4XSkpID09IDBcbmZpdCA8LSBtdWx0aW5vbShkZltrZWVwX21lLCBdJE9MU19pbmF0dF9jYXRlZyB+IC4sIGRhdGE9ZGZba2VlcF9tZSwgeF0pXG5gYGAifQ== -->
-<pre class="r"><code>x = colnames(df)[grepl(pattern = 'geno3prs', colnames(df))]
-df[, x] = scale(df[, x])
-keep_me = rowSums(is.na(df[, x])) == 0
-fit &lt;- multinom(df[keep_me, ]$OLS_inatt_categ ~ ., data=df[keep_me, x])</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueCA9IGMoJ0hJX3N0cnVjdCcsICdISV9jb2dfUmF3U1N0b3RhbCcsICdISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZScpXG5rZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wXG5kZl9hbGwgPSBkZl9hbGxba2VlcF9tZSwgYygnT0xTX0hJX2NhdGVnJywgeCldXG5kZl9hbGxbLCB4XSA9IHNjYWxlKGRmX2FsbFssIHhdKVxuZml0IDwtIG11bHRpbm9tKE9MU19ISV9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKVxuYGBgIn0= -->
+<pre class="r"><code>x = c('HI_struct', 'HI_cog_RawSStotal', 'HI_geno3prs_v_PROFILES.0.00001.profile')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_HI_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit &lt;- multinom(OLS_HI_categ ~ ., data=df_all)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgNDU0LjcwNDU1MCBcbml0ZXIgIDEwIHZhbHVlIDQzMC4zNTc0MjNcbmZpbmFsICB2YWx1ZSA0MjkuOTQ3NDE1IFxuY29udmVyZ2VkXG4ifQ== -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMTgwLjIxODI2NyBcbml0ZXIgIDEwIHZhbHVlIDE1MS4xNTYzNDNcbmZpbmFsICB2YWx1ZSAxNTEuMDcxMjQ2IFxuY29udmVyZ2VkXG4ifQ== -->
 <pre><code># weights:  20 (12 variable)
-initial  value 454.704550 
-iter  10 value 430.357423
-final  value 429.947415 
+initial  value 180.218267 
+iter  10 value 151.156343
+final  value 151.071246 
 converged</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gXCJib3RoXCIsIHRyYWNlID0gRilcbmBgYCJ9 -->
 <pre class="r"><code>step &lt;- stepAIC(fit, direction = &quot;both&quot;, trace = F)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSA0NTQuNzA0NTUwIFxuaXRlciAgMTAgdmFsdWUgNDMyLjk5ODM3OFxuZmluYWwgIHZhbHVlIDQzMi4xNjkwNzAgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDE2ICg5IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgNDU0LjcwNDU1MCBcbml0ZXIgIDEwIHZhbHVlIDQzMS42ODEzNzFcbmZpbmFsICB2YWx1ZSA0MzAuNTQwMzUwIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxNiAoOSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDQ1NC43MDQ1NTAgXG5pdGVyICAxMCB2YWx1ZSA0MzEuODk4NTY2XG5maW5hbCAgdmFsdWUgNDMwLjIwNjQyNSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSA0NTQuNzA0NTUwIFxuaXRlciAgMTAgdmFsdWUgNDMxLjg5ODU2NlxuZmluYWwgIHZhbHVlIDQzMC4yMDY0MjUgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDEyICg2IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgNDU0LjcwNDU1MCBcbml0ZXIgIDEwIHZhbHVlIDQzMi44NTExMzFcbmZpbmFsICB2YWx1ZSA0MzIuODQ5ODEzIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxMiAoNiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDQ1NC43MDQ1NTAgXG5pdGVyICAxMCB2YWx1ZSA0MzAuODAxNTI3XG5maW5hbCAgdmFsdWUgNDMwLjc5ODc3NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgNDU0LjcwNDU1MCBcbml0ZXIgIDEwIHZhbHVlIDQzMC4zNTc0MjNcbmZpbmFsICB2YWx1ZSA0MjkuOTQ3NDE1IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxMiAoNiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDQ1NC43MDQ1NTAgXG5pdGVyICAxMCB2YWx1ZSA0MzAuODAxNTI3XG5maW5hbCAgdmFsdWUgNDMwLjc5ODc3NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgOCAoMyB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDQ1NC43MDQ1NTAgXG5pdGVyICAxMCB2YWx1ZSA0MzUuNDM2Mzk0XG5pdGVyICAxMCB2YWx1ZSA0MzUuNDM2MzkzXG5maW5hbCAgdmFsdWUgNDM1LjQzNjM3MyBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSA0NTQuNzA0NTUwIFxuaXRlciAgMTAgdmFsdWUgNDMxLjg5ODU2NlxuZmluYWwgIHZhbHVlIDQzMC4yMDY0MjUgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDE2ICg5IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgNDU0LjcwNDU1MCBcbml0ZXIgIDEwIHZhbHVlIDQzMS42ODEzNzFcbmZpbmFsICB2YWx1ZSA0MzAuNTQwMzUwIFxuY29udmVyZ2VkXG4ifQ== -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAxODAuMjE4MjY3IFxuaXRlciAgMTAgdmFsdWUgMTU1LjI4NTc4OVxuZmluYWwgIHZhbHVlIDE1NS4yMzM4MzQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDE2ICg5IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMTgwLjIxODI2NyBcbml0ZXIgIDEwIHZhbHVlIDE1NC43Nzc3NDNcbmZpbmFsICB2YWx1ZSAxNTQuNzEyMzc0IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxNiAoOSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDE4MC4yMTgyNjcgXG5pdGVyICAxMCB2YWx1ZSAxNTYuNzg3NzE5XG5maW5hbCAgdmFsdWUgMTU2LjcxNzE4OCBcbmNvbnZlcmdlZFxuIn0= -->
 <pre><code># weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 432.998378
-final  value 432.169070 
+initial  value 180.218267 
+iter  10 value 155.285789
+final  value 155.233834 
 converged
 # weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 431.681371
-final  value 430.540350 
+initial  value 180.218267 
+iter  10 value 154.777743
+final  value 154.712374 
 converged
 # weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 431.898566
-final  value 430.206425 
-converged
-# weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 431.898566
-final  value 430.206425 
-converged
-# weights:  12 (6 variable)
-initial  value 454.704550 
-iter  10 value 432.851131
-final  value 432.849813 
-converged
-# weights:  12 (6 variable)
-initial  value 454.704550 
-iter  10 value 430.801527
-final  value 430.798776 
-converged
-# weights:  20 (12 variable)
-initial  value 454.704550 
-iter  10 value 430.357423
-final  value 429.947415 
-converged
-# weights:  12 (6 variable)
-initial  value 454.704550 
-iter  10 value 430.801527
-final  value 430.798776 
-converged
-# weights:  8 (3 variable)
-initial  value 454.704550 
-iter  10 value 435.436394
-iter  10 value 435.436393
-final  value 435.436373 
-converged
-# weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 431.898566
-final  value 430.206425 
-converged
-# weights:  16 (9 variable)
-initial  value 454.704550 
-iter  10 value 431.681371
-final  value 430.540350 
+initial  value 180.218267 
+iter  10 value 156.787719
+final  value 156.717188 
 converged</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZml0ID0gc3RlcFxueiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnNcbnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDJcbnJyID0gZXhwKGNvZWYoZml0KSlcbnBwID0gZml0dGVkKGZpdClcbnByaW50KHApXG5gYGAifQ== -->
@@ -2245,126 +2206,577 @@ rr = exp(coef(fit))
 pp = fitted(fit)
 print(p)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSBpbmF0dF9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMS5wcm9maWxlXG5kZXRlciAgOS45OTA2MDdlLTAzICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMDEzNzgxNjJcbm1hcmtlZCAxLjk1MjcxOGUtMDQgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMC41Mzk2Njg0NVxubWlsZCAgIDEuNDM3NDIzZS0wOCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjgzNzY3MDY3XG4ifQ== -->
-<pre><code>        (Intercept) inatt_geno3prs_v_PROFILES.0.0001.profile
-deter  9.990607e-03                               0.01378162
-marked 1.952718e-04                               0.53966845
-mild   1.437423e-08                               0.83767067</code></pre>
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSAgSElfc3RydWN0IEhJX2NvZ19SYXdTU3RvdGFsIEhJX2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAwMS5wcm9maWxlXG5kZXRlciAgMC4wMDAwMTk3NjIyIDAuNjQyNzk0NzkgICAgICAgIDAuNDE1MDQ5MjUgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMjEyMTc1MzVcbm1hcmtlZCAwLjA1NzA5MTcxMDcgMC4wNzY1NTU4MiAgICAgICAgMC4wMTA2MDM2OCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMC4wMzk0ODA3OFxubWlsZCAgIDAuMDAwMTM2MTMwOSAwLjE0MDI5MTQ5ICAgICAgICAwLjM2Njk4NDQ2ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjI0NTEwMzk0XG4ifQ== -->
+<pre><code>        (Intercept)  HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter  0.0000197622 0.64279479        0.41504925                             0.21217535
+marked 0.0570917107 0.07655582        0.01060368                             0.03948078
+mild   0.0001361309 0.14029149        0.36698446                             0.24510394</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoZml0KVxuYGBgIn0= -->
 <pre class="r"><code>print(fit)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBkZltrZWVwX21lLCBdJE9MU19pbmF0dF9jYXRlZyB+IGluYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAxLnByb2ZpbGUsIFxuICAgIGRhdGEgPSBkZltrZWVwX21lLCB4XSlcblxuQ29lZmZpY2llbnRzOlxuICAgICAgIChJbnRlcmNlcHQpIGluYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAxLnByb2ZpbGVcbmRldGVyICAgLTAuMzY3NTgxMCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjM1MTQ3NzA4XG5tYXJrZWQgIC0wLjU2MTE0NjUgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAtMC4wOTQyNDYxMVxubWlsZCAgICAtMC45ODEzMjE0ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMDM2MTIyODhcblxuUmVzaWR1YWwgRGV2aWFuY2U6IDg2MS41OTc2IFxuQUlDOiA4NzMuNTk3NiBcbiJ9 -->
+<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBPTFNfSElfY2F0ZWcgfiBISV9zdHJ1Y3QgKyBISV9jb2dfUmF3U1N0b3RhbCArIFxuICAgIEhJX2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAwMS5wcm9maWxlLCBkYXRhID0gZGZfYWxsKVxuXG5Db2VmZmljaWVudHM6XG4gICAgICAgKEludGVyY2VwdCkgIEhJX3N0cnVjdCBISV9jb2dfUmF3U1N0b3RhbCBISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZVxuZGV0ZXIgICAtMS4zNTEyNDE1ICAwLjE0MDA1NDUgICAgICAgIC0wLjI0Mzg2NTkgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjM3Mjc4Mzdcbm1hcmtlZCAgLTAuNDQ2MzEzOCAtMC40MzkzMTU0ICAgICAgICAtMC42MTE5MTQ2ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAtMC40OTcxMTY1XG5taWxkICAgIC0xLjExMzg3MTggIDAuMzg3NTExMyAgICAgICAgLTAuMjQ3OTY2MSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMzIyNTY5N1xuXG5SZXNpZHVhbCBEZXZpYW5jZTogMzAyLjE0MjUgXG5BSUM6IDMyNi4xNDI1IFxuIn0= -->
 <pre><code>Call:
-multinom(formula = df[keep_me, ]$OLS_inatt_categ ~ inatt_geno3prs_v_PROFILES.0.0001.profile, 
-    data = df[keep_me, x])
+multinom(formula = OLS_HI_categ ~ HI_struct + HI_cog_RawSStotal + 
+    HI_geno3prs_v_PROFILES.0.00001.profile, data = df_all)
 
 Coefficients:
-       (Intercept) inatt_geno3prs_v_PROFILES.0.0001.profile
-deter   -0.3675810                               0.35147708
-marked  -0.5611465                              -0.09424611
-mild    -0.9813214                               0.03612288
+       (Intercept)  HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter   -1.3512415  0.1400545        -0.2438659                              0.3727837
+marked  -0.4463138 -0.4393154        -0.6119146                             -0.4971165
+mild    -1.1138718  0.3875113        -0.2479661                              0.3225697
 
-Residual Deviance: 861.5976 
-AIC: 873.5976 </code></pre>
+Residual Deviance: 302.1425 
+AIC: 326.1425 </code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQocnIpXG5gYGAifQ== -->
 <pre class="r"><code>print(rr)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIGluYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAxLnByb2ZpbGVcbmRldGVyICAgIDAuNjkyNDA3MyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMS40MjExNjUyXG5tYXJrZWQgICAwLjU3MDU1NDUgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuOTEwMDU4OFxubWlsZCAgICAgMC4zNzQ4MTU1ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAxLjAzNjc4MzJcbiJ9 -->
-<pre><code>       (Intercept) inatt_geno3prs_v_PROFILES.0.0001.profile
-deter    0.6924073                                1.4211652
-marked   0.5705545                                0.9100588
-mild     0.3748155                                1.0367832</code></pre>
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIEhJX3N0cnVjdCBISV9jb2dfUmF3U1N0b3RhbCBISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZVxuZGV0ZXIgICAgMC4yNTg5MTg2IDEuMTUwMzM2NSAgICAgICAgIDAuNzgzNTkyNyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDEuNDUxNzcwM1xubWFya2VkICAgMC42Mzk5ODI5IDAuNjQ0NDc3NSAgICAgICAgIDAuNTQyMzExNiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuNjA4MjgyMVxubWlsZCAgICAgMC4zMjgyODU0IDEuNDczMzA5NiAgICAgICAgIDAuNzgwMzg2NCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDEuMzgwNjcxMlxuIn0= -->
+<pre><code>       (Intercept) HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter    0.2589186 1.1503365         0.7835927                              1.4517703
+marked   0.6399829 0.6444775         0.5423116                              0.6082821
+mild     0.3282854 1.4733096         0.7803864                              1.3806712</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueCA9IGNvbG5hbWVzKGRmKVtncmVwbChwYXR0ZXJuID0gJ2luYXR0X2FkaGQyMDAnLCBjb2xuYW1lcyhkZikpXVxuZGZbLCB4XSA9IHNjYWxlKGRmWywgeF0pXG5maXQgPC0gbXVsdGlub20oZGYkT0xTX2luYXR0X2NhdGVnIH4gZGYkaW5hdHRfYWRoZDIwMF9BZ2UpXG5gYGAifQ== -->
-<pre class="r"><code>x = colnames(df)[grepl(pattern = 'inatt_adhd200', colnames(df))]
-df[, x] = scale(df[, x])
-fit &lt;- multinom(df$OLS_inatt_categ ~ df$inatt_adhd200_Age)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGZfYWxsID0gbWVyZ2UoZGZfaW50ZXIsIGRhdGEsIGJ5PSdNUk4nKVxueCA9IGMoJ2luYXR0X2FkaGQyMDBfQWdlJywgJ2luYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAxLnByb2ZpbGUnLCAnaW5hdHRfZ2VubzNwcnNfdl9QUk9GSUxFUy4wLjAwMDUucHJvZmlsZScsXG4gICAgICAnaW5hdHRfQUQnLCAnaW5hdHRfc3RydWN0JywgJ2luYXR0X0RNTicpXG5rZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wXG5kZl9hbGwgPSBkZl9hbGxba2VlcF9tZSwgYygnT0xTX2luYXR0X2NhdGVnJywgeCldXG5kZl9hbGxbLCB4XSA9IHNjYWxlKGRmX2FsbFssIHhdKVxuZml0IDwtIG11bHRpbm9tKE9MU19pbmF0dF9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKVxuYGBgIn0= -->
+<pre class="r"><code>df_all = merge(df_inter, data, by='MRN')
+x = c('inatt_adhd200_Age', 'inatt_geno3prs_v_PROFILES.0.0001.profile', 'inatt_geno3prs_v_PROFILES.0.0005.profile',
+      'inatt_AD', 'inatt_struct', 'inatt_DMN')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_inatt_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit &lt;- multinom(OLS_inatt_categ ~ ., data=df_all)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMTIgKDYgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSA1MjYuNzkxODU3IFxuaXRlciAgMTAgdmFsdWUgNDk0LjU3NTQ3M1xuZmluYWwgIHZhbHVlIDQ5NC41NzU0MTAgXG5jb252ZXJnZWRcbiJ9 -->
-<pre><code># weights:  12 (6 variable)
-initial  value 526.791857 
-iter  10 value 494.575473
-final  value 494.575410 
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMzIgKDIxIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIwOS42NjY2MzRcbml0ZXIgIDIwIHZhbHVlIDIwOC44ODg4NTFcbmZpbmFsICB2YWx1ZSAyMDguODc4NjI3IFxuY29udmVyZ2VkXG4ifQ== -->
+<pre><code># weights:  32 (21 variable)
+initial  value 238.442630 
+iter  10 value 209.666634
+iter  20 value 208.888851
+final  value 208.878627 
 converged</code></pre>
 <!-- rnb-output-end -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnNcbnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDJcbnJyID0gZXhwKGNvZWYoZml0KSlcbnBwID0gZml0dGVkKGZpdClcbnByaW50KHApXG5gYGAifQ== -->
-<pre class="r"><code>z &lt;- summary(fit)$coefficients/summary(fit)$standard.errors
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gXCJib3RoXCIsIHRyYWNlID0gRilcbmBgYCJ9 -->
+<pre class="r"><code>step &lt;- stepAIC(fit, direction = &quot;both&quot;, trace = F)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxMi42MjQyNTJcbml0ZXIgIDIwIHZhbHVlIDIxMS44ODM1MzhcbmZpbmFsICB2YWx1ZSAyMTEuODc5OTIwIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjA5LjU1NzE4NFxuaXRlciAgMjAgdmFsdWUgMjA5LjE3MzA1MFxuZmluYWwgIHZhbHVlIDIwOS4xNjQ2NjQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI4ICgxOCB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTAuNjExMTc5XG5pdGVyICAyMCB2YWx1ZSAyMTAuMDA0ODkzXG5maW5hbCAgdmFsdWUgMjEwLjAwMzk5MSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxMi42MDE2NjZcbml0ZXIgIDIwIHZhbHVlIDIxMi4wODQyMjFcbmZpbmFsICB2YWx1ZSAyMTIuMDU1MTI0IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjEzLjM0MTc4N1xuaXRlciAgMjAgdmFsdWUgMjEzLjAyODM3M1xuZmluYWwgIHZhbHVlIDIxMy4wMjE3NjAgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI4ICgxOCB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTMuMjg5OTE1XG5pdGVyICAyMCB2YWx1ZSAyMTIuNjI2NjI1XG5maW5hbCAgdmFsdWUgMjEyLjYxOTE5NCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIwOS41NTcxODRcbml0ZXIgIDIwIHZhbHVlIDIwOS4xNzMwNTBcbmZpbmFsICB2YWx1ZSAyMDkuMTY0NjY0IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjEyLjcyODgyNFxuaXRlciAgMjAgdmFsdWUgMjEyLjIwODM0OVxuZmluYWwgIHZhbHVlIDIxMi4yMDIzMTkgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI0ICgxNSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTEuNDA4NjI4XG5pdGVyICAyMCB2YWx1ZSAyMTEuMDkzNTAxXG5maW5hbCAgdmFsdWUgMjExLjA5MjQ3NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjQgKDE1IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxMi44Mzc5MjRcbml0ZXIgIDIwIHZhbHVlIDIxMi4zODA4MTBcbmZpbmFsICB2YWx1ZSAyMTIuMzc3MDY5IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjEzLjQ5NTQ2NFxuaXRlciAgMjAgdmFsdWUgMjEzLjQzMTAzOVxuZmluYWwgIHZhbHVlIDIxMy40MzEwMDUgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI0ICgxNSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTIuOTg3NzM4XG5pdGVyICAyMCB2YWx1ZSAyMTIuOTAyMDI1XG5maW5hbCAgdmFsdWUgMjEyLjkwMTcwNyBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMzIgKDIxIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIwOS42NjY2MzRcbml0ZXIgIDIwIHZhbHVlIDIwOC44ODg4NTFcbmZpbmFsICB2YWx1ZSAyMDguODc4NjI3IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjExLjQwODYyOFxuaXRlciAgMjAgdmFsdWUgMjExLjA5MzUwMVxuZmluYWwgIHZhbHVlIDIxMS4wOTI0NzYgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTQuNjY5NDA0XG5maW5hbCAgdmFsdWUgMjE0LjMxMjM1OSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxNC4xOTA3MDFcbmZpbmFsICB2YWx1ZSAyMTMuOTIyMzY5IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyMCAoMTIgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjE2LjAyNTMzNlxuZmluYWwgIHZhbHVlIDIxNS45ODg4NTkgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTUuMTIwOTk3XG5maW5hbCAgdmFsdWUgMjE1LjAxMTY4NSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxMC42MTExNzlcbml0ZXIgIDIwIHZhbHVlIDIxMC4wMDQ4OTNcbmZpbmFsICB2YWx1ZSAyMTAuMDAzOTkxIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjA5LjU1NzE4NFxuaXRlciAgMjAgdmFsdWUgMjA5LjE3MzA1MFxuZmluYWwgIHZhbHVlIDIwOS4xNjQ2NjQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTQuMTkwNzAxXG5maW5hbCAgdmFsdWUgMjEzLjkyMjM2OSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjE2Ljc3MDY4M1xuZmluYWwgIHZhbHVlIDIxNi42NDIwNDQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDE2ICg5IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxOS4zMDAwOTFcbmZpbmFsICB2YWx1ZSAyMTkuMjkzMTg3IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxNiAoOSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTcuNjMyNzYyXG5maW5hbCAgdmFsdWUgMjE3LjYwODY3MSBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjQgKDE1IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxMy42MTY2NjZcbml0ZXIgIDIwIHZhbHVlIDIxMi45NDQzNjBcbmZpbmFsICB2YWx1ZSAyMTIuOTQzMjQ5IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjEyLjgzNzkyNFxuaXRlciAgMjAgdmFsdWUgMjEyLjM4MDgxMFxuZmluYWwgIHZhbHVlIDIxMi4zNzcwNjkgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI0ICgxNSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTEuNDA4NjI4XG5pdGVyICAyMCB2YWx1ZSAyMTEuMDkzNTAxXG5maW5hbCAgdmFsdWUgMjExLjA5MjQ3NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjE2Ljc3MDY4M1xuZmluYWwgIHZhbHVlIDIxNi42NDIwNDQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDEyICg2IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIyMi4yMjU2NjNcbml0ZXIgIDEwIHZhbHVlIDIyMi4yMjU2NjJcbml0ZXIgIDEwIHZhbHVlIDIyMi4yMjU2NjJcbmZpbmFsICB2YWx1ZSAyMjIuMjI1NjYyIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxMiAoNiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMjAuMTEwNzYxXG5pdGVyICAxMCB2YWx1ZSAyMjAuMTEwNzYwXG5pdGVyICAxMCB2YWx1ZSAyMjAuMTEwNzYwXG5maW5hbCAgdmFsdWUgMjIwLjExMDc2MCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxNC4xOTA3MDFcbmZpbmFsICB2YWx1ZSAyMTMuOTIyMzY5IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyMCAoMTIgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyMzguNDQyNjMwIFxuaXRlciAgMTAgdmFsdWUgMjE1LjczNTkyNVxuaXRlciAgMjAgdmFsdWUgMjE1LjQxMDQ1MFxuaXRlciAgMjAgdmFsdWUgMjE1LjQxMDQ1MFxuaXRlciAgMjAgdmFsdWUgMjE1LjQxMDQ1MFxuZmluYWwgIHZhbHVlIDIxNS40MTA0NTAgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDIzOC40NDI2MzAgXG5pdGVyICAxMCB2YWx1ZSAyMTUuMTU5MDkyXG5maW5hbCAgdmFsdWUgMjE0LjkxMTQ2NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjM4LjQ0MjYzMCBcbml0ZXIgIDEwIHZhbHVlIDIxNC42Njk0MDRcbmZpbmFsICB2YWx1ZSAyMTQuMzEyMzU5IFxuY29udmVyZ2VkXG4ifQ== -->
+<pre><code># weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 212.624252
+iter  20 value 211.883538
+final  value 211.879920 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 209.557184
+iter  20 value 209.173050
+final  value 209.164664 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 210.611179
+iter  20 value 210.004893
+final  value 210.003991 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 212.601666
+iter  20 value 212.084221
+final  value 212.055124 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 213.341787
+iter  20 value 213.028373
+final  value 213.021760 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 213.289915
+iter  20 value 212.626625
+final  value 212.619194 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 209.557184
+iter  20 value 209.173050
+final  value 209.164664 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 212.728824
+iter  20 value 212.208349
+final  value 212.202319 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 211.408628
+iter  20 value 211.093501
+final  value 211.092476 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 212.837924
+iter  20 value 212.380810
+final  value 212.377069 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 213.495464
+iter  20 value 213.431039
+final  value 213.431005 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 212.987738
+iter  20 value 212.902025
+final  value 212.901707 
+converged
+# weights:  32 (21 variable)
+initial  value 238.442630 
+iter  10 value 209.666634
+iter  20 value 208.888851
+final  value 208.878627 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 211.408628
+iter  20 value 211.093501
+final  value 211.092476 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 214.669404
+final  value 214.312359 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 214.190701
+final  value 213.922369 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 216.025336
+final  value 215.988859 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 215.120997
+final  value 215.011685 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 210.611179
+iter  20 value 210.004893
+final  value 210.003991 
+converged
+# weights:  28 (18 variable)
+initial  value 238.442630 
+iter  10 value 209.557184
+iter  20 value 209.173050
+final  value 209.164664 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 214.190701
+final  value 213.922369 
+converged
+# weights:  16 (9 variable)
+initial  value 238.442630 
+iter  10 value 216.770683
+final  value 216.642044 
+converged
+# weights:  16 (9 variable)
+initial  value 238.442630 
+iter  10 value 219.300091
+final  value 219.293187 
+converged
+# weights:  16 (9 variable)
+initial  value 238.442630 
+iter  10 value 217.632762
+final  value 217.608671 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 213.616666
+iter  20 value 212.944360
+final  value 212.943249 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 212.837924
+iter  20 value 212.380810
+final  value 212.377069 
+converged
+# weights:  24 (15 variable)
+initial  value 238.442630 
+iter  10 value 211.408628
+iter  20 value 211.093501
+final  value 211.092476 
+converged
+# weights:  16 (9 variable)
+initial  value 238.442630 
+iter  10 value 216.770683
+final  value 216.642044 
+converged
+# weights:  12 (6 variable)
+initial  value 238.442630 
+iter  10 value 222.225663
+iter  10 value 222.225662
+iter  10 value 222.225662
+final  value 222.225662 
+converged
+# weights:  12 (6 variable)
+initial  value 238.442630 
+iter  10 value 220.110761
+iter  10 value 220.110760
+iter  10 value 220.110760
+final  value 220.110760 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 214.190701
+final  value 213.922369 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 215.735925
+iter  20 value 215.410450
+iter  20 value 215.410450
+iter  20 value 215.410450
+final  value 215.410450 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 215.159092
+final  value 214.911466 
+converged
+# weights:  20 (12 variable)
+initial  value 238.442630 
+iter  10 value 214.669404
+final  value 214.312359 
+converged</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZml0ID0gc3RlcFxueiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnNcbnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDJcbnJyID0gZXhwKGNvZWYoZml0KSlcbnBwID0gZml0dGVkKGZpdClcbnByaW50KHApXG5gYGAifQ== -->
+<pre class="r"><code>fit = step
+z &lt;- summary(fit)$coefficients/summary(fit)$standard.errors
 p &lt;- (1 - pnorm(abs(z), 0, 1)) * 2
 rr = exp(coef(fit))
 pp = fitted(fit)
 print(p)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSBkZiRpbmF0dF9hZGhkMjAwX0FnZVxuZGV0ZXIgIDMuMzEwOTc5ZS0wMiAgICAgICAgIDAuMDAwMjczMTk0NFxubWFya2VkIDEuMzk0NTM2ZS0wNCAgICAgICAgIDAuNDU0MzI4NjU3NFxubWlsZCAgIDMuODQ1NDc3ZS0wOSAgICAgICAgIDAuNTI0NjE4OTA1N1xuIn0= -->
-<pre><code>        (Intercept) df$inatt_adhd200_Age
-deter  3.310979e-02         0.0002731944
-marked 1.394536e-04         0.4543286574
-mild   3.845477e-09         0.5246189057</code></pre>
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSBpbmF0dF9zdHJ1Y3QgIGluYXR0X0RNTlxuZGV0ZXIgIDEuNjE0Mjk1ZS0wMyAgIDAuMDczMDg0MDkgMC40MzIzNDAyNlxubWFya2VkIDcuMTU0NTgzZS0wNSAgIDAuMDcyNDU2ODAgMC4wNDk4Nzg0OFxubWlsZCAgIDIuNzYxNjg2ZS0wNSAgIDAuMjc4NTEzNzQgMC4zMjExOTAyNVxuIn0= -->
+<pre><code>        (Intercept) inatt_struct  inatt_DMN
+deter  1.614295e-03   0.07308409 0.43234026
+marked 7.154583e-05   0.07245680 0.04987848
+mild   2.761686e-05   0.27851374 0.32119025</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoZml0KVxuYGBgIn0= -->
 <pre class="r"><code>print(fit)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBkZiRPTFNfaW5hdHRfY2F0ZWcgfiBkZiRpbmF0dF9hZGhkMjAwX0FnZSlcblxuQ29lZmZpY2llbnRzOlxuICAgICAgIChJbnRlcmNlcHQpIGRmJGluYXR0X2FkaGQyMDBfQWdlXG5kZXRlciAgIC0wLjI4NjMyOTggICAgICAgICAgLTAuNTQxOTQxNTJcbm1hcmtlZCAgLTAuNTQzMTg5MCAgICAgICAgICAgMC4wOTk1Nzc5MlxubWlsZCAgICAtMC45NjE0ODUzICAgICAgICAgIC0wLjEwNDE3NDUwXG5cblJlc2lkdWFsIERldmlhbmNlOiA5ODkuMTUwOCBcbkFJQzogMTAwMS4xNTEgXG4ifQ== -->
+<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBPTFNfaW5hdHRfY2F0ZWcgfiBpbmF0dF9zdHJ1Y3QgKyBpbmF0dF9ETU4sIFxuICAgIGRhdGEgPSBkZl9hbGwpXG5cbkNvZWZmaWNpZW50czpcbiAgICAgICAoSW50ZXJjZXB0KSBpbmF0dF9zdHJ1Y3QgIGluYXR0X0RNTlxuZGV0ZXIgICAtMC42NjE4MTg0ICAgLTAuNDA4NzY2NyAtMC4xNTk0MzYwXG5tYXJrZWQgIC0wLjkyNzkwMjcgICAgMC4zNzkwMTU3ICAwLjQ2MDkxODdcbm1pbGQgICAgLTAuOTU2OTk3NiAgIC0wLjI2Njk1MzIgIDAuMjI5ODkxMFxuXG5SZXNpZHVhbCBEZXZpYW5jZTogNDMzLjI4NDEgXG5BSUM6IDQ1MS4yODQxIFxuIn0= -->
 <pre><code>Call:
-multinom(formula = df$OLS_inatt_categ ~ df$inatt_adhd200_Age)
+multinom(formula = OLS_inatt_categ ~ inatt_struct + inatt_DMN, 
+    data = df_all)
 
 Coefficients:
-       (Intercept) df$inatt_adhd200_Age
-deter   -0.2863298          -0.54194152
-marked  -0.5431890           0.09957792
-mild    -0.9614853          -0.10417450
+       (Intercept) inatt_struct  inatt_DMN
+deter   -0.6618184   -0.4087667 -0.1594360
+marked  -0.9279027    0.3790157  0.4609187
+mild    -0.9569976   -0.2669532  0.2298910
 
-Residual Deviance: 989.1508 
-AIC: 1001.151 </code></pre>
+Residual Deviance: 433.2841 
+AIC: 451.2841 </code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQocnIpXG5gYGAifQ== -->
 <pre class="r"><code>print(rr)</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIGRmJGluYXR0X2FkaGQyMDBfQWdlXG5kZXRlciAgICAwLjc1MTAxNDkgICAgICAgICAgICAwLjU4MTYxNzlcbm1hcmtlZCAgIDAuNTgwODkyOCAgICAgICAgICAgIDEuMTA0NzA0NVxubWlsZCAgICAgMC4zODIzMjQ2ICAgICAgICAgICAgMC45MDEwNjgwXG4ifQ== -->
-<pre><code>       (Intercept) df$inatt_adhd200_Age
-deter    0.7510149            0.5816179
-marked   0.5808928            1.1047045
-mild     0.3823246            0.9010680</code></pre>
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIGluYXR0X3N0cnVjdCBpbmF0dF9ETU5cbmRldGVyICAgIDAuNTE1OTEyMyAgICAwLjY2NDQ2OTIgMC44NTI2MjQ2XG5tYXJrZWQgICAwLjM5NTM4MjEgICAgMS40NjA4NDYwIDEuNTg1NTMwMFxubWlsZCAgICAgMC4zODQwNDQyICAgIDAuNzY1NzA4OSAxLjI1ODQ2MjhcbiJ9 -->
+<pre><code>       (Intercept) inatt_struct inatt_DMN
+deter    0.5159123    0.6644692 0.8526246
+marked   0.3953821    1.4608460 1.5855300
+mild     0.3840442    0.7657089 1.2584628</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>KEEP TESTING OTHER DATASETS!!!</p>
 </div>
-<div id="check-if-overall-combined-model-is-better" class="section level1">
-<h1>Check if overall combined model is better</h1>
+<div id="now-repeat-the-same-stuff-for-the-inputed-data" class="section level1">
+<h1>Now repeat the same stuff for the inputed data:</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudG1wX2RmID0gZGF0YS5mcmFtZShNUk49ZGYkTVJOLCBpbmF0dF9ETU49bXljbHVzdGVyKVxub3V0X2RmID0gbWVyZ2Uob3V0X2RmLCB0bXBfZGYsIGFsbC54PVQsIGFsbC55PVQpXG5kaW0ob3V0X2RmKVxuYGBgIn0= -->
-<pre class="r"><code>tmp_df = data.frame(MRN=df$MRN, inatt_DMN=mycluster)
-out_df = merge(out_df, tmp_df, all.x=T, all.y=T)
-dim(out_df)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubG9hZCgnfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vY29tYmluZWRfZGVzY3JpcHRpdmVzXzEyMTcyMDE4LlJEYXRhLmd6JylcbmRmX2FsbCA9IG1lcmdlKGRmX2ltcCwgZGF0YSwgYnk9J01STicpXG5gYGAifQ== -->
+<pre class="r"><code>load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+df_all = merge(df_imp, data, by='MRN')</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>Now we make sure everything has labels and export it:</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubSA9IG1lcmdlKG91dF9kZiwgaW1hZ2luZ1ssIGMoJ01STicsICdPTFNfaW5hdHRfY2F0ZWcnLCAnT0xTX0hJX2NhdGVnJyldLCBieT0nTVJOJywgYWxsLng9VCwgYWxsLnk9Rilcbm0kT0xTX2luYXR0X2NhdGVnID0gbSRPTFNfaW5hdHRfY2F0ZWcueVxubSRPTFNfSElfY2F0ZWcgPSBtJE9MU19ISV9jYXRlZy55XG5tWywgYygnT0xTX0hJX2NhdGVnLngnLCAnT0xTX0hJX2NhdGVnLnknLCAnT0xTX2luYXR0X2NhdGVnLngnLCAnT0xTX2luYXR0X2NhdGVnLnknKV0gPSBOVUxMXG53cml0ZS5jc3YobSwgZmlsZT0nfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vcmVzaWR1YWxpemVkX2NvbWJpbmVkX09MU19kZXNjcmlwdGl2ZXNfMDIwNzIwMTkuY3N2JyxcbiAgICAgICAgICByb3cubmFtZXM9RilcbmBgYCJ9 -->
-<pre class="r"><code>m = merge(out_df, imaging[, c('MRN', 'OLS_inatt_categ', 'OLS_HI_categ')], by='MRN', all.x=T, all.y=F)
-m$OLS_inatt_categ = m$OLS_inatt_categ.y
-m$OLS_HI_categ = m$OLS_HI_categ.y
-m[, c('OLS_HI_categ.x', 'OLS_HI_categ.y', 'OLS_inatt_categ.x', 'OLS_inatt_categ.y')] = NULL
-write.csv(m, file='~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv',
-          row.names=F)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxueCA9IGMoJ0hJX3N0cnVjdCcsICdISV9jb2dfUmF3U1N0b3RhbCcsICdISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZScpXG5rZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wXG5kZl9hbGwgPSBkZl9hbGxba2VlcF9tZSwgYygnT0xTX0hJX2NhdGVnJywgeCldXG5kZl9hbGxbLCB4XSA9IHNjYWxlKGRmX2FsbFssIHhdKVxuZml0IDwtIG11bHRpbm9tKE9MU19ISV9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKVxuYGBgIn0= -->
+<pre class="r"><code>x = c('HI_struct', 'HI_cog_RawSStotal', 'HI_geno3prs_v_PROFILES.0.00001.profile')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_HI_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit &lt;- multinom(OLS_HI_categ ~ ., data=df_all)</code></pre>
 <!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjYyLjAwOTYzNCBcbml0ZXIgIDEwIHZhbHVlIDIyNS4yNzUwMzZcbmZpbmFsICB2YWx1ZSAyMjQuMjIxMjI2IFxuY29udmVyZ2VkXG4ifQ== -->
+<pre><code># weights:  20 (12 variable)
+initial  value 262.009634 
+iter  10 value 225.275036
+final  value 224.221226 
+converged</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gXCJib3RoXCIsIHRyYWNlID0gRilcbmBgYCJ9 -->
+<pre class="r"><code>step &lt;- stepAIC(fit, direction = &quot;both&quot;, trace = F)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMTYgKDkgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAyNjIuMDA5NjM0IFxuaXRlciAgMTAgdmFsdWUgMjMwLjAzMjUzNFxuZmluYWwgIHZhbHVlIDIyOS44OTkyODkgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDE2ICg5IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMjYyLjAwOTYzNCBcbml0ZXIgIDEwIHZhbHVlIDIzMC44OTgxMzdcbmZpbmFsICB2YWx1ZSAyMzAuNTE4MjkyIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAxNiAoOSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDI2Mi4wMDk2MzQgXG5pdGVyICAxMCB2YWx1ZSAyMzEuODY4NjQ3XG5maW5hbCAgdmFsdWUgMjMxLjM4MzgwNCBcbmNvbnZlcmdlZFxuIn0= -->
+<pre><code># weights:  16 (9 variable)
+initial  value 262.009634 
+iter  10 value 230.032534
+final  value 229.899289 
+converged
+# weights:  16 (9 variable)
+initial  value 262.009634 
+iter  10 value 230.898137
+final  value 230.518292 
+converged
+# weights:  16 (9 variable)
+initial  value 262.009634 
+iter  10 value 231.868647
+final  value 231.383804 
+converged</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZml0ID0gc3RlcFxueiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnNcbnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDJcbnJyID0gZXhwKGNvZWYoZml0KSlcbnBwID0gZml0dGVkKGZpdClcbnByaW50KHApXG5gYGAifQ== -->
+<pre class="r"><code>fit = step
+z &lt;- summary(fit)$coefficients/summary(fit)$standard.errors
+p &lt;- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSAgSElfc3RydWN0IEhJX2NvZ19SYXdTU3RvdGFsIEhJX2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAwMS5wcm9maWxlXG5kZXRlciAgNS41Nzk4ODJlLTA3IDAuMTM4OTk2NTUgICAgICAgMC4xNzc3NzQ0MDUgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMTg5MTQxODZcbm1hcmtlZCA2LjUyNjg5MmUtMDMgMC4wNDA4OTgyMyAgICAgICAwLjAwMTM5ODU3OSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgMC4wMTk1Nzg4NlxubWlsZCAgIDYuNTY4NjU0ZS0wNSAwLjI1ODgxNzQxICAgICAgIDAuMDcxMjA3NzIwICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjE2OTgyNDg1XG4ifQ== -->
+<pre><code>        (Intercept)  HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter  5.579882e-07 0.13899655       0.177774405                             0.18914186
+marked 6.526892e-03 0.04089823       0.001398579                             0.01957886
+mild   6.568654e-05 0.25881741       0.071207720                             0.16982485</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoZml0KVxuYGBgIn0= -->
+<pre class="r"><code>print(fit)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBPTFNfSElfY2F0ZWcgfiBISV9zdHJ1Y3QgKyBISV9jb2dfUmF3U1N0b3RhbCArIFxuICAgIEhJX2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDAwMS5wcm9maWxlLCBkYXRhID0gZGZfYWxsKVxuXG5Db2VmZmljaWVudHM6XG4gICAgICAgKEludGVyY2VwdCkgIEhJX3N0cnVjdCBISV9jb2dfUmF3U1N0b3RhbCBISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZVxuZGV0ZXIgICAtMS4zMDgxMjg5ICAwLjM1MTExNDQgICAgICAgIC0wLjMzOTE3MjIgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjMyMjc5NzVcbm1hcmtlZCAgLTAuNTU3OTk1NyAtMC40MzExMjEwICAgICAgICAtMC42NzE3Njc1ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAtMC40ODY4Mjc2XG5taWxkICAgIC0wLjg3NzQ2MjUgIDAuMjM3NDIyNyAgICAgICAgLTAuMzk1NzU4OSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAuMjkxODg3NlxuXG5SZXNpZHVhbCBEZXZpYW5jZTogNDQ4LjQ0MjUgXG5BSUM6IDQ3Mi40NDI1IFxuIn0= -->
+<pre><code>Call:
+multinom(formula = OLS_HI_categ ~ HI_struct + HI_cog_RawSStotal + 
+    HI_geno3prs_v_PROFILES.0.00001.profile, data = df_all)
+
+Coefficients:
+       (Intercept)  HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter   -1.3081289  0.3511144        -0.3391722                              0.3227975
+marked  -0.5579957 -0.4311210        -0.6717675                             -0.4868276
+mild    -0.8774625  0.2374227        -0.3957589                              0.2918876
+
+Residual Deviance: 448.4425 
+AIC: 472.4425 </code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQocnIpXG5gYGAifQ== -->
+<pre class="r"><code>print(rr)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIEhJX3N0cnVjdCBISV9jb2dfUmF3U1N0b3RhbCBISV9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMDEucHJvZmlsZVxuZGV0ZXIgICAgMC4yNzAzMjU0IDEuNDIwNjQ5OCAgICAgICAgIDAuNzEyMzU5OCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAxLjM4MDk4NlxubWFya2VkICAgMC41NzIzNTUxIDAuNjQ5NzgwMyAgICAgICAgIDAuNTEwODA0OSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAwLjYxNDU3M1xubWlsZCAgICAgMC40MTU4MzY4IDEuMjY3OTc3MCAgICAgICAgIDAuNjczMTY4OSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAxLjMzODk1MlxuIn0= -->
+<pre><code>       (Intercept) HI_struct HI_cog_RawSStotal HI_geno3prs_v_PROFILES.0.00001.profile
+deter    0.2703254 1.4206498         0.7123598                               1.380986
+marked   0.5723551 0.6497803         0.5108049                               0.614573
+mild     0.4158368 1.2679770         0.6731689                               1.338952</code></pre>
+<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
-<p>OK, let’s try the predictions in Python then.</p>
-<p>The goal is to generate different ROC curves to compare the combined model with the individual modality models. We can come back to R to generate logs odds and other descriptives later.</p>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGZfYWxsID0gbWVyZ2UoZGZfaW1wLCBkYXRhLCBieT0nTVJOJylcbnggPSBjKCdpbmF0dF9hZGhkMjAwX0FnZScsICdpbmF0dF9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMS5wcm9maWxlJywgJ2luYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDA1LnByb2ZpbGUnLFxuICAgICAgJ2luYXR0X0FEJywgJ2luYXR0X3N0cnVjdCcsICdpbmF0dF9ETU4nKVxua2VlcF9tZSA9IHJvd1N1bXMoaXMubmEoZGZfYWxsWywgeF0pKT09MFxuZGZfYWxsID0gZGZfYWxsW2tlZXBfbWUsIGMoJ09MU19pbmF0dF9jYXRlZycsIHgpXVxuZGZfYWxsWywgeF0gPSBzY2FsZShkZl9hbGxbLCB4XSlcbmZpdCA8LSBtdWx0aW5vbShPTFNfaW5hdHRfY2F0ZWcgfiAuLCBkYXRhPWRmX2FsbClcbmBgYCJ9 -->
+<pre class="r"><code>df_all = merge(df_imp, data, by='MRN')
+x = c('inatt_adhd200_Age', 'inatt_geno3prs_v_PROFILES.0.0001.profile', 'inatt_geno3prs_v_PROFILES.0.0005.profile',
+      'inatt_AD', 'inatt_struct', 'inatt_DMN')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_inatt_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit &lt;- multinom(OLS_inatt_categ ~ ., data=df_all)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMzIgKDIxIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyMC44MDAyMzBcbml0ZXIgIDIwIHZhbHVlIDMxOS43MjkwMDJcbmZpbmFsICB2YWx1ZSAzMTkuNzI1MDk1IFxuY29udmVyZ2VkXG4ifQ== -->
+<pre><code># weights:  32 (21 variable)
+initial  value 363.209123 
+iter  10 value 320.800230
+iter  20 value 319.729002
+final  value 319.725095 
+converged</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gXCJib3RoXCIsIHRyYWNlID0gRilcbmBgYCJ9 -->
+<pre class="r"><code>step &lt;- stepAIC(fit, direction = &quot;both&quot;, trace = F)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyNS44Njc2OTJcbml0ZXIgIDIwIHZhbHVlIDMyNC43MzA0NjFcbmZpbmFsICB2YWx1ZSAzMjQuNzEwNjY1IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzIxLjAwMTUwOFxuaXRlciAgMjAgdmFsdWUgMzE5LjkzMDc2OVxuZmluYWwgIHZhbHVlIDMxOS45MjE3NzAgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI4ICgxOCB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjEuNjQyMjY0XG5pdGVyICAyMCB2YWx1ZSAzMjAuNjk5NTExXG5maW5hbCAgdmFsdWUgMzIwLjY5NTc4NiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyNy4wMDkyMDdcbml0ZXIgIDIwIHZhbHVlIDMyNS4xMTUyNDhcbmZpbmFsICB2YWx1ZSAzMjUuMTA1MTg2IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzI2LjAxMjA1OFxuaXRlciAgMjAgdmFsdWUgMzI0LjY5NDk0MlxuZmluYWwgIHZhbHVlIDMyNC42NzkzMzggXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI4ICgxOCB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjcuNDQ5ODc1XG5pdGVyICAyMCB2YWx1ZSAzMjYuNDgxNTMyXG5maW5hbCAgdmFsdWUgMzI2LjQ2MzcxMCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyMS4wMDE1MDhcbml0ZXIgIDIwIHZhbHVlIDMxOS45MzA3NjlcbmZpbmFsICB2YWx1ZSAzMTkuOTIxNzcwIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzI1LjM5NTE4OVxuaXRlciAgMjAgdmFsdWUgMzI0Ljk1MjY1OFxuZmluYWwgIHZhbHVlIDMyNC45NTE0NDUgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI0ICgxNSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjMuMzM1Mzc1XG5pdGVyICAyMCB2YWx1ZSAzMjIuMjIzMjA5XG5maW5hbCAgdmFsdWUgMzIyLjIxNTk2MiBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjQgKDE1IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyNS45NDk4OTFcbml0ZXIgIDIwIHZhbHVlIDMyNS40MzkzODdcbmZpbmFsICB2YWx1ZSAzMjUuNDM4OTkzIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzI2LjM1MzcwMFxuaXRlciAgMjAgdmFsdWUgMzI0LjkwODc4OFxuZmluYWwgIHZhbHVlIDMyNC44OTg3MDEgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDI0ICgxNSB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjcuMzc1NzEzXG5pdGVyICAyMCB2YWx1ZSAzMjYuNzc3MTM3XG5maW5hbCAgdmFsdWUgMzI2Ljc3MTI2NCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMzIgKDIxIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyMC44MDAyMzBcbml0ZXIgIDIwIHZhbHVlIDMxOS43MjkwMDJcbmZpbmFsICB2YWx1ZSAzMTkuNzI1MDk1IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyNCAoMTUgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzIzLjMzNTM3NVxuaXRlciAgMjAgdmFsdWUgMzIyLjIyMzIwOVxuZmluYWwgIHZhbHVlIDMyMi4yMTU5NjIgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjcuNDc4MDE1XG5maW5hbCAgdmFsdWUgMzI3LjM0OTUxMCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjAgKDEyIHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyNy40MjEyNTJcbmZpbmFsICB2YWx1ZSAzMjcuMjc1MjIxIFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyMCAoMTIgdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzI4LjYyNDkzMVxuZmluYWwgIHZhbHVlIDMyNy44NzE3NzQgXG5jb252ZXJnZWRcbiMgd2VpZ2h0czogIDIwICgxMiB2YXJpYWJsZSlcbmluaXRpYWwgIHZhbHVlIDM2My4yMDkxMjMgXG5pdGVyICAxMCB2YWx1ZSAzMjkuNDc4NjkzXG5maW5hbCAgdmFsdWUgMzI5LjM4NzY3OCBcbmNvbnZlcmdlZFxuIyB3ZWlnaHRzOiAgMjggKDE4IHZhcmlhYmxlKVxuaW5pdGlhbCAgdmFsdWUgMzYzLjIwOTEyMyBcbml0ZXIgIDEwIHZhbHVlIDMyMS42NDIyNjRcbml0ZXIgIDIwIHZhbHVlIDMyMC42OTk1MTFcbmZpbmFsICB2YWx1ZSAzMjAuNjk1Nzg2IFxuY29udmVyZ2VkXG4jIHdlaWdodHM6ICAyOCAoMTggdmFyaWFibGUpXG5pbml0aWFsICB2YWx1ZSAzNjMuMjA5MTIzIFxuaXRlciAgMTAgdmFsdWUgMzIxLjAwMTUwOFxuaXRlciAgMjAgdmFsdWUgMzE5LjkzMDc2OVxuZmluYWwgIHZhbHVlIDMxOS45MjE3NzAgXG5jb252ZXJnZWRcbiJ9 -->
+<pre><code># weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 325.867692
+iter  20 value 324.730461
+final  value 324.710665 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 321.001508
+iter  20 value 319.930769
+final  value 319.921770 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 321.642264
+iter  20 value 320.699511
+final  value 320.695786 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 327.009207
+iter  20 value 325.115248
+final  value 325.105186 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 326.012058
+iter  20 value 324.694942
+final  value 324.679338 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 327.449875
+iter  20 value 326.481532
+final  value 326.463710 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 321.001508
+iter  20 value 319.930769
+final  value 319.921770 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 325.395189
+iter  20 value 324.952658
+final  value 324.951445 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 323.335375
+iter  20 value 322.223209
+final  value 322.215962 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 325.949891
+iter  20 value 325.439387
+final  value 325.438993 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 326.353700
+iter  20 value 324.908788
+final  value 324.898701 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 327.375713
+iter  20 value 326.777137
+final  value 326.771264 
+converged
+# weights:  32 (21 variable)
+initial  value 363.209123 
+iter  10 value 320.800230
+iter  20 value 319.729002
+final  value 319.725095 
+converged
+# weights:  24 (15 variable)
+initial  value 363.209123 
+iter  10 value 323.335375
+iter  20 value 322.223209
+final  value 322.215962 
+converged
+# weights:  20 (12 variable)
+initial  value 363.209123 
+iter  10 value 327.478015
+final  value 327.349510 
+converged
+# weights:  20 (12 variable)
+initial  value 363.209123 
+iter  10 value 327.421252
+final  value 327.275221 
+converged
+# weights:  20 (12 variable)
+initial  value 363.209123 
+iter  10 value 328.624931
+final  value 327.871774 
+converged
+# weights:  20 (12 variable)
+initial  value 363.209123 
+iter  10 value 329.478693
+final  value 329.387678 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 321.642264
+iter  20 value 320.699511
+final  value 320.695786 
+converged
+# weights:  28 (18 variable)
+initial  value 363.209123 
+iter  10 value 321.001508
+iter  20 value 319.930769
+final  value 319.921770 
+converged</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZml0ID0gc3RlcFxueiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnNcbnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDJcbnJyID0gZXhwKGNvZWYoZml0KSlcbnBwID0gZml0dGVkKGZpdClcbnByaW50KHApXG5gYGAifQ== -->
+<pre class="r"><code>fit = step
+z &lt;- summary(fit)$coefficients/summary(fit)$standard.errors
+p &lt;- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgICAoSW50ZXJjZXB0KSBpbmF0dF9hZGhkMjAwX0FnZSAgIGluYXR0X0FEIGluYXR0X3N0cnVjdCAgaW5hdHRfRE1OXG5kZXRlciAgNi4wODY4NTBlLTA1ICAgICAgICAwLjAwNDU3NTY1IDAuMDEwMDI2NDYgICAgMC4xMjQ1MDYyIDAuMDgwMTg3NTRcbm1hcmtlZCA0Ljc3OTc4MWUtMDUgICAgICAgIDAuODcwODY3NTggMC40Nzk1MTY4MCAgICAwLjAyNjQwNjkgMC4wMTE4OTQ3NVxubWlsZCAgIDcuMjk2MTM0ZS0wOCAgICAgICAgMC41NzYyNTUwMSAwLjIxNjI0OTQ0ICAgIDAuNjA0Njc2NyAwLjk5NzI0ODc5XG4ifQ== -->
+<pre><code>        (Intercept) inatt_adhd200_Age   inatt_AD inatt_struct  inatt_DMN
+deter  6.086850e-05        0.00457565 0.01002646    0.1245062 0.08018754
+marked 4.779781e-05        0.87086758 0.47951680    0.0264069 0.01189475
+mild   7.296134e-08        0.57625501 0.21624944    0.6046767 0.99724879</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQoZml0KVxuYGBgIn0= -->
+<pre class="r"><code>print(fit)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiQ2FsbDpcbm11bHRpbm9tKGZvcm11bGEgPSBPTFNfaW5hdHRfY2F0ZWcgfiBpbmF0dF9hZGhkMjAwX0FnZSArIGluYXR0X0FEICsgXG4gICAgaW5hdHRfc3RydWN0ICsgaW5hdHRfRE1OLCBkYXRhID0gZGZfYWxsKVxuXG5Db2VmZmljaWVudHM6XG4gICAgICAgKEludGVyY2VwdCkgaW5hdHRfYWRoZDIwMF9BZ2UgICBpbmF0dF9BRCBpbmF0dF9zdHJ1Y3QgICAgIGluYXR0X0RNTlxuZGV0ZXIgICAtMC43MzkxMjYyICAgICAgIC0wLjU0Nzc2NzA2IC0wLjQzNzEyMDMgICAtMC4yNzk4ODU0IC0wLjI5NzM0ODgxMzVcbm1hcmtlZCAgLTAuNzQxMzkwMSAgICAgICAgMC4wMjY2NzI2NyAgMC4xMjY5MTgyICAgIDAuMzc0ODQxMSAgMC40NTQ4NDkzMTA3XG5taWxkICAgIC0xLjA0NDg5MzAgICAgICAgLTAuMTA3NjUyNTUgLTAuMjQyNDQwNSAgIC0wLjEwNjAxMDUgIDAuMDAwNjc4MzQ1MlxuXG5SZXNpZHVhbCBEZXZpYW5jZTogNjQ0LjQzMTkgXG5BSUM6IDY3NC40MzE5IFxuIn0= -->
+<pre><code>Call:
+multinom(formula = OLS_inatt_categ ~ inatt_adhd200_Age + inatt_AD + 
+    inatt_struct + inatt_DMN, data = df_all)
+
+Coefficients:
+       (Intercept) inatt_adhd200_Age   inatt_AD inatt_struct     inatt_DMN
+deter   -0.7391262       -0.54776706 -0.4371203   -0.2798854 -0.2973488135
+marked  -0.7413901        0.02667267  0.1269182    0.3748411  0.4548493107
+mild    -1.0448930       -0.10765255 -0.2424405   -0.1060105  0.0006783452
+
+Residual Deviance: 644.4319 
+AIC: 674.4319 </code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucHJpbnQocnIpXG5gYGAifQ== -->
+<pre class="r"><code>print(rr)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiICAgICAgIChJbnRlcmNlcHQpIGluYXR0X2FkaGQyMDBfQWdlICBpbmF0dF9BRCBpbmF0dF9zdHJ1Y3QgaW5hdHRfRE1OXG5kZXRlciAgICAwLjQ3NzUzMTAgICAgICAgICAwLjU3ODIzOTUgMC42NDU4OTM3ICAgIDAuNzU1ODcwNCAwLjc0Mjc4NDlcbm1hcmtlZCAgIDAuNDc2NDUxMSAgICAgICAgIDEuMDI3MDMxNiAxLjEzNTMyNDEgICAgMS40NTQ3NjAyIDEuNTc1OTM1OVxubWlsZCAgICAgMC4zNTE3Mjk1ICAgICAgICAgMC44OTc5Mzk1IDAuNzg0NzEwNCAgICAwLjg5OTQxNTIgMS4wMDA2Nzg2XG4ifQ== -->
+<pre><code>       (Intercept) inatt_adhd200_Age  inatt_AD inatt_struct inatt_DMN
+deter    0.4775310         0.5782395 0.6458937    0.7558704 0.7427849
+marked   0.4764511         1.0270316 1.1353241    1.4547602 1.5759359
+mild     0.3517295         0.8979395 0.7847104    0.8994152 1.0006786</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiQWJzdHJhY3QgbnVtYmVycyIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKV2UnbGwgdXNlIHRoZSByZXNpZHVhbGl6ZWQgY2x1c3RlcnMgSSBvdXRwdXQgaW4gdGhlIDAwNSBub3RlIHRvIGdyYWIgbG9naXN0aWMgcmVncmVzc2lvbiBudW1iZXJzIGZvciB0aGUgYWJzdHJhY3QuIAoKYGBge3J9CmRmID0gcmVhZC5jc3YoJ34vZGF0YS9iYXNlbGluZV9wcmVkaWN0aW9uL3Jlc2lkdWFsaXplZF9jb21iaW5lZF9PTFNfZGVzY3JpcHRpdmVzXzAyMDcyMDE5LmNzdicpCmRmJE9MU19pbmF0dF9jYXRlZyA9IGFzLmZhY3RvcihkZiRPTFNfaW5hdHRfY2F0ZWcpCmRmJE9MU19pbmF0dF9jYXRlZyA9IHJlbGV2ZWwoZGYkT0xTX2luYXR0X2NhdGVnLCByZWY9J05WJykKZGYkT0xTX0hJX2NhdGVnID0gYXMuZmFjdG9yKGRmJE9MU19ISV9jYXRlZykKZGYkT0xTX0hJX2NhdGVnID0gcmVsZXZlbChkZiRPTFNfSElfY2F0ZWcsIHJlZj0nTlYnKQpgYGAKCiMgTG9naXN0aWMgcmVncmVzc2lvbnMKCmBgYHtyfQpsaWJyYXJ5KG5uZXQpCmZpdCA8LSBtdWx0aW5vbShkZiRPTFNfaW5hdHRfY2F0ZWcgfiBzY2FsZShkZiRpbmF0dF9zdHJ1Y3QpLCBuYS5hY3Rpb249bmEub21pdCkKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpgYGB7cn0KZml0IDwtIG11bHRpbm9tKGRmJE9MU19ISV9jYXRlZyB+IHNjYWxlKGRmJEhJX3N0cnVjdCksIG5hLmFjdGlvbj1uYS5vbWl0KQp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCmBgYHtyfQpmaXQgPC0gbXVsdGlub20oZGYkT0xTX2luYXR0X2NhdGVnIH4gc2NhbGUoZGYkaW5hdHRfQUQpLCBuYS5hY3Rpb249bmEub21pdCkKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpgYGB7cn0KZml0IDwtIG11bHRpbm9tKGRmJE9MU19pbmF0dF9jYXRlZyB+IHNjYWxlKGRmJGluYXR0X0RNTiksIG5hLmFjdGlvbj1uYS5vbWl0KQp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCiMgQ29tYmluZWQgaW1hZ2luZywgaW50ZXJzZWN0aW9uCgpgYGB7cn0Ka2VlcF9tZSA9IHJvd1N1bXMoaXMubmEoZGYpKT09MApkZl9pbnRlciA9IGRmW2tlZXBfbWUsIF0KZml0IDwtIG11bHRpbm9tKGRmX2ludGVyJE9MU19pbmF0dF9jYXRlZyB+IHNjYWxlKGRmX2ludGVyJGluYXR0X0RNTikgKyBzY2FsZShkZl9pbnRlciRpbmF0dF9zdHJ1Y3QpICsgc2NhbGUoZGZfaW50ZXIkaW5hdHRfQUQpLCBuYS5hY3Rpb249bmEub21pdCkKc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gImJvdGgiLCB0cmFjZSA9IEYpCmZpdCA9IHN0ZXAKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpDb21iaW5lZCBtb2RlbCBpcyBiZXR0ZXIuCgojIENvbWJpbmVkIGltYWdpbmcsIGltcHV0YXRpb24KCmBgYHtyfQpsaWJyYXJ5KFZJTSkKZGZfaW1wID0gZGYKdG1wID0gaXJtaShkZlssIDI6N10pCmRmX2ltcFssIGNvbG5hbWVzKHRtcCldID0gdG1wCmBgYAoKCmBgYHtyfQpmaXQgPC0gbXVsdGlub20oZGZfaW1wJE9MU19pbmF0dF9jYXRlZyB+IHNjYWxlKGRmX2ltcCRpbmF0dF9ETU4pICsgc2NhbGUoZGZfaW1wJGluYXR0X3N0cnVjdCkgKyBzY2FsZShkZl9pbXAkaW5hdHRfQUQpLCBuYS5hY3Rpb249bmEub21pdCkKc3RlcCA8LSBzdGVwQUlDKGZpdCwgZGlyZWN0aW9uID0gImJvdGgiLCB0cmFjZSA9IEYpCmZpdCA9IHN0ZXAKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpDb21iaW5lZCBtb2RlbCBpcyBiZXR0ZXIuCgojIFRyeWluZyBvdGhlciB2YXJpYWJsZXMgYnkgdGhlbXNlbHZlcwoKYGBge3J9CmxvYWQoJ34vZGF0YS9iYXNlbGluZV9wcmVkaWN0aW9uL2NvbWJpbmVkX2Rlc2NyaXB0aXZlc18xMjE3MjAxOC5SRGF0YS5neicpCmNsaW4gPSByZWFkLmNzdignfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vbG9uZ19jbGluXzExMzAyMDE4LmNzdicpCmRmID0gbWVyZ2UoY2xpbiwgZGF0YSwgYnk9J01STicpCmRmW2RmJE9MU19pbmF0dF9zbG9wZSA8PSAtLjMzLCAnT0xTX2luYXR0X2NhdGVnJ10gPSAnbWFya2VkJwpkZltkZiRPTFNfaW5hdHRfc2xvcGUgPiAtLjMzICYgZGYkT0xTX2luYXR0X3Nsb3BlIDw9IDAsICdPTFNfaW5hdHRfY2F0ZWcnXSA9ICdtaWxkJwpkZltkZiRPTFNfaW5hdHRfc2xvcGUgPiAwLCAnT0xTX2luYXR0X2NhdGVnJ10gPSAnZGV0ZXInCmRmW2RmJERYID09ICdOVicsICdPTFNfaW5hdHRfY2F0ZWcnXSA9ICdOVicKZGYkT0xTX2luYXR0X2NhdGVnID0gYXMuZmFjdG9yKGRmJE9MU19pbmF0dF9jYXRlZykKZGYkT0xTX2luYXR0X2NhdGVnID0gcmVsZXZlbChkZiRPTFNfaW5hdHRfY2F0ZWcsIHJlZj0nTlYnKQpkZiRPTFNfSElfY2F0ZWcgPSBOVUxMCmRmW2RmJE9MU19ISV9zbG9wZSA8PSAtLjUsICdPTFNfSElfY2F0ZWcnXSA9ICdtYXJrZWQnCmRmW2RmJE9MU19ISV9zbG9wZSA+IC0uNSAmIGRmJE9MU19ISV9zbG9wZSA8PSAwLCAnT0xTX0hJX2NhdGVnJ10gPSAnbWlsZCcKZGZbZGYkT0xTX0hJX3Nsb3BlID4gMCwgJ09MU19ISV9jYXRlZyddID0gJ2RldGVyJwpkZltkZiREWCA9PSAnTlYnLCAnT0xTX0hJX2NhdGVnJ10gPSAnTlYnCmRmJE9MU19ISV9jYXRlZyA9IGFzLmZhY3RvcihkZiRPTFNfSElfY2F0ZWcpCmRmJE9MU19ISV9jYXRlZyA9IHJlbGV2ZWwoZGYkT0xTX0hJX2NhdGVnLCByZWY9J05WJykKYGBgCgpgYGB7cn0KeCA9IGNvbG5hbWVzKGRmKVtncmVwbChwYXR0ZXJuID0gJ2dlbm8zcHJzJywgY29sbmFtZXMoZGYpKV0KZGZbLCB4XSA9IHNjYWxlKGRmWywgeF0pCmtlZXBfbWUgPSByb3dTdW1zKGlzLm5hKGRmWywgeF0pKSA9PSAwCmZpdCA8LSBtdWx0aW5vbShkZltrZWVwX21lLCBdJE9MU19pbmF0dF9jYXRlZyB+IC4sIGRhdGE9ZGZba2VlcF9tZSwgeF0pCnN0ZXAgPC0gc3RlcEFJQyhmaXQsIGRpcmVjdGlvbiA9ICJib3RoIiwgdHJhY2UgPSBGKQpmaXQgPSBzdGVwCnogPC0gc3VtbWFyeShmaXQpJGNvZWZmaWNpZW50cy9zdW1tYXJ5KGZpdCkkc3RhbmRhcmQuZXJyb3JzCnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDIKcnIgPSBleHAoY29lZihmaXQpKQpwcCA9IGZpdHRlZChmaXQpCnByaW50KHApCnByaW50KGZpdCkKcHJpbnQocnIpCmBgYAoKYGBge3J9CnggPSBjb2xuYW1lcyhkZilbZ3JlcGwocGF0dGVybiA9ICdpbmF0dF9hZGhkMjAwJywgY29sbmFtZXMoZGYpKV0KZGZbLCB4XSA9IHNjYWxlKGRmWywgeF0pCmZpdCA8LSBtdWx0aW5vbShkZiRPTFNfaW5hdHRfY2F0ZWcgfiBkZiRpbmF0dF9hZGhkMjAwX0FnZSkKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpLRUVQIFRFU1RJTkcgT1RIRVIgREFUQVNFVFMhISEKCiMgQ2hlY2sgaWYgb3ZlcmFsbCBjb21iaW5lZCBtb2RlbCBpcyBiZXR0ZXIKCmBgYHtyfQp0bXBfZGYgPSBkYXRhLmZyYW1lKE1STj1kZiRNUk4sIGluYXR0X0RNTj1teWNsdXN0ZXIpCm91dF9kZiA9IG1lcmdlKG91dF9kZiwgdG1wX2RmLCBhbGwueD1ULCBhbGwueT1UKQpkaW0ob3V0X2RmKQpgYGAKCk5vdyB3ZSBtYWtlIHN1cmUgZXZlcnl0aGluZyBoYXMgbGFiZWxzIGFuZCBleHBvcnQgaXQ6CgpgYGB7cn0KbSA9IG1lcmdlKG91dF9kZiwgaW1hZ2luZ1ssIGMoJ01STicsICdPTFNfaW5hdHRfY2F0ZWcnLCAnT0xTX0hJX2NhdGVnJyldLCBieT0nTVJOJywgYWxsLng9VCwgYWxsLnk9RikKbSRPTFNfaW5hdHRfY2F0ZWcgPSBtJE9MU19pbmF0dF9jYXRlZy55Cm0kT0xTX0hJX2NhdGVnID0gbSRPTFNfSElfY2F0ZWcueQptWywgYygnT0xTX0hJX2NhdGVnLngnLCAnT0xTX0hJX2NhdGVnLnknLCAnT0xTX2luYXR0X2NhdGVnLngnLCAnT0xTX2luYXR0X2NhdGVnLnknKV0gPSBOVUxMCndyaXRlLmNzdihtLCBmaWxlPSd+L2RhdGEvYmFzZWxpbmVfcHJlZGljdGlvbi9yZXNpZHVhbGl6ZWRfY29tYmluZWRfT0xTX2Rlc2NyaXB0aXZlc18wMjA3MjAxOS5jc3YnLAogICAgICAgICAgcm93Lm5hbWVzPUYpCmBgYAoKT0ssIGxldCdzIHRyeSB0aGUgcHJlZGljdGlvbnMgaW4gUHl0aG9uIHRoZW4uCgpUaGUgZ29hbCBpcyB0byBnZW5lcmF0ZSBkaWZmZXJlbnQgUk9DIGN1cnZlcyB0byBjb21wYXJlIHRoZSBjb21iaW5lZCBtb2RlbCB3aXRoIHRoZSBpbmRpdmlkdWFsIG1vZGFsaXR5IG1vZGVscy4gV2UgY2FuIGNvbWUgYmFjayB0byBSIHRvIGdlbmVyYXRlIGxvZ3Mgb2RkcyBhbmQgb3RoZXIgZGVzY3JpcHRpdmVzIGxhdGVyLgoK</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiQWJzdHJhY3QgbnVtYmVycyIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKV2UnbGwgdXNlIHRoZSByZXNpZHVhbGl6ZWQgY2x1c3RlcnMgSSBvdXRwdXQgaW4gdGhlIDAwNSBub3RlIHRvIGdyYWIgbG9naXN0aWMgcmVncmVzc2lvbiBudW1iZXJzIGZvciB0aGUgYWJzdHJhY3QuIAoKYGBge3J9CmRmID0gcmVhZC5jc3YoJ34vZGF0YS9iYXNlbGluZV9wcmVkaWN0aW9uL3Jlc2lkdWFsaXplZF9jb21iaW5lZF9PTFNfZGVzY3JpcHRpdmVzXzAyMDcyMDE5LmNzdicpCmRmJE9MU19pbmF0dF9jYXRlZyA9IGFzLmZhY3RvcihkZiRPTFNfaW5hdHRfY2F0ZWcpCmRmJE9MU19pbmF0dF9jYXRlZyA9IHJlbGV2ZWwoZGYkT0xTX2luYXR0X2NhdGVnLCByZWY9J05WJykKZGYkT0xTX0hJX2NhdGVnID0gYXMuZmFjdG9yKGRmJE9MU19ISV9jYXRlZykKZGYkT0xTX0hJX2NhdGVnID0gcmVsZXZlbChkZiRPTFNfSElfY2F0ZWcsIHJlZj0nTlYnKQpgYGAKCiMgTG9naXN0aWMgcmVncmVzc2lvbnMKCmBgYHtyfQpsaWJyYXJ5KG5uZXQpCmZpdCA8LSBtdWx0aW5vbShkZiRPTFNfaW5hdHRfY2F0ZWcgfiBzY2FsZShkZiRpbmF0dF9zdHJ1Y3QpLCBuYS5hY3Rpb249bmEub21pdCkKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpgYGB7cn0KZml0IDwtIG11bHRpbm9tKGRmJE9MU19ISV9jYXRlZyB+IHNjYWxlKGRmJEhJX3N0cnVjdCksIG5hLmFjdGlvbj1uYS5vbWl0KQp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCmBgYHtyfQpmaXQgPC0gbXVsdGlub20oZGYkT0xTX2luYXR0X2NhdGVnIH4gc2NhbGUoZGYkaW5hdHRfQUQpLCBuYS5hY3Rpb249bmEub21pdCkKeiA8LSBzdW1tYXJ5KGZpdCkkY29lZmZpY2llbnRzL3N1bW1hcnkoZml0KSRzdGFuZGFyZC5lcnJvcnMKcCA8LSAoMSAtIHBub3JtKGFicyh6KSwgMCwgMSkpICogMgpyciA9IGV4cChjb2VmKGZpdCkpCnBwID0gZml0dGVkKGZpdCkKcHJpbnQocCkKcHJpbnQoZml0KQpwcmludChycikKYGBgCgpgYGB7cn0KZml0IDwtIG11bHRpbm9tKGRmJE9MU19pbmF0dF9jYXRlZyB+IHNjYWxlKGRmJGluYXR0X0RNTiksIG5hLmFjdGlvbj1uYS5vbWl0KQp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCiMgQ29tYmluZWQgaW1hZ2luZywgaW50ZXJzZWN0aW9uCgpgYGB7cn0KZGYgPSByZWFkLmNzdignfi9kYXRhL2Jhc2VsaW5lX3ByZWRpY3Rpb24vcmVzaWR1YWxpemVkX2NvbWJpbmVkX09MU19kZXNjcmlwdGl2ZXNfMDIwNzIwMTkuY3N2JykKZGYkT0xTX2luYXR0X2NhdGVnID0gYXMuZmFjdG9yKGRmJE9MU19pbmF0dF9jYXRlZykKZGYkT0xTX2luYXR0X2NhdGVnID0gcmVsZXZlbChkZiRPTFNfaW5hdHRfY2F0ZWcsIHJlZj0nTlYnKQpkZiRPTFNfSElfY2F0ZWcgPSBhcy5mYWN0b3IoZGYkT0xTX0hJX2NhdGVnKQpkZiRPTFNfSElfY2F0ZWcgPSByZWxldmVsKGRmJE9MU19ISV9jYXRlZywgcmVmPSdOVicpCmtlZXBfbWUgPSByb3dTdW1zKGlzLm5hKGRmKSk9PTAKZGZfaW50ZXIgPSBkZltrZWVwX21lLCBdCmZpdCA8LSBtdWx0aW5vbShkZl9pbnRlciRPTFNfaW5hdHRfY2F0ZWcgfiBzY2FsZShkZl9pbnRlciRpbmF0dF9ETU4pICsgc2NhbGUoZGZfaW50ZXIkaW5hdHRfc3RydWN0KSArIHNjYWxlKGRmX2ludGVyJGluYXR0X0FEKSwgbmEuYWN0aW9uPW5hLm9taXQpCnN0ZXAgPC0gc3RlcEFJQyhmaXQsIGRpcmVjdGlvbiA9ICJib3RoIiwgdHJhY2UgPSBGKQpmaXQgPSBzdGVwCnogPC0gc3VtbWFyeShmaXQpJGNvZWZmaWNpZW50cy9zdW1tYXJ5KGZpdCkkc3RhbmRhcmQuZXJyb3JzCnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDIKcnIgPSBleHAoY29lZihmaXQpKQpwcCA9IGZpdHRlZChmaXQpCnByaW50KHApCnByaW50KGZpdCkKcHJpbnQocnIpCnByaW50KGRpbShkZl9pbnRlcikpCmBgYAoKQ29tYmluZWQgbW9kZWwgaXMgYmV0dGVyLgoKIyBDb21iaW5lZCBpbWFnaW5nLCBpbXB1dGF0aW9uCgpgYGB7cn0KbGlicmFyeShWSU0pCmRmX2ltcCA9IGRmCnRtcCA9IGlybWkoZGZbLCAyOjddKQpkZl9pbXBbLCBjb2xuYW1lcyh0bXApXSA9IHRtcApwcmludChkaW0oZGZfaW1wKSkKYGBgCgoKYGBge3J9CmZpdCA8LSBtdWx0aW5vbShkZl9pbXAkT0xTX2luYXR0X2NhdGVnIH4gc2NhbGUoZGZfaW1wJGluYXR0X0RNTikgKyBzY2FsZShkZl9pbXAkaW5hdHRfc3RydWN0KSArIHNjYWxlKGRmX2ltcCRpbmF0dF9BRCksIG5hLmFjdGlvbj1uYS5vbWl0KQpzdGVwIDwtIHN0ZXBBSUMoZml0LCBkaXJlY3Rpb24gPSAiYm90aCIsIHRyYWNlID0gRikKZml0ID0gc3RlcAp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCkNvbWJpbmVkIG1vZGVsIGlzIGJldHRlci4KCiMgVHJ5aW5nIG90aGVyIHZhcmlhYmxlcywgYnV0IG9ubHkgaW4gdGhlIGltYWdpbmcgaW50ZXJzZWN0aW9uIGRhdGEKCmBgYHtyfQpsb2FkKCd+L2RhdGEvYmFzZWxpbmVfcHJlZGljdGlvbi9jb21iaW5lZF9kZXNjcmlwdGl2ZXNfMTIxNzIwMTguUkRhdGEuZ3onKQpkZl9hbGwgPSBtZXJnZShkZl9pbnRlciwgZGF0YSwgYnk9J01STicpCmBgYAoKYGBge3J9CnggPSBjKCdISV9zdHJ1Y3QnLCAnSElfY29nX1Jhd1NTdG90YWwnLCAnSElfZ2VubzNwcnNfdl9QUk9GSUxFUy4wLjAwMDAxLnByb2ZpbGUnKQprZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wCmRmX2FsbCA9IGRmX2FsbFtrZWVwX21lLCBjKCdPTFNfSElfY2F0ZWcnLCB4KV0KZGZfYWxsWywgeF0gPSBzY2FsZShkZl9hbGxbLCB4XSkKZml0IDwtIG11bHRpbm9tKE9MU19ISV9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKQpzdGVwIDwtIHN0ZXBBSUMoZml0LCBkaXJlY3Rpb24gPSAiYm90aCIsIHRyYWNlID0gRikKZml0ID0gc3RlcAp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCmBgYHtyfQpkZl9hbGwgPSBtZXJnZShkZl9pbnRlciwgZGF0YSwgYnk9J01STicpCnggPSBjKCdpbmF0dF9hZGhkMjAwX0FnZScsICdpbmF0dF9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwMS5wcm9maWxlJywgJ2luYXR0X2dlbm8zcHJzX3ZfUFJPRklMRVMuMC4wMDA1LnByb2ZpbGUnLAogICAgICAnaW5hdHRfQUQnLCAnaW5hdHRfc3RydWN0JywgJ2luYXR0X0RNTicpCmtlZXBfbWUgPSByb3dTdW1zKGlzLm5hKGRmX2FsbFssIHhdKSk9PTAKZGZfYWxsID0gZGZfYWxsW2tlZXBfbWUsIGMoJ09MU19pbmF0dF9jYXRlZycsIHgpXQpkZl9hbGxbLCB4XSA9IHNjYWxlKGRmX2FsbFssIHhdKQpmaXQgPC0gbXVsdGlub20oT0xTX2luYXR0X2NhdGVnIH4gLiwgZGF0YT1kZl9hbGwpCnN0ZXAgPC0gc3RlcEFJQyhmaXQsIGRpcmVjdGlvbiA9ICJib3RoIiwgdHJhY2UgPSBGKQpmaXQgPSBzdGVwCnogPC0gc3VtbWFyeShmaXQpJGNvZWZmaWNpZW50cy9zdW1tYXJ5KGZpdCkkc3RhbmRhcmQuZXJyb3JzCnAgPC0gKDEgLSBwbm9ybShhYnMoeiksIDAsIDEpKSAqIDIKcnIgPSBleHAoY29lZihmaXQpKQpwcCA9IGZpdHRlZChmaXQpCnByaW50KHApCnByaW50KGZpdCkKcHJpbnQocnIpCmBgYAoKIyBOb3cgcmVwZWF0IHRoZSBzYW1lIHN0dWZmIGZvciB0aGUgaW5wdXRlZCBkYXRhOgoKYGBge3J9CmxvYWQoJ34vZGF0YS9iYXNlbGluZV9wcmVkaWN0aW9uL2NvbWJpbmVkX2Rlc2NyaXB0aXZlc18xMjE3MjAxOC5SRGF0YS5neicpCmRmX2FsbCA9IG1lcmdlKGRmX2ltcCwgZGF0YSwgYnk9J01STicpCmBgYAoKYGBge3J9CnggPSBjKCdISV9zdHJ1Y3QnLCAnSElfY29nX1Jhd1NTdG90YWwnLCAnSElfZ2VubzNwcnNfdl9QUk9GSUxFUy4wLjAwMDAxLnByb2ZpbGUnKQprZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wCmRmX2FsbCA9IGRmX2FsbFtrZWVwX21lLCBjKCdPTFNfSElfY2F0ZWcnLCB4KV0KZGZfYWxsWywgeF0gPSBzY2FsZShkZl9hbGxbLCB4XSkKZml0IDwtIG11bHRpbm9tKE9MU19ISV9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKQpzdGVwIDwtIHN0ZXBBSUMoZml0LCBkaXJlY3Rpb24gPSAiYm90aCIsIHRyYWNlID0gRikKZml0ID0gc3RlcAp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCmBgYHtyfQpkZl9hbGwgPSBtZXJnZShkZl9pbXAsIGRhdGEsIGJ5PSdNUk4nKQp4ID0gYygnaW5hdHRfYWRoZDIwMF9BZ2UnLCAnaW5hdHRfZ2VubzNwcnNfdl9QUk9GSUxFUy4wLjAwMDEucHJvZmlsZScsICdpbmF0dF9nZW5vM3Byc192X1BST0ZJTEVTLjAuMDAwNS5wcm9maWxlJywKICAgICAgJ2luYXR0X0FEJywgJ2luYXR0X3N0cnVjdCcsICdpbmF0dF9ETU4nKQprZWVwX21lID0gcm93U3Vtcyhpcy5uYShkZl9hbGxbLCB4XSkpPT0wCmRmX2FsbCA9IGRmX2FsbFtrZWVwX21lLCBjKCdPTFNfaW5hdHRfY2F0ZWcnLCB4KV0KZGZfYWxsWywgeF0gPSBzY2FsZShkZl9hbGxbLCB4XSkKZml0IDwtIG11bHRpbm9tKE9MU19pbmF0dF9jYXRlZyB+IC4sIGRhdGE9ZGZfYWxsKQpzdGVwIDwtIHN0ZXBBSUMoZml0LCBkaXJlY3Rpb24gPSAiYm90aCIsIHRyYWNlID0gRikKZml0ID0gc3RlcAp6IDwtIHN1bW1hcnkoZml0KSRjb2VmZmljaWVudHMvc3VtbWFyeShmaXQpJHN0YW5kYXJkLmVycm9ycwpwIDwtICgxIC0gcG5vcm0oYWJzKHopLCAwLCAxKSkgKiAyCnJyID0gZXhwKGNvZWYoZml0KSkKcHAgPSBmaXR0ZWQoZml0KQpwcmludChwKQpwcmludChmaXQpCnByaW50KHJyKQpgYGAKCgoKCgoKCgo=</div>
 
 
 

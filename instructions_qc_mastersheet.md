@@ -95,7 +95,7 @@ while read s; do
         mvmt=`3dTstat -prefix - -nzmean ~/tmp/rm.ec.1D\' 2>/dev/null`;
         echo ${s},${total},${used},${mvmt} >> ~/tmp/good_trs.csv;
     else
-        echo $m "does not have rsFMRI results. Skipping...";
+        echo $s "does not have rsFMRI results. Skipping...";
     fi;
 done < ~/tmp/maskids.txt
 ```

@@ -146,7 +146,7 @@ bash ~/research_code/fmri/run_resting_afni_proc_subjectSpace.sh ${m}
 But not having enough TRs for the deconvolution can only be fixed by relaxing
 our censoring limits...
 
-Then, we compute osme of the metrics that will determine 
+Then, we compute some of the metrics that will determine 
 Then we prepare the alignment QC images:
 
 ```bash
@@ -185,8 +185,21 @@ swarm -f swarm.uber -g 4 --time 4:00:00 --partition quick --logdir trash_uber \
     --job-name afni_uber -m afni
 ```
 
+# 2019-02-08 19:14:57
 
-REMEMBER TO COPY BACK SUMA FILES, ALIGNMENT QC IMAGES, AS WELL!!!
+Use something like this in caterpie to copy back the data:
+
+```bash
+# caterpie
+for m in `cat ~/tmp/maskids.txt`; do
+    echo "Copying back converted and processed data for ${m}";
+    mkdir /mnt/shaw/MR_data_by_maskid/${m}/afni;
+    scp -qr helix.nih.gov:/scratch/${USER}/rsfmri/${m}/* /mnt/shaw/MR_data_by_maskid/${m}/afni/;
+    scp -qr helix.nih.gov:/data/NCR_SBRB/freesurfer5.3_subjects/${m}/SUMA /mnt/shaw/freesurfer5.3_subjects/${m}/;
+done
+```
+
+REMEMBER TO COPY BACK ALIGNMENT QC IMAGES AS WELL!!!
 
 TODO
 
