@@ -253,4 +253,3 @@ write.csv(m, file='~/data/baseline_prediction/residualized_combined_OLS_descript
 OK, let's try the predictions in Python then.
 
 The goal is to generate different ROC curves to compare the combined model with the individual modality models. We can come back to R to generate logs odds and other descriptives later.
-

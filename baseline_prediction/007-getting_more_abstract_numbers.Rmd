@@ -1,0 +1,206 @@
+---
+title: "More abstract numbers"
+output: html_notebook
+---
+
+Let's use some of Philip's feedback and get some extra feedback numbers.
+
+```{r}
+df = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
+df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')
+```
+
+# Logistic regressions
+
+```{r}
+library(nnet)
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_struct), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_HI_categ ~ scale(df$HI_struct), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_AD), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+fit <- multinom(df$OLS_inatt_categ ~ scale(df$inatt_DMN), na.action=na.omit)
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+# Combined imaging, intersection
+
+```{r}
+df = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df$OLS_inatt_categ = as.factor(df$OLS_inatt_categ)
+df$OLS_inatt_categ = relevel(df$OLS_inatt_categ, ref='NV')
+df$OLS_HI_categ = as.factor(df$OLS_HI_categ)
+df$OLS_HI_categ = relevel(df$OLS_HI_categ, ref='NV')
+keep_me = rowSums(is.na(df))==0
+df_inter = df[keep_me, ]
+fit <- multinom(df_inter$OLS_inatt_categ ~ scale(df_inter$inatt_DMN) + scale(df_inter$inatt_struct) + scale(df_inter$inatt_AD), na.action=na.omit)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+print(dim(df_inter))
+```
+
+Combined model is better.
+
+# Combined imaging, imputation
+
+```{r}
+library(VIM)
+df_imp = df
+tmp = irmi(df[, 2:7])
+df_imp[, colnames(tmp)] = tmp
+print(dim(df_imp))
+```
+
+
+```{r}
+fit <- multinom(df_imp$OLS_inatt_categ ~ scale(df_imp$inatt_DMN) + scale(df_imp$inatt_struct) + scale(df_imp$inatt_AD), na.action=na.omit)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+Combined model is better.
+
+# Trying other variables, but only in the imaging intersection data
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+df_all = merge(df_inter, data, by='MRN')
+```
+
+```{r}
+x = c('HI_struct', 'HI_cog_RawSStotal', 'HI_geno3prs_v_PROFILES.0.00001.profile')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_HI_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit <- multinom(OLS_HI_categ ~ ., data=df_all)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+df_all = merge(df_inter, data, by='MRN')
+x = c('inatt_adhd200_Age', 'inatt_geno3prs_v_PROFILES.0.0001.profile', 'inatt_geno3prs_v_PROFILES.0.0005.profile',
+      'inatt_AD', 'inatt_struct', 'inatt_DMN')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_inatt_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit <- multinom(OLS_inatt_categ ~ ., data=df_all)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+# Now repeat the same stuff for the inputed data:
+
+```{r}
+load('~/data/baseline_prediction/combined_descriptives_12172018.RData.gz')
+df_all = merge(df_imp, data, by='MRN')
+```
+
+```{r}
+x = c('HI_struct', 'HI_cog_RawSStotal', 'HI_geno3prs_v_PROFILES.0.00001.profile')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_HI_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit <- multinom(OLS_HI_categ ~ ., data=df_all)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+```{r}
+df_all = merge(df_imp, data, by='MRN')
+x = c('inatt_adhd200_Age', 'inatt_geno3prs_v_PROFILES.0.0001.profile', 'inatt_geno3prs_v_PROFILES.0.0005.profile',
+      'inatt_AD', 'inatt_struct', 'inatt_DMN')
+keep_me = rowSums(is.na(df_all[, x]))==0
+df_all = df_all[keep_me, c('OLS_inatt_categ', x)]
+df_all[, x] = scale(df_all[, x])
+fit <- multinom(OLS_inatt_categ ~ ., data=df_all)
+step <- stepAIC(fit, direction = "both", trace = F)
+fit = step
+z <- summary(fit)$coefficients/summary(fit)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+rr = exp(coef(fit))
+pp = fitted(fit)
+print(p)
+print(fit)
+print(rr)
+```
+
+
+
+
+
+
+
+
