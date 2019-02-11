@@ -1,0 +1,165 @@
+---
+title: "Ordered logistic regression"
+output: html_notebook
+---
+
+The idea is to run ordered logistic regression, first trying it univariate, then a full model, then the optimized model. Also, do it within domain, and then only the ones that have neuroimaging. Let's start with PRS, which is one of our main targets here.
+
+For the ordinal logistic regression, try the 4 groups, but NV position can be 1 or 4... look at the ANOVA. Philip used 1. Then, try the 3 groups by themselves.
+
+```{r}
+prs = read.csv('~/data/PRS_master.csv')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin$OLS_inatt_categ = NULL
+clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
+clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
+clin$OLS_HI_categ = NULL
+clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
+clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
+
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+
+df = merge(prs, clin, by='MRN', all.x=F, all.y=F)
+```
+
+Now, let's check each PRS individually:
+
+```{r}
+library(MASS)
+
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  res = matrix(nrow=sum(vars), ncol=8)
+  colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
+  cnt = 1
+  for (v in colnames(prs)[vars]) {
+    fm_str = sprintf('%s ~ scale(%s)', target, v) 
+    myfit <- polr(as.formula(fm_str), data=df, Hess=TRUE)
+    ctable <- coef(summary(myfit))
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    res[cnt, 'coef'] = ctable[1, 'Value']
+    res[cnt, 'tstat'] = ctable[1, 't value']
+    res[cnt, 'pval'] = p[1]
+    
+    ci<-confint.default(myfit)
+    res[cnt, c('coef2.5CI', 'coef97.5CI')] = ci
+    ors = exp(cbind(OR = coef(myfit), ci))
+    res[cnt, c('OR', 'OR2.5CI', 'OR97.5CI')] = ors
+    cnt = cnt + 1
+  }
+  rownames(res) = colnames(prs)[vars]
+  out_fname = sprintf('~/data/baseline_prediction/logistic_results/%s_PRS_univariate_everyone.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+But we can also chuck in a model that has everything in it:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_results/%s_PRS_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+And finally a stepwise best model approach:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_results/%s_PRS_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+Now, one could argue that we're shooting ourselves in the foot by throwing crappy PRS (ASD, SCZ) in the model. So, let's re-run the two big models with the ADHD PRS only.
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_results/%s_PRSADHD_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_results/%s_PRSADHD_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

@@ -35,7 +35,19 @@ while read line; do
 done < ~/Downloads/Results\ 1.txt
 ```
 
-Then, we swarm it in the cluster:
+I then just ran it like this:
+
+```bash
+conda activate mri-qa
+cd ~/Downloads/mri-qa-python-master
+for s in `/bin/ls -1 symlinks/`; do
+    python3 tw-qa.py -i symlinks/${s};
+done
+```
+
+And I copied the results for 1970 mask ids to ~/data/tonya_results.txt.
+
+For MRIQC, we swarm it in the cluster:
 
 ```bash
 cd ~/tmp
