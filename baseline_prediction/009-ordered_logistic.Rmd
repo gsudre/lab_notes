@@ -641,23 +641,20 @@ What if we repeat this entire analysis with the clinical group only? This way th
 ```{r}
 prs = read.csv('~/data/PRS_master.csv')
 clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin = clin[clin$DX != 'NV', ]
 clin$OLS_inatt_categ = NULL
 clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
 clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
 clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
-clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
 clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
-clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
 clin$OLS_HI_categ = NULL
 clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
 clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
 clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
-clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
 clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
-clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
 
-clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
-clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
 
 df = merge(prs, clin, by='MRN', all.x=F, all.y=F)
 ```
@@ -688,7 +685,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     cnt = cnt + 1
   }
   rownames(res) = colnames(prs)[vars]
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_univariate_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_univariate_everyone.csv', target)
   write.csv(res, file=out_fname)
 }
 ```
@@ -711,7 +708,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_full_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_full_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -737,7 +734,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_step_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_step_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -760,7 +757,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRSADHD_full_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRSADHD_full_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -784,7 +781,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRSADHD_step_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRSADHD_step_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -796,23 +793,20 @@ Now we repeat all the steps above, but only looking at the kids that had neuroim
 ```{r}
 prs = read.csv('~/data/PRS_master.csv')
 clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin = clin[clin$DX != 'NV', ]
 clin$OLS_inatt_categ = NULL
 clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
 clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
 clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
-clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
 clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
-clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
 clin$OLS_HI_categ = NULL
 clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
 clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
 clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
-clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
 clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
-clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
 
-clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
-clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
 
 df = merge(prs, clin, by='MRN', all.x=F, all.y=F)
 
@@ -844,7 +838,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     cnt = cnt + 1
   }
   rownames(res) = colnames(prs)[vars]
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_univariate_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_univariate_imaging.csv', target)
   write.csv(res, file=out_fname)
 }
 ```
@@ -867,7 +861,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_full_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_full_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -893,7 +887,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRS_step_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRS_step_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -916,7 +910,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRSADHD_full_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRSADHD_full_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -940,7 +934,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_PRSADHD_step_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_PRSADHD_step_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -972,7 +966,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     cnt = cnt + 1
   }
   rownames(res) = myvars
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_imaging_univariate_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_imaging_univariate_everyone.csv', target)
   write.csv(res, file=out_fname)
 }
 ```
@@ -997,7 +991,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_imaging_full_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_imaging_full_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1030,7 +1024,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   } else {
     ctable = 0
   }
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_imaging_step_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_imaging_step_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1064,7 +1058,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     cnt = cnt + 1
   }
   rownames(res) = myvars
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_others_univariate_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_others_univariate_everyone.csv', target)
   write.csv(res, file=out_fname)
 }
 ```
@@ -1088,7 +1082,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_others_full_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_others_full_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1119,7 +1113,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     ctable = 0
   }
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_others_step_everyone.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_others_step_everyone.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1169,14 +1163,31 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     cnt = cnt + 1
   }
   rownames(res) = myvars
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_all_univariate_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_all_univariate_imaging.csv', target)
   write.csv(res, file=out_fname)
 }
 ```
 
+Here we'll be down to 80 subjects (from 103 that have all 3 modalities, 101 that we ran for univariate). The full model doesn't run here. So, let's remove some of the variables that didnt work so well in the univariate results:
+
 ```{r}
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
+
+myvars = c()
+brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+for (s in brain_vars) {
+  myvars = c(myvars, sprintf('scale(%s)', s))
+}
+
+prs_vars = c("PROFILES.0.00000005.profile", "PROFILES.0.0000001.profile", "PROFILES.0.00001.profile",
+             "PROFILES.0.00005.profile", "PROFILES.0.0001.profile", "PROFILES.0.0005.profile", "PROFILES.0.001.profile",
+             "PROFILES.0.005.profile", "PROFILES.0.01.profile", "PROFILES.0.05.profile")
+for (s in prs_vars) {
+  myvars = c(myvars, sprintf('scale(%s)', s))
+}
+other_vars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c(myvars, other_vars)
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
@@ -1193,7 +1204,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
   ctable <- cbind(ctable, ors)
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_all_full_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_all_full_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1224,7 +1235,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     ctable = 0
   }
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_all_step_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_all_step_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
@@ -1259,7 +1270,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
     ctable = 0
   }
     
-  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_allDMNonly_step_imaging.csv', target)
+  out_fname = sprintf('~/data/baseline_prediction/logistic_ordinal_results/%s_clinicalOnly_allDMNonly_step_imaging.csv', target)
   write.csv(ctable, file=out_fname)
 }
 ```
