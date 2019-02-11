@@ -404,7 +404,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 }
 ```
 
-# Sex, age, IQ, handedness and baseline SX
+# Sex, age, IQ, and baseline SX
 
 We should have those variables for everyone in the cohort. Again, let's do the univariate approach, then full model, followed by stepwise.
 
@@ -412,7 +412,10 @@ We should have those variables for everyone in the cohort. Again, let's do the u
 load('~/data/baseline_prediction/adhd200_10042018.RData.gz')
 df = merge(data, clin, by='MRN', all.x=F, all.y=F)
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+# remove handedness because of NAs
+df$vCateg_handedness = NULL
+
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   res = matrix(nrow=length(myvars), ncol=8)
   colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
@@ -442,7 +445,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   mydata = as.data.frame(df_clean[, myvars])
   mydata[, target] = df_clean[, target]
@@ -466,7 +469,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   mydata = as.data.frame(df_clean[, myvars])
   mydata[, target] = df_clean[, target]
@@ -504,21 +507,36 @@ df_inter = df[keep_me, ]
 
 df = merge(df_inter, prs, by='MRN', all.x=F, all.y=F)
 df = merge(df, data, by='MRN', all.x=F, all.y=F)
-
-myvars = c()
-brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
-for (s in brain_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-vars = grepl(pattern='file$', colnames(prs))
-prs_vars = colnames(prs)[vars]
-for (s in prs_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-other_vars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
-myvars = c(myvars, other_vars)
+# remove handedness because of NAs
+df$vCateg_handedness = NULL
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.01.profile', 'PROFILES.0.0001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.05.profile', 'PROFILES.0.00000005.profile', 'PROFILES.0.01.profile',
+                 'PROFILES.0.0000001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
+
   res = matrix(nrow=length(myvars), ncol=8)
   colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
   cnt = 1
@@ -548,6 +566,31 @@ keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.01.profile', 'PROFILES.0.0001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.05.profile', 'PROFILES.0.00000005.profile', 'PROFILES.0.01.profile',
+                 'PROFILES.0.0000001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -572,6 +615,31 @@ keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.01.profile', 'PROFILES.0.0001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.05.profile', 'PROFILES.0.00000005.profile', 'PROFILES.0.01.profile',
+                 'PROFILES.0.0000001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -580,7 +648,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   step <- stepAIC(myfit, direction = "both", trace = F)
   myfit = step
   nvars = length(coef(myfit))
-  if (nvars > 0) { 
+  if (nvars > 1) { 
     ctable <- coef(summary(myfit))[1:nvars, ]
     p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
     ctable <- cbind(ctable, "p value" = p)
@@ -607,6 +675,31 @@ df_clean = df[keep_me, ]
 brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_DMN")
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.01.profile', 'PROFILES.0.0001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.05.profile', 'PROFILES.0.00000005.profile', 'PROFILES.0.01.profile',
+                 'PROFILES.0.0000001.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -615,7 +708,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
   step <- stepAIC(myfit, direction = "both", trace = F)
   myfit = step
   nvars = length(coef(myfit))
-  if (nvars > 0) { 
+  if (nvars > 1) { 
     ctable <- coef(summary(myfit))[1:nvars, ]
     p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
     ctable <- cbind(ctable, "p value" = p)
@@ -1029,7 +1122,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 }
 ```
 
-# Sex, age, IQ, handedness and baseline SX
+# Sex, age, IQ, and baseline SX
 
 We should have those variables for everyone in the cohort. Again, let's do the univariate approach, then full model, followed by stepwise.
 
@@ -1037,7 +1130,10 @@ We should have those variables for everyone in the cohort. Again, let's do the u
 load('~/data/baseline_prediction/adhd200_10042018.RData.gz')
 df = merge(data, clin, by='MRN', all.x=F, all.y=F)
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+# remove handedness because of NAs
+df$vCateg_handedness = NULL
+
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   res = matrix(nrow=length(myvars), ncol=8)
   colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
@@ -1067,7 +1163,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   mydata = as.data.frame(df_clean[, myvars])
   mydata[, target] = df_clean[, target]
@@ -1091,7 +1187,7 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
-myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
 for (target in c('inatt_ordered', 'HI_ordered')) {
   mydata = as.data.frame(df_clean[, myvars])
   mydata[, target] = df_clean[, target]
@@ -1130,20 +1226,31 @@ df_inter = df[keep_me, ]
 df = merge(df_inter, prs, by='MRN', all.x=F, all.y=F)
 df = merge(df, data, by='MRN', all.x=F, all.y=F)
 
-myvars = c()
-brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
-for (s in brain_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-vars = grepl(pattern='file$', colnames(prs))
-prs_vars = colnames(prs)[vars]
-for (s in prs_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-other_vars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
-myvars = c(myvars, other_vars)
-
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile', 'PROFILES.0.2.profile', 'PROFILES.0.4.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   res = matrix(nrow=length(myvars), ncol=8)
   colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
   cnt = 1
@@ -1174,22 +1281,31 @@ Here we'll be down to 80 subjects (from 103 that have all 3 modalities, 101 that
 keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
-myvars = c()
-brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
-for (s in brain_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-
-prs_vars = c("PROFILES.0.00000005.profile", "PROFILES.0.0000001.profile", "PROFILES.0.00001.profile",
-             "PROFILES.0.00005.profile", "PROFILES.0.0001.profile", "PROFILES.0.0005.profile", "PROFILES.0.001.profile",
-             "PROFILES.0.005.profile", "PROFILES.0.01.profile", "PROFILES.0.05.profile")
-for (s in prs_vars) {
-  myvars = c(myvars, sprintf('scale(%s)', s))
-}
-other_vars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
-myvars = c(myvars, other_vars)
-
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile', 'PROFILES.0.2.profile', 'PROFILES.0.4.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -1214,6 +1330,30 @@ keep_me = rowSums(is.na(df))==0
 df_clean = df[keep_me, ]
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile', 'PROFILES.0.2.profile', 'PROFILES.0.4.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -1249,6 +1389,30 @@ df_clean = df[keep_me, ]
 brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_DMN")
 
 for (target in c('inatt_ordered', 'HI_ordered')) {
+  myvars = c()
+  if (target == 'inatt_ordered') {
+    brain_vars = c("inatt_struct", "inatt_AD", "inatt_DMN")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile', 'PROFILES.0.2.profile', 'PROFILES.0.4.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  } else {
+    brain_vars = c("HI_struct")
+    for (s in brain_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    prs_vars = c('PROFILES.0.5.profile')
+    for (s in prs_vars) {
+      myvars = c(myvars, sprintf('scale(%s)', s))
+    }
+    other_vars = c("vCateg_sex", "v_Age", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+    myvars = c(myvars, other_vars)
+  }
   mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
   mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
   mydata[, target] = df_clean[, target]
@@ -1276,4 +1440,6 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 ```
 
 
+# TODO
+* Complete IQ variable
 
