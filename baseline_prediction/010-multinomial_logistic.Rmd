@@ -1,0 +1,672 @@
+---
+title: "Multinomial logistic regression"
+output: html_notebook
+---
+
+Looking at the brain ANOVAs the ordered logistic regression didn't make much sense. It does for PRS, but then it bias the model selection towards PRS and other variables that obey that shape. Let's see what the results look like using multinomial regression.
+
+So, I'm basically redoing the analysis in 009, but running multinomial logistic regressions.
+
+```{r}
+prs = read.csv('~/data/PRS_master.csv')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin$OLS_inatt_categ = NULL
+clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
+clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
+clin$OLS_HI_categ = NULL
+clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
+clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
+
+df = merge(prs, clin, by='MRN', all.x=F, all.y=F)
+```
+
+Now, let's check each PRS individually:
+
+```{r}
+library(nnet)
+
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('OLS_inatt_categ', 'OLS_HI_categ')) {
+  res = matrix(nrow=sum(vars), ncol=12)
+  cnames = c()
+  for (prefix in c('coef', 'z', 'pval', 'or')) {
+    for (suffix in levels(df[, target])[2:4]) {
+      cnames = c(cnames, sprintf('%s_%s', prefix, suffix))
+    }
+  }
+  colnames(res) = cnames
+  cnt = 1
+  for (v in colnames(prs)[vars]) {
+    fm_str = sprintf('%s ~ scale(%s)', target, v) 
+    myfit <- multinom(as.formula(fm_str), data=df, na.action=na.omit, trace=F)
+    z <- summary(myfit)$coefficients/summary(myfit)$standard.errors
+    p <- (1 - pnorm(abs(z), 0, 1)) * 2
+    or = exp(coef(myfit))
+
+    res[cnt, 1:3] = coef(myfit)[, 2]
+    res[cnt, 4:6] = z[, 2]
+    res[cnt, 7:9] = p[, 2]
+    res[cnt, 10:12] = or[, 2]
+
+    cnt = cnt + 1
+  }
+  rownames(res) = colnames(prs)[vars]
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_univariate_everyone.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+But we can also chuck in a model that has everything in it:
+
+** NOT FINISHED YET!!!! EVERYTHING BELOW THIS STILL NEEDS TO BE CHANGED **
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target)
+  
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+  
+  myfit <- multinom(as.formula(fm_str), data=mydata, na.action=na.omit, trace=F)
+  z <- summary(myfit)$coefficients/summary(myfit)$standard.errors
+  p <- (1 - pnorm(abs(z), 0, 1)) * 2
+  or = exp(coef(myfit))
+    
+  ctable = coef(myfit)
+    res = matrix(nrow=sum(vars), ncol=12)
+  cnames = c()
+  for (prefix in c('coef', 'z', 'pval', 'or')) {
+    for (suffix in levels(df[, target])[2:4]) {
+      cnames = c(cnames, sprintf('%s_%s', prefix, suffix))
+    }
+  }
+  colnames(res) = cnames
+  cnt = 1
+  for (v in colnames(prs)[vars]) {
+    fm_str = sprintf('%s ~ scale(%s)', target, v) 
+    myfit <- multinom(as.formula(fm_str), data=df, na.action=na.omit, trace=F)
+    z <- summary(myfit)$coefficients/summary(myfit)$standard.errors
+    p <- (1 - pnorm(abs(z), 0, 1)) * 2
+    or = exp(coef(myfit))
+
+    res[cnt, 1:3] = coef(myfit)[, 2]
+    res[cnt, 4:6] = z[, 2]
+    res[cnt, 7:9] = p[, 2]
+    res[cnt, 10:12] = or[, 2]
+
+    cnt = cnt + 1
+  }
+  
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+And finally a stepwise best model approach:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+Now, one could argue that we're shooting ourselves in the foot by throwing crappy PRS (ASD, SCZ) in the model. So, let's re-run the two big models with the ADHD PRS only.
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRSADHD_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRSADHD_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+# neuroimaging only
+
+Now we repeat all the steps above, but only looking at the kids that had neuroimaging:
+
+```{r}
+prs = read.csv('~/data/PRS_master.csv')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin$OLS_inatt_categ = NULL
+clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
+clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
+clin$OLS_HI_categ = NULL
+clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
+clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
+
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+
+df = merge(prs, clin, by='MRN', all.x=F, all.y=F)
+
+img = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df = merge(df, img, by='MRN', all.x=F, all.y=F)
+```
+
+Like before, run univariate PRS:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  res = matrix(nrow=sum(vars), ncol=8)
+  colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
+  cnt = 1
+  for (v in colnames(prs)[vars]) {
+    fm_str = sprintf('%s ~ scale(%s)', target, v) 
+    myfit <- polr(as.formula(fm_str), data=df, Hess=TRUE)
+    ctable <- coef(summary(myfit))
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    res[cnt, 'coef'] = ctable[1, 'Value']
+    res[cnt, 'tstat'] = ctable[1, 't value']
+    res[cnt, 'pval'] = p[1]
+    
+    ci<-confint.default(myfit)
+    res[cnt, c('coef2.5CI', 'coef97.5CI')] = ci
+    ors = exp(cbind(OR = coef(myfit), ci))
+    res[cnt, c('OR', 'OR2.5CI', 'OR97.5CI')] = ors
+    cnt = cnt + 1
+  }
+  rownames(res) = colnames(prs)[vars]
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_univariate_imaging.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+Chuck in a model that has everything in it:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_full_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+Stepwise best model approach:
+
+```{r}
+vars = grepl(pattern='^PROFI', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRS_step_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+And we repeat it with the ADHD PRS only.
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:sum(vars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRSADHD_full_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+```{r}
+vars = grepl(pattern='file$', colnames(prs))
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df[, colnames(prs)[vars]]))
+  mydata[, target] = df[, target]
+  fm_str = sprintf('%s ~ .', target, v)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  ctable <- coef(summary(myfit))[1:nvars, ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_PRSADHD_step_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+# Brain
+
+Let's do a similar approach and run the brain univariate, full, and stepwise. For full and stepwise, let's play with the intersection of all neuroimaging for now. If that doesn't work, or the sample is too small, we can impute it.
+
+```{r}
+df = merge(img, clin, by='MRN', all.x=F, all.y=F)
+myvars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  res = matrix(nrow=length(myvars), ncol=8)
+  colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
+  cnt = 1
+  for (v in myvars) {
+    fm_str = sprintf('%s ~ scale(%s)', target, v) 
+    myfit <- polr(as.formula(fm_str), data=df, Hess=TRUE)
+    ctable <- coef(summary(myfit))
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    res[cnt, 'coef'] = ctable[1, 'Value']
+    res[cnt, 'tstat'] = ctable[1, 't value']
+    res[cnt, 'pval'] = p[1]
+    
+    ci<-confint.default(myfit)
+    res[cnt, c('coef2.5CI', 'coef97.5CI')] = ci
+    ors = exp(cbind(OR = coef(myfit), ci))
+    res[cnt, c('OR', 'OR2.5CI', 'OR97.5CI')] = ors
+    cnt = cnt + 1
+  }
+  rownames(res) = myvars
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_imaging_univariate_everyone.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+```{r}
+df = merge(img, clin, by='MRN', all.x=F, all.y=F)
+keep_me = rowSums(is.na(df))==0
+df_inter = df[keep_me, ]
+
+myvars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df_inter[, myvars]))
+  mydata[, target] = df_inter[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:length(myvars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_imaging_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+Finally, we run stepwise:
+
+```{r}
+df = merge(img, clin, by='MRN', all.x=F, all.y=F)
+keep_me = rowSums(is.na(df))==0
+df_inter = df[keep_me, ]
+
+myvars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df_inter[, myvars]))
+  mydata[, target] = df_inter[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  if (nvars > 0) { 
+    ctable <- coef(summary(myfit))[1:nvars, ]
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    ctable <- cbind(ctable, "p value" = p)
+    ci<-confint.default(myfit)
+    ctable <- cbind(ctable, ci)
+    ors = exp(cbind(OR = coef(myfit), ci))
+    colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+    ctable <- cbind(ctable, ors)
+  } else {
+    ctable = 0
+  }
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_imaging_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+# Sex, age, IQ, handedness and baseline SX
+
+We should have those variables for everyone in the cohort. Again, let's do the univariate approach, then full model, followed by stepwise.
+
+```{r}
+load('~/data/baseline_prediction/adhd200_10042018.RData.gz')
+df = merge(data, clin, by='MRN', all.x=F, all.y=F)
+
+myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  res = matrix(nrow=length(myvars), ncol=8)
+  colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
+  cnt = 1
+  for (v in myvars) {
+    fm_str = sprintf('%s ~ %s', target, v) 
+    myfit <- polr(as.formula(fm_str), data=df, Hess=TRUE)
+    ctable <- coef(summary(myfit))
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    res[cnt, 'coef'] = ctable[1, 'Value']
+    res[cnt, 'tstat'] = ctable[1, 't value']
+    res[cnt, 'pval'] = p[1]
+    
+    ci<-confint.default(myfit)
+    res[cnt, c('coef2.5CI', 'coef97.5CI')] = ci
+    ors = exp(cbind(OR = coef(myfit), ci))
+    res[cnt, c('OR', 'OR2.5CI', 'OR97.5CI')] = ors
+    cnt = cnt + 1
+  }
+  rownames(res) = myvars
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_others_univariate_everyone.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_clean = df[keep_me, ]
+
+myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(df_clean[, myvars])
+  mydata[, target] = df_clean[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:length(myvars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_others_full_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_clean = df[keep_me, ]
+
+myvars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(df_clean[, myvars])
+  mydata[, target] = df_clean[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  if (nvars > 0) { 
+    ctable <- coef(summary(myfit))[1:nvars, ]
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    ctable <- cbind(ctable, "p value" = p)
+    ci<-confint.default(myfit)
+    ctable <- cbind(ctable, ci)
+    ors = exp(cbind(OR = coef(myfit), ci))
+    colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+    ctable <- cbind(ctable, ors)
+  } else {
+    ctable = 0
+  }
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_others_step_everyone.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+# Combining everything
+
+The best approach here is to start with imaging intersection, and attach everything to that. Then, we run the univariate (just to make sure past results still somewhat hold), full model and stepwise.
+
+```{r}
+df = merge(img, clin, by='MRN', all.x=F, all.y=F)
+keep_me = rowSums(is.na(df))==0
+df_inter = df[keep_me, ]
+
+df = merge(df_inter, prs, by='MRN', all.x=F, all.y=F)
+df = merge(df, data, by='MRN', all.x=F, all.y=F)
+
+myvars = c()
+brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_limbic", "inatt_VAN", "inatt_DMN")
+for (s in brain_vars) {
+  myvars = c(myvars, sprintf('scale(%s)', s))
+}
+vars = grepl(pattern='file$', colnames(prs))
+prs_vars = colnames(prs)[vars]
+for (s in prs_vars) {
+  myvars = c(myvars, sprintf('scale(%s)', s))
+}
+other_vars = c("vCateg_sex", "v_Age", "vCateg_handedness", "v_IQ", "SX_inatt_baseline", "SX_HI_baseline")
+myvars = c(myvars, other_vars)
+
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  res = matrix(nrow=length(myvars), ncol=8)
+  colnames(res) = c('coef', 'tstat', 'pval', 'coef2.5CI', 'coef97.5CI', 'OR', 'OR2.5CI', 'OR97.5CI')
+  cnt = 1
+  for (v in myvars) {
+    fm_str = sprintf('%s ~ %s', target, v) 
+    myfit <- polr(as.formula(fm_str), data=df, Hess=TRUE)
+    ctable <- coef(summary(myfit))
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    res[cnt, 'coef'] = ctable[1, 'Value']
+    res[cnt, 'tstat'] = ctable[1, 't value']
+    res[cnt, 'pval'] = p[1]
+    
+    ci<-confint.default(myfit)
+    res[cnt, c('coef2.5CI', 'coef97.5CI')] = ci
+    ors = exp(cbind(OR = coef(myfit), ci))
+    res[cnt, c('OR', 'OR2.5CI', 'OR97.5CI')] = ors
+    cnt = cnt + 1
+  }
+  rownames(res) = myvars
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_all_univariate_imaging.csv', target)
+  write.csv(res, file=out_fname)
+}
+```
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_clean = df[keep_me, ]
+
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
+  mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
+  mydata[, target] = df_clean[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  ctable <- coef(summary(myfit))[1:length(myvars), ]
+  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+  ctable <- cbind(ctable, "p value" = p)
+  ci<-confint.default(myfit)
+  ctable <- cbind(ctable, ci)
+  ors = exp(cbind(OR = coef(myfit), ci))
+  colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+  ctable <- cbind(ctable, ors)
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_all_full_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_clean = df[keep_me, ]
+
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
+  mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
+  mydata[, target] = df_clean[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  if (nvars > 0) { 
+    ctable <- coef(summary(myfit))[1:nvars, ]
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    ctable <- cbind(ctable, "p value" = p)
+    ci<-confint.default(myfit)
+    ctable <- cbind(ctable, ci)
+    ors = exp(cbind(OR = coef(myfit), ci))
+    colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+    ctable <- cbind(ctable, ors)
+  } else {
+    ctable = 0
+  }
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_all_step_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+Out of curiosity, is we don't include the other two rsFMRI patterns, does DMN get selected?
+
+```{r}
+keep_me = rowSums(is.na(df))==0
+df_clean = df[keep_me, ]
+
+brain_vars = c("inatt_struct", "HI_struct", "inatt_AD", "inatt_DMN")
+
+for (target in c('inatt_ordered', 'HI_ordered')) {
+  mydata = as.data.frame(scale(df_clean[, c(brain_vars, prs_vars)]))
+  mydata = cbind(mydata, as.data.frame(df_clean[, other_vars]))
+  mydata[, target] = df_clean[, target]
+  fm_str = sprintf('%s ~ .', target)
+  myfit <- polr(as.formula(fm_str), data=mydata, Hess=TRUE)
+  step <- stepAIC(myfit, direction = "both", trace = F)
+  myfit = step
+  nvars = length(coef(myfit))
+  if (nvars > 0) { 
+    ctable <- coef(summary(myfit))[1:nvars, ]
+    p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+    ctable <- cbind(ctable, "p value" = p)
+    ci<-confint.default(myfit)
+    ctable <- cbind(ctable, ci)
+    ors = exp(cbind(OR = coef(myfit), ci))
+    colnames(ors)[2:3] = c('OR2.5CI', 'OR97.5CI')
+    ctable <- cbind(ctable, ors)
+  } else {
+    ctable = 0
+  }
+    
+  out_fname = sprintf('~/data/baseline_prediction/logistic_multinomial_results/%s_allDMNonly_step_imaging.csv', target)
+  write.csv(ctable, file=out_fname)
+}
+```
+
+
+
