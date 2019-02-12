@@ -121,3 +121,15 @@ done;
 swarm -g 4 --job-name fdt --time 4:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:2
 ```
+
+# 2019-02-12 17:38:14
+
+I made a few changes to the fdt wrapper to include Qc pictures and warping to
+the FMRIB58 space. The results look decent, so it's time to run it for everybody
+and start looking at the QC pictures. I'll then write wrappers to grab the
+motion and outlier parameters, as well as something to collect the tract
+averages, brain QC images (to be more organized for easy QCing), do the rest of the TBSS analysis, and also output the SSE and CNR maps
+for further QCing.
+
+Let's go ahead and all 647 overnight.
+
