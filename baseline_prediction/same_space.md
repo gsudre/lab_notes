@@ -663,3 +663,20 @@ for (n in 1:length(pipes)) {
     }
 }
 ```
+
+# 2019-02-12 14:16:41
+
+Just to save time in the future, here is the picture from the MELODIC report for
+VAN:
+
+![](images/2019-02-12-14-17-00.png)
+
+DMN:
+
+![](images/2019-02-12-14-17-14.png)
+
+limbic:
+
+![](images/2019-02-12-14-17-28.png)
+
+They all look acceptable to me.

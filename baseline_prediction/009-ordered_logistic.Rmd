@@ -1440,6 +1440,101 @@ for (target in c('inatt_ordered', 'HI_ordered')) {
 ```
 
 
-# TODO
-* Complete IQ variable
+# Big file for Philip
+
+I'm just going to combine everything into one big file that Philip can use for analysis. First, come up with a big file for PRS:
+
+```{r}
+prs = read.csv('~/data/PRS2017_geno3_1KG_noFlip_genop05MAFbtp01rsbtp9_extra.csv')
+a = read.csv('~/data/PRS2017_geno3_1KG_noFlip_genop05MAFbtp01rsbtp9_eur.csv')
+prs = merge(prs, a, by='MRN', suffixes=c('', '.eur'))
+a = read.csv('~/data/PRS_ASD_genop05MAFbtp01rsbtp9.csv')
+prs = merge(prs, a, by='MRN', suffixes=c('', '.ASD'))
+a = read.csv('~/data/PRS_SCZ_genop05MAFbtp01rsbtp9.csv')
+prs = merge(prs, a, by='MRN', suffixes=c('', '.SCZ'))
+a = read.table('~/data/kingpc_geno3_noFlip.ped', header = 0)
+colnames(a)[7:26] = sapply(1:20, function(x) { sprintf('PC%02d', x)})
+clean_nsb = function(nsb) {
+  if (grepl('@', nsb)) {
+    nsb = strsplit(nsb, '@')[[1]][1]
+    nsb = strsplit(nsb, '-')[[1]][3]
+  }
+  return(nsb)
+}
+a$nsbs = as.numeric(sapply(as.character(a$V2), clean_nsb))
+prs2 = merge(prs, a[, 7:27], by.x='NSB', by.y='nsbs')
+write.csv(prs2, file='~/data/PRS_master_euro_pcs.csv', row.names=F)
+```
+
+Now we do the merging, starting off with our entire cohort:
+
+```{r}
+prs = read.csv('~/data/PRS_master_euro_pcs.csv')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin$OLS_inatt_categ = NULL
+clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_inatt_categ'] = 'NV'
+clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
+clin$OLS_inatt_categ = relevel(clin$OLS_inatt_categ, ref='NV')
+clin$OLS_HI_categ = NULL
+clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+clin[clin$DX == 'NV', 'OLS_HI_categ'] = 'NV'
+clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
+clin$OLS_HI_categ = relevel(clin$OLS_HI_categ, ref='NV')
+
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('NV', 'marked', 'mild', 'deter'), ordered=T)
+
+df = merge(clin, prs, by='MRN', all.x=T, all.y=F)
+img = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df = merge(df, img, by='MRN', all.x=T, all.y=F)
+b = read.csv('~/data/adhd200_02122019.csv')
+df = merge(df, b, by='MRN', all.x=T, all.y=F)
+load('~/data/baseline_prediction/social_09262018.RData.gz')
+df = merge(df, data, by='MRN', all.x=T, all.y=F)
+b = read.csv('~/data/baseline_prediction/race.csv')
+df = merge(df, b, by='MRN', all.x=T, all.y=F)
+df_all = df
+```
+
+To make life easier, let's create one with the clinical population only as well:
+
+```{r}
+prs = read.csv('~/data/PRS_master_euro_pcs.csv')
+clin = read.csv('~/data/baseline_prediction/long_clin_11302018.csv')
+clin = clin[clin$DX != 'NV', ]
+clin$OLS_inatt_categ = NULL
+clin[clin$OLS_inatt_slope <= -.33, 'OLS_inatt_categ'] = 'marked'
+clin[clin$OLS_inatt_slope > -.33 & clin$OLS_inatt_slope <= 0, 'OLS_inatt_categ'] = 'mild'
+clin[clin$OLS_inatt_slope > 0, 'OLS_inatt_categ'] = 'deter'
+clin$OLS_inatt_categ = as.factor(clin$OLS_inatt_categ)
+clin$OLS_HI_categ = NULL
+clin[clin$OLS_HI_slope <= -.5, 'OLS_HI_categ'] = 'marked'
+clin[clin$OLS_HI_slope > -.5 & clin$OLS_HI_slope <= 0, 'OLS_HI_categ'] = 'mild'
+clin[clin$OLS_HI_slope > 0, 'OLS_HI_categ'] = 'deter'
+clin$OLS_HI_categ = as.factor(clin$OLS_HI_categ)
+
+clin$HI_ordered = factor(clin$OLS_HI_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
+clin$inatt_ordered = factor(clin$OLS_inatt_categ, levels=c('marked', 'mild', 'deter'), ordered=T)
+
+df = merge(clin, prs, by='MRN', all.x=T, all.y=F)
+img = read.csv('~/data/baseline_prediction/residualized_combined_OLS_descriptives_02072019.csv')
+df = merge(df, img, by='MRN', all.x=T, all.y=F)
+b = read.csv('~/data/adhd200_02122019.csv')
+df = merge(df, b, by='MRN', all.x=T, all.y=F)
+load('~/data/baseline_prediction/social_09262018.RData.gz')
+df = merge(df, data, by='MRN', all.x=T, all.y=F)
+b = read.csv('~/data/baseline_prediction/race.csv')
+df = merge(df, b, by='MRN', all.x=T, all.y=F)
+df_clin = df
+```
+
+```{r}
+save(df_all, df_clin, file='~/data/baseline_prediction/big_dfs_for_philip.RData')
+```
+
 
