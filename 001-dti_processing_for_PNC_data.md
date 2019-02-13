@@ -212,14 +212,25 @@ module load TORTOISE
 ImportDICOM -i mr_0008 -o s1 -b 1100 -g xaa
 ImportDICOM -i mr_0009 -o s2 -b 1100 -g xab
 ImportDICOM -i mr_0010 -o s3 -b 1100 -g xac
-TORTOISEBmatrixToFSLBVecs s1_proc/s1.bmtxt 
-TORTOISEBmatrixToFSLBVecs s2_proc/s2.bmtxt 
-TORTOISEBmatrixToFSLBVecs s3_proc/s3.bmtxt 
-fat_proc_convert_dcm_dwis -no_qc_view -innii s1_proc/s1.nii s2_proc/s2.nii s3_proc/s3.nii -inbval  s1_proc/s1.bvals s2_proc/s2.bvals s3_proc/s3.bvals -inbvec  s1_proc/s1.bvecs s2_proc/s2.bvecs s3_proc/s3.bvecs -prefix dwi_comb -flip_x
+TORTOISEBmatrixToFSLBVecs s1_proc/s1.bmtxt
+TORTOISEBmatrixToFSLBVecs s2_proc/s2.bmtxt
+TORTOISEBmatrixToFSLBVecs s3_proc/s3.bmtxt
+fat_proc_convert_dcm_dwis -no_qc_view \
+    -innii s1_proc/s1.nii s2_proc/s2.nii s3_proc/s3.nii \
+    -inbval s1_proc/s1.bvals s2_proc/s2.bvals s3_proc/s3.bvals \
+    -inbvec s1_proc/s1.bvecs s2_proc/s2.bvecs s3_proc/s3.bvecs \
+    -prefix dwi_comb -flip_x
 ```
 
 That matched exactly what I got from opening the .list file in DIFFCALC and
 exporting the raw DWI (edti.list) to FSL UNSORTED format.
+
+The idea behind doing it per session comes from an email from Irfan, who said
+that TORTOISE v2 used directory structure, but ImportDICOM (and dcm2nixx) use
+the DICOM series number written in the header. Somehow the scanner is writing
+the series number wrong, and then the DICOMs get imported incorrectly. If we do
+it by scan, like TORTOISE v2 used to do, and provide the correct gradients, it
+should work fine.
 
 After this, it's just the exact same thing as the PNC pipeline, with probably
 some changed in the bedpostx to only fit one orientation. In fact, I could do
