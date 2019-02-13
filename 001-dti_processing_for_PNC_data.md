@@ -168,12 +168,59 @@ for m in `cat myids.txt`; do
         vol1='NA';
         pvol='NA';
     fi;
-#          | tail
-# -n -2 | 
     echo $m, $noutliers, $trans, $rot, $vol1, $pvol >> $out_fname;
 done
-
-  567  11:54  
-  568  11:55  
-  569  11:55  
 ```
+
+Note that Ryan's output usually comes from bedpostX, so I'll still need to run
+that. Or I can just go for a regular average over the mask mean. For example,
+see Ryan's e-mail from December 06, 2016 10:11 AM.
+
+I'm not going to go the CAMINO way, but we might end up running autoPtx. Need to
+see how it looks at Biowulf though:
+
+https://hpc.nih.gov/apps/fsl.html
+
+Ryan's pipeline seems to spit out both OLS and RESTORE estimates, and he says
+they're highly correlated. Just so we don't have to jump between programs, let's
+stic to the OLS etimates for now.
+
+For bedpostx, I did something like this:
+
+```bash
+ln -s eddy_old/eddy_s2v_unwarped_images.nii.gz data.nii.gz
+ln -s dwi_bval.dat bvals
+ln -s eddy_old/eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs
+ln -s b0_brain_mask.nii.gz nodif_brain_mask.nii.gz
+bedpostx ./
+```
+
+and that schedules a whole bunch of swarms just for the single subject. Over 60,
+I'd say, wach of 2 cores, 2h. Shouldn't take too long to run in parallel, but
+that's per subject, so it'll take a while. It can run faster if I use GPU, but
+then I'm limited on how many GPUs I can allocate. Let's think more about it
+later.
+
+Also note that from Joelle's e-mails, we should only do one fiber orientation for our data,
+instead of 2 in bedpost.
+
+Yay! These seem to work when converting our data:
+
+```bash
+tail -n -60 cdiflist08 | split -l 20
+module load TORTOISE
+ImportDICOM -i mr_0008 -o s1 -b 1100 -g xaa
+ImportDICOM -i mr_0009 -o s2 -b 1100 -g xab
+ImportDICOM -i mr_0010 -o s3 -b 1100 -g xac
+TORTOISEBmatrixToFSLBVecs s1_proc/s1.bmtxt 
+TORTOISEBmatrixToFSLBVecs s2_proc/s2.bmtxt 
+TORTOISEBmatrixToFSLBVecs s3_proc/s3.bmtxt 
+fat_proc_convert_dcm_dwis -no_qc_view -innii s1_proc/s1.nii s2_proc/s2.nii s3_proc/s3.nii -inbval  s1_proc/s1.bvals s2_proc/s2.bvals s3_proc/s3.bvals -inbvec  s1_proc/s1.bvecs s2_proc/s2.bvecs s3_proc/s3.bvecs -prefix dwi_comb -flip_x
+```
+
+That matched exactly what I got from opening the .list file in DIFFCALC and
+exporting the raw DWI (edti.list) to FSL UNSORTED format.
+
+After this, it's just the exact same thing as the PNC pipeline, with probably
+some changed in the bedpostx to only fit one orientation. In fact, I could do
+that for the PNC as well, just so we don't have two different options.
