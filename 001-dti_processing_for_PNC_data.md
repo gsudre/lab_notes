@@ -133,3 +133,47 @@ for further QCing.
 
 Let's go ahead and all 647 overnight.
 
+# 2019-02-13 11:31:26
+
+I'll ignore the CNR maps for now. We have plenty here after chaking the brain
+masks, warping, and SSE. We're also looking for numbers of outliers and movement
+variables, so let's grab those.
+
+```bash
+out_fname=mvmt_report.csv;
+echo "id,Noutliers,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat myids.txt`; do
+    echo 'Collecting metrics for' $m;
+    if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
+        noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
+            -write trans_norm.1D;
+        trans=`1d_tool.py -infile trans_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '3..5' -collapse_cols euclidean_norm -overwrite \
+            -write rot_norm.1D;
+        rot=`1d_tool.py -infile rot_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_rms \
+            -show_mmms > mean_rms.txt;
+        vol1=`head -n +2 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+        pvol=`tail -n -1 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+    else
+        echo "Could not find outlier report for $m"
+        noutliers='NA';
+        trans='NA';
+        rot='NA';
+        vol1='NA';
+        pvol='NA';
+    fi;
+#          | tail
+# -n -2 | 
+    echo $m, $noutliers, $trans, $rot, $vol1, $pvol >> $out_fname;
+done
+
+  567  11:54  
+  568  11:55  
+  569  11:55  
+```
