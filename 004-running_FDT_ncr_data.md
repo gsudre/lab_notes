@@ -73,3 +73,7 @@ exporting the raw DWI (edti.list) to FSL UNSORTED format.
 After this, it's just the exact same thing as the PNC pipeline, with probably
 some changed in the bedpostx to only fit one orientation. In fact, I could do
 that for the PNC as well, just so we don't have two different options.
+
+For the next step, we need to check who converted correctly. Maybe just check
+the number of vectors in the gradient file against the number of converted
+volumes in the NIFTI?
