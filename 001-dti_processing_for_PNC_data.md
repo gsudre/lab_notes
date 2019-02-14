@@ -188,9 +188,9 @@ stic to the OLS etimates for now.
 For bedpostx, I did something like this:
 
 ```bash
-ln -s eddy_old/eddy_s2v_unwarped_images.nii.gz data.nii.gz
+ln -s eddy_s2v_unwarped_images.nii.gz data.nii.gz
 ln -s dwi_bval.dat bvals
-ln -s eddy_old/eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs
+ln -s eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs
 ln -s b0_brain_mask.nii.gz nodif_brain_mask.nii.gz
 bedpostx ./
 ```
@@ -199,10 +199,37 @@ and that schedules a whole bunch of swarms just for the single subject. Over 60,
 I'd say, wach of 2 cores, 2h. Shouldn't take too long to run in parallel, but
 that's per subject, so it'll take a while. It can run faster if I use GPU, but
 then I'm limited on how many GPUs I can allocate. Let's think more about it
-later.
+later. But the command would be bedpostx_gpu.
 
 Also note that from Joelle's e-mails, we should only do one fiber orientation for our data,
-instead of 2 in bedpost.
+instead of 2 that is default in bedpost.
 
-Yay! These seem to work when converting our data:
+Before I go nuts running bedpost on everyone, let's collect the QC that's
+already finished:
+
+```bash
+mkdir /data/NCR_SBRB/pnc/dti_fdt/summary_QC
+cd /data/NCR_SBRB/pnc/dti_fdt/summary_QC/
+mkdir brainmask
+mkdir transform
+mkdir DEC
+mkdir SSE
+for m in `cat ../myids.txt`; do
+    cp ../${m}/QC/brain_mask.axi.png brainmask/${m}.axi.png
+    cp ../${m}/QC/brain_mask.sag.png brainmask/${m}.sag.png
+    cp ../${m}/QC/brain_mask.cor.png brainmask/${m}.cor.png
+
+    cp ../${m}/QC/FA_transform.axi.png transform/${m}.axi.png
+    cp ../${m}/QC/FA_transform.sag.png transform/${m}.sag.png
+    cp ../${m}/QC/FA_transform.cor.png transform/${m}.cor.png
+
+    cp ../${m}/QC/DEC_qc_dec_sca07.axi.png DEC/${m}.axi.png
+    cp ../${m}/QC/DEC_qc_dec_sca07.sag.png DEC/${m}.sag.png
+    cp ../${m}/QC/DEC_qc_dec_sca07.cor.png DEC/${m}.cor.png
+
+    cp ../${m}/QC/sse.axi.png SSE/${m}.axi.png
+    cp ../${m}/QC/sse.cor.png SSE/${m}.cor.png
+    cp ../${m}/QC/sse.sag.png SSE/${m}.sag.png
+done
+
 
