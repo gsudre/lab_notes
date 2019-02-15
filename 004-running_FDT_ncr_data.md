@@ -34,7 +34,7 @@ rm -rf $myfile
 for m in `cat $maskid_file`; do
     echo Copying $m
     ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti/${m} ]; then mkdir ${out_dir}/dcm_dti/${m}; fi";
-    scp -qt ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
+    scp -q ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
 
     # find name of date folders
     ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
@@ -77,3 +77,7 @@ that for the PNC as well, just so we don't have two different options.
 For the next step, we need to check who converted correctly. Maybe just check
 the number of vectors in the gradient file against the number of converted
 volumes in the NIFTI?
+
+```bash
+
+```

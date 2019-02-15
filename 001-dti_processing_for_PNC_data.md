@@ -231,5 +231,45 @@ for m in `cat ../myids.txt`; do
     cp ../${m}/QC/sse.cor.png SSE/${m}.cor.png
     cp ../${m}/QC/sse.sag.png SSE/${m}.sag.png
 done
+```
 
+To fill in the QC spreadsheet, we check who converted properly:
 
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat ../have_imaging.txt`; do
+    nvol=`cat ${m}/dwi_cvec.dat | wc -l`;
+    if [ ! $nvol = 71 ]; then
+        echo $m,$nvol >> ~/tmp/conversion_errors.txt;
+    fi;
+done
+```
+
+Then, check that all brain masks were created:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat converted.txt`; do
+    if [[ -e ${m}/QC/brain_mask.axi.png && -e ${m}/b0_brain_mask.nii.gz ]]; then
+        echo $m,y >> ~/tmp/mask_status.txt;
+    else
+        echo $m,n >> ~/tmp/mask_status.txt;
+    fi;
+done
+```
+
+And then who has eddy:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat converted.txt`; do
+    if [[ -e ${m}/eddy_s2v_unwarped_images.eddy_rotated_bvecs && -e ${m}/eddy_s2v_unwarped_images.nii.gz ]]; then
+        echo $m,y >> ~/tmp/eddy_status.txt;
+    else
+        echo $m,n >> ~/tmp/eddy_status.txt;
+    fi;
+done
+```
+
+To run bedpostx, I'll split the data into 6, so that each account can run a GPU
+to its limit and then a CPU one. Things might go faster that way.
