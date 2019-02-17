@@ -63,7 +63,7 @@ Next thing is to start converting them.
 for m in `cat ~/tmp/prs_dti.txt`; do
     echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
 done
-swarm -t 2 --job-name ncr2nii --time 20:00 -f swarm.ncr --partition quick \
+swarm -t 2 --job-name ncr2nii --time 15:00 -f swarm.ncr --partition quick \
     --logdir trash_ncr2nii -m TORTOISE,afni
 ```
 
@@ -74,10 +74,24 @@ After this, it's just the exact same thing as the PNC pipeline, with probably
 some changed in the bedpostx to only fit one orientation. In fact, I could do
 that for the PNC as well, just so we don't have two different options.
 
+# 2019-02-17 18:55:03
+
 For the next step, we need to check who converted correctly. Maybe just check
 the number of vectors in the gradient file against the number of converted
 volumes in the NIFTI?
 
 ```bash
-
+cd /scratch/sudregp/dcm_dti
+for m in `cat ~/tmp/prs_dti.txt`; do
+    nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
+    gradient_file=`/bin/ls -1 ${m}/ | /bin/grep cdi | tail -1`;
+    nexp=`cat ${m}/${gradient_file} | wc -l`;
+    let nexp=$nexp-1;  # removing first line
+    echo $m,$nexp,$nvol >> ~/tmp/ncr_conversion.txt
+done
 ```
+
+Just noticed it'll be a bitch to get the sl_spec file for our data... we'll need
+to run dcm2niix individually, then add to the sequence to offset the acquisiton
+of 20 volumes that were later combined. Finally, we need to find a way to
+combine in the 99 sequence... I sent an e-mail to Joelle to see if she can help.

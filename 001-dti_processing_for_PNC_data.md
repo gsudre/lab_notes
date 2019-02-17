@@ -273,3 +273,71 @@ done
 
 To run bedpostx, I'll split the data into 6, so that each account can run a GPU
 to its limit and then a CPU one. Things might go faster that way.
+
+```bash
+for m in `cat xaf`; do
+    cd /data/NCR_SBRB/pnc/dti_fdt/${m};
+    ln -s eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+    ln -s dwi_bval.dat bvals;
+    ln -s eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+    ln -s b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+    bedpostx_gpu -n 1 ./;
+done
+```
+
+Run autoPtx first to make sure everything is fine!!!!
+
+I had to make some changes to how I'm approaching this. That's just because
+running autoPtx makes life much easier, but it redoes some of the steps I was
+doing in the wrapper before. So, let's stop the wrapper right before we
+calculate dtifit (which is done by autoPtx), and we can generate the QC pictures
+afterwards. 
+
+autoPtx expects the data in the same format as what we'd send for bedpostx, so
+let's do that formatting first. But keep in mind that symlinks don't work, and
+the data is in the end moved to preproc. So, let's actually copy them, because I
+don't want to risk losing the eddy output:
+
+```bash
+# run in helix so we don't overload BW filesystem
+for m in `cat xac`; do
+    echo Copying $m;
+    cd /data/NCR_SBRB/pnc/dti_fdt/${m};
+    cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+    cp dwi_bval.dat bvals;
+    cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+    cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+done
+```
+
+Then, we run autoPtx. We can split it by users because it adds everything to the
+same directory, and just increments the final subject list.
+
+Run it a long interactive session, because even though it schedules bedpostx, it
+still runs all kinds of registrations through FSL, so biowulf headnode won't cut
+it!
+
+```bash
+data='';
+for m in `cat xac`; do
+    data=$data' '${m}/data.nii.gz;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
+```
+
+going backwards
+xaf: jen
+xae: philip
+xad: me
+xac: philip
+xab: philip
+xaa: jen
+
+And of course we still need part 2 when we're done.
+
+I'm also running just the first 8 subjects through part 2 as Jen. NEED TO CHANGE
+THE PART 2 SCRIPT BACK TO RUNNING ALL SUBJECTS WHEN DONE!
+
+It creates one swarm per tract, with one job per subject in each tract. So,
+nsubjects * ntracts. I might need to use the subject file as an argument to
+split it across accounts.
