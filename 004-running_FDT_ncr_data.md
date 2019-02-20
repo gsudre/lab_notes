@@ -81,13 +81,20 @@ the number of vectors in the gradient file against the number of converted
 volumes in the NIFTI?
 
 ```bash
+res_file=~/tmp/ncr_conversion.txt
+echo mask.id,expected,converted,nii > $res_file; 
 cd /scratch/sudregp/dcm_dti
 for m in `cat ~/tmp/prs_dti.txt`; do
     nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
     gradient_file=`/bin/ls -1 ${m}/ | /bin/grep cdi | tail -1`;
     nexp=`cat ${m}/${gradient_file} | wc -l`;
     let nexp=$nexp-1;  # removing first line
-    echo $m,$nexp,$nvol >> ~/tmp/ncr_conversion.txt
+    if [ -e ${m}/dwi_comb.nii.gz ]; then
+        nii='y';
+    else
+        nii='n';
+    fi;
+    echo $m,$nexp,$nvol,$nii >> $res_file;
 done
 ```
 
@@ -95,3 +102,17 @@ Just noticed it'll be a bitch to get the sl_spec file for our data... we'll need
 to run dcm2niix individually, then add to the sequence to offset the acquisiton
 of 20 volumes that were later combined. Finally, we need to find a way to
 combine in the 99 sequence... I sent an e-mail to Joelle to see if she can help.
+
+# 2019-02-20 11:11:33
+
+Joelle said that the temporal order for the slices in the diffusion protocol
+will be interleaved, being a first pass through the volume to acquire the odd
+slices then the next pass for the even slices.  This seems to be what is
+reflected in the my-slspec.txt file.
+
+So, I'll just go ahead and use the same slspec file that I created for the PNC
+data, adjusting for the total number of slices. But that's the trick, as the
+number of slices varies for each scan!!! OK, so we'll have to construct the
+slices file on the fly.
+
+

@@ -335,9 +335,32 @@ xaa: jen
 
 And of course we still need part 2 when we're done.
 
-I'm also running just the first 8 subjects through part 2 as Jen. NEED TO CHANGE
-THE PART 2 SCRIPT BACK TO RUNNING ALL SUBJECTS WHEN DONE!
+# 2019-02-20 10:58:43
+
+I changed the part 2 script so run the scans split between two accounts.
+Hopefully there won't be issues with permissions...
+
+But I had to reduce the number of subjects per file because we CPU recruitment
+limits in the cluster. Let's try only 100. And still, better to only fire new
+ones when nothing else is queued (running is OK).
+
+xaa: P
+xab: J
+xac: P
+xad: J
+
+(still need QC pics)
+xae: P
+xaf: J
 
 It creates one swarm per tract, with one job per subject in each tract. So,
 nsubjects * ntracts. I might need to use the subject file as an argument to
 split it across accounts.
+
+But I don't need to wait for the second part to do:
+
+```bash
+for m in `cat ../xab`; do
+    bash ~/research_code/dti/fdt_pnc_TBSS_and_QC.sh ${m};
+done
+```
