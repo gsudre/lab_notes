@@ -115,4 +115,42 @@ data, adjusting for the total number of slices. But that's the trick, as the
 number of slices varies for each scan!!! OK, so we'll have to construct the
 slices file on the fly.
 
+## Copying data to NCR_SBRB
 
+The problem of having this in scratch is that I'm the only one who can process
+it. Also, it expires. So, let's copy the converted files to the shared space.
+But we only copy the successful stuff, and the converted files. We can keep on
+dealing with the rest of the DCMs later.
+
+```bash
+mkdir /data/NCR_SBRB/dti_fdt
+for m in `cat ~/tmp/mylist.txt`; do
+    mkdir /data/NCR_SBRB/dti_fdt/$m;
+    echo $m;
+    cd /scratch/sudregp/dcm_dti/${m};
+    cp -r dwi_comb* QC /data/NCR_SBRB/dti_fdt/$m/;
+    chgrp -R NCR_SBRB /data/NCR_SBRB/dti_fdt/$m;
+    chmod -R 770 /data/NCR_SBRB/dti_fdt/$m;
+done
+```
+
+Then, it's easy to do:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat list1`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+split -l 310 swarm.fdt
+swarm -g 4 --job-name fdt --time 4:00:00 -f xaa --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
+
+I'm having to redo some of the conversions manually. Here's how I'm approaching
+that:
+
+```bash
+cd ../0545; rm -rf QC __* dwi_comb* *proc mr_dirs.txt grad*; ls
+bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/0545
+fslinfo dwi_comb | grep -e "^dim4" && wc -l dwi_comb_cvec.dat && wc -l cdiflist0*
+```

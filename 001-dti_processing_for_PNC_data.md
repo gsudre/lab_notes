@@ -325,14 +325,6 @@ done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
 ```
 
-going backwards
-xaf: jen
-xae: philip
-xad: me
-xac: philip
-xab: philip
-xaa: jen
-
 And of course we still need part 2 when we're done.
 
 # 2019-02-20 10:58:43
@@ -344,14 +336,8 @@ But I had to reduce the number of subjects per file because we CPU recruitment
 limits in the cluster. Let's try only 100. And still, better to only fire new
 ones when nothing else is queued (running is OK).
 
-xaa: P
-xab: J
-xac: P
-xad: J
-
 (still need QC pics)
 xae: P
-xaf: J
 
 It creates one swarm per tract, with one job per subject in each tract. So,
 nsubjects * ntracts. I might need to use the subject file as an argument to
@@ -362,5 +348,25 @@ But I don't need to wait for the second part to do:
 ```bash
 for m in `cat ../xab`; do
     bash ~/research_code/dti/fdt_pnc_TBSS_and_QC.sh ${m};
+done
+```
+
+Now we need to copy the QC images again:
+
+```bash
+qc_dir=/data/NCR_SBRB/pnc/dti_fdt/summary_QC/
+img_dir=/data/NCR_SBRB/pnc/dti_fdt/preproc/
+for m in `cat ~/tmp/pnc_qc.txt`; do
+    cp $img_dir/${m}/QC/FA_transform.axi.png $qc_dir/transform/${m}.axi.png
+    cp $img_dir/${m}/QC/FA_transform.sag.png $qc_dir/transform/${m}.sag.png
+    cp $img_dir/${m}/QC/FA_transform.cor.png $qc_dir/transform/${m}.cor.png
+
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.axi.png $qc_dir/DEC/${m}.axi.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.sag.png $qc_dir/DEC/${m}.sag.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.cor.png $qc_dir/DEC/${m}.cor.png
+
+    cp $img_dir/${m}/QC/sse.axi.png $qc_dir/SSE/${m}.axi.png
+    cp $img_dir/${m}/QC/sse.cor.png $qc_dir/SSE/${m}.cor.png
+    cp $img_dir/${m}/QC/sse.sag.png $qc_dir/SSE/${m}.sag.png
 done
 ```
