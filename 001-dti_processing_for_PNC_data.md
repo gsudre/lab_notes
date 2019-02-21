@@ -141,11 +141,20 @@ variables, so let's grab those.
 
 ```bash
 out_fname=mvmt_report.csv;
-echo "id,Noutliers,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+echo "id,Noutliers,PCToutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
 for m in `cat myids.txt`; do
     echo 'Collecting metrics for' $m;
     if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
         noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        # figuring out the percetnage of total slices the outliers represent
+        nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
+        nvol=`cat ${m}/dwi_cvec.dat | wc -l`;
+        let totalSlices=$nslices*$nvol;
+        let pctOutliers=$noutliers/$totalSlices;
+        # figuring out how many volumes were completely removed (row of 1s)
+        awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
+            ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
+        nOutVols=`grep -c -e "^1$" outlier_avg.txt`;
         1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
             -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
             -write trans_norm.1D;
@@ -163,12 +172,14 @@ for m in `cat myids.txt`; do
     else
         echo "Could not find outlier report for $m"
         noutliers='NA';
+        pctOutliers='NA';
+        nOutVols='NA';
         trans='NA';
         rot='NA';
         vol1='NA';
         pvol='NA';
     fi;
-    echo $m, $noutliers, $trans, $rot, $vol1, $pvol >> $out_fname;
+    echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
 done
 ```
 
@@ -336,8 +347,6 @@ But I had to reduce the number of subjects per file because we CPU recruitment
 limits in the cluster. Let's try only 100. And still, better to only fire new
 ones when nothing else is queued (running is OK).
 
-(still need QC pics)
-xae: P
 
 It creates one swarm per tract, with one job per subject in each tract. So,
 nsubjects * ntracts. I might need to use the subject file as an argument to

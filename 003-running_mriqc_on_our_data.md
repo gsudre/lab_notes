@@ -58,13 +58,28 @@ done
 swarm -g 8 -f swarm.mriqc --job-name mriqc --time 4:00:00 --logdir trash_mriqc -m mriqc --partition quick --gres=lscratch:40
 ```
 
-<!-- And then we need to collect all results:
+# 2019-02-21 11:49:52
+
+Biowulf made a huge deal about my big swarms. So, I'll try to run it locally to
+see what I can get:
 
 ```bash
-module load singularity
-export SINGULARITY_CACHEDIR=/data/sudregp/singularity/
-singularity exec -B /scratch/sudregp:/mnt docker://poldracklab/mriqc:latest mriqc /mnt/BIDS /mnt/mriqc_output group --no-sub -w /mnt/mriqc_work -m T1w -->
+docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
+    -v ~/data/mriqc_output/:/out poldracklab/mriqc:latest /data /out \
+    participant --participant_label 99892 -m T1w
+```
 
+That worked, so now I'll just go ahead and make a different call for each
+subject. I know that's not the best way to call it, but at least it gets split
+into small bits that I can simply go back to later if stopped in the middle.
+
+```bash
+for s in `cat ~/tmp/bids_ids.txt`; do
+    docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
+        -v ~/data/mriqc_output/:/out poldracklab/mriqc:latest /data /out \
+        participant --participant_label $s -m T1w;
+done
+```
 
 # TODO
 * Run MRIQC on all our data

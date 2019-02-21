@@ -81,8 +81,8 @@ the number of vectors in the gradient file against the number of converted
 volumes in the NIFTI?
 
 ```bash
-res_file=~/tmp/ncr_conversion.txt
-echo mask.id,expected,converted,nii > $res_file; 
+res_file=~/tmp/ncr_conversion.csv
+echo mask.id,expected,converted,nii > $res_file;
 cd /scratch/sudregp/dcm_dti
 for m in `cat ~/tmp/prs_dti.txt`; do
     nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
