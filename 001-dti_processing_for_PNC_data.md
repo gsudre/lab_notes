@@ -379,3 +379,10 @@ for m in `cat ~/tmp/pnc_qc.txt`; do
     cp $img_dir/${m}/QC/sse.sag.png $qc_dir/SSE/${m}.sag.png
 done
 ```
+
+# 2019-02-22 10:07:06
+
+While the IRTAs QC the resulting images, I'll go ahead and start copying data to
+shaw/PNC_DTI. I'm using Globus web interface, because I'll go for all
+directories for now. This is justa  way to keep the results in our servers in
+case I need to make room in BW.

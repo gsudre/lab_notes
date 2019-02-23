@@ -154,3 +154,60 @@ cd ../0545; rm -rf QC __* dwi_comb* *proc mr_dirs.txt grad*; ls
 bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/0545
 fslinfo dwi_comb | grep -e "^dim4" && wc -l dwi_comb_cvec.dat && wc -l cdiflist0*
 ```
+
+# 2019-02-22 10:04:30
+
+Let's start running the first part of autoPtx for the IDs that finished eddy.
+Note that here I'll need to change the assumptions because we have two different
+bvals, as described in https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FDT/UserGuide.
+
+I'm following the same steps I did for PNC, except that in that case I didn't
+run model=2!
+
+```bash
+# run in helix so we don't overload BW filesystem
+for m in `cat /data/NCR_SBRB/dti_fdt/autoptx1`; do
+    if [ ! -e /data/NCR_SBRB/dti_fdt/${m}/eddy_s2v_unwarped_images.nii.gz ]; then
+        echo $m;
+    fi;
+done
+```
+
+```bash
+# run in helix so we don't overload BW filesystem
+for m in `cat /data/NCR_SBRB/dti_fdt/done_eddy2.txt`; do
+    echo Copying $m;
+    cd /data/NCR_SBRB/dti_fdt/${m};
+    cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+    cp dwi_comb_bval.dat bvals;
+    cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+    cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+    chgrp NCR_SBRB data.nii.gz bvals bvecs nodif_brain_mask.nii.gz;
+    chmod 770 data.nii.gz bvals bvecs nodif_brain_mask.nii.gz;
+done
+```
+
+Then it's time to run autoPtx.
+
+We can split it by users because it adds everything to the
+same directory, and just increments the final subject list.
+
+Run it a long interactive session, because even though it schedules bedpostx, it
+still runs all kinds of registrations through FSL, so biowulf headnode won't cut
+it! Also, it takes a while to load new scans because it does the processing in
+between. So, it *might* be alright to do 400 or so scans at the same time. While
+the scan is processing in the interactive node, it gives time for the ones
+queued up to be evaluated. This way the queue doesn't get clogged up.
+
+```bash
+data='';
+for m in `cat xab`; do
+    data=$data' '${m}/data.nii.gz;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
+```
+
+xaa: jen
+xab: philip
+
+And of course we still need part 2 when we're done.
