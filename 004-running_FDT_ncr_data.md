@@ -128,7 +128,7 @@ for m in `cat ~/tmp/mylist.txt`; do
     mkdir /data/NCR_SBRB/dti_fdt/$m;
     echo $m;
     cd /scratch/sudregp/dcm_dti/${m};
-    cp -r dwi_comb* QC /data/NCR_SBRB/dti_fdt/$m/;
+    cp -r dwi_comb* /data/NCR_SBRB/dti_fdt/$m/;
     chgrp -R NCR_SBRB /data/NCR_SBRB/dti_fdt/$m;
     chmod -R 770 /data/NCR_SBRB/dti_fdt/$m;
 done
@@ -209,5 +209,6 @@ done
 
 xaa: jen
 xab: philip
+xad: philip
 
 And of course we still need part 2 when we're done.
