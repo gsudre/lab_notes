@@ -207,8 +207,37 @@ done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
 ```
 
-xaa: jen
-xab: philip
-xad: philip
-
 And of course we still need part 2 when we're done.
+
+# 2019-02-28 08:19:32
+
+Let's start running part 2 while we wait on some manual conversions.
+
+And we also need to figure out which IDs had the set_slice error, which might
+indicate outliers from eddy:
+
+```bash
+for f in `grep -l set_slice trash_fdt/*o`; do
+    head -n 2 $f | tail -n -1 | cut -d" " -f 5 | cut -d"/" -f 5 >> ~/tmp/set_slice.txt;
+done
+```
+
+xaa: philip
+xab: jen
+xac: philip
+xad: jen
+xae: p
+xaf: j
+xag: p
+xah: j
+xai: p
+
+
+
+for m in `cat ~/tmp/uu`; do
+    cd /scratch/sudregp/dcm_dti/${m};
+    rm -rf QC __* dwi_comb* *proc mr_dirs.txt grad*;
+    rm cdiflistOriginalAndReplayedCombined
+    cp ../2105/cdiflist08 .
+    bash ~/research_code/dti/convert_ncr_to_nii.sh `pwd`;
+done
