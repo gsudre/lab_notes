@@ -222,22 +222,122 @@ for f in `grep -l set_slice trash_fdt/*o`; do
 done
 ```
 
-xaa: philip
-xab: jen
-xac: philip
-xad: jen
-xae: p
-xaf: j
-xag: p
-xah: j
-xai: p
+# 2019-03-01 15:14:28
 
+Now that eddy is ran for all IDs, time to copy over the brain masks. When
+autoptx1 is done, we can copy over the rest of the QC.
 
-
-for m in `cat ~/tmp/uu`; do
-    cd /scratch/sudregp/dcm_dti/${m};
-    rm -rf QC __* dwi_comb* *proc mr_dirs.txt grad*;
-    rm cdiflistOriginalAndReplayedCombined
-    cp ../2105/cdiflist08 .
-    bash ~/research_code/dti/convert_ncr_to_nii.sh `pwd`;
+```bash
+mkdir /data/NCR_SBRB/dti_fdt/summary_QC
+cd /data/NCR_SBRB/dti_fdt/summary_QC/
+mkdir brainmask
+mkdir transform
+mkdir DEC
+mkdir SSE
+for m in `cat ~/tmp/myids.txt`; do
+    echo ${m}
+    cp ../${m}/QC/brain_mask.axi.png brainmask/${m}.axi.png
+    cp ../${m}/QC/brain_mask.sag.png brainmask/${m}.sag.png
+    cp ../${m}/QC/brain_mask.cor.png brainmask/${m}.cor.png
 done
+```
+
+Some IDs didn't have brain mask QC ready for some reason...
+
+```bash
+for s in `cat ~/tmp/myids.txt`; do
+    if [ ! -e /data/NCR_SBRB/dti_fdt/${s}/QC/brain_mask.axi.png ]; then
+        cd /data/NCR_SBRB/dti_fdt/${s};
+        mkdir QC;
+        @chauffeur_afni                             \
+            -ulay  dwi_comb.nii.gz[0]                         \
+            -olay  b0_brain_mask.nii.gz                        \
+            -opacity 4                              \
+            -prefix   QC/brain_mask              \
+            -montx 6 -monty 6                       \
+            -set_xhairs OFF                         \
+            -label_mode 1 -label_size 3             \
+            -do_clean
+    fi;
+done
+```
+
+Even though autoPtx is not done for all IDs yet, we can run our mean props
+estimate just to see if we are getting that weird binormal distribution again...
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+mean_props=~/tmp/mean_props.csv;
+echo "id,mean_fa,mean_ad,mean_rd,nvox" > $mean_props;
+for m in `cat ~/tmp/myids.txt`; do
+    echo $m;
+    cd /data/NCR_SBRB/dti_fdt/preproc/$m &&
+    if [ -e dti_FA.nii.gz ]; then
+        3dcalc -a dti_FA.nii.gz -expr "step(a-.2)" -prefix ${mydir}/my_mask.nii 2>/dev/null &&
+        fa=`3dmaskave -q -mask ${mydir}/my_mask.nii dti_FA.nii.gz 2>/dev/null` &&
+        ad=`3dmaskave -q -mask ${mydir}/my_mask.nii dti_L1.nii.gz 2>/dev/null` &&
+        3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+            -prefix ${mydir}/RD.nii 2>/dev/null &&
+        rd=`3dmaskave -q -mask ${mydir}/my_mask.nii ${mydir}/RD.nii 2>/dev/null` &&
+        nvox=`3dBrickStat -count -non-zero ${mydir}/my_mask.nii 2>/dev/null` &&
+        echo ${m},${fa},${ad},${rd},${nvox} >> $mean_props;
+        rm ${mydir}/*nii;
+    else
+        echo ${m},NA,NA,NA,NA >> $mean_props;
+    fi
+done
+```
+
+Our data looks a bit noisier than PNC, but at least we don't have the binormal
+pattern anymore!
+
+![](images/2019-03-01-18-31-32.png)
+
+And there are some bad masks there as well, along with other bad DTI estimates
+like PNC, so it will likely get better.
+
+Let's also grab the movement variables:
+
+```bash
+out_fname=~/tmp/mvmt_report.csv;
+echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat ~/tmp/myids.txt`; do
+    echo 'Collecting metrics for' $m;
+    if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
+        noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        # figuring out the percetnage of total slices the outliers represent
+        nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
+        nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
+        let totalSlices=$nslices*$nvol;
+        pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
+        # figuring out how many volumes were completely removed (row of 1s)
+        awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
+            ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
+        nOutVols=`grep -c -e "^1$" outlier_avg.txt`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
+            -write trans_norm.1D;
+        trans=`1d_tool.py -infile trans_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '3..5' -collapse_cols euclidean_norm -overwrite \
+            -write rot_norm.1D;
+        rot=`1d_tool.py -infile rot_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_rms \
+            -show_mmms > mean_rms.txt;
+        vol1=`head -n +2 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+        pvol=`tail -n -1 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+    else
+        echo "Could not find outlier report for $m"
+        noutliers='NA';
+        pctOutliers='NA';
+        nOutVols='NA';
+        trans='NA';
+        rot='NA';
+        vol1='NA';
+        pvol='NA';
+    fi;
+    echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
+done
+```

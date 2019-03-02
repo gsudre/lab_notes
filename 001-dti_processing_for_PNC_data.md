@@ -140,9 +140,9 @@ masks, warping, and SSE. We're also looking for numbers of outliers and movement
 variables, so let's grab those.
 
 ```bash
-out_fname=mvmt_report.csv;
-echo "id,Noutliers,PCToutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
-for m in `cat myids.txt`; do
+out_fname=~/tmp/mvmt_report.csv;
+echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat ~/tmp/pnc`; do
     echo 'Collecting metrics for' $m;
     if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
         noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
@@ -150,7 +150,7 @@ for m in `cat myids.txt`; do
         nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
         nvol=`cat ${m}/dwi_cvec.dat | wc -l`;
         let totalSlices=$nslices*$nvol;
-        let pctOutliers=$noutliers/$totalSlices;
+        pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
         # figuring out how many volumes were completely removed (row of 1s)
         awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
             ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
@@ -386,3 +386,41 @@ While the IRTAs QC the resulting images, I'll go ahead and start copying data to
 shaw/PNC_DTI. I'm using Globus web interface, because I'll go for all
 directories for now. This is justa  way to keep the results in our servers in
 case I need to make room in BW.
+
+# 2019-03-01 15:55:07
+
+Let's also do some quick verification of the quality of the mean FA metric... do
+we see the Bi-gaussian distribution that was a problem in the past with the NCR
+data? In the end, we'll use the TBSS pipeline, but it depends on a good
+transformation to the template space. Since this is a quick check, we don't want
+to depend on that, so let's derive per subject masks, and then we can just
+calculate the mean FA based on that mask. It's quite similar to what we use in
+the master QC sheet:
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+mean_props=~/tmp/mean_props.csv;
+echo "id,mean_fa,mean_ad,mean_rd,nvox" > $mean_props;
+for m in `cat ~/tmp/pnc`; do
+    echo $m;
+    cd /data/NCR_SBRB/pnc/dti_fdt/preproc/$m &&
+    if [ -e dti_FA.nii.gz ]; then
+        3dcalc -a dti_FA.nii.gz -expr "step(a-.2)" -prefix ${mydir}/my_mask.nii 2>/dev/null &&
+        fa=`3dmaskave -q -mask ${mydir}/my_mask.nii dti_FA.nii.gz 2>/dev/null` &&
+        ad=`3dmaskave -q -mask ${mydir}/my_mask.nii dti_L1.nii.gz 2>/dev/null` &&
+        3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+            -prefix ${mydir}/RD.nii 2>/dev/null &&
+        rd=`3dmaskave -q -mask ${mydir}/my_mask.nii ${mydir}/RD.nii 2>/dev/null` &&
+        nvox=`3dBrickStat -count -non-zero ${mydir}/my_mask.nii 2>/dev/null` &&
+        echo ${m},${fa},${ad},${rd},${nvox} >> $mean_props;
+        rm ${mydir}/*nii;
+    else
+        echo ${m},NA,NA,NA,NA >> $mean_props;
+    fi
+done
+```
+
+![](images/2019-03-01-18-08-08.png)
+
+So, let's go ahead and calculate the movement variables again, for these 564 IDs
+we're waiting for visual QC (see above).
