@@ -341,3 +341,111 @@ for m in `cat ~/tmp/myids.txt`; do
     echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
 done
 ```
+
+# 2019-03-04 10:07:45
+
+Time fit autoPtx2... I'm guessing we'll have many fails, but it's worth running
+everything and then just checking for errors:
+
+xaa: g
+xab: p
+xac: j
+xad: g
+xae: p
+xaf: j
+xag: g
+xah: p
+xai: j
+xaj: g
+xak: g
+xal: p
+xam: j
+xan: p
+
+And while we wait on that, let's go ahead and make the QC images:
+
+```bash
+for m in `cat xab`; do
+    bash ~/research_code/dti/fdt_TBSS_and_QC.sh /data/NCR_SBRB/dti_fdt/preproc/${m};
+done
+```
+
+And we make sure everything ran:
+
+```bash
+for m in `cat ~/tmp/myids.txt`; do 
+    if [ ! -e preproc/${m}/QC/sse.sag.png ]; then
+        echo $m;
+    fi;
+done
+```
+
+Now, we just need to copy everything:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt/summary_QC/
+for m in `cat ../myids.txt`; do
+    echo $m;
+    cp ../preproc/${m}/QC/FA_transform.axi.png transform/${m}.axi.png
+    cp ../preproc/${m}/QC/FA_transform.sag.png transform/${m}.sag.png
+    cp ../preproc/${m}/QC/FA_transform.cor.png transform/${m}.cor.png
+
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.axi.png DEC/${m}.axi.png
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.sag.png DEC/${m}.sag.png
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.cor.png DEC/${m}.cor.png
+
+    cp ../preproc/${m}/QC/sse.axi.png SSE/${m}.axi.png
+    cp ../preproc/${m}/QC/sse.cor.png SSE/${m}.cor.png
+    cp ../preproc/${m}/QC/sse.sag.png SSE/${m}.sag.png
+done
+```
+
+# 2019-03-07 09:24:34
+
+Let's make sure everything ran fine:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt/tracts
+for s in `cat ~/tmp/myids.txt`; do
+    if [ ! -e ${s}/fmi/tracts/tractsNorm.nii.gz ]; then
+        echo $s;
+    fi;
+done
+```
+
+Then, it should just be a matter of weighting the property maps by tractNorm:
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=~/tmp/ncr_weighted_tracts.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat ~/tmp/myids.txt`; do
+    echo $m;
+    row="${m}";
+    cd /data/NCR_SBRB/dti_fdt/preproc/$m &&
+    for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master dti_FA.nii.gz -prefix ${mydir}/mask.nii \
+                -inset ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            fa=`3dmaskave -q -mask ${mydir}/mask.nii dti_FA.nii.gz 2>/dev/null` &&
+            ad=`3dmaskave -q -mask ${mydir}/mask.nii dti_L1.nii.gz 2>/dev/null` &&
+            3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+                -prefix ${mydir}/RD.nii 2>/dev/null &&
+            rd=`3dmaskave -q -mask ${mydir}/mask.nii ${mydir}/RD.nii 2>/dev/null` &&
+            row=${row}','${fa}','${ad}','${rd};
+            rm ${mydir}/*nii;
+        else
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```

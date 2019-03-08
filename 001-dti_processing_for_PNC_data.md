@@ -424,3 +424,165 @@ done
 
 So, let's go ahead and calculate the movement variables again, for these 564 IDs
 we're waiting for visual QC (see above).
+
+# 2019-03-05 15:42:44
+
+Based on what I'm reading about autoPtx, probtrackx, and also reading the
+trackSubjectStruct script from autoPtx, our main result is tractsNorm, which
+combines forward and inverse (when needed), and then normalizes by waypoints.
+The maximum there is also 1, which I'd think it's a good way to scale the
+different voxels. 
+
+The QC pictures only make use of autoPtx1 output, so let's make sure all
+autoPtx2 ran for everyone:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt/tracts
+for s in `cat ~/tmp/pnc`; do
+    if [ ! -e ${s}/fmi/tracts/tractsNorm.nii.gz ]; then
+        echo $s >> ../preproc/missing;
+    fi;
+done
+# edit the script first
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
+
+Then, it should just be a matter of weighting the property maps by tractNorm:
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=~/tmp/weighted_tracts.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `head -n 3 ~/tmp/pnc`; do
+    echo $m;
+    row="${m}";
+    cd /data/NCR_SBRB/pnc/dti_fdt/preproc/$m &&
+    for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master dti_FA.nii.gz -prefix ${mydir}/mask.nii \
+                -inset ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            fa=`3dmaskave -q -mask ${mydir}/mask.nii dti_FA.nii.gz` &&
+            ad=`3dmaskave -q -mask ${mydir}/mask.nii dti_L1.nii.gz` &&
+            3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+                -prefix ${mydir}/RD.nii 2>/dev/null &&
+            rd=`3dmaskave -q -mask ${mydir}/mask.nii ${mydir}/RD.nii` &&
+            row=${row}','${fa}','${ad}','${rd};
+            rm ${mydir}/*nii;
+        else
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+# 2019-03-07 11:49:18
+
+And finally merge everything:
+
+```r
+> a = read.csv('PNC_weighted_tracts.csv')
+> dim(a)
+[1] 564  82
+> b = read.csv('../FDT_QC/PNC/mvmt_report.csv')
+> m = merge(a,b,by='id')
+> dim(m)
+[1] 564  89
+> d = read.csv('../FDT_QC/PNC/mean_props.csv')
+> m = merge(m,d,by='id')
+> dim(m)
+[1] 564  93
+> library(gdata)
+> yn = read.xls('../FDT_QC/PNC_DTI_QC_FEB.28.xlsx')
+> m = merge(m,yn,by.x='id',by.y='PNC_ID')
+> dim(m)
+[1] 564 100
+> write.csv(m, file='PNC_WNH_tracts_with_QC.csv', row.names=F)
+```
+
+But there were LOTS of NAs for some tracts... weird. Let me see what's going on.
+So, the issue is that many tracts have norm 0! Not sure what's going on there...
+let's see if we can quantify it.
+
+```bash
+maxvox=~/tmp/maxvox.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        row=${row}','${t};
+done
+echo $row > $maxvox;
+for m in `cat ~/tmp/pnc`; do
+    echo ${m}
+    cd /data/NCR_SBRB/pnc/dti_fdt
+    row="${m}";
+    for d in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e tracts/${m}/${d}/tracts/tractsNorm.nii.gz ]; then
+            val=`3dBrickStat -slow tracts/${m}/${d}/tracts/tractsNorm.nii.gz`;
+        else
+            val='NA'
+        fi
+        row=${row}','${val}
+    done
+    echo $row >> $maxvox;
+done
+```
+
+So, the code above gives us the top normative number in each mask. As we can
+see, there are many masks that have a norm of zero, which is quite weird.
+Basically, we were never able to determine the voxels that belong to the those
+tracts in the scan? Looks weird to me...
+
+It also doesn't look like it was just autoPtx sunning out of time... yeah, I
+checked some of the output from above and I find it hard to believe that CST_L
+was only found in 2 out of the 565 scans... what's going on?
+
+
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=pnc_weighted_tracts.csv;
+# copying everything locally first to avoid racing conditions
+cd $mydir
+cp /data/NCR_SBRB/software/autoPtx/structureList .
+row="id";
+for t in `cut -d" " -f 1 structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat ~/tmp/pnc`; do
+    echo ${m}
+    rm -rf preproc tracts
+    mkdir preproc tracts
+    cp /data/NCR_SBRB/pnc/dti_fdt/preproc/${m}/dti_??.nii.gz preproc/
+    cp -r /data/NCR_SBRB/pnc/dti_fdt/tracts/${m}/* tracts/
+    row="${m}";
+    for t in `cut -d" " -f 1 structureList`; do
+        if [ -e tracts/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master preproc/dti_FA.nii.gz -prefix ./mask.nii \
+                -inset tracts/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            fa=`3dmaskave -q -mask ./mask.nii preproc/dti_FA.nii.gz 2>/dev/null` &&
+            ad=`3dmaskave -q -mask ./mask.nii preproc/dti_L1.nii.gz 2>/dev/null` &&
+            3dcalc -a preproc/dti_L2.nii.gz -b preproc/dti_L3.nii.gz \
+                -expr "(a + b) / 2" \ -prefix ./RD.nii 2>/dev/null &&
+            rd=`3dmaskave -q -mask ./mask.nii ./RD.nii 2>/dev/null` &&
+            row=${row}','${fa}','${ad}','${rd};
+            rm ${mydir}/*nii;
+        else
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```
