@@ -544,6 +544,17 @@ It also doesn't look like it was just autoPtx sunning out of time... yeah, I
 checked some of the output from above and I find it hard to believe that CST_L
 was only found in 2 out of the 565 scans... what's going on?
 
+# 2019-03-08 18:45:04
+
+Still not sure of what's going on... it's not a permissions issue (I did one of
+the new subjects all under my account), it's not my scripts screwing it up (I
+ran FDT and autoPtx by themselves), and it's not the bedpostx model either (I
+tried n = 1 and model 2). I still get cgc, cst as 0... maybe there's something
+wrong with the transform? Or maybe the coverage of those areas?
+
+I could also try running the averaging script for well-know tracts to to check
+for sanity.
+
 
 
 ```bash
@@ -586,3 +597,4 @@ for m in `cat ~/tmp/pnc`; do
     echo $row >> $weighted_tracts;
 done
 ```
+
