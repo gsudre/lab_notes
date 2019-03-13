@@ -101,15 +101,116 @@ for (s in unique(mres$Medical.Record...MRN...Subjects)) {
         fit = lm(as.formula(fm_str), data=mres[idx, ])
         row = c(row, coefficients(fit)[2])
     }
+    # grabbing inatt and HI at baseline
     base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
     row = c(row, mres[idx[base_DOA], 'SX_inatt'])
     row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
     res = rbind(res, row)
 }
 colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
-                                              'HI_baseline'))
-# write.csv(res, file='~/data/heritability_change/dti_tracts_residNoSex_OLS_152.csv',
-#           row.names=F, quote=F)
+                                              'HI_baseline', 'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/dti_tracts_residNoSex_OLS_312.csv',
+          row.names=F, quote=F)
+```
 
+OK, time to run some regressions now. Note that we need to remove Sex here as
+well, similar to what we do later in SOLAR, so that it has no affect in the
+association results!
+
+```r
+data = read.csv('~/data/heritability_change/dti_tracts_residNoSex_OLS_312.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/dti_mean_phenotype_624.csv')
+tract_names = colnames(b)[2:ncol(b)]
+
+out_fname = '~/data/heritability_change/assoc.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+
+write.csv(hold, out_fname, row.names=F)
+```
+
+Let's try it with the DSM-V ADHDs only:
+
+```r
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And we could also try the ADHDNOS subset:
+
+```r
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
 ```
