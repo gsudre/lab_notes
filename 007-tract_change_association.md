@@ -214,3 +214,6 @@ for (i in targets) {
 }
 write.csv(hold, out_fname, row.names=F)
 ```
+
+Interesting... I do get some results. Let's see if those same tracts come up as
+significant in SOLAR.
