@@ -78,3 +78,13 @@ export DTITK_ROOT=/Applications/dtitk-2.3.3-Darwin-x86_64/
 python ~/research_code/lab_mgmt/convert_dti_sampling.py
 Rscript ~/research_code/dti/compile_tract_table.R
 ```
+
+Or, in Linux because shared drive access in the MAc sometimes is painfully slow:
+
+```bash
+cd ~/tmp
+for m in `cat assoc3`; do echo ${m}_tensor_diffeo.nii.gz >> ready.txt; done
+cd /mnt/shaw/sudregp/dti_robust_tsa/analysis_may2017/
+export DTITK_ROOT=/usr/local/neuro/dti-tk/dtitk-2.3.1-Linux-x86_64
+${DTITK_ROOT}/scripts/tsa_sampling ~/tmp/ready.txt ../ixi_aging_template_v3.0/tsa/ mean
+```
