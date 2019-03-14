@@ -58,9 +58,9 @@ while read m; do
     else
         echo "Evaluating QC metrics for $m"
         if [ ! -e ${m}_faLTp2_mask.nii ]; then
-            TVtool -in ${tensorDir}/${tensorFile} -fa -out ./${m}_fa.nii;
-            TVtool -in ${tensorDir}/${tensorFile} -ad -out ./${m}_ad.nii;
-            TVtool -in ${tensorDir}/${tensorFile} -rd -out ./${m}_rd.nii;
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${tensorDir}/${tensorFile} -fa -out ./${m}_fa.nii;
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${tensorDir}/${tensorFile} -ad -out ./${m}_ad.nii;
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${tensorDir}/${tensorFile} -rd -out ./${m}_rd.nii;
             3dcalc -a ${m}_fa.nii -prefix ${m}_faLTp2_mask.nii -overwrite -expr "step(a-.2)";
         fi;
         fa=`3dmaskave -q -mask ${m}_faLTp2_mask.nii ${m}_fa.nii`;
