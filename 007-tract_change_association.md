@@ -1280,5 +1280,490 @@ write.csv(res2, file='~/data/heritability_change/dti_tracts_residNoSex_OLS_naSlo
 
 OK, still significant!
 
+# 2019-03-15 12:52:23
+
+Philip suggested that I should just average over the JHU labels and see if any of that is signitifcant. OK, let's give it a try:
+
+```bash
+mydir=~/data/heritability_change/
+DTITK_ROOT=/Applications/dtitk-2.3.3-Darwin-x86_64/bin/
+weighted_tracts=jhu_tracts.csv;
+# copying everything locally first to avoid racing conditions
+cd $mydir
+row="id";
+for t in `seq 1 20`; do
+    for m in fa ad rd; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat ids1020.txt`; do
+    echo ${m}
+    ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -fa \
+        -out nii/${m}_fa.nii >/dev/null 2>&1;
+    ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -ad \
+        -out nii/${m}_ad.nii >/dev/null 2>&1;
+    ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -rd \
+        -out nii/${m}_rd.nii >/dev/null 2>&1;
+    3dresample -master nii/${m}_fa.nii.gz -prefix ./rois.nii \
+                -inset ../JHU_ICBM_tractsThr25_inAging.nii.gz \
+                -rmode NN -overwrite 2>/dev/null &&
+    row="${m}";
+    for t in `seq 1 20`; do
+        3dcalc -a rois.nii -expr "amongst(a, $t)" -prefix mask.nii \
+            -overwrite 2>/dev/null &&
+        fa=`3dmaskave -q -mask mask.nii nii/${m}_fa.nii 2>/dev/null` &&
+        ad=`3dmaskave -q -mask mask.nii nii/${m}_ad.nii 2>/dev/null`;
+        rd=`3dmaskave -q -mask mask.nii nii/${m}_rd.nii 2>/dev/null`;
+        row=${row}','${fa}','${ad}','${rd};
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+Then, because all _mod files are done, I can just run this for the other labels:
+
+```bash
+mydir=~/data/heritability_change/
+DTITK_ROOT=/Applications/dtitk-2.3.3-Darwin-x86_64/bin/
+weighted_tracts=jhu_labels.csv;
+# copying everything locally first to avoid racing conditions
+cd $mydir
+row="id";
+for t in `seq 1 48`; do
+    for m in fa ad rd; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat ids1020.txt`; do
+    echo ${m}
+    3dresample -master nii/${m}_fa.nii.gz -prefix ./rois2.nii \
+                -inset ../JHU_ICBM_labels_inAging.nii.gz \
+                -rmode NN -overwrite 2>/dev/null &&
+    row="${m}";
+    for t in `seq 1 48`; do
+        3dcalc -a rois2.nii -expr "amongst(a, $t)" -prefix mask2.nii \
+            -overwrite 2>/dev/null &&
+        fa=`3dmaskave -q -mask mask2.nii nii/${m}_fa.nii 2>/dev/null` &&
+        ad=`3dmaskave -q -mask mask2.nii nii/${m}_ad.nii 2>/dev/null`;
+        rd=`3dmaskave -q -mask mask2.nii nii/${m}_rd.nii 2>/dev/null`;
+        row=${row}','${fa}','${ad}','${rd};
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+## JHU tracts
+
+The second one is taking longer, but let's see what we can get with the first one:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+# down to 566 scans, as we're not using tract data at this point
+```
+
+```r
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +',
+                   'missingVolumes')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    for (t in tract_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the tract values is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+
+# and remove outliers
+for (t in tract_names) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res[bad_subjs, t] = NA
+}
+write.csv(res, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv',
+          row.names=F, na='', quote=F)
+```
+
+There are some heritable tracts:
+
+![](images/2019-03-15-16-51-18.png)
+
+And similarly, we run the association analysis:
+
+```r
+data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+![](images/2019-03-15-17-24-43.png)
+
+A few significant association hits among heritable tracts when using the whole cohort. However, nothing significant for DX1 within the heritable ones. But still some hit on DX 2:
+
+![](images/2019-03-15-17-27-50.png)
+
+So, let's then unveal their identities:
+
+## JHU labels
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+# down to 566 scans, as we're not using tract data at this point
+```
+
+```r
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+b = read.csv('~/data/heritability_change/jhu_labels_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +',
+                   'missingVolumes')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    for (t in tract_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the tract values is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+
+# and remove outliers
+for (t in tract_names) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res[bad_subjs, t] = NA
+}
+write.csv(res, file='~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes283.csv',
+          row.names=F, na='', quote=F)
+```
+
+
+
+
+
+
+
+
+
+
+
+There are some heritable tracts:
+
+![](images/2019-03-15-16-51-18.png)
+
+And similarly, we run the association analysis:
+
+```r
+data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
 # TODO
-* do we need to check for slope within tracts outliers?
