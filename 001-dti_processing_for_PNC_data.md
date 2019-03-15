@@ -555,7 +555,7 @@ wrong with the transform? Or maybe the coverage of those areas?
 I could also try running the averaging script for well-know tracts to to check
 for sanity.
 
-
+# 2019-03-14 15:46:11
 
 ```bash
 mydir=/lscratch/${SLURM_JOBID}/
@@ -570,7 +570,7 @@ for t in `cut -d" " -f 1 structureList`; do
     done
 done
 echo $row > $weighted_tracts;
-for m in `cat ~/tmp/pnc`; do
+for m in `head -n 4 ~/tmp/pnc`; do
     echo ${m}
     rm -rf preproc tracts
     mkdir preproc tracts
@@ -583,12 +583,18 @@ for m in `cat ~/tmp/pnc`; do
             3dresample -master preproc/dti_FA.nii.gz -prefix ./mask.nii \
                 -inset tracts/${t}/tracts/tractsNorm.nii.gz \
                 -rmode NN -overwrite &&
-            fa=`3dmaskave -q -mask ./mask.nii preproc/dti_FA.nii.gz 2>/dev/null` &&
-            ad=`3dmaskave -q -mask ./mask.nii preproc/dti_L1.nii.gz 2>/dev/null` &&
-            3dcalc -a preproc/dti_L2.nii.gz -b preproc/dti_L3.nii.gz \
-                -expr "(a + b) / 2" \ -prefix ./RD.nii 2>/dev/null &&
-            rd=`3dmaskave -q -mask ./mask.nii ./RD.nii 2>/dev/null` &&
-            row=${row}','${fa}','${ad}','${rd};
+            avg=`3dmaskave -quiet mask.nii 2>/dev/null` &&
+            if [ $avg != 0 ]; then
+                fa=`3dmaskave -q -mask ./mask.nii preproc/dti_FA.nii.gz` &&
+                ad=`3dmaskave -q -mask ./mask.nii preproc/dti_L1.nii.gz` &&
+                3dcalc -a preproc/dti_L2.nii.gz -b preproc/dti_L3.nii.gz \
+                    -expr "(a + b) / 2" -prefix ./RD.nii &&
+                rd=`3dmaskave -q -mask ./mask.nii ./RD.nii` &&
+                row=${row}','${fa}','${ad}','${rd};
+            else
+                # found nothing in the mask!
+                row=${row}',NA,NA,NA';
+            fi
             rm ${mydir}/*nii;
         else
             row=${row}',NA,NA,NA';
@@ -597,4 +603,8 @@ for m in `cat ~/tmp/pnc`; do
     echo $row >> $weighted_tracts;
 done
 ```
+
+The other tracts look reasonable, but I'm not getting anything for CST, which is
+quite weird. Let see if we can visualize the transform again...
+
 

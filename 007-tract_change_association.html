@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+    <html>
+    <head>
+        <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+        <title>2019-03-13 09:19:01</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.10.0/dist/katex.min.css" integrity="sha384-9eLZqc9ds8eNjO3TmqPeYcDj8n+Qfa4nuSiGYa6DjLNcv9BtN69ZIulL9+8CqC9Y" crossorigin="anonymous">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+        <link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <style>
+.task-list-item { list-style-type: none; } .task-list-item-checkbox { margin-left: -20px; vertical-align: middle; }
+</style>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        
+        <script src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+    </head>
+    <body>
+        <h1 id="2019-03-13-091901">2019-03-13 09:19:01</h1>
+<p>This is a complement to the 005 note, but here we're using the entire cohort to
+get tract associations... let's see if it helps.</p>
+<p>First, let's run through DTI-TK anyone that we can and would potentially help
+the analysis.</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190308.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1045.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># keep only subjects with more than one scan processed in DTITK</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN)) {
+    <span class="hljs-keyword">if</span> (sum(m$Medical.Record...MRN == s) &gt; <span class="hljs-number">1</span>) {
+        keep_me = c(keep_me, which(m$Medical.Record...MRN == s))
+    }
+}
+m = m[keep_me, ]
+<span class="hljs-comment"># down to 1021 because not all 1045 had two scans ready form TORTOISE </span>
+
+<span class="hljs-comment"># restrict based on QC</span>
+m = m[!is.na(m$norm.trans), ]
+idx = (m$mean_fa &lt; (mean(m$mean_fa)+<span class="hljs-number">3</span>*sd(m$mean_fa)) &amp;
+       m$mean_fa &gt; (mean(m$mean_fa)-<span class="hljs-number">3</span>*sd(m$mean_fa)) &amp;
+       m$mean_ad &lt; (mean(m$mean_ad)+<span class="hljs-number">3</span>*sd(m$mean_ad)) &amp;
+       m$mean_ad &gt; (mean(m$mean_ad)-<span class="hljs-number">3</span>*sd(m$mean_ad)) &amp;
+       m$mean_rd &lt; (mean(m$mean_rd)+<span class="hljs-number">3</span>*sd(m$mean_rd)) &amp;
+       m$mean_rd &gt; (mean(m$mean_rd)-<span class="hljs-number">3</span>*sd(m$mean_rd)))
+m = m[idx,]
+<span class="hljs-comment"># down to 1009</span>
+
+<span class="hljs-comment"># select only the first two for each person (younger than 26 y.o.)</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 624 scans</span>
+</div></code></pre>
+<p>Now we need to merge those good scans with their clinical data:</p>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_624.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+</div></code></pre>
+<p>Time to residualize the data and compute the slopes, including SX slopes.</p>
+<pre><code class="language-r"><div><span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_312.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>OK, time to run some regressions now. Note that we need to remove Sex here as
+well, similar to what we do later in SOLAR, so that it has no affect in the
+association results!</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_312.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_624.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Let's try it with the DSM-V ADHDs only:</p>
+<pre><code class="language-r"><div>data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>And we could also try the ADHDNOS subset:</p>
+<pre><code class="language-r"><div>data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Interesting... I do get some results. Let's see if those same tracts come up as
+significant in SOLAR.</p>
+<h1 id="2019-03-14-085856">2019-03-14 08:58:56</h1>
+<p>So, it doesn't look like RD_left_slf is correlated with any of the 3 movement
+metrics, which is good. A couple more tests I want to run:</p>
+<ol>
+<li>Do these results survive when I add some other QC thresholds?</li>
+<li>How does the heritability results change if I don't use the entire dataset?</li>
+</ol>
+<h2 id="redoing-previous-analysis">Redoing previous analysis</h2>
+<p>Let's start with the same data as before. I noticed that 1961 and 2234
+went into the analysis, even though 1961 had to be re-exported and 2234 failed
+DTI-TK. And they were driving the mean_fa estimates.</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># keep only subjects with more than one scan processed in DTITK</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN)) {
+    <span class="hljs-keyword">if</span> (sum(m$Medical.Record...MRN == s) &gt; <span class="hljs-number">1</span>) {
+        keep_me = c(keep_me, which(m$Medical.Record...MRN == s))
+    }
+}
+m = m[keep_me, ]
+<span class="hljs-comment"># still have 1020 because I only kept subjects with 2 or more scans in the list</span>
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-11-16-33.png" alt=""></p>
+<p>Those were the distributions using the 1020 scans.</p>
+<pre><code class="language-r"><div><span class="hljs-keyword">for</span> (p <span class="hljs-keyword">in</span> c(<span class="hljs-string">'mean_fa'</span>, <span class="hljs-string">'mean_ad'</span>, <span class="hljs-string">'mean_rd'</span>)) {
+    mu=mean(m[, p])
+    s = sd(m[, p])
+    print(p)
+    print(mu - <span class="hljs-number">3</span> * s)
+    print(mu + <span class="hljs-number">3</span> * s)
+}
+</div></code></pre>
+<pre><code><div>[1] &quot;mean_fa&quot;
+[1] 0.3328474
+[1] 0.4117941
+[1] &quot;mean_ad&quot;
+[1] 1.076913
+[1] 1.291822
+[1] &quot;mean_rd&quot;
+[1] 0.5556166
+[1] 0.7444887
+</div></code></pre>
+<p>Those sound reasonable.</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># restrict based on QC</span>
+idx = (m$mean_fa &lt; (mean(m$mean_fa)+<span class="hljs-number">3</span>*sd(m$mean_fa)) &amp;
+       m$mean_fa &gt; (mean(m$mean_fa)-<span class="hljs-number">3</span>*sd(m$mean_fa)) &amp;
+       m$mean_ad &lt; (mean(m$mean_ad)+<span class="hljs-number">3</span>*sd(m$mean_ad)) &amp;
+       m$mean_ad &gt; (mean(m$mean_ad)-<span class="hljs-number">3</span>*sd(m$mean_ad)) &amp;
+       m$mean_rd &lt; (mean(m$mean_rd)+<span class="hljs-number">3</span>*sd(m$mean_rd)) &amp;
+       m$mean_rd &gt; (mean(m$mean_rd)-<span class="hljs-number">3</span>*sd(m$mean_rd)))
+m = m[idx,]
+<span class="hljs-comment"># down to 1005</span>
+
+<span class="hljs-comment"># select only the first two for each person (younger than 26 y.o.)</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 620 scans</span>
+</div></code></pre>
+<p>Now we need to merge those good scans with their clinical data:</p>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+</div></code></pre>
+<p>Time to residualize the data and compute the slopes, including SX slopes.</p>
+<pre><code class="language-r"><div><span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_310.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-11-33-41.png" alt=""></p>
+<p>Heritability results still held.</p>
+<p>OK, time to run some regressions now. Note that we need to remove Sex here as
+well, similar to what we do later in SOLAR, so that it has no affect in the
+association results!</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_310.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc310.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Let's try it with the DSM-V ADHDs only:</p>
+<pre><code class="language-r"><div>data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc310_dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>And we could also try the ADHDNOS subset:</p>
+<pre><code class="language-r"><div>data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc310_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>RD_left_slf is still significant for HI_baseline within ADHDs in DX1 and DX2.</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-11-43-09.png" alt=""></p>
+<p>I can see a trend there, but I'm a bit concerned about those outliers. Let's see
+if cleaning up the data further makes life better. We could also try doing the
+DTI QC within tracts, instead of using whole brain.</p>
+<h2 id="stricter-qc">Stricter QC</h2>
+<p>What if we QC only on movement and proportion of data left? Then, we can decide
+to keep all data or not for individual tracts.</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-13-06-54.png" alt=""></p>
+<pre><code class="language-r"><div><span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">4</span> &amp; m$norm.rot &lt; <span class="hljs-number">.075</span> &amp; pct &lt; <span class="hljs-number">.1</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 835 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 532 scans</span>
+</div></code></pre>
+<p>Now we need to merge those good scans with their clinical data:</p>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+</div></code></pre>
+<p>Time to residualize the data and compute the slopes, including SX slopes.</p>
+<pre><code class="language-r"><div><span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ])
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_266.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-13-13-46.png" alt=""></p>
+<p>Heritability results are not as good anymore, but maybe they'll still change if
+I include only people within families? Let's check association first.</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_266.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc266.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc266dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc266_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>We get a lot more significant results now. That's fine, but heritability is not
+great yet. Let's see first if it looks better with just the family individuals:</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># and make sure every family has at least two people</span>
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+keep_me = c()
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, <span class="hljs-string">'ID'</span>] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_121.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>So, we're down to 121 subjects. Let's see what happens to heritability.</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-13-49-08.png" alt=""></p>
+<p>As expected, the results don't change drastically. The FA_right_ILF is still
+there, which is good. That result is highly significant for SX_HI slope, even if
+we filter only for ADHDs.</p>
+<p>But the results look quite driven by outliers...</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-13-58-12.png" alt=""></p>
+<h2 id="removing-within-tract-outliers">Removing within-tract outliers</h2>
+<p>Now, the question is whether I should remove slope outliers, or tract outliers.
+My initial aproach is to do it for tracts, as our QC was all done in
+scan-metrics, so it makes sense to remove tract values that way as well.</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">4</span> &amp; m$norm.rot &lt; <span class="hljs-number">.075</span> &amp; pct &lt; <span class="hljs-number">.1</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 835 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 532 scans</span>
+</div></code></pre>
+<p>Merging with clinicals and cleaned up data:</p>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020_cleanedWithinTract3sd.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+</div></code></pre>
+<p>Time to residualize the data and compute the slopes, including SX slopes.</p>
+<pre><code class="language-r"><div><span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        <span class="hljs-keyword">if</span> (sum(is.na(mres[idx, t])) &gt; <span class="hljs-number">0</span>) {
+            <span class="hljs-comment"># if any of the tract values is NA, make the slope NA</span>
+            row = c(row, <span class="hljs-literal">NA</span>)
+        } <span class="hljs-keyword">else</span> {
+            fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+        }
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_na266.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Note that now the n for heritability in each tract changes! But now nothing is
+significant anymore... any changes if we include only the family people?</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># and make sure every family has at least two people</span>
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+keep_me = c()
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, <span class="hljs-string">'ID'</span>] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_na121.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Nope... even worse.</p>
+<p>Maybe we're being too stringent with our QC? Let's allow a few more scans go in:</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">5</span> &amp; m$norm.rot &lt; <span class="hljs-number">.1</span> &amp; pct &lt; <span class="hljs-number">.15</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 902 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 566 scans</span>
+</div></code></pre>
+<p>Merging with clinicals and cleaned up data:</p>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020_cleanedWithinTract3sd.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+
+<span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        <span class="hljs-keyword">if</span> (sum(is.na(mres[idx, t])) &gt; <span class="hljs-number">0</span>) {
+            <span class="hljs-comment"># if any of the tract values is NA, make the slope NA</span>
+            row = c(row, <span class="hljs-literal">NA</span>)
+        } <span class="hljs-keyword">else</span> {
+            fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+        }
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_na283.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>This gets me one results back, ad_left_slf. Is it associated with anything?</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_na283.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_na283.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_na283dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_na283_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Very few results, and they still seem to be driven by outliers... Maybe the best
+approach will be to handle outliers after taking the slope.</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">5</span> &amp; m$norm.rot &lt; <span class="hljs-number">.1</span> &amp; pct &lt; <span class="hljs-number">.15</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 902 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 566 scans</span>
+</div></code></pre>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'file'</span>)
+
+<span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        <span class="hljs-keyword">if</span> (sum(is.na(mres[idx, t])) &gt; <span class="hljs-number">0</span>) {
+            <span class="hljs-comment"># if any of the tract values is NA, make the slope NA</span>
+            row = c(row, <span class="hljs-literal">NA</span>)
+        } <span class="hljs-keyword">else</span> {
+            fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+        }
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+
+<span class="hljs-comment"># and remove outliers</span>
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    mydata = as.numeric(res[, t])
+    <span class="hljs-comment"># identifying outliers</span>
+    ul = mean(mydata) + <span class="hljs-number">3</span> * sd(mydata)
+    ll = mean(mydata) - <span class="hljs-number">3</span> * sd(mydata)
+    bad_subjs = c(which(mydata &lt; ll), which(mydata &gt; ul))
+
+    <span class="hljs-comment"># remove within-tract outliers</span>
+    res[bad_subjs, t] = <span class="hljs-literal">NA</span>
+}
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_naSlopes283.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>AD_left_slf is still significant at .009, but that's the only one. Is it at all
+significantly associated? And does it show any outliers? It shouldn't...</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_naSlopes283.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_mean_phenotype_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_naSlopes283.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_naSlopes283dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_naSlopes283_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>It's still highly significant for HI_baseline within ADHD DX1, DX2.</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-15-00-24.png" alt=""></p>
+<p>Well, it's not impressive, but it's significant.</p>
+<p>Just for completeness, let's see the heritability results in the family only
+sample:</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># and make sure every family has at least two people</span>
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+keep_me = c()
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, <span class="hljs-string">'ID'</span>] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file=<span class="hljs-string">'~/data/heritability_change/dti_tracts_residNoSex_OLS_naSlopes134.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-14-15-24-20.png" alt=""></p>
+<p>OK, still significant!</p>
+<h1 id="2019-03-15-125223">2019-03-15 12:52:23</h1>
+<p>Philip suggested that I should just average over the JHU labels and see if any of that is signitifcant. OK, let's give it a try:</p>
+<pre><code class="language-bash"><div>mydir=~/data/heritability_change/
+DTITK_ROOT=/Applications/dtitk-2.3.3-Darwin-x86_64/bin/
+weighted_tracts=jhu_tracts.csv;
+<span class="hljs-comment"># copying everything locally first to avoid racing conditions</span>
+<span class="hljs-built_in">cd</span> <span class="hljs-variable">$mydir</span>
+row=<span class="hljs-string">"id"</span>;
+<span class="hljs-keyword">for</span> t <span class="hljs-keyword">in</span> `seq 1 20`; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> m <span class="hljs-keyword">in</span> fa ad rd; <span class="hljs-keyword">do</span>
+        row=<span class="hljs-variable">${row}</span><span class="hljs-string">','</span><span class="hljs-variable">${m}</span>_<span class="hljs-variable">${t}</span>;
+    <span class="hljs-keyword">done</span>
+<span class="hljs-keyword">done</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-variable">$row</span> &gt; <span class="hljs-variable">$weighted_tracts</span>;
+<span class="hljs-keyword">for</span> m <span class="hljs-keyword">in</span> `cat ids1020.txt`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">${m}</span>
+    <span class="hljs-variable">${DTITK_ROOT}</span>/TVtool -<span class="hljs-keyword">in</span> nii/<span class="hljs-variable">${m}</span>_tensor_diffeo.nii.gz -fa \
+        -out nii/<span class="hljs-variable">${m}</span>_fa.nii &gt;/dev/null 2&gt;&amp;1;
+    <span class="hljs-variable">${DTITK_ROOT}</span>/TVtool -<span class="hljs-keyword">in</span> nii/<span class="hljs-variable">${m}</span>_tensor_diffeo.nii.gz -ad \
+        -out nii/<span class="hljs-variable">${m}</span>_ad.nii &gt;/dev/null 2&gt;&amp;1;
+    <span class="hljs-variable">${DTITK_ROOT}</span>/TVtool -<span class="hljs-keyword">in</span> nii/<span class="hljs-variable">${m}</span>_tensor_diffeo.nii.gz -rd \
+        -out nii/<span class="hljs-variable">${m}</span>_rd.nii &gt;/dev/null 2&gt;&amp;1;
+    3dresample -master nii/<span class="hljs-variable">${m}</span>_fa.nii.gz -prefix ./rois.nii \
+                -inset ../JHU_ICBM_tractsThr25_inAging.nii.gz \
+                -rmode NN -overwrite 2&gt;/dev/null &amp;&amp;
+    row=<span class="hljs-string">"<span class="hljs-variable">${m}</span>"</span>;
+    <span class="hljs-keyword">for</span> t <span class="hljs-keyword">in</span> `seq 1 20`; <span class="hljs-keyword">do</span>
+        3dcalc -a rois.nii -expr <span class="hljs-string">"amongst(a, <span class="hljs-variable">$t</span>)"</span> -prefix mask.nii \
+            -overwrite 2&gt;/dev/null &amp;&amp;
+        fa=`3dmaskave -q -mask mask.nii nii/<span class="hljs-variable">${m}</span>_fa.nii 2&gt;/dev/null` &amp;&amp;
+        ad=`3dmaskave -q -mask mask.nii nii/<span class="hljs-variable">${m}</span>_ad.nii 2&gt;/dev/null`;
+        rd=`3dmaskave -q -mask mask.nii nii/<span class="hljs-variable">${m}</span>_rd.nii 2&gt;/dev/null`;
+        row=<span class="hljs-variable">${row}</span><span class="hljs-string">','</span><span class="hljs-variable">${fa}</span><span class="hljs-string">','</span><span class="hljs-variable">${ad}</span><span class="hljs-string">','</span><span class="hljs-variable">${rd}</span>;
+    <span class="hljs-keyword">done</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$row</span> &gt;&gt; <span class="hljs-variable">$weighted_tracts</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<p>Then, because all _mod files are done, I can just run this for the other labels:</p>
+<pre><code class="language-bash"><div>mydir=~/data/heritability_change/
+DTITK_ROOT=/Applications/dtitk-2.3.3-Darwin-x86_64/bin/
+weighted_tracts=jhu_labels.csv;
+<span class="hljs-comment"># copying everything locally first to avoid racing conditions</span>
+<span class="hljs-built_in">cd</span> <span class="hljs-variable">$mydir</span>
+row=<span class="hljs-string">"id"</span>;
+<span class="hljs-keyword">for</span> t <span class="hljs-keyword">in</span> `seq 1 48`; <span class="hljs-keyword">do</span>
+    <span class="hljs-keyword">for</span> m <span class="hljs-keyword">in</span> fa ad rd; <span class="hljs-keyword">do</span>
+        row=<span class="hljs-variable">${row}</span><span class="hljs-string">','</span><span class="hljs-variable">${m}</span>_<span class="hljs-variable">${t}</span>;
+    <span class="hljs-keyword">done</span>
+<span class="hljs-keyword">done</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-variable">$row</span> &gt; <span class="hljs-variable">$weighted_tracts</span>;
+<span class="hljs-keyword">for</span> m <span class="hljs-keyword">in</span> `cat ids1020.txt`; <span class="hljs-keyword">do</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">${m}</span>
+    3dresample -master nii/<span class="hljs-variable">${m}</span>_fa.nii.gz -prefix ./rois2.nii \
+                -inset ../JHU_ICBM_labels_inAging.nii.gz \
+                -rmode NN -overwrite 2&gt;/dev/null &amp;&amp;
+    row=<span class="hljs-string">"<span class="hljs-variable">${m}</span>"</span>;
+    <span class="hljs-keyword">for</span> t <span class="hljs-keyword">in</span> `seq 1 48`; <span class="hljs-keyword">do</span>
+        3dcalc -a rois2.nii -expr <span class="hljs-string">"amongst(a, <span class="hljs-variable">$t</span>)"</span> -prefix mask2.nii \
+            -overwrite 2&gt;/dev/null &amp;&amp;
+        fa=`3dmaskave -q -mask mask2.nii nii/<span class="hljs-variable">${m}</span>_fa.nii 2&gt;/dev/null` &amp;&amp;
+        ad=`3dmaskave -q -mask mask2.nii nii/<span class="hljs-variable">${m}</span>_ad.nii 2&gt;/dev/null`;
+        rd=`3dmaskave -q -mask mask2.nii nii/<span class="hljs-variable">${m}</span>_rd.nii 2&gt;/dev/null`;
+        row=<span class="hljs-variable">${row}</span><span class="hljs-string">','</span><span class="hljs-variable">${fa}</span><span class="hljs-string">','</span><span class="hljs-variable">${ad}</span><span class="hljs-string">','</span><span class="hljs-variable">${rd}</span>;
+    <span class="hljs-keyword">done</span>
+    <span class="hljs-built_in">echo</span> <span class="hljs-variable">$row</span> &gt;&gt; <span class="hljs-variable">$weighted_tracts</span>;
+<span class="hljs-keyword">done</span>
+</div></code></pre>
+<h2 id="jhu-tracts">JHU tracts</h2>
+<p>The second one is taking longer, but let's see what we can get with the first
+one. We are working with 60 variables (3 * 20 tracts):</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">5</span> &amp; m$norm.rot &lt; <span class="hljs-number">.1</span> &amp; pct &lt; <span class="hljs-number">.15</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 902 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 566 scans, as we're not using tract data at this point</span>
+</div></code></pre>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/jhu_tracts_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'id'</span>)
+
+<span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        <span class="hljs-keyword">if</span> (sum(is.na(mres[idx, t])) &gt; <span class="hljs-number">0</span>) {
+            <span class="hljs-comment"># if any of the tract values is NA, make the slope NA</span>
+            row = c(row, <span class="hljs-literal">NA</span>)
+        } <span class="hljs-keyword">else</span> {
+            fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+        }
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+
+<span class="hljs-comment"># and remove outliers</span>
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    mydata = as.numeric(res[, t])
+    <span class="hljs-comment"># identifying outliers</span>
+    ul = mean(mydata) + <span class="hljs-number">3</span> * sd(mydata)
+    ll = mean(mydata) - <span class="hljs-number">3</span> * sd(mydata)
+    bad_subjs = c(which(mydata &lt; ll), which(mydata &gt; ul))
+
+    <span class="hljs-comment"># remove within-tract outliers</span>
+    res[bad_subjs, t] = <span class="hljs-literal">NA</span>
+}
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>There are some heritable tracts:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-16-51-18.png" alt=""></p>
+<p>And similarly, we run the association analysis:</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/jhu_tracts_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUtracts_naSlopes283.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUtracts_naSlopes283dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUtracts_naSlopes283_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-17-24-43.png" alt=""></p>
+<p>A few significant association hits among heritable tracts when using the whole
+cohort. However, nothing significant for DX1 within the heritable ones. But
+still some hit on DX 2:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-17-27-50.png" alt=""></p>
+<p>So, let's then unveal their identities:</p>
+<p>5 Cingulum (cingulate gyrus) L
+8 Cingulum (hippocampus) R
+13 Inferior longitudinal fasciculus L
+17 Uncinate fasciculus L
+18 Uncinate fasciculus R</p>
+<p>For completeness, here are the heritability values when we only look at people
+in families with 2 or more individuals:</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># and make sure every family has at least two people</span>
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+keep_me = c()
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, <span class="hljs-string">'ID'</span>] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file=<span class="hljs-string">'~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes134.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-55-34.png" alt=""></p>
+<p>Yep, results seem to hold up well.</p>
+<h2 id="jhu-labels">JHU labels</h2>
+<p>Here we have 144 metrics (3 * 48 tracts):</p>
+<pre><code class="language-r"><div>b = read.csv(<span class="hljs-string">'/Volumes/Shaw/MasterQC/master_qc_20190314.csv'</span>)
+a = read.csv(<span class="hljs-string">'~/data/heritability_change/ready_1020.csv'</span>)
+m = merge(a, b, by.y=<span class="hljs-string">'Mask.ID'</span>, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, all.x=<span class="hljs-literal">F</span>)
+
+<span class="hljs-comment"># restrict based on QC</span>
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans &lt; <span class="hljs-number">5</span> &amp; m$norm.rot &lt; <span class="hljs-number">.1</span> &amp; pct &lt; <span class="hljs-number">.15</span>
+m = m[idx,]
+<span class="hljs-comment"># down to 902 scans</span>
+keep_me = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$<span class="hljs-string">"record.date.collected...Scan"</span>),
+                                 format=<span class="hljs-string">"%m/%d/%Y"</span>)
+    <span class="hljs-keyword">if</span> (length(dates) &gt;= <span class="hljs-number">2</span>) {
+        sdates = sort(dates)  <span class="hljs-comment"># not sure why index.return is not working...</span>
+        <span class="hljs-comment"># make sure there is at least 6 months between scans</span>
+        next_scan = <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &lt; <span class="hljs-number">180</span>) &amp;&amp; (next_scan &lt; length(sdates))) {
+            next_scan = next_scan + <span class="hljs-number">1</span>
+        }
+        first_scan_age = subj_scans[dates==sdates[<span class="hljs-number">1</span>], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>]
+        <span class="hljs-keyword">if</span> (((sdates[next_scan] - sdates[<span class="hljs-number">1</span>]) &gt;= <span class="hljs-number">180</span>) &amp;&amp; (first_scan_age &lt; <span class="hljs-number">26</span>)) {
+            idx1 = which(dates == sdates[<span class="hljs-number">1</span>])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, <span class="hljs-string">'Mask.ID...Scan'</span>]))
+        }
+    }
+}
+m2 = m[keep_me, ]
+<span class="hljs-comment"># down to 566 scans, as we're not using tract data at this point</span>
+</div></code></pre>
+<pre><code class="language-r"><div>clin = read.csv(<span class="hljs-string">'~/data/heritability_change/clinical_03132019.csv'</span>)
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date=<span class="hljs-string">'record.date.collected...Scan'</span>,
+                         x.id=<span class="hljs-string">'Medical.Record...MRN...Subjects'</span>)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/jhu_labels_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+df2 = merge(df, b, by.x=<span class="hljs-string">'Mask.ID...Scan'</span>, by.y=<span class="hljs-string">'id'</span>)
+
+<span class="hljs-keyword">library</span>(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    print(t)
+    fm_str = sprintf(<span class="hljs-string">'%s ~'</span>, t)
+    fm_str = paste(fm_str,
+                   <span class="hljs-string">'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +'</span>,
+                   <span class="hljs-string">'missingVolumes'</span>)
+    res.lm &lt;- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step &lt;- stepAIC(res.lm, direction = <span class="hljs-string">"both"</span>, trace = <span class="hljs-literal">F</span>)
+    mres[, t] = residuals(step)
+}
+res = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, <span class="hljs-string">'Sex...Subjects'</span>]))
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+        <span class="hljs-keyword">if</span> (sum(is.na(mres[idx, t])) &gt; <span class="hljs-number">0</span>) {
+            <span class="hljs-comment"># if any of the tract values is NA, make the slope NA</span>
+            row = c(row, <span class="hljs-literal">NA</span>)
+        } <span class="hljs-keyword">else</span> {
+            fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+        }
+    }
+    <span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>)) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ age_at_scan...Scan...Subjects'</span>, t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[<span class="hljs-number">2</span>])
+    }
+    <span class="hljs-comment"># grabbing inatt and HI at baseline</span>
+    base_DOA = which.min(mres[idx, <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_inatt'</span>])
+    row = c(row, mres[idx[base_DOA], <span class="hljs-string">'SX_HI'</span>])
+    <span class="hljs-comment"># DX1 is DSMV definition, DX2 will make SX &gt;=4 as ADHD</span>
+    <span class="hljs-keyword">if</span> (mres[idx[base_DOA], <span class="hljs-string">'age_at_scan...Scan...Subjects'</span>] &lt; <span class="hljs-number">16</span>) {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">6</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">6</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">5</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">5</span>)) {
+            DX = <span class="hljs-string">'ADHD'</span>
+        } <span class="hljs-keyword">else</span> {
+            DX = <span class="hljs-string">'NV'</span>
+        }
+    }
+    <span class="hljs-keyword">if</span> ((row[length(row)] &gt;= <span class="hljs-number">4</span>) || (row[length(row)-<span class="hljs-number">1</span>] &gt;= <span class="hljs-number">4</span>)) {
+        DX2 = <span class="hljs-string">'ADHD'</span>
+    } <span class="hljs-keyword">else</span> {
+        DX2 = <span class="hljs-string">'NV'</span>
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c(<span class="hljs-string">'ID'</span>, <span class="hljs-string">'sex'</span>, tract_names, c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>,
+                                              <span class="hljs-string">'inatt_baseline'</span>,
+                                              <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>))
+
+<span class="hljs-comment"># and remove outliers</span>
+<span class="hljs-keyword">for</span> (t <span class="hljs-keyword">in</span> tract_names) {
+    mydata = as.numeric(res[, t])
+    <span class="hljs-comment"># identifying outliers</span>
+    ul = mean(mydata) + <span class="hljs-number">3</span> * sd(mydata)
+    ll = mean(mydata) - <span class="hljs-number">3</span> * sd(mydata)
+    bad_subjs = c(which(mydata &lt; ll), which(mydata &gt; ul))
+
+    <span class="hljs-comment"># remove within-tract outliers</span>
+    res[bad_subjs, t] = <span class="hljs-literal">NA</span>
+}
+write.csv(res, file=<span class="hljs-string">'~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes283.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>With so many variables (144), we'd certainly get some significant ones just by
+chance. Here's what we've got:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-15-59.png" alt=""></p>
+<p>And similarly, we run the association analysis:</p>
+<pre><code class="language-r"><div>data = read.csv(<span class="hljs-string">'~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes283.csv'</span>)
+data$sex = as.factor(data$sex)
+b = read.csv(<span class="hljs-string">'~/data/heritability_change/jhu_labels_1020.csv'</span>)
+tract_names = colnames(b)[<span class="hljs-number">2</span>:ncol(b)]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUlabels_naSlopes283.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>, <span class="hljs-string">'DX'</span>, <span class="hljs-string">'DX2'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUlabels_naSlopes283dx1.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+
+data2 = data[data$DX2==<span class="hljs-string">'ADHD'</span>, ]
+out_fname = <span class="hljs-string">'~/data/heritability_change/assoc_JHUlabels_naSlopes283_dx2.csv'</span>
+predictors = c(<span class="hljs-string">'SX_inatt'</span>, <span class="hljs-string">'SX_HI'</span>, <span class="hljs-string">'inatt_baseline'</span>, <span class="hljs-string">'HI_baseline'</span>)
+targets = tract_names
+hold=<span class="hljs-literal">NULL</span>
+<span class="hljs-keyword">for</span> (i <span class="hljs-keyword">in</span> targets) {
+    <span class="hljs-keyword">for</span> (j <span class="hljs-keyword">in</span> predictors) {
+        fm_str = sprintf(<span class="hljs-string">'%s ~ %s + sex'</span>, i, j)
+        model1&lt;-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp&lt;-summary(model1)$coefficients
+        a&lt;-as.data.frame(temp)
+        a$formula&lt;-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p>Again, we'd expect much association just by chance, but here's the signifcant
+stuff for the heritable tracts when using the entire cohort:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-22-44.png" alt=""></p>
+<p>If we restrict it to only the DSM-V ADHDs, we get:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-25-22.png" alt=""></p>
+<p>And if we make it a bit looser, considering ADHD anyone with SX &gt;= 4, we get:</p>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-27-57.png" alt=""></p>
+<p>And revealing the identities of those tracts:</p>
+<p>3 Genu of corpus callosum
+6 Fornix (column and body of fornix)
+8 Corticospinal tract L
+11 Inferior cerebellar peduncle R
+16 Cerebral peduncle L
+17 Anterior limb of internal capsule R
+21 Retrolenticular part of internal capsule R
+23 Anterior corona radiata R
+24 Anterior corona radiata L
+31 Sagittal stratum (include inferior longitidinal fasciculus and inferior
+fronto-occipital fasciculus) R
+33 External capsule R
+34 External capsule L
+36 Cingulum (cingulate gyrus) L
+38 Cingulum (hippocampus) L
+40 Fornix (cres) / Stria terminalis (can not be resolved with current
+resolution) L
+43 Superior fronto-occipital fasciculus (could be a part of anterior internal
+capsule) R
+45 Uncinate fasciculus R
+47 Tapetum R
+48 Tapetum L</p>
+<p>So, a bit of a hodge-podge of all tracts. Maybe we we restrict it to FA and/or
+do some multiple comparisons correction, if anything survives, it'll look
+better?</p>
+<p>For completeness, here are the heritability values when we only look at people
+in families with 2 or more individuals:</p>
+<pre><code class="language-r"><div><span class="hljs-comment"># and make sure every family has at least two people</span>
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) &gt;= <span class="hljs-number">4</span>]
+keep_me = c()
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+<span class="hljs-keyword">for</span> (f <span class="hljs-keyword">in</span> good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            <span class="hljs-string">'Medical.Record...MRN...Subjects'</span>])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+<span class="hljs-keyword">for</span> (s <span class="hljs-keyword">in</span> keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, <span class="hljs-string">'ID'</span>] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file=<span class="hljs-string">'~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes134.csv'</span>,
+          row.names=<span class="hljs-literal">F</span>, na=<span class="hljs-string">''</span>, quote=<span class="hljs-literal">F</span>)
+</div></code></pre>
+<p><img src="file:///Users/sudregp/lab_notes/images/2019-03-15-18-46-11.png" alt=""></p>
+<p>So, the main results still hold, as usual.</p>
+<h1 id="todo">TODO</h1>
+
+    </body>
+    </html>

@@ -1356,7 +1356,8 @@ done
 
 ## JHU tracts
 
-The second one is taking longer, but let's see what we can get with the first one:
+The second one is taking longer, but let's see what we can get with the first
+one. We are working with 60 variables (3 * 20 tracts):
 
 ```r
 b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
@@ -1554,14 +1555,54 @@ write.csv(hold, out_fname, row.names=F)
 
 ![](images/2019-03-15-17-24-43.png)
 
-A few significant association hits among heritable tracts when using the whole cohort. However, nothing significant for DX1 within the heritable ones. But still some hit on DX 2:
+A few significant association hits among heritable tracts when using the whole
+cohort. However, nothing significant for DX1 within the heritable ones. But
+still some hit on DX 2:
 
 ![](images/2019-03-15-17-27-50.png)
 
 So, let's then unveal their identities:
 
+5 Cingulum (cingulate gyrus) L
+8 Cingulum (hippocampus) R
+13 Inferior longitudinal fasciculus L
+17 Uncinate fasciculus L
+18 Uncinate fasciculus R
+
+For completeness, here are the heritability values when we only look at people
+in families with 2 or more individuals:
+
+```r
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes134.csv',
+          row.names=F, na='', quote=F)
+```
+
+![](images/2019-03-15-18-55-34.png)
+
+Yep, results seem to hold up well.
+
 ## JHU labels
 
+Here we have 144 metrics (3 * 48 tracts):
 ```r
 b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
 a = read.csv('~/data/heritability_change/ready_1020.csv')
@@ -1685,28 +1726,19 @@ write.csv(res, file='~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naS
           row.names=F, na='', quote=F)
 ```
 
+With so many variables (144), we'd certainly get some significant ones just by
+chance. Here's what we've got:
 
-
-
-
-
-
-
-
-
-
-There are some heritable tracts:
-
-![](images/2019-03-15-16-51-18.png)
+![](images/2019-03-15-18-15-59.png)
 
 And similarly, we run the association analysis:
 
 ```r
-data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv')
+data = read.csv('~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes283.csv')
 data$sex = as.factor(data$sex)
-b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+b = read.csv('~/data/heritability_change/jhu_labels_1020.csv')
 tract_names = colnames(b)[2:ncol(b)]
-out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283.csv'
+out_fname = '~/data/heritability_change/assoc_JHUlabels_naSlopes283.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
 targets = tract_names
 hold=NULL
@@ -1726,7 +1758,7 @@ for (i in targets) {
 write.csv(hold, out_fname, row.names=F)
 
 data2 = data[data$DX=='ADHD', ]
-out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283dx1.csv'
+out_fname = '~/data/heritability_change/assoc_JHUlabels_naSlopes283dx1.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 targets = tract_names
 hold=NULL
@@ -1746,7 +1778,7 @@ for (i in targets) {
 write.csv(hold, out_fname, row.names=F)
 
 data2 = data[data$DX2=='ADHD', ]
-out_fname = '~/data/heritability_change/assoc_JHUtracts_naSlopes283_dx2.csv'
+out_fname = '~/data/heritability_change/assoc_JHUlabels_naSlopes283_dx2.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 targets = tract_names
 hold=NULL
@@ -1765,5 +1797,78 @@ for (i in targets) {
 }
 write.csv(hold, out_fname, row.names=F)
 ```
+
+Again, we'd expect much association just by chance, but here's the signifcant
+stuff for the heritable tracts when using the entire cohort:
+
+![](images/2019-03-15-18-22-44.png)
+
+If we restrict it to only the DSM-V ADHDs, we get:
+
+![](images/2019-03-15-18-25-22.png)
+
+And if we make it a bit looser, considering ADHD anyone with SX >= 4, we get:
+
+![](images/2019-03-15-18-27-57.png)
+
+And revealing the identities of those tracts:
+
+3 Genu of corpus callosum
+6 Fornix (column and body of fornix)
+8 Corticospinal tract L
+11 Inferior cerebellar peduncle R
+16 Cerebral peduncle L
+17 Anterior limb of internal capsule R
+21 Retrolenticular part of internal capsule R
+23 Anterior corona radiata R
+24 Anterior corona radiata L
+31 Sagittal stratum (include inferior longitidinal fasciculus and inferior
+fronto-occipital fasciculus) R
+33 External capsule R
+34 External capsule L
+36 Cingulum (cingulate gyrus) L
+38 Cingulum (hippocampus) L
+40 Fornix (cres) / Stria terminalis (can not be resolved with current
+resolution) L
+43 Superior fronto-occipital fasciculus (could be a part of anterior internal
+capsule) R
+45 Uncinate fasciculus R
+47 Tapetum R
+48 Tapetum L
+
+So, a bit of a hodge-podge of all tracts. Maybe we we restrict it to FA and/or
+do some multiple comparisons correction, if anything survives, it'll look
+better?
+
+For completeness, here are the heritability values when we only look at people
+in families with 2 or more individuals:
+
+```r
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+write.csv(res2, file='~/data/heritability_change/dti_JHUlabels_residNoSex_OLS_naSlopes134.csv',
+          row.names=F, na='', quote=F)
+```
+
+![](images/2019-03-15-18-46-11.png)
+
+So, the main results still hold, as usual.
 
 # TODO
