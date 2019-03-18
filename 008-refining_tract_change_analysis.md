@@ -142,6 +142,11 @@ for (s in unique(mres$Medical.Record...MRN...Subjects)) {
     for (t in tract_names) {
         row = c(row, mres[idx[base_DOA], t])
     }
+    if (is.na(mres[idx[base_DOA], 'Extended.ID...FamilyIDs'])) {
+        row = c(row, mres[idx[base_DOA], 'Nuclear.ID...FamilyIDs'])
+    } else {
+        row = c(row, mres[idx[base_DOA], 'Extended.ID...FamilyIDs'])
+    }
     res = rbind(res, row)
 }
 tract_base_names = as.character(sapply(tract_names,
@@ -149,7 +154,7 @@ tract_base_names = as.character(sapply(tract_names,
 colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline', 'DX', 'DX2'),
-                  tract_base_names)
+                  tract_base_names, 'famID')
 
 # and remove outliers
 for (t in c(tract_names, tract_base_names)) {
@@ -236,7 +241,410 @@ values CAN be negative, as they're residuals after regressing out QC parameters.
 
 Gonna have to talk to Philip about it... not sure if it makes sense.
 
+## LME
+
+I was curious to whether I'd still have any results if I used lme instead of lm
+for the regressions...
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopesAndBaseline283.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_LME_JHUtracts_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_JHUtracts_naSlopes283_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_JHUtracts_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+Yeah, things seem to hold up for the entire cohort:
+
+![](images/2019-03-18-15-48-50.png)
+
+and for DX2:
+
+![](images/2019-03-18-15-56-34.png)
+
+## Numbers for abstract
+
+```r
+mres = df2
+age_base = c()
+age_fu = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    fu_DOA = which.max(mres[idx, 'age_at_scan...Scan...Subjects'])
+    age_base = c(age_base, mres[idx[base_DOA],
+                                'age_at_scan...Scan...Subjects'])
+    age_fu = c(age_fu, mres[idx[fu_DOA],
+                                'age_at_scan...Scan...Subjects'])
+}
+print(sprintf('base: %.2f +- %.2f', mean(age_base), sd(age_base)))
+print(sprintf('FU: %.2f +- %.2f', mean(age_fu), sd(age_fu)))
+```
+
+## No residualizing
+
+Let's see what the results look like without residualizing by QC:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+# down to 566 scans, as we're not using tract data at this point
+
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    for (t in tract_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the tract values is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    for (t in tract_names) {
+        row = c(row, mres[idx[base_DOA], t])
+    }
+    if (is.na(mres[idx[base_DOA], 'Extended.ID...FamilyIDs'])) {
+        row = c(row, mres[idx[base_DOA], 'Nuclear.ID...FamilyIDs'])
+    } else {
+        row = c(row, mres[idx[base_DOA], 'Extended.ID...FamilyIDs'])
+    }
+    res = rbind(res, row)
+}
+tract_base_names = as.character(sapply(tract_names,
+                                       function(x) sprintf('base_%s', x)))
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'),
+                  tract_base_names, 'famID')
+
+# and remove outliers
+for (t in c(tract_names, tract_base_names)) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res[bad_subjs, t] = NA
+}
+write.csv(res, file='~/data/heritability_change/dti_JHUtracts_OLS_naSlopesAndBaseline283.csv',
+          row.names=F, na='', quote=F)
+```
+
+And let's check LME because the code was right above
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_OLS_naSlopesAndBaseline283.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_LMEraw_JHUtracts_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LMEraw_JHUtracts_naSlopes283_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LMEraw_JHUtracts_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+That killed the associations, but the correlation between slopes and baseline
+values is still there. So, it's not the residualizing procedure that's causing
+the correlations and it could be argued that we need to residualize to be able
+to see the associations (i.e. clean the data). Not sure how the residualization
+would be biasing the data towards the associations but the correlation between
+slopes and baseline values is still puzzling.
+
+## non-parametric regressions
+
+Let's see if the associations survive when using no-parametric regressions, just
+because osme of the scatterplots were a tiny bit concerning:
+
+```r
+library(mblm)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopesAndBaseline283.csv')
+data$sex = as.factor(data$sex)
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_NP_JHUtracts_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_NP_JHUtracts_naSlopes283_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data2[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data2[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_NP_JHUtracts_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data2[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data2[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+CHECK OUT THE RESULTS FROM ABOVE!
+
+Now I need to residualize sex out first, because this function only takes one
+independent variable.
+
+....
 
 # TODO
 
-* Use lme for association analysis
+* What's going on with the correlation between baseline values and slopes?
