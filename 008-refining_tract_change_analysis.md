@@ -643,7 +643,207 @@ CHECK OUT THE RESULTS FROM ABOVE!
 Now I need to residualize sex out first, because this function only takes one
 independent variable.
 
+# 2019-03-19 08:24:59
+
+Let's check if there is any correlation between tract rate and scan interval:
+
+```r
+ps = c()
+for (p in 1:length(tract_names)) {
+    pres = cor.test(as.numeric(res[, tract_names[p]]),
+                    age_fu - age_base)
+    ps = c(ps, pres$p.value)
+}
+```
+
+No correlation... or, is the inter-scan interval associated with the age of
+first scan?
+
+```r
+ps = c()
+for (p in 1:length(tract_names)) {
+    pres = cor.test(age_base, age_fu - age_base)
+    ps = c(ps, pres$p.value)
+}
+```
+
+Also no.
+
+What do the plots of raw baseline against rate look like?
+
+![](images/2019-03-19-08-38-41.png)
+
+They all look pretty much the same: the bigger at baseline, the higher the
+reduction (more negative slopes).
+
+Finally, let's just complete the non-parametric analysis from yesterday.
+
+![](images/2019-03-19-08-44-59.png)
+
+The only result that didn't survive the non-parametric test was ad_18 in the DX2
+set. 
+
+But it's all good when using the entire dataset:
+
+![](images/2019-03-19-08-46-42.png)
+
 ....
+
+## Cleaning up heritability results
+
+For the JHU tracts heritability, I want to clean up the 2 unrelated subjects.
+Looking at the family trees, it was just one subject in 9003 that turned out not
+to be related to the other ones in the extended family, given the remaining scans:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+# down to 566 scans, as we're not using tract data at this point
+
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+tract_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +',
+                   'missingVolumes')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    for (t in tract_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the tract values is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+           fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+           row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+}
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+
+# and remove outliers
+for (t in tract_names) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res[bad_subjs, t] = NA
+}
+
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+for (f in good_extended) {
+    # keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+    #                         'Medical.Record...MRN...Subjects'])
+    print(f)
+    print(m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+
+res2 = res2[res2[, 'ID'] != 7221745, ]
+write.csv(res2, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes133.csv',
+          row.names=F, na='', quote=F)
+```
+
+With that, the new heritability values in the 133 set become:
+
+![](images/2019-03-19-10-19-56.png)
 
 # TODO
 

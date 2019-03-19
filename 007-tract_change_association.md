@@ -1563,11 +1563,11 @@ still some hit on DX 2:
 
 So, let's then unveal their identities:
 
-5 Cingulum (cingulate gyrus) L
-8 Cingulum (hippocampus) R
-13 Inferior longitudinal fasciculus L
-17 Uncinate fasciculus L
-18 Uncinate fasciculus R
+* 5 Cingulum (cingulate gyrus) L
+* 8 Cingulum (hippocampus) R
+* 13 Inferior longitudinal fasciculus L
+* 17 Uncinate fasciculus L
+* 18 Uncinate fasciculus R
 
 For completeness, here are the heritability values when we only look at people
 in families with 2 or more individuals:
