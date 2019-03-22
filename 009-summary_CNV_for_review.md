@@ -73,3 +73,47 @@ results there.
 For CNVs, we have called CNVS in all samples in both XHMM and CNVkit. We're now
 assessing which variants are rare and de novo in all trios, and possibly test
 other WES CNV tools if there is no consensus in the results.
+
+# 2019-03-21 12:36:30
+
+Philip asked for just a 8-sentence methods summary, without any results. So,
+here we go:
+
+We have 99 whole-exome sequencing (WES) datasets, representing 21 different nuclear families. They are split into 21 affected and 29 unaffected trios (some families have more than one unaffected sibling).
+
+The gist of the analysis is finding denovo variants (DNVs) in each trio
+structure. Then, within families, mark which DNVs are present in affected but
+not in the unaffected siblings. Finally, we compute statistics based on how many
+of those DNVs appeared across affected trios, and find biological plausibility
+for the DNVs that pop up.
+
+We start the processing of raw exome reads by using the GATK Best Practices
+pipeline because of its wide-acceptance in the field. CNV tools pick
+up the WES outputs after alignment to a reference genome and marking of duplicate reads. 
+
+One common limitation in selecting tools for copy-number variant (CNV) analysis
+was the ability to operate without the need of a case/control structure. Much
+of the work in the field is done for cancer research and depends on that design,
+but it’s not our case. Another common requirement was regular maintenance of the
+software, and favorable mention in survey papers comparing different tools.
+Finally, the tool also needed to be shown to work on WES, as many tools were developed
+for whole-genome sequencing and their assumptions and methods do not apply for WES.
+
+For CNV detection we are using a combination of software tools, focusing on
+consensus calls, given the lack of agreement in the results of many tools that
+look for CNVs in WES. We start with GATK's GermlineCNVCaller,
+which uses a Bayesian model to call CNVs and is well-integrated to the rest of
+the analysis pipeline. We will also run XHMM, which is a fairly popular tool for CNV
+detection that uses a combination of PCA and a Hidden Markov Model to detect
+rare CNVs based on a batched-comparison principle. Finally, a different approach is taken
+in CNVkit, which uses read depth information in targeted reads and the
+nonspecifically captured off-target reads to infer CNVs. Survey papers
+have shown that the calls by these CNV methods can be complementary. So, the
+goal is to combine the calls across the three tools to reduce the
+number of false positive calls, which seems to be an issue in the literature.
+
+Another way to look for CNVs will employ genotyping data we have for all our
+samples. In short, we will use PennCNV to look for copy number variants using
+SNP data, and use those results to complement the CNV analysis on WES data.
+*Note here that I've already tried using PennCNV on the bead array data for the
+subjects we have WES data, but nothing came out of that effort.*

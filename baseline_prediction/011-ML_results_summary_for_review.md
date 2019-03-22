@@ -59,3 +59,30 @@ A few things to point out in the bar plots:
 There is **A TON** of things that we can do to improve these results, and I have
 lots of notes on things we discussed on it. Let me know if it's helpful for the
 document and I'll summarize them here.
+
+# 2019-03-21 13:02:47
+
+Philip said he's only interest on methods. So, here's the idea:
+
+We will start by developing models within data-domains. Specifically, separate
+models will be trained to predict ADHD-related variables (e.g. diagnosis,
+symptoms) within structural brain images, white-matter anatomical estimates, and
+functional connectivity (resting state) data. There will also be separate models
+to predict ADHD-related variables from SNP data, neurocognitive behavioral
+tests, and socio-economic variables. This approach gives us an idea of the
+predictive power of each data domain. Domain-specific predictions will be
+combined using a weighted majority voting scheme.
+
+We will employ two different types of models in this analysis: linear and
+nonlinear. For prediction of continuous variables, we will use elastic nets and
+a gradient boosting regressor. For dichotomous classification, we will use a
+linear support vector machine and a gradient boosting classifier. This approach
+allows for testing whether more complex (nonlinear) models can derive useful
+relationships in the data.
+
+In order to produce generalizable models that are not
+overfit to our data, for each data domain we will first split the dataset into training and
+validation set. We will perform feature selection and model hyperparameter
+tuning through cross-validation inside the training set only. The validation set
+will be used solely to provide an estimate of the accuracy of the predictions of
+the best trained model.

@@ -822,11 +822,11 @@ for (f in good_nuclear) {
                             'Medical.Record...MRN...Subjects'])
 }
 for (f in good_extended) {
-    # keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
-    #                         'Medical.Record...MRN...Subjects'])
-    print(f)
-    print(m2[which(m2$Extended.ID...FamilyIDs == f),
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
                             'Medical.Record...MRN...Subjects'])
+    # print(f)
+    # print(m2[which(m2$Extended.ID...FamilyIDs == f),
+    #                         'Medical.Record...MRN...Subjects'])
 }
 keep_me = unique(keep_me)
 
@@ -845,6 +845,36 @@ With that, the new heritability values in the 133 set become:
 
 ![](images/2019-03-19-10-19-56.png)
 
+# 2019-03-21 11:25:30
+
+Let's then report on these 133 characters, and we need to add the variables
+we're interested for each of them:
+
+```r
+nuc_fam_ids = c()
+ext_fam_ids = c()
+age133_base = c()
+age133_fu = c()
+for (s in res2[, 'ID']) {
+    idx = m2[, 'Medical.Record...MRN...Subjects'] == s
+    nuc_fam_ids = c(nuc_fam_ids, unique(m2[idx, 'Nuclear.ID...FamilyIDs']))
+    ext_fam_ids = c(ext_fam_ids, unique(m2[idx, 'Extended.ID...FamilyIDs']))
+    base_DOA = which.min(m2[idx, 'age_at_scan...Scan...Subjects'])
+    fu_DOA = which.max(m2[idx, 'age_at_scan...Scan...Subjects'])
+    age133_base = c(age133_base, m2[which(idx)[base_DOA],
+                                'age_at_scan...Scan...Subjects'])
+    age133_fu = c(age133_fu, m2[which(idx)[fu_DOA],
+                                'age_at_scan...Scan...Subjects'])
+}
+fid = c()
+for (f in 1:133) {
+    if (is.na(ext_fam_ids[f])) {
+        fid = c(fid, nuc_fam_ids[f])
+    } else {
+        fid = c(fid, ext_fam_ids[f])
+    }
+}
+```
 # TODO
 
 * What's going on with the correlation between baseline values and slopes?
