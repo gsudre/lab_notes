@@ -10,7 +10,7 @@ by swarming it in Biowulf:
 ```bash
 rm -rf ~/tmp/missing*
 mkdir ~/tmp/missing
-for i in {2404..2435}; do echo $i >> ~/tmp/missing.txt; done 
+for i in {2404..2435}; do echo $i >> ~/tmp/missing.txt; done
 python ~/research_code/lab_mgmt/copy_mprages.py ~/tmp/missing.txt /Volumes/Shaw/ ~/tmp/missing/
 cp -rv ~/tmp/missing/* /Volumes/Shaw/best_mprages/
 scp ~/tmp/missing.txt helix.nih.gov:/scratch/sudregp/mprage/

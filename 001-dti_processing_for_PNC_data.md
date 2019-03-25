@@ -607,4 +607,27 @@ done
 The other tracts look reasonable, but I'm not getting anything for CST, which is
 quite weird. Let see if we can visualize the transform again...
 
+# 2019-03-25 16:20:56
 
+I sent an e-mail to the FSL list but nothing. Ryan gave a good idea to check for
+Y flips, and that's what I'm doing. I ran the FATCAT tool and it actually
+suggested a Y flip.
+
+https://afni.nimh.nih.gov/pub/dist/doc/htmldoc/FATCAT/GradFlipTest.html
+
+It does so by trying all possible flips, and reporting the one that yields the
+most tracts overall (by a lot, like 2 or 3 times the others).
+
+```bash
+@GradFlipTest -in_dwi eddy_s2v_unwarped_images.nii.gz -in_row_vec eddy_s2v_unwarped_images.eddy_rotated_bvecs -in_bvals dwi_bval.dat
+1dDW_Grad_o_Mat++ -in_row_vec eddy_s2v_unwarped_images.eddy_rotated_bvecs -out_row_vec bvecs `cat GradFlipTest_rec.txt`
+```
+
+So, I'm actually running a test of doing the flip before and after eddy. When I
+did it before eddy, the eddy result didn't look like it needed the flip, which
+is encouraging. I'm now running bedpostX in both test cases, and seeing if it
+makes a difference. Ideally, I'll get the same result in both, and I'll only
+need to flip the results of eddy, and redo bedpostX for everything. It could
+also happen that I'll need to re-run eddy for everything. Worst case scenario is
+that neither one makes a difference, in which case I'm back to waiting for an
+answer from FSL folks.

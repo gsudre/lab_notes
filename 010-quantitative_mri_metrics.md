@@ -34,7 +34,16 @@ some extra QC metrics for functional MRI.
 I'll do it in ncrshell01 because its access to the shared drive is much faster.
 
 ```bash
+# Had to install using python 2.7, because QP didn't seem compatible with 
+# python 3! The install kept breaking when trying to install using pip
 source activate QAP
 ```
 
-INSTALLATION IS NOT WORKING...
+# 2019-03-25 13:36:29
+
+Nevermind, even after successfully installing it, I saw several issues with
+other dependencies, that the old code didn't work. Well, I'll have to use mriqc
+then. Let's put the resting state data into BIDS format, then. Maybe just the
+processed data, right? Makes no sense to convert files that AFNI failed...
+
+But for that I can just go back to the 003 note.

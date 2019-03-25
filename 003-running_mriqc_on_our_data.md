@@ -81,6 +81,50 @@ for s in `cat ~/tmp/bids_ids.txt`; do
 done
 ```
 
+# 2019-03-25 13:49:49
+
+OK, let's try converting the resting data to BIDS now. We assume the anatomical
+folder for all subjects we have processed in AFNI have already been created, so
+now all that remains to be done is create the functional directory. Based on the
+IQMs, it made sense to grab all the resting DICOMs instead of just the ones we
+processed. We can always just take the values that we want later.
+
+```bash
+net_dir=/Volumes/Shaw
+cd /Volumes/Shaw/NCR_BIDS
+# installed jo through homebrew
+while read line; do
+    s=`echo $line | awk '{ print $1 }'`;
+    m=`echo $line | awk '{ print $2 }'`;
+    if [ ! -d sub-${s}/ses-${m};]; then
+        echo "Could not find mask id directory for ${m}!";
+    else
+        mkdir sub-${s}/ses-${m}/func;
+
+        # find name of date folders
+        ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+        # for each date folder, check for resting scans
+        cnt=1
+        while read d; do
+            grep rest $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/rest;
+            awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/rest | sed "s/Series://g" > ~/tmp/rest_clean
+            while read line; do
+                mr_dir=`echo $line | sed "s/,//g"`;
+                dcm2niix_afni -o sub-${s}/ses-${m}/func/ -z y -f sub-${s}_ses-${m}_task-rest_run-${cnt} ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/;
+                let cnt=$cnt+1;
+            done < ~/tmp/rest_clean;
+        done < ~/tmp/date_dirs;
+    fi
+done < ~/Downloads/Results\ 1.txt
+```
+
+While I'm doing this, I might as well run MRIQC on all our datasets, at least on
+the T1w anatomical datasets:
+
+
+
+
+
 # TODO
 * Run MRIQC on all our data
 * Run Tonya's script on all our data
