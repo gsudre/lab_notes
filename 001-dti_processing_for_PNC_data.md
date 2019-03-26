@@ -631,3 +631,168 @@ need to flip the results of eddy, and redo bedpostX for everything. It could
 also happen that I'll need to re-run eddy for everything. Worst case scenario is
 that neither one makes a difference, in which case I'm back to waiting for an
 answer from FSL folks.
+
+# 2019-03-26 08:26:05
+
+Well, still not working. Let's try to repeat all steps slowly, including isomorphic sampling and grad flip, as a last resort...
+
+```bash
+s=605235766122;
+cd ~/data/tmp
+mkdir ${s}
+cd ${s}
+tar -zxf /data/NCR_SBRB/pnc/${s}_1.tar.gz
+module load CUDA/7.5
+module load fsl
+module load afni
+
+fat_proc_convert_dcm_dwis \
+    -indir  "${s}/DTI_35dir/* ${s}/DTI_36dir/*" \
+    -prefix dwi -no_qc_view
+rm -rf ${s}
+
+# flipping vectors and isomorphic sampling right away
+3dresample -dxyz 1.875 1.875 1.875 -prefix dwi.nii.gz \
+    -input dwi.nii.gz -overwrite
+@GradFlipTest -in_dwi dwi.nii.gz \
+    -in_row_vec dwi_rvec.dat -in_bvals dwi_bval.dat
+1dDW_Grad_o_Mat++ -in_row_vec dwi_rvec.dat \
+    -out_row_vec bvecs `cat GradFlipTest_rec.txt`
+
+# FSL takes bvecs in the 3 x volumes format
+fslroi dwi b0 0 1
+bet b0 b0_brain -m -f 0.2
+idx=''; for i in {1..71}; do 
+    a=$a' '1;
+done;
+echo $a > index.txt
+echo "0 -1 0 0.102" > acqparams.txt
+
+cp /data/NCR_SBRB/pnc/dti_fdt/my_slspec.txt ./
+eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt \
+    --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=bvecs \
+    --out=eddy_s2v_unwarped_images --repol
+
+cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+cp dwi_bval.dat bvals;
+cp bvecs old_bvecs
+cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+
+cd ../
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc ${s}/data.nii.gz
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
+
+Still, no luck... what if we erode the mask?
+
+```bash
+s=605235766122;
+cd ~/data/tmp
+mkdir ${s}
+cd ${s}
+tar -zxf /data/NCR_SBRB/pnc/${s}_1.tar.gz
+module load CUDA/7.5
+module load fsl
+module load afni
+
+fat_proc_convert_dcm_dwis \
+    -indir  "${s}/DTI_35dir/* ${s}/DTI_36dir/*" \
+    -prefix dwi -no_qc_view
+rm -rf ${s}
+
+# flipping vectors and isomorphic sampling right away
+3dresample -dxyz 1.875 1.875 1.875 -prefix dwi.nii.gz \
+    -input dwi.nii.gz -overwrite
+@GradFlipTest -in_dwi dwi.nii.gz \
+    -in_row_vec dwi_rvec.dat -in_bvals dwi_bval.dat
+1dDW_Grad_o_Mat++ -in_row_vec dwi_rvec.dat \
+    -out_row_vec bvecs `cat GradFlipTest_rec.txt`
+
+# FSL takes bvecs in the 3 x volumes format
+fslroi dwi b0 0 1
+bet b0 b0_brain -m -f 0.2
+
+#eroding
+f=b0_brain_mask
+X=`${FSLDIR}/bin/fslval $f dim1`; X=`echo "$X 2 - p" | dc -`
+Y=`${FSLDIR}/bin/fslval $f dim2`; Y=`echo "$Y 2 - p" | dc -`
+Z=`${FSLDIR}/bin/fslval $f dim3`; Z=`echo "$Z 2 - p" | dc -`
+$FSLDIR/bin/fslmaths $f -min 1 -ero -roi 1 $X 1 $Y 1 $Z 0 1 ${f}_eroded
+
+idx=''; for i in {1..71}; do
+    a=$a' '1;
+done;
+echo $a > index.txt
+echo "0 -1 0 0.102" > acqparams.txt
+
+cp /data/NCR_SBRB/pnc/dti_fdt/my_slspec.txt ./
+eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt \
+    --mask=b0_brain_mask_eroded --bvals=dwi_bval.dat --bvecs=bvecs \
+    --out=eddy_s2v_unwarped_images --repol
+
+cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+cp dwi_bval.dat bvals;
+cp bvecs old_bvecs
+cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+cp b0_brain_mask_eroded.nii.gz nodif_brain_mask.nii.gz;
+
+cd ../
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc ${s}/data.nii.gz
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
+
+
+```bash
+fslreorient2std dwi dwi_reorient
+#just checking directions
+$FSLDIR/bin/dtifit --sse -k dwi -o dti -m b0_brain_mask_eroded \
+    -r dwi_rvec.dat -b dwi_bval.dat
+```
+
+I thin just doing the standard flip should do it? Not even eroding the mask, because the mask for the sample data subject doesn't look that clean either. Let's see:
+
+```bash
+s=605235766122;
+cd ~/data/tmp
+mkdir ${s}
+cd ${s}
+tar -zxf /data/NCR_SBRB/pnc/${s}_1.tar.gz
+module load CUDA/7.5
+module load fsl
+module load afni
+
+fat_proc_convert_dcm_dwis \
+    -indir  "${s}/DTI_35dir/* ${s}/DTI_36dir/*" \
+    -prefix dwi -no_qc_view
+rm -rf ${s}
+fslreorient2std dwi dwi_reorient
+immv dwi_reorient dwi
+
+# FSL takes bvecs in the 3 x volumes format
+fslroi dwi b0 0 1
+bet b0 b0_brain -m -f 0.2
+
+idx=''; for i in {1..71}; do
+    a=$a' '1;
+done;
+echo $a > index.txt
+echo "0 -1 0 0.102" > acqparams.txt
+
+cp /data/NCR_SBRB/pnc/dti_fdt/my_slspec.txt ./
+eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt \
+    --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=dwi_rvec.dat \
+    --out=eddy_s2v_unwarped_images --repol
+
+cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+cp dwi_bval.dat bvals;
+cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+
+cd ../
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc ${s}/data.nii.gz
+
+### later
+
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
