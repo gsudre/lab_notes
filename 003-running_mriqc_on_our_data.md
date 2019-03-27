@@ -89,41 +89,61 @@ now all that remains to be done is create the functional directory. Based on the
 IQMs, it made sense to grab all the resting DICOMs instead of just the ones we
 processed. We can always just take the values that we want later.
 
+# 2019-03-27 13:35:20
+
+Well, I didn't really like how I had split the data per subject, then mask id.
+We should keep that information only in Labmatrix. So, let's reparse and re-run
+everything using just mask ids. This way we can also parse the resting state at
+the same time:
+
 ```bash
 net_dir=/Volumes/Shaw
+ls -1 /Volumes/Shaw/MR_data_by_maskid/ | sed 's/\///' > ~/tmp/maskids.txt
 cd /Volumes/Shaw/NCR_BIDS
 # installed jo through homebrew
-while read line; do
-    s=`echo $line | awk '{ print $1 }'`;
-    m=`echo $line | awk '{ print $2 }'`;
-    if [ ! -d sub-${s}/ses-${m};]; then
-        echo "Could not find mask id directory for ${m}!";
-    else
-        mkdir sub-${s}/ses-${m}/func;
+jo -p "Name"="Neurobehavioral Clinical Research (NCR) Section neuroimaging database" "BIDSVersion"="1.0.2" >> dataset_description.json;
+while read m; do
+    echo $m;
+    mkdir sub-${m};
 
-        # find name of date folders
-        ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
-        # for each date folder, check for resting scans
-        cnt=1
-        while read d; do
-            grep rest $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/rest;
-            awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/rest | sed "s/Series://g" > ~/tmp/rest_clean
-            while read line; do
-                mr_dir=`echo $line | sed "s/,//g"`;
-                dcm2niix_afni -o sub-${s}/ses-${m}/func/ -z y -f sub-${s}_ses-${m}_task-rest_run-${cnt} ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/;
-                let cnt=$cnt+1;
-            done < ~/tmp/rest_clean;
-        done < ~/tmp/date_dirs;
-    fi
-done < ~/Downloads/Results\ 1.txt
+    # find name of date folders
+    ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for mprages
+    mkdir sub-${m}/anat;
+    cnt=1
+    while read d; do
+        grep -i -e rage_ -e mprage $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/mprage;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/mprage | sed "s/Series://g" > ~/tmp/mprage_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            dcm2niix_afni -o sub-${m}/anat/ -z y -f sub-${m}_run-${cnt}_T1w ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/;
+            let cnt=$cnt+1;
+        done < ~/tmp/mprage_clean;
+    done < ~/tmp/date_dirs;
+
+    # for each date folder, check for resting scans
+    mkdir sub-${m}/func;
+    cnt=1
+    while read d; do
+        grep rest $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/rest;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/rest | sed "s/Series://g" > ~/tmp/rest_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            dcm2niix_afni -o sub-${m}/func/ -z y -f sub-${m}_task-rest_run-${cnt}_bold ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/;
+            let cnt=$cnt+1;
+        done < ~/tmp/rest_clean;
+    done < ~/tmp/date_dirs;
+done < ~/tmp/maskids.txt
 ```
 
-While I'm doing this, I might as well run MRIQC on all our datasets, at least on
-the T1w anatomical datasets:
-
-
-
-
+```bash
+for s in `cat ~/tmp/maskids.txt`; do
+    docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
+        -v ~/data/mriqc_output/:/out poldracklab/mriqc:latest /data /out \
+        participant --participant_label $s --no-sub;
+done
+```
 
 # TODO
 * Run MRIQC on all our data
