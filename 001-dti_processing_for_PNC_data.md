@@ -780,9 +780,15 @@ echo $a > index.txt
 echo "0 -1 0 0.102" > acqparams.txt
 
 cp /data/NCR_SBRB/pnc/dti_fdt/my_slspec.txt ./
+# eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt \
+#     --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=dwi_rvec.dat \
+#     --out=eddy_s2v_unwarped_images --repol
+
 eddy_cuda --imain=dwi --acqp=acqparams.txt --index=index.txt \
     --mask=b0_brain_mask --bvals=dwi_bval.dat --bvecs=dwi_rvec.dat \
-    --out=eddy_s2v_unwarped_images --repol
+    --out=eddy_s2v_unwarped_images --niter=8 --fwhm=10,6,4,2,0,0,0,0 \
+    --repol --ol_type=both --mporder=8 --s2v_niter=8 \
+    --slspec=my_slspec.txt --cnr_maps
 
 cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
 cp dwi_bval.dat bvals;
@@ -796,3 +802,12 @@ cd ../
 
 /data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
 ```
+
+# 2019-03-27 11:10:15
+
+OK, so this is working! So, the main thing was the fslreorient2std bit. So,
+let's implement that in the script and run everybody!
+
+g: a, d
+p: b, e
+j: c, f
