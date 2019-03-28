@@ -330,7 +330,7 @@ it!
 
 ```bash
 data='';
-for m in `cat xac`; do
+for m in `cat xaf`; do
     data=$data' '${m}/data.nii.gz;
 done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;

@@ -449,3 +449,22 @@ for m in `cat ~/tmp/myids.txt`; do
     echo $row >> $weighted_tracts;
 done
 ```
+
+# 2019-03-28 10:32:15
+
+Because this strategy worked for the PNC data, let's see if doing the standard flip will also work for our data:
+
+```bash
+for s in `cat converted.txt`; do
+    cd /data/NCR_SBRB/dti_fdt/${s};
+    rm -rf *eddy* FA DEC* origdata dti*;
+done
+
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat list1`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+split -l 310 swarm.fdt
+swarm -g 4 --job-name fdt --time 4:00:00 -f xaa --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```

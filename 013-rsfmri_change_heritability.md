@@ -6,7 +6,9 @@ The question then becomes what are the vertices in the matrix. We could go for
 Freesurfer ROIs, but we might end up getting killed by multiple comparisons.
 Another option is to derive the 900 spheres, classify them to belong to
 different Yeo networks, and compute within and outside network mean
-connectivity. I could also play with some ICA on the overall connectivity maps.
+connectivity. I could also play with some ICA on the overall connectivity maps. Finally, another idea would be to take prototypical templates of different resting state networks in fMRI, do a spatial regressions, and just calculate correlations for those time series (NANs for within-network correlation). Like the Smith et al 10 resting state networks.
+
+Something else I just thought about: we could have voxel to voxel (or sphere to sphere) connectivity matrices, one per scan, then filter down to only connections significant (nominally? FDR?) within scans, then compute slope only between connections significant in both scans. That should give a good amount of filtering, especially across subjects. Another quantity we could assess is proportion of connections still stable? Or positive/negative changes in connections? 
 
 The first step is to check how many datasets we currently have. As usual, we
 could use trimmedVSnontrimmed, as well as pearsonVSkendalVSspearman. **These are
