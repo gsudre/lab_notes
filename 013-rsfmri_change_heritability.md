@@ -17,6 +17,8 @@ all things to try later if the default (Pearson, nontrimmed) doesn't work out.**
 For now, while we wait on all the mriqc parameters for our datasets, let's use
 simply the number of clean TRs for QC, like we always do.
 
+# 2019-03-29 17:05:31
+
 ```r
 m = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
 m = m[!is.na(m$usedTRs_fmri01), ]
@@ -50,7 +52,7 @@ m = m[idx,]
 #     }
 # }
 # m2 = m[keep_me, ]
-# # down to 566 scans, as we're not using tract data at this point
+# # down to 566 scans
 
 # clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
 # df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),

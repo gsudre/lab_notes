@@ -570,7 +570,7 @@ for t in `cut -d" " -f 1 structureList`; do
     done
 done
 echo $row > $weighted_tracts;
-for m in `head -n 4 ~/tmp/pnc`; do
+for m in `head -n 4 /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
     echo ${m}
     rm -rf preproc tracts
     mkdir preproc tracts
@@ -808,6 +808,32 @@ cd ../
 OK, so this is working! So, the main thing was the fslreorient2std bit. So,
 let's implement that in the script and run everybody!
 
-g: a, d
-p: b, e
-j: c, f
+# 2019-03-29 16:45:38
+
+Since we have new data that is working now, let's regenerate the QC images. The brainmask is the only one that we actually run before eddy. Because I already ran eddy, let's do it manually here:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat converted.txt`; do
+    cd /data/NCR_SBRB/pnc/dti_fdt/${m}
+    mkdir QC
+    @chauffeur_afni                             \
+        -ulay  dwi.nii.gz[0]                         \
+        -olay  b0_brain_mask.nii.gz                        \
+        -opacity 4                              \
+        -prefix   QC/brain_mask              \
+        -montx 6 -monty 6                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean
+done
+```
+
+Then, the other processing/QC images:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat converted.txt`; do
+    bash ~/research_code/dti/fdt_TBSS_and_QC.sh /data/NCR_SBRB/pnc/dti_fdt/preproc/${m};
+done
+```
