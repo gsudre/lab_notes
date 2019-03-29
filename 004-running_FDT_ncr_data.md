@@ -462,13 +462,25 @@ done
 
 cd /data/NCR_SBRB/dti_fdt
 rm -rf swarm.fdt;
-for m in `cat xao`; do
+for m in `cat xak xal xam xan xao`; do
     echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
 done;
 swarm -g 4 --job-name fdt --time 4:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:2
+
+data='';
+for m in `cat xae`; do
+    data=$data' '${m}/data.nii.gz;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
 ```
 
-g: a, d, g, j, m
-p: b, e, h, k, n
-j: c, f, i, l, o
+eddy
+g: a, b, c, d, e
+p: f, g, h, i, j
+j: k, l, m, n, o
+
+ptx1
+g: 
+p: 
+j: 
