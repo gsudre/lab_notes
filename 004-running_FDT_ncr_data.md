@@ -452,7 +452,7 @@ done
 
 # 2019-03-28 10:32:15
 
-Because this strategy worked for the PNC data, let's see if doing the standard flip will also work for our data:
+I discovered that our data needs not only the standard flip from FSL, but also a flip_x, based on looking at the vectors. So, let's redo it:
 
 ```bash
 for s in `cat converted.txt`; do
@@ -461,10 +461,14 @@ for s in `cat converted.txt`; do
 done
 
 cd /data/NCR_SBRB/dti_fdt
-for m in `cat list1`; do
+rm -rf swarm.fdt;
+for m in `cat xao`; do
     echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
 done;
-split -l 310 swarm.fdt
-swarm -g 4 --job-name fdt --time 4:00:00 -f xaa --partition gpu \
+swarm -g 4 --job-name fdt --time 4:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:2
 ```
+
+g: a, d, g, j, m
+p: b, e, h, k, n
+j: c, f, i, l, o
