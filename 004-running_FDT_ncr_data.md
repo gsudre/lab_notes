@@ -469,7 +469,7 @@ swarm -g 4 --job-name fdt --time 4:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:2
 
 data='';
-for m in `cat xae`; do
+for m in `cat xan xao`; do
     data=$data' '${m}/data.nii.gz;
 done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;

@@ -837,3 +837,46 @@ for m in `cat converted.txt`; do
     bash ~/research_code/dti/fdt_TBSS_and_QC.sh /data/NCR_SBRB/pnc/dti_fdt/preproc/${m};
 done
 ```
+
+# 2019-03-31 11:43:32
+
+And we finish by gathering the tract values:
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=~/tmp/pnc_weighted_tracts.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `head /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
+    echo $m;
+    row="${m}";
+    cd /data/NCR_SBRB/pnc/dti_fdt/preproc/$m &&
+    for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master dti_FA.nii.gz -prefix ${mydir}/mask.nii \
+                -inset ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            nvox=`3dBrickStat -count -non-zero ${mydir}/mask.nii 2>/dev/null` &&
+            if [ $nvox -gt 0 ]; then
+                fa=`3dmaskave -q -mask ${mydir}/mask.nii dti_FA.nii.gz 2>/dev/null` &&
+                ad=`3dmaskave -q -mask ${mydir}/mask.nii dti_L1.nii.gz 2>/dev/null` &&
+                3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+                    -prefix ${mydir}/RD.nii 2>/dev/null &&
+                rd=`3dmaskave -q -mask ${mydir}/mask.nii ${mydir}/RD.nii 2>/dev/null` &&
+                row=${row}','${fa}','${ad}','${rd};
+            else
+                row=${row}',NA,NA,NA';
+            fi;
+        else
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```
