@@ -880,3 +880,97 @@ for m in `head /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
     echo $row >> $weighted_tracts;
 done
 ```
+
+# 2019-04-01 08:35:35
+
+Now that we have the tracts, let's re-compute the QC metrics and copy the masks
+over, as well as the results back to the shared drive.
+
+```bash
+out_fname=~/tmp/pnc_mvmt_report.csv;
+echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
+    echo 'Collecting metrics for' $m;
+    if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
+        noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        # figuring out the percetnage of total slices the outliers represent
+        nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
+        nvol=`cat ${m}/dwi_cvec.dat | wc -l`;
+        let totalSlices=$nslices*$nvol;
+        pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
+        # figuring out how many volumes were completely removed (row of 1s)
+        awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
+            ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
+        nOutVols=`grep -c -e "^1$" outlier_avg.txt`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
+            -write trans_norm.1D;
+        trans=`1d_tool.py -infile trans_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '3..5' -collapse_cols euclidean_norm -overwrite \
+            -write rot_norm.1D;
+        rot=`1d_tool.py -infile rot_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_rms \
+            -show_mmms > mean_rms.txt;
+        vol1=`head -n +2 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+        pvol=`tail -n -1 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+    else
+        echo "Could not find outlier report for $m"
+        noutliers='NA';
+        pctOutliers='NA';
+        nOutVols='NA';
+        trans='NA';
+        rot='NA';
+        vol1='NA';
+        pvol='NA';
+    fi;
+    echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
+done
+```
+
+```bash
+
+for m in `cat ~/tmp/pnc_qc.txt`; do
+    cp $img_dir/${m}/QC/FA_transform.axi.png $qc_dir/transform/${m}.axi.png
+    cp $img_dir/${m}/QC/FA_transform.sag.png $qc_dir/transform/${m}.sag.png
+    cp $img_dir/${m}/QC/FA_transform.cor.png $qc_dir/transform/${m}.cor.png
+
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.axi.png $qc_dir/DEC/${m}.axi.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.sag.png $qc_dir/DEC/${m}.sag.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.cor.png $qc_dir/DEC/${m}.cor.png
+
+    cp $img_dir/${m}/QC/sse.axi.png $qc_dir/SSE/${m}.axi.png
+    cp $img_dir/${m}/QC/sse.cor.png $qc_dir/SSE/${m}.cor.png
+    cp $img_dir/${m}/QC/sse.sag.png $qc_dir/SSE/${m}.sag.png
+done
+```
+
+```bash
+qc_dir=/data/NCR_SBRB/pnc/dti_fdt/summary_QC/
+img_dir=/data/NCR_SBRB/pnc/dti_fdt/preproc/
+mkdir $qc_dir
+cd $qc_dir
+mkdir brainmask
+mkdir transform
+mkdir DEC
+mkdir SSE
+for m in `cat ../converted.txt`; do
+    cp ../${m}/QC/brain_mask.axi.png brainmask/${m}.axi.png
+    cp ../${m}/QC/brain_mask.sag.png brainmask/${m}.sag.png
+    cp ../${m}/QC/brain_mask.cor.png brainmask/${m}.cor.png
+
+    cp $img_dir/${m}/QC/FA_transform.axi.png $qc_dir/transform/${m}.axi.png
+    cp $img_dir/${m}/QC/FA_transform.sag.png $qc_dir/transform/${m}.sag.png
+    cp $img_dir/${m}/QC/FA_transform.cor.png $qc_dir/transform/${m}.cor.png
+
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.axi.png $qc_dir/DEC/${m}.axi.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.sag.png $qc_dir/DEC/${m}.sag.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.cor.png $qc_dir/DEC/${m}.cor.png
+
+    cp $img_dir/${m}/QC/sse.axi.png $qc_dir/SSE/${m}.axi.png
+    cp $img_dir/${m}/QC/sse.cor.png $qc_dir/SSE/${m}.cor.png
+    cp $img_dir/${m}/QC/sse.sag.png $qc_dir/SSE/${m}.sag.png
+done
+```

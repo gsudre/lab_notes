@@ -480,7 +480,7 @@ g: a, b, c, d, e
 p: f, g, h, i, j
 j: k, l, m, n, o
 
-ptx1
-g: 
-p: 
-j: 
+ptx2
+g: a, b
+p: f, g
+j: k
