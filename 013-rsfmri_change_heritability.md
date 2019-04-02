@@ -196,6 +196,32 @@ rownames(rs) = colnames(rs)
 rownames(zs) = colnames(zs)
 ```
 
+# 2019-04-02 09:15:41
+
+Continuing this work, let's check which scans didn't have SUMA, generate it,
+then re-run the code above:
+
+```bash
+net_dir=/Volumes/Shaw/freesurfer5.3_subjects/
+cd ~/data/heritability_change/fmri_corr_tables
+for maskid in `cut -d"," -f 1 ../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m=`printf %04d $maskid`;
+    if [ ! -e ${net_dir}/${m}/SUMA/aparc.a2009s+aseg_REN_all.niml.lt ]; then
+        echo $m >> redo.txt
+    fi;
+done
+```
+
+```bash
+for m in `cat xaa`; do
+    @SUMA_Make_Spec_FS -sid $m -NIFTI -fspath /Volumes/Shaw/freesurfer5.3_subjects/$m;
+done
+```
+
+And then I re-ran the code above to create the correlation matrices for the
+redo.txt subjects.
+
+
 # check that zeros are censored by 3dNetCorr!
 # check scans that don't have SUMA
 
