@@ -221,7 +221,133 @@ done
 And then I re-ran the code above to create the correlation matrices for the
 redo.txt subjects.
 
+The next step was to run a script to collect the 3dNetCorr matrices, based on
+the snippet above: 
 
-# check that zeros are censored by 3dNetCorr!
-# check scans that don't have SUMA
+```r
+source('~/research_code/fmri/collect_3dNetCorr_grids.R')
+```
 
+Now we follow a similar recipe as what we did in DTI: regress out movement per
+scan, then calculate the slopes, and finally remove outliers using NAs, before
+dumping it into SOLAR.
+
+I did a quick check and using zeros or not in 3dNetCorr is not making much
+difference. Basically, I output the time series and run their correlation with
+and without the censored TRs. The differences (besides the significance of each
+R, as we reduce the number of observations) was negligible.
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN')
+b = read.csv('~/data/heritability_change/fmri_corr_tables/pearson_3min_n462_aparc.csv')
+var_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in var_names) {
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2)')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+res = c()
+for (s in unique(mres$Medical.Record...MRN)) {
+    idx = which(mres$Medical.Record...MRN == s)
+    row = c(s, unique(mres[idx, 'Sex']))
+    for (t in var_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the variables is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan', t)
+            fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+            row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(dim(res)[1])
+}
+
+
+### LEFT THIS RUNNING OVERNIGHT, BECAUSE IT TAKES A LONG TIME!
+
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+
+# and remove outliers
+for (t in var_names) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res[bad_subjs, t] = NA
+}
+
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+
+res2 = res2[res2[, 'ID'] != 7221745, ]
+write.csv(res2, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes133.csv',
+          row.names=F, na='', quote=F)
+```
