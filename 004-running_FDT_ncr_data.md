@@ -480,7 +480,24 @@ g: a, b, c, d, e
 p: f, g, h, i, j
 j: k, l, m, n, o
 
-ptx2
-g: a, b, c, d
-p: f, g, h, i
-j: k, l, m
+# 2019-04-03 15:18:06
+
+CIT were freaking out about autoPtx2 accessing the network so often. So, I
+created a version that runs the entire scan locally and then copies it back to
+the network. Let's see how it will work out. The idea here is that all tracts
+for the same scan run in different cores of the same machine, so we only have to
+copy the preproc data for a single scan once. So, we'll need to request the same
+number of cores as tracts (27 + some change), for the maximum amount of time the
+longest tract takes (8h for fmi/fma, according to the struct file). Also, the
+maximum amount of memory I monitored the script to take was 45.2Gb, taking about
+2Gb in the local disk. So, let's call a swarm with those parameters:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.track
+for m in `cat xaa`; do 
+    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name tracka --time 8:00:00 \
+    --logdir trash_track -m fsl --gres=lscratch:10
+```

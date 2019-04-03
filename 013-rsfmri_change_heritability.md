@@ -228,6 +228,10 @@ the snippet above:
 source('~/research_code/fmri/collect_3dNetCorr_grids.R')
 ```
 
+Note that I the script above generates matrices for aparc and aparc.a2009s. To
+get Zs instead of Rs, since it's just a atanh() convertion, I'll do it within R
+so I don't have to recode the function.
+
 Now we follow a similar recipe as what we did in DTI: regress out movement per
 scan, then calculate the slopes, and finally remove outliers using NAs, before
 dumping it into SOLAR.
@@ -246,6 +250,7 @@ df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN),
                          x.id='Medical.Record...MRN')
 b = read.csv('~/data/heritability_change/fmri_corr_tables/pearson_3min_n462_aparc.csv')
 var_names = colnames(b)[2:ncol(b)]
+b[, var_names] = atanh(b[, var_names])
 df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id')
 
 library(MASS)
@@ -307,14 +312,13 @@ for (s in unique(mres$Medical.Record...MRN)) {
     res = rbind(res, row)
     print(dim(res)[1])
 }
-
-
-### LEFT THIS RUNNING OVERNIGHT, BECAUSE IT TAKES A LONG TIME!
-
-colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline', 'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/rsfmri_3min_assoc_n231_slopes.csv',
+          row.names=F, na='', quote=F)
 
+res_clean = res
 # and remove outliers
 for (t in var_names) {
     mydata = as.numeric(res[, t])
@@ -324,8 +328,10 @@ for (t in var_names) {
     bad_subjs = c(which(mydata < ll), which(mydata > ul))
 
     # remove within-tract outliers
-    res[bad_subjs, t] = NA
+    res_clean[bad_subjs, t] = NA
 }
+write.csv(res_clean, file='~/data/heritability_change/rsfmri_3min_assoc_n231_slopesClean.csv',
+          row.names=F, na='', quote=F)
 
 # and make sure every family has at least two people
 good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
@@ -346,8 +352,130 @@ for (s in keep_me) {
     fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
 }
 res2 = res[fam_subjs, ]
+res2_clean = res_clean[fam_subjs, ]
 
-res2 = res2[res2[, 'ID'] != 7221745, ]
-write.csv(res2, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes133.csv',
+write.csv(res2, file='~/data/heritability_change/rsfmri_3min_n114_slopes.csv',
           row.names=F, na='', quote=F)
+write.csv(res2_clean, file='~/data/heritability_change/rsfmri_3min_n114_slopesClean.csv',
+          row.names=F, na='', quote=F)
+write.table(var_names, file='~/data/heritability_change/aparc.txt',
+            row.names=F, col.names=F, quote=F)
 ```
+
+And I ran the code above for the Z version as well, and aparc.2009s.
+
+# 2019-04-03 09:41:52
+
+Let's then run some SOLAR to see what we get. I'm currently kicked out of the
+cluster, so I'll need to get creative about how to run all these variables. I'll
+do something similar to run_solar_voxel.sh:
+
+```bash
+phen_file=rsfmri_3min_n114_slopesClean
+tmp_dir=~/data/heritability_change
+solar_dir=~/data/heritability_change
+mkdir ${tmp_dir}/${phen_file}
+mkdir /tmp/${phen_file}
+for vox in `cat ~/data/heritability_change/aparc.txt`; do
+    mkdir /tmp/${phen_file}/${vox};
+    cp ${solar_dir}/pedigree.csv ${solar_dir}/procs.tcl ${solar_dir}/${phen_file}.csv /tmp/${phen_file}/${vox}/;
+    cd /tmp/${phen_file}/${vox}/;
+    solar run_phen_var $phen_file $vox;
+    mv /tmp/${phen_file}/${vox}/i_${vox}/polygenic.out ${tmp_dir}/${phen_file}/${vox}_polygenic.out;
+done
+```
+
+And run the same as above for the Clean version as well, just for comparison.
+
+While we wait on results, let's run the association analysis.
+
+```r
+library(nlme)
+a = read.csv('~/data/heritability_change/resting_demo.csv')
+a$famID = a$Extended.ID...FamilyIDs
+a[is.na(a$Extended.ID...FamilyIDs), 'famID'] = a[is.na(a$Extended.ID...FamilyIDs), 'Nuclear.ID...FamilyIDs']
+famids = unique(a[, c('famID', 'Medical.Record...MRN')])
+data = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n231_slopesClean.csv')
+data$sex = as.factor(data$sex)
+data = merge(data, famids, by.x='ID', by.y='Medical.Record...MRN', all.x=T)
+b = read.csv('~/data/heritability_change/fmri_corr_tables/pearson_3min_n462_aparc.csv')
+var_names = colnames(b)[2:ncol(b)]
+out_fname = '~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopesClean.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = var_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopesClean_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopesClean_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+
+# TODO
+
+* Compile SOLAR results
+* Clean up the file with 114 subjects to remove unrelated ones, but will need to
+  use the unClean version for that... waiting for it to finish calculating
+  slopes.
