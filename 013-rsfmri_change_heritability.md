@@ -481,7 +481,40 @@ fmri/run_change_association.R to make it more dynamic.
 source('~/research_code/fmri/run_change_association.R')
 ```
 
+Now, it looks like there are two pairs in the 114 set who are being run in
+SOLAR as unrelated. Let's figure out who they are and remove them from the
+heritability set, just to see how the results hold:
 
+```r
+a = read.csv('~/data/heritability_change/rsfmri_3min_n114_slopes.csv')
+a = a[a$ID != 7221745, ]
+write.csv(a, file='~/data/heritability_change/rsfmri_3min_n113_slopes.csv',
+          row.names=F, na='', quote=F)
+```
+
+And do the same for the Z and Clean sets, to re-run the SOLAR analysis.
+
+Then, the goal is to compile the SOLAR results for the n113 sets (4 in aparc),
+and see if any of them have intersections with the association results.
+
+```r
+a = read.csv('~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopes_dx2.csv')
+idx = a$term!='sex2' & a$term!='(Intercept)'
+b = a[idx,]
+good_tests = which(b$p.value < .05)
+assoc_conns = unique(as.character(b[good_tests,]$target))
+sol = read.csv('~/data/heritability_change/polygen_results_rsfmri_3min_n114_slopes.csv')
+her_conns = as.character(sol[which(sol$h_pval < .05), 'phen'])
+good_set = intersect(her_conns, assoc_conns)
+length(good_set)
+```
+
+So, we have 44 connections out of the possible 3741 that are both heritable and
+associated with some sort of clinical variable. These results at the moment
+don't mean much... it's just the draft code to further the analysis. I'm still
+waiting on SOLAR runs for the n113 sets. Then, I should try to find association
+within the same clinical variables that came up for DTI, and even try some sort
+of multiple comparisons for either association, heritability, or both.
 
 # TODO
 

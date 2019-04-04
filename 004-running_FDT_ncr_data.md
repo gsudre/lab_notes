@@ -555,3 +555,17 @@ done
 
 There were lots of errors, likely because eddy didn't finish properly for all of
 them. Need to check on that. But for now, the script above runs.
+
+Let's then figure out who is complete, so Philip can start playing with those
+while we try to fix the other ones:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm complete.txt
+for s in `cat converted.txt`; do
+    ndone=`grep ^ tracts/$s/*/tracts/waytotal | wc -l`;
+    if [ $ndone == 27 ]; then
+        echo $s >> complete.txt
+    fi
+done
+```
