@@ -494,10 +494,64 @@ maximum amount of memory I monitored the script to take was 45.2Gb, taking about
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
-rm swarm.track
-for m in `cat xaa`; do 
-    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+for l in k l m n o; do
+    rm swarm.track
+    echo $l;
+    for m in `cat xa${l}`; do 
+        echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+    done
+    swarm -t 29 -g 52 -f swarm.track --job-name track${l} --time 8:00:00 \
+        --logdir trash_track -m fsl --gres=lscratch:10;
 done
-swarm -t 29 -g 52 -f swarm.track --job-name tracka --time 8:00:00 \
-    --logdir trash_track -m fsl --gres=lscratch:10
 ```
+
+While this is running, let's regenerate the QC and TBSS files. Let's run it
+locally so CIT doesn't freak out:
+
+```bash
+module load afni
+cd /lscratch/${SLURM_JOBID}
+for m in `cat /data/NCR_SBRB/dti_fdt/converted.txt`; do
+    echo $m;
+    mkdir ${m};
+    cp /data/NCR_SBRB/dti_fdt/${m}/dwi_comb.nii.gz \
+        /data/NCR_SBRB/dti_fdt/${m}/b0_brain_mask.nii.gz ${m};
+done
+
+for m in `cat /data/NCR_SBRB/dti_fdt/converted.txt`; do
+    cd /lscratch/${SLURM_JOBID}/${m}
+    mkdir QC
+    @chauffeur_afni                             \
+        -ulay  dwi_comb.nii.gz[0]                         \
+        -olay  b0_brain_mask.nii.gz                        \
+        -opacity 4                              \
+        -prefix   QC/brain_mask              \
+        -montx 6 -monty 6                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean;
+    cp -r QC /data/NCR_SBRB/dti_fdt/${m}/;
+done
+```
+
+Now, for the other QC images:
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+for m in `cat /data/NCR_SBRB/dti_fdt/converted.txt`; do
+    echo $m;
+    mkdir ${m};
+    cp /data/NCR_SBRB/dti_fdt/preproc/${m}/dti* \
+        /data/NCR_SBRB/dti_fdt/preproc/${m}/data.nii.gz \
+        /data/NCR_SBRB/dti_fdt/preproc/${m}/*mask* \
+        /data/NCR_SBRB/dti_fdt/preproc/${m}/*warp* ${m};
+done
+
+for m in `cat /data/NCR_SBRB/dti_fdt/converted.txt`; do
+    bash ~/research_code/dti/fdt_TBSS_and_QC.sh /lscratch/${SLURM_JOBID}/${m};
+    cp -r ${m}/* /data/NCR_SBRB/dti_fdt/preproc/${m}/;
+done
+```
+
+There were lots of errors, likely because eddy didn't finish properly for all of
+them. Need to check on that. But for now, the script above runs.

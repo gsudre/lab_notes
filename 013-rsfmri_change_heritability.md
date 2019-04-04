@@ -426,7 +426,7 @@ write.csv(hold, out_fname, row.names=F)
 data2 = data[data$DX=='ADHD', ]
 out_fname = '~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopesClean_dx1.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
-targets = tract_names
+targets = var_names
 hold=NULL
 for (i in targets) {
     for (j in predictors) {
@@ -450,7 +450,7 @@ write.csv(hold, out_fname, row.names=F)
 data2 = data[data$DX2=='ADHD', ]
 out_fname = '~/data/heritability_change/assoc_LME_3min_n231_pearsonSlopesClean_dx2.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
-targets = tract_names
+targets = var_names
 hold=NULL
 for (i in targets) {
     for (j in predictors) {
@@ -471,6 +471,16 @@ for (i in targets) {
 }
 write.csv(hold, out_fname, row.names=F)
 ```
+
+# 2019-04-04 10:19:30
+
+The copy and paste was getting a bit too much, so I created
+fmri/run_change_association.R to make it more dynamic.
+
+```r
+source('~/research_code/fmri/run_change_association.R')
+```
+
 
 
 # TODO
