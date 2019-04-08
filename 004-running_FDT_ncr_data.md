@@ -561,11 +561,173 @@ while we try to fix the other ones:
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
-rm complete.txt
+rm complete.txt errors.txt
 for s in `cat converted.txt`; do
     ndone=`grep ^ tracts/$s/*/tracts/waytotal | wc -l`;
     if [ $ndone == 27 ]; then
         echo $s >> complete.txt
+    else
+        echo $s >> errors.txt
     fi
 done
 ```
+
+# 2019-04-05 09:15:01
+
+OK, let's compile movement and the tracts again, for the IDs we have just
+finished. In the meanwhile, I can check on those errors.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+out_fname=~/tmp/ncr_mvmt_report.csv;
+echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat /data/NCR_SBRB/dti_fdt/complete2.txt`; do
+    echo 'Collecting metrics for' $m;
+    if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
+        noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        # figuring out the percetnage of total slices the outliers represent
+        nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
+        nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
+        let totalSlices=$nslices*$nvol;
+        pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
+        # figuring out how many volumes were completely removed (row of 1s)
+        awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
+            ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
+        nOutVols=`grep -c -e "^1$" outlier_avg.txt`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
+            -write trans_norm.1D;
+        trans=`1d_tool.py -infile trans_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '3..5' -collapse_cols euclidean_norm -overwrite \
+            -write rot_norm.1D;
+        rot=`1d_tool.py -infile rot_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_rms \
+            -show_mmms > mean_rms.txt;
+        vol1=`head -n +2 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+        pvol=`tail -n -1 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+    else
+        echo "Could not find outlier report for $m"
+        noutliers='NA';
+        pctOutliers='NA';
+        nOutVols='NA';
+        trans='NA';
+        rot='NA';
+        vol1='NA';
+        pvol='NA';
+    fi;
+    echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
+done
+```
+
+```bash
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=~/tmp/ncr_weighted_tracts.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat /data/NCR_SBRB/dti_fdt/complete2.txt`; do
+    echo $m;
+    row="${m}";
+    cd /data/NCR_SBRB/dti_fdt/preproc/$m &&
+    for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master dti_FA.nii.gz -prefix ${mydir}/mask.nii \
+                -inset ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            nvox=`3dBrickStat -count -non-zero ${mydir}/mask.nii 2>/dev/null` &&
+            if [ $nvox -gt 0 ]; then
+                fa=`3dmaskave -q -mask ${mydir}/mask.nii dti_FA.nii.gz 2>/dev/null` &&
+                ad=`3dmaskave -q -mask ${mydir}/mask.nii dti_L1.nii.gz 2>/dev/null` &&
+                3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+                    -prefix ${mydir}/RD.nii 2>/dev/null &&
+                rd=`3dmaskave -q -mask ${mydir}/mask.nii ${mydir}/RD.nii 2>/dev/null` &&
+                row=${row}','${fa}','${ad}','${rd};
+            else
+                row=${row}',NA,NA,NA';
+            fi;
+        else
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+For the errors, let's see who's missing eddy:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat errors.txt`; do
+    if [ ! -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
+        echo $m >> need_eddy.txt;
+    fi;
+done
+
+# do some cleanup
+for m in `cat need_eddy.txt`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.eddy2;
+done;
+swarm -g 4 --job-name eddy2 --time 4:00:00 -f swarm.eddy2 --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
+
+While I'm waiting on eddy, let's re-run our version of autoPtx2 just to see if
+any of the errors were due to the process being interrupted.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.track
+for m in `cat errors2.txt`; do 
+    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name track --time 8:00:00 \
+        --logdir trash_track -m fsl --gres=lscratch:10;
+```
+
+The next step is check who is missing bedpostX:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat errors.txt`; do
+    if [ ! -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m >> need_bedpost.txt;
+    fi;
+done
+```
+
+Let's then try autoPtx again to see if this solves some of the issues. I had
+several issues running my version of autoPtx2 and the output of bedpostX, but
+it's hard to tell if it's just that the run was interrupted by CIT, or if there
+was something wrong while running bedpostX. So, let's just bring everyone to the
+point that they have the bedpostX output files, and we can check on their sanity
+later.
+
+# 2019-04-08 06:20:41
+
+I decided to just rerun our version of autoPtx2 to see if that would fix some of
+the errors. It actually did, for 24 IDs.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm complete2.txt errors2.txt
+for s in `cat converted.txt`; do
+    ndone=`grep ^ tracts/$s/*/tracts/waytotal | wc -l`;
+    if [ $ndone == 27 ]; then
+        echo $s >> complete2.txt
+    else
+        echo $s >> errors2.txt
+    fi
+done
+```
+
+I'm going to re-run the compiling scripts just for those, because I'm not sure
+when bedpost will finish for the other ones.
+

@@ -503,7 +503,7 @@ idx = a$term!='sex2' & a$term!='(Intercept)'
 b = a[idx,]
 good_tests = which(b$p.value < .05)
 assoc_conns = unique(as.character(b[good_tests,]$target))
-sol = read.csv('~/data/heritability_change/polygen_results_rsfmri_3min_n114_slopes.csv')
+sol = read.csv('~/data/heritability_change/polygen_results_rsfmri_3min_n113_slopes.csv')
 her_conns = as.character(sol[which(sol$h_pval < .05), 'phen'])
 good_set = intersect(her_conns, assoc_conns)
 length(good_set)
@@ -511,10 +511,17 @@ length(good_set)
 
 So, we have 44 connections out of the possible 3741 that are both heritable and
 associated with some sort of clinical variable. These results at the moment
-don't mean much... it's just the draft code to further the analysis. I'm still
-waiting on SOLAR runs for the n113 sets. Then, I should try to find association
-within the same clinical variables that came up for DTI, and even try some sort
-of multiple comparisons for either association, heritability, or both.
+don't mean much... it's just the draft code to further the analysis. I should
+try to find association within the same clinical variables that came up for DTI,
+and even try some sort of multiple comparisons for either association,
+heritability, or both.
+
+```r
+lh = grepl(var_names, pattern="^ctx.lh\\S+TO.ctx.lh", perl=T)
+rh = grepl(var_names, pattern="^ctx.rh\\S+TO.ctx.rh", perl=T)
+ctx_ps = sol[lh | rh, 'h_pval']
+sum(ctx_ps < .05)
+```
 
 # TODO
 
