@@ -697,12 +697,12 @@ swarm -t 29 -g 52 -f swarm.track --job-name track --time 8:00:00 \
         --logdir trash_track -m fsl --gres=lscratch:10;
 ```
 
-The next step is check who is missing bedpostX:
+The next step is check who is missing bedpostX (but have eddy!):
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
 for m in `cat errors.txt`; do
-    if [ ! -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+    if [ ! -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ] && [ -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
         echo $m >> need_bedpost.txt;
     fi;
 done
