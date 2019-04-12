@@ -941,3 +941,18 @@ for m in `cat /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
     echo $row >> $weighted_tracts;
 done
 ```
+
+# 2019-04-10 16:19:28
+
+I started running the other PNC images (non-WNH). I broke it up in sets of 10
+just so it makes life easier when running bedpost later:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+rm swarm.fdt
+for m in `cat xaa`; do
+    echo "bash ~/research_code/dti/fdt_pnc_wrapper.sh ${m}" >> swarm.fdt;
+done;
+swarm -g 4 --time 4:00:00 -f swarm.fdt --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:1 --job-name fdta
+```
