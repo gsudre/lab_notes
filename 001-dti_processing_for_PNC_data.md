@@ -956,3 +956,108 @@ done;
 swarm -g 4 --time 4:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:1 --job-name fdta
 ```
+
+# 2019-04-12 17:41:05
+
+Because we are already starting bedpost, we can do at least the brainmask QC
+right away.
+
+But I actually found out that many IDs died (113 out of 834). What happened?
+Let's first make sure they have both DTI directories inside their tarballs:
+
+```bash
+for m in `cat /data/NCR_SBRB/pnc/dti_fdt/pnc_other_imaging.txt`; do
+    if [ ! -e /data/NCR_SBRB/pnc/dti_fdt/${m}/dwi.nii.gz ]; then
+        echo $m >> /data/NCR_SBRB/pnc/dti_fdt/error_conversion1.txt;
+    fi;
+done
+
+for m in `cat /data/NCR_SBRB/pnc/dti_fdt/error_conversion1.txt`; do
+    echo $m;
+    if tar -tf /data/NCR_SBRB/pnc/${m}_1.tar.gz ${m}/DTI_35dir ${m}/DTI_36dir >/dev/null 2>&1; then
+        echo $m should have converted;
+    fi;
+done
+```
+
+Yep, apparently all of them were indeed missing at least one of the directories.
+Oh well. Let's create brain masks for everything that got converted then.
+
+
+```bash
+module load afni
+cd /lscratch/${SLURM_JOBID}
+for m in `cat /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
+    echo $m;
+    mkdir ${m};
+    cp /data/NCR_SBRB/pnc/dti_fdt/${m}/dwi.nii.gz \
+        /data/NCR_SBRB/pnc/dti_fdt/${m}/b0_brain_mask.nii.gz ${m};
+done
+
+for m in `cat /data/NCR_SBRB/pnc/dti_fdt/converted.txt`; do
+    cd /lscratch/${SLURM_JOBID}/${m}
+    mkdir QC
+    @chauffeur_afni                             \
+        -ulay  dwi.nii.gz[0]                         \
+        -olay  b0_brain_mask.nii.gz                        \
+        -opacity 4                              \
+        -prefix   QC/brain_mask              \
+        -montx 6 -monty 6                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean;
+    cp -r QC /data/NCR_SBRB/pnc/dti_fdt/${m}/;
+done
+```
+
+Given the number of fails in bedpost, let's check which ones had successful
+eddy, then we can just redo the bedpost splits, and rerun just the ones that
+have failed.
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt/
+for m in `cat converted.txt`; do
+    if [ ! -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
+        echo $m >> need_eddy.txt;
+    fi;
+done
+```
+
+And I re-ran eddy just for those IDs. But they were all bad, in the sense that
+they didn't have both DTI directories in the tarball, or had errors when running
+eddy in the complete file. Well, we move on...
+
+# 2019-04-14 19:55:29
+
+While we wait on bedpost, let's fire up all the splits that were done:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+rm swarm.track
+for m in `cat xab xac xad xae xaf`; do 
+    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name track --time 10:00:00 \
+        --logdir trash_track -m fsl --gres=lscratch:10;
+```
+
+And since we have some sinteractive sessions open, let's also run the other QC
+pictures for the IDs that should have finished bedpost by now:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt/;
+for m in `cat xaa xab xac xad xae xaf`; do
+    echo $m;
+    mkdir /lscratch/${SLURM_JOBID}/${m};
+    cp preproc/${m}/dti* \
+       preproc/${m}/data.nii.gz \
+       preproc/${m}/*mask* \
+       preproc/${m}/*warp* /lscratch/${SLURM_JOBID}/${m};
+done
+
+for m in `cat xaa xab xac xad xae xaf`; do
+    echo "==== $m ====";
+    bash ~/research_code/dti/fdt_TBSS_and_QC.sh /lscratch/${SLURM_JOBID}/${m};
+    cp -r cd /lscratch/${SLURM_JOBID}/${m}/* preproc/${m}/;
+done
+```
