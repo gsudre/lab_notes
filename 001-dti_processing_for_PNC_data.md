@@ -1061,3 +1061,50 @@ for m in `cat xaa xab xac xad xae xaf`; do
     cp -r cd /lscratch/${SLURM_JOBID}/${m}/* preproc/${m}/;
 done
 ```
+
+# 2019-04-17 10:15:40
+
+I created a new converted.txt that doesn't include the IDs that failed eddy.
+Now, let's check everyone for bedpost and re-run the errors:
+
+```bash
+cd /data/NCR_SBRB/pnc/dti_fdt
+for m in `cat converted.txt`; do
+    if [ ! -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m >> need_bedpost.txt;
+    fi;
+done
+```
+
+And let's collect the QC pics:
+
+```bash
+mkdir /data/NCR_SBRB/pnc/dti_fdt/summary_QC
+cd /data/NCR_SBRB/pnc/dti_fdt/summary_QC/
+mkdir brainmask
+mkdir transform
+mkdir DEC
+mkdir SSE
+for m in `cat ../converted.txt`; do
+    echo ${m}
+    cp ../${m}/QC/brain_mask.axi.png brainmask/${m}.axi.png
+    cp ../${m}/QC/brain_mask.sag.png brainmask/${m}.sag.png
+    cp ../${m}/QC/brain_mask.cor.png brainmask/${m}.cor.png
+done
+
+qc_dir=/data/NCR_SBRB/pnc/dti_fdt/summary_QC/
+img_dir=/data/NCR_SBRB/pnc/dti_fdt/preproc/
+for m in `cat ../converted.txt`; do
+    cp $img_dir/${m}/QC/FA_transform.axi.png $qc_dir/transform/${m}.axi.png
+    cp $img_dir/${m}/QC/FA_transform.sag.png $qc_dir/transform/${m}.sag.png
+    cp $img_dir/${m}/QC/FA_transform.cor.png $qc_dir/transform/${m}.cor.png
+
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.axi.png $qc_dir/DEC/${m}.axi.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.sag.png $qc_dir/DEC/${m}.sag.png
+    cp $img_dir/${m}/QC/DEC_qc_dec_sca07.cor.png $qc_dir/DEC/${m}.cor.png
+
+    cp $img_dir/${m}/QC/sse.axi.png $qc_dir/SSE/${m}.axi.png
+    cp $img_dir/${m}/QC/sse.cor.png $qc_dir/SSE/${m}.cor.png
+    cp $img_dir/${m}/QC/sse.sag.png $qc_dir/SSE/${m}.sag.png
+done
+```

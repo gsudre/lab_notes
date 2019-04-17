@@ -47,3 +47,17 @@ then. Let's put the resting state data into BIDS format, then. Maybe just the
 processed data, right? Makes no sense to convert files that AFNI failed...
 
 But for that I can just go back to the 003 note.
+
+# 2019-04-17 15:44:30
+
+I ran some experiments with Qoala today. It worked alright, but it's optimized
+for Freesurfer 6.0, so I can't tell if it's trained model should work well with
+our 5.3 data. In any case, I ran it for 1974 of our IDs, and it got a .57
+correlation with our manual internal QC, and .50 with our external QC. 
+
+I almost feel like it's be better to take the multidimensional approach in
+removing outliers, first using MRIQC, and then use only the good MPRAGEs to be
+QCed in Freesurfer. Then we can just use Euler and other Freesurfer metrics for
+QC.
+
+We could also do it all in one step (MPRAGE + Freesurfer)... worth checking it.
