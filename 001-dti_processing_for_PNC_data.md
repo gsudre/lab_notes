@@ -1095,6 +1095,7 @@ done
 qc_dir=/data/NCR_SBRB/pnc/dti_fdt/summary_QC/
 img_dir=/data/NCR_SBRB/pnc/dti_fdt/preproc/
 for m in `cat ../converted.txt`; do
+    echo $m;
     cp $img_dir/${m}/QC/FA_transform.axi.png $qc_dir/transform/${m}.axi.png
     cp $img_dir/${m}/QC/FA_transform.sag.png $qc_dir/transform/${m}.sag.png
     cp $img_dir/${m}/QC/FA_transform.cor.png $qc_dir/transform/${m}.cor.png
