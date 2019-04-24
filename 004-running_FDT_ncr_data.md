@@ -866,3 +866,61 @@ for m in `cat /data/NCR_SBRB/dti_fdt/complete4.txt`; do
     echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
 done
 ```
+
+# 2019-04-22 16:48:21
+
+Let's process some additional NCR scans, just to complete the list Aman needs
+for the methylation project. So, in caterpie that's already running Globus:
+
+```bash
+exec /usr/bin/ssh-agent $SHELL
+ssh-add ~/.ssh/id_rsa
+
+maskid_file=~/tmp/aman.txt
+out_dir=/scratch/sudregp/
+net_dir=/mnt/shaw/
+
+hpc=e2620047-6d04-11e5-ba46-22000b92c6ec
+caterpie=74b32b98-a3aa-11e7-adbf-22000a92523b
+myfile=~/tmp/dti_dcm_transfers.dat
+
+ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti ]; then mkdir ${out_dir}/dcm_dti/; fi";
+
+rm -rf $myfile
+for m in `cat $maskid_file`; do
+    echo Copying $m
+    ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti/${m} ]; then mkdir ${out_dir}/dcm_dti/${m}; fi";
+    scp -q ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
+
+    # find name of date folders
+    ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for dti scans
+    cnt=1
+    while read d; do
+        grep dti $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/dti;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/dti | sed "s/Series://g" > ~/tmp/dti_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            echo "--recursive ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/ ${out_dir}/dcm_dti/${m}/${mr_dir}/" >> $myfile;
+            let cnt=$cnt+1;
+        done < ~/tmp/dti_clean;
+    done < ~/tmp/date_dirs;
+done;
+
+# assuming globus cli is installed as in:
+# pip2.7 install --upgrade --user globus-cli
+~/.local/bin/globus transfer $caterpie $hpc --batch --label "dti copy" < $myfile
+```
+
+Next thing is to start converting them.
+
+```bash
+rm swarm.ncr
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat ~/tmp/aman.txt`; do
+    echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
+done
+swarm -t 2 --job-name ncr2nii --time 15:00 -f swarm.ncr --partition quick \
+    --logdir trash_ncr2nii -m TORTOISE,afni
+```
