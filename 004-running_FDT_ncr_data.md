@@ -924,3 +924,35 @@ done
 swarm -t 2 --job-name ncr2nii --time 15:00 -f swarm.ncr --partition quick \
     --logdir trash_ncr2nii -m TORTOISE,afni
 ```
+
+# 2019-04-24 15:51:28
+
+Now we copy it to NCR_SBRB:
+
+```bash
+for m in `cat ~/tmp/aman.txt`; do
+    mkdir /data/NCR_SBRB/dti_fdt/$m;
+    echo $m;
+    cd /scratch/sudregp/dcm_dti/${m};
+    cp -r dwi_comb* /data/NCR_SBRB/dti_fdt/$m/;
+    chgrp -R NCR_SBRB /data/NCR_SBRB/dti_fdt/$m;
+    chmod -R 770 /data/NCR_SBRB/dti_fdt/$m;
+done
+```
+
+But many of them didn't copy properly. Will need to check them individually to
+see what conversion errors we got.
+
+<!-- Then, it's easy to do:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat list1`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+split -l 310 swarm.fdt
+swarm -g 4 --job-name fdt --time 4:00:00 -f xaa --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
+
+I'm  -->
