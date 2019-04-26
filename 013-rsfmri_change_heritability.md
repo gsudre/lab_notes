@@ -523,9 +523,40 @@ ctx_ps = sol[lh | rh, 'h_pval']
 sum(ctx_ps < .05)
 ```
 
+# 2019-04-25 14:07:13
+
+I think that if we use Meff to correct the fMRI results we might get something
+good. First, looking at the actual labels we're running, I want to remove the
+left and right VentralDC, and the Brainstem. That leaves only cortical
+structures, and a few of the subcortical ones. Let's play with that then.
+
+The Clean datasets have more heritable results than the nonClean ones, so let's
+stick with that for now. 
+
+```r
+a = read.csv('~/data/heritability_change/rsfmri_3min_n113_slopesClean.csv')
+conns = colnames(a)[3:3743]
+idx1 = grepl(conns, pattern='Ventral')
+idx2 = grepl(conns, pattern='Brain.Stem')
+cc = cor(a[, conns[!(idx1 | idx2)]], use='na.or.complete')
+svd = eigen(cc)
+absev = abs(svd$values)
+meff = (sum(sqrt(absev))^2)/sum(absev)
+cat(sprintf('Galwey Meff = %.2f\n', meff))
+```
+
+That gives a Meff of 43.15, which is p < .001 using initial alpha of .05. Only
+one connection survives... Not good. What if we go the other way around, looking
+at the regressions? 
+
+Let's see then how many connections are still significant then. 
+.05/meff
+head(cc)
+dim(cc)
+dim(a)
+head(colnames(cc))
+tail(colnames(cc))
+
+```
 # TODO
 
-* Compile SOLAR results
-* Clean up the file with 114 subjects to remove unrelated ones, but will need to
-  use the unClean version for that... waiting for it to finish calculating
-  slopes.
