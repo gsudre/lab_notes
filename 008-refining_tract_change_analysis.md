@@ -875,6 +875,45 @@ for (f in 1:133) {
     }
 }
 ```
+
+# 2019-04-26 09:51:42
+
+Some code for the poster:
+
+```r
+library(ggplot2)
+data = read.csv('~/Documents/dti_siteVisit.csv')
+ggplot(data, aes(fill=type, y=h2r, x=phen)) + 
+    geom_bar(position="dodge", stat="identity")
+ggplot(data, aes(y=Heritability, x=Tract, color=Tract, fill=Tract)) + 
+    geom_bar(stat="identity") + 
+    # geom_errorbar(aes(ymin = Heritability - h2r_se, ymax = Heritability + h2r_se), width=0.2) + 
+    facet_wrap(~type) + theme(
+  axis.text.x = element_blank(),
+  axis.ticks.x = element_blank()) +
+geom_hline(yintercept=0.3896521, linetype='dashed', color='black', size=1)
+
+data = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopesAndBaseline283.csv')
+idx = data$DX2=='ADHD'
+fit=lm(as.formula('rd_17 ~ SX_inatt + sex'), data[idx,], na.action=na.omit)
+fit2=lme(as.formula('rd_17 ~ SX_inatt + sex'), data[idx,], ~1|famID, na.action=na.omit)
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point() +
+    stat_smooth(method = "lm", col = "red") +
+    labs(title = sprintf("Left uncinate (t = %.3f, p < %.3f)",
+                         coef(summary(fit2))[2,4], coef(summary(fit2))[2,5]),
+            y='Change in RD', x='Change in inattention symptoms') +
+    theme(plot.title = element_text(hjust = 0.5))
+fit=lm(as.formula('ad_18 ~ SX_inatt + sex'), data[idx,], na.action=na.omit)
+fit2=lme(as.formula('ad_18 ~ SX_inatt + sex'), data[idx,], ~1|famID, na.action=na.omit)
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point() +
+    stat_smooth(method = "lm", col = "red") +
+    labs(title = sprintf("Right uncinate (t = %.3f, p < %.3f)",
+                         coef(summary(fit2))[2,4], coef(summary(fit2))[2,5]),
+            y='Change in AD', x='Change in inattention symptoms') +
+    theme(plot.title = element_text(hjust = 0.5))
+```
 # TODO
 
 * What's going on with the correlation between baseline values and slopes?

@@ -943,16 +943,73 @@ done
 But many of them didn't copy properly. Will need to check them individually to
 see what conversion errors we got.
 
-<!-- Then, it's easy to do:
+# 2019-04-26 18:51:22
+
+Then, it's easy to do:
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
-for m in `cat list1`; do
+rm swarm.fdt
+for m in `cat aman_converted.txt`; do
     echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
 done;
-split -l 310 swarm.fdt
-swarm -g 4 --job-name fdt --time 4:00:00 -f xaa --partition gpu \
+swarm -g 4 --job-name fdt --time 6:00:00 -f swarm.fdt --partition gpu \
     --logdir trash_fdt --gres=gpu:k80:2
 ```
 
-I'm  -->
+And let's go ahead and start processing the remaining IDs as well:
+
+```bash
+exec /usr/bin/ssh-agent $SHELL
+ssh-add ~/.ssh/id_rsa
+
+maskid_file=~/tmp/remaining.txt
+out_dir=/scratch/sudregp/
+net_dir=/mnt/shaw/
+
+hpc=e2620047-6d04-11e5-ba46-22000b92c6ec
+caterpie=74b32b98-a3aa-11e7-adbf-22000a92523b
+myfile=~/tmp/dti_dcm_transfers.dat
+
+ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti ]; then mkdir ${out_dir}/dcm_dti/; fi";
+
+rm -rf $myfile
+for m in `cat $maskid_file`; do
+    echo Copying $m
+    ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti/${m} ]; then mkdir ${out_dir}/dcm_dti/${m}; fi";
+    scp -q ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
+
+    # find name of date folders
+    ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for dti scans
+    cnt=1
+    while read d; do
+        grep dti $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/dti;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/dti | sed "s/Series://g" > ~/tmp/dti_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            echo "--recursive ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/ ${out_dir}/dcm_dti/${m}/${mr_dir}/" >> $myfile;
+            let cnt=$cnt+1;
+        done < ~/tmp/dti_clean;
+    done < ~/tmp/date_dirs;
+done;
+
+# assuming globus cli is installed as in:
+# pip2.7 install --upgrade --user globus-cli
+~/.local/bin/globus transfer $caterpie $hpc --batch --label "dti copy" < $myfile
+```
+
+<!-- 
+Next thing is to start converting them.
+
+```bash
+rm swarm.ncr
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat /data/NCR_SBRB/dti_fdt/remaining.txt`; do
+    echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
+done
+swarm -t 2 --job-name ncr2nii --time 30:00 -f swarm.ncr --partition quick \
+    --logdir trash_ncr2nii -m TORTOISE,afni
+``` -->
+
