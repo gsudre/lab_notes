@@ -1000,16 +1000,46 @@ done;
 ~/.local/bin/globus transfer $caterpie $hpc --batch --label "dti copy" < $myfile
 ```
 
-<!-- 
-Next thing is to start converting them.
+# 2019-04-29 10:18:07
+
+Going back to Aman's data, here's the bedpost stage:
+
+```bash
+data='';
+for m in `cat need_bedpost.txt`; do
+    data=$data' '${m}/data.nii.gz;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
+```
+
+And then run the tracts:
+
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat need_bedpost.txt`; do
+    if [ -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m >> need_track.txt;
+    fi;
+done
+
+rm swarm.track
+for m in `cat need_track.txt`; do 
+    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name track --time 8:00:00 \
+        --logdir trash_track -m fsl --gres=lscratch:10;
+```
+
+And as the other IDs finish copying, it's time to start converting them as well:
 
 ```bash
 rm swarm.ncr
 cd /data/NCR_SBRB/dti_fdt
-for m in `cat /data/NCR_SBRB/dti_fdt/remaining.txt`; do
+for m in `cat remaining.txt`; do
     echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
 done
 swarm -t 2 --job-name ncr2nii --time 30:00 -f swarm.ncr --partition quick \
     --logdir trash_ncr2nii -m TORTOISE,afni
-``` -->
+```
 
