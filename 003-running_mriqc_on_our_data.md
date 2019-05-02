@@ -145,8 +145,39 @@ for s in `cat ~/tmp/maskids.txt`; do
 done
 ```
 
+# 2019-05-02 10:57:35
+
+It's taking a long time to do it on my laptop, and also it's slowing things down
+a ton. So, let's try to run it in Biowulf again. First, create the wrapper. I
+limited it there to 4 cores and 8Gb, and one mask id ran for about 30min. So, we
+can do a few mask ids like this:
+
+```bash
+ls -1 /scratch/sudregp/NCR_BIDS/ | sed "s/sub\-//" > ~/tmp/bids.txt;
+
+cd ~/data/mriqc
+for m in `head ~/tmp/bids.txt`; do
+    echo "bash ~/research_code/mriqc_wrapper.sh $m" >> swarm.bids;
+done
+swarm -g 10 -t 4 --logdir trash_mriqc --gres=lscratch:10 --time 45:00 -f swarm.bids \
+    --partition quick --job-name mriqc -m mriqc
+```
+
+When running in interactive node I had to do:
+
+```bash
+module purge
+unset LD_LIBRARY_PATH
+```
+
+So, I'm not sure if I'll need to do something like that for swarms.
+
+That worked well, and I got results in ~/data/mriqc_output. So, let's go ahead
+and fire it up for everybody!
+
+That seems to have worked... I just need to carefully check it later for any
+errors, but the results have been copied to shaw/mriqc_output.
+
 # TODO
 * Run MRIQC on all our data
 * Run Tonya's script on all our data
-* Convert resting to BIDS
-* Run MRIQC on resting

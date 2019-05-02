@@ -1043,3 +1043,145 @@ swarm -t 2 --job-name ncr2nii --time 30:00 -f swarm.ncr --partition quick \
     --logdir trash_ncr2nii -m TORTOISE,afni
 ```
 
+# 2019-04-30 12:56:02
+
+Dealing with the conversions of the remaining sample:
+
+```bash
+for m in `cat /data/NCR_SBRB/dti_fdt/remaining.txt`; do
+    echo $m;
+    if [ -e /scratch/sudregp/dcm_dti/$m/dwi_comb.nii.gz ]; then
+        mkdir /data/NCR_SBRB/dti_fdt/$m;
+        cd /scratch/sudregp/dcm_dti/${m};
+        cp -r dwi_comb* /data/NCR_SBRB/dti_fdt/$m/;
+        chgrp -R NCR_SBRB /data/NCR_SBRB/dti_fdt/$m;
+        chmod -R 770 /data/NCR_SBRB/dti_fdt/$m;
+        echo $m >> /data/NCR_SBRB/dti_fdt/need_eddy1.txt
+    else
+        echo $m >> /data/NCR_SBRB/dti_fdt/error_convert1.txt
+    fi
+done
+```
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.fdt
+for m in `cat need_eddy1.txt`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 4 --job-name fdt --time 6:00:00 -f swarm.fdt --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
+
+Then, a bit more:
+
+```bash
+for m in `cat /data/NCR_SBRB/dti_fdt/need_eddy2.txt`; do
+    echo $m;
+    mkdir /data/NCR_SBRB/dti_fdt/$m;
+    cd /scratch/sudregp/dcm_dti/${m};
+    cp -r dwi_comb* /data/NCR_SBRB/dti_fdt/$m/;
+    chgrp -R NCR_SBRB /data/NCR_SBRB/dti_fdt/$m;
+    chmod -R 770 /data/NCR_SBRB/dti_fdt/$m;
+done
+
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.fdt
+for m in `cat need_eddy2.txt`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 4 --job-name fdt2 --time 6:00:00 -f swarm.fdt --partition gpu \
+    --logdir trash_fdt --gres=gpu:k80:2
+```
+
+And I think I can recover some of the IDs that have failed before... so let's
+put them back in the cluster, under again.txt, which are the same 116 in the
+second_chance tab in the QC spreadsheet.
+
+```bash
+exec /usr/bin/ssh-agent $SHELL
+ssh-add ~/.ssh/id_rsa
+
+maskid_file=~/tmp/again.txt
+out_dir=/scratch/sudregp/
+net_dir=/mnt/shaw/
+
+hpc=e2620047-6d04-11e5-ba46-22000b92c6ec
+caterpie=74b32b98-a3aa-11e7-adbf-22000a92523b
+myfile=~/tmp/dti_dcm_transfers.dat
+
+ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti ]; then mkdir ${out_dir}/dcm_dti/; fi";
+
+rm -rf $myfile
+for m in `cat $maskid_file`; do
+    echo Copying $m
+    ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti/${m} ]; then mkdir ${out_dir}/dcm_dti/${m}; fi";
+    scp -q ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
+
+    # find name of date folders
+    ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for dti scans
+    cnt=1
+    while read d; do
+        grep dti $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/dti;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/dti | sed "s/Series://g" > ~/tmp/dti_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            echo "--recursive ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/ ${out_dir}/dcm_dti/${m}/${mr_dir}/" >> $myfile;
+            let cnt=$cnt+1;
+        done < ~/tmp/dti_clean;
+    done < ~/tmp/date_dirs;
+done;
+
+# assuming globus cli is installed as in:
+# pip2.7 install --upgrade --user globus-cli
+~/.local/bin/globus transfer $caterpie $hpc --batch --label "dti secon chance copy" < $myfile
+```
+
+# 2019-05-02 10:22:12
+
+So, I just found out that eddy_cuda8.0 is a new version of eddy, not just using
+different CUDA libraries. So, I might be running our data with two different
+versions of eddy, which is not good. It could also be a reason why we got some
+many failures about outliers now, that I didn't use to get.
+
+So, let's make sure I'm running fsl/6.0.0, which has eddy_cuda, and re-run
+everything starting with Aman's IDs. Just so we don't have to wait on all eddy
+to finished, I'll split the IDs into batches, and as soon as one batch is done,
+I can start bedpost on that.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat redo_eddy.txt`; do
+    echo $m;
+    rm ${m}/eddy* ${m}/index.txt ${m}/my_s* ${m}/old_bvecs;
+    cp /scratch/sudregp/dcm_dti/${m}/dwi_comb* $m/;
+done;
+
+split -l 100 redo_eddy.txt
+rm swarm.fdt
+for m in `cat xae`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
+    --partition gpu --job-name fdt5
+```
+
+I'll need to wait until a whole batch is done before running bedpost because it
+looks for the data.nii.gz file right in the first call, and if they're not all
+ready, then it won't run bedpost later.
+
+Also note that I won't check if eddy was successful. I'll do a big check later,
+but my goal now is to get bedpost running. If eddy wasn't successful, it'll just
+fail for that ID.
+
+```bash
+module load fsl/6.0.0
+cd /data/NCR_SBRB/dti_fdt
+data='';
+for m in `cat xaa`; do
+    data=$data' '${m}/data.nii.gz;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
+```
