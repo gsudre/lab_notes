@@ -1185,3 +1185,33 @@ for m in `cat xaa`; do
 done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
 ```
+
+# 2019-05-03 09:42:14
+
+I had to modify this because SLURM wasn't running fast enough. Let's try this
+again, this time cleaning up old runs that failed and re-starting the files
+bedpostx will need.
+
+```bash
+module load fsl/6.0.0
+cd /data/NCR_SBRB/dti_fdt
+data='';
+for m in `cat xaa`; do
+    if [ ! -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
+            echo "No eddy output for $m";
+    else
+        if [ ! -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+            rm -rf preproc/${m}*;
+            cd $m;
+            cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+            cp bvecs old_bvecs
+            cp dwi_comb_bval.dat bvals;
+            cp eddy_s2v_unwarped_images.eddy_rotated_bvecs bvecs;
+            cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
+            cd ..;
+            data=$data' '${m}/data.nii.gz;
+        fi;
+    fi;
+done
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
+```

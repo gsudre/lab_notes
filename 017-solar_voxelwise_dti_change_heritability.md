@@ -72,33 +72,101 @@ for maskid in `cat maskids_566.txt`; do
 done
 ```
 
+# 2019-05-03 10:07:04
+
+The mask that was created had way too many voxels. Over 30K! That's because it
+was using lots of peripheral voxels. Can we just transport the FA
+skeleton from TBSS to our space? Let's transform the FSL FA image to our group
+image, and then use that transformation to transform the skeleton:
+
+```bash
+flirt -in /usr/local/neuro/fsl/data/standard/FMRIB58_FA_1mm.nii.gz \
+    -ref mean_final_high_res_fa.nii.gz \
+    -out FMRIB58_FA_IN_groupTemplate.nii.gz -omat FMRIB58_to_group.mat \
+    -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 \
+    -searchrz -90 90 -dof 12 -interp trilinear
+
+flirt -in /usr/local/neuro/fsl/data/standard/FMRIB58_FA-skeleton_1mm.nii.gz \
+    -ref mean_final_high_res_fa.nii.gz \
+    -out FMRIB58_FA-skeleton_inGroup.nii.gz -applyxfm \
+    -init FMRIB58_to_group.mat -interp nearestneighbour
+
+3dcalc -a FMRIB58_FA-skeleton_inGroup.nii.gz -prefix fa_skeleton_mask.nii.gz \
+    -expr 'step(a-.2)'
+
+dti_dir=/mnt/shaw/dti_robust_tsa/analysis_may2017/
+mkdir dti_voxels
+for maskid in `cat maskids_566.txt`; do
+     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_fa.txt ${dti_dir}/${maskid}_tensor_diffeo_fa.nii.gz;
+     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_ad.txt ${dti_dir}/${maskid}_tensor_diffeo_ad.nii.gz;
+     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_rd.txt ${dti_dir}/${maskid}_tensor_diffeo_rd.nii.gz;
+done
+```
+
 Then we construct the data files in R:
 
-<!-- ```r
-pheno = read.csv('~/data/baseline_prediction/dti_gf_08152018_263timeDiff12mo.csv')
-nvox=12022
+```r
+maskids = read.table('/mnt/shaw/dti_robust_tsa/heritability/maskids_566.txt')[, 1]
+nvox=14681
 for (m in c('fa', 'ad', 'rd')) {
      print(m)
-     dti_data = matrix(nrow=nrow(pheno), ncol=nvox)
+     dti_data = matrix(nrow=length(maskids), ncol=nvox)
      for (s in 1:nrow(dti_data)) {
-          a = read.table(sprintf('~/data/baseline_prediction/dti_voxels/%04d_%s.txt',pheno[s,]$mask.id, m))
+          a = read.table(sprintf('/mnt/shaw/dti_robust_tsa/heritability/dti_voxels/%04d_%s.txt',
+                                 maskids[s], m))
           dti_data[s, ] = a[,4]
      }
-     dti_data = cbind(pheno$mask.id, dti_data)
+     dti_data = cbind(maskids, dti_data)
      cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%05d', d)))
      colnames(dti_data) = cnames
-     write.csv(dti_data, file=sprintf('~/data/baseline_prediction/dti_%s_voxelwise_n263_08152018.csv', m), row.names=F)
+     write.csv(dti_data, file=sprintf('/mnt/shaw/dti_robust_tsa/heritability/dti_%s_voxelwise_n566_03052019.csv', m), row.names=F)
 }
-``` -->
+```
 
-<!-- ```r
+Now we have to run the exact same code we ran for tracts, but for the voxels:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
 clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
 df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
                          x.date='record.date.collected...Scan',
                          x.id='Medical.Record...MRN...Subjects')
-b = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+b = read.csv('/Volumes/Shaw/dti_robust_tsa/heritability/dti_fa_voxelwise_n566_03052019.csv')
 tract_names = colnames(b)[2:ncol(b)]
-df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='id')
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='mask.id')
 
 library(MASS)
 mres = df2
@@ -163,21 +231,81 @@ for (s in unique(mres$Medical.Record...MRN...Subjects)) {
 colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline', 'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/dti_fa_residNoSex_OLS_naSlopes283.csv',
+          row.names=F, na='', quote=F)
 
 # and remove outliers
+res_clean = res
 for (t in tract_names) {
-    mydata = as.numeric(res[, t])
+    mydata = as.numeric(res_clean[, t])
     # identifying outliers
     ul = mean(mydata) + 3 * sd(mydata)
     ll = mean(mydata) - 3 * sd(mydata)
     bad_subjs = c(which(mydata < ll), which(mydata > ul))
 
     # remove within-tract outliers
-    res[bad_subjs, t] = NA
+    res_clean[bad_subjs, t] = NA
 }
-write.csv(res, file='~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopes283.csv',
+write.csv(res_clean, file='~/data/heritability_change/dti_fa_residNoSex_OLS_naSlopes283Clean.csv',
           row.names=F, na='', quote=F)
 ```
- -->
 
+And we need to repeat the same procedure for AD and RD.
+
+Next step is to keep only the 133 we'll use for heritability:
+
+```r
+# make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+res2 = res2[res2[, 'ID'] != 7221745, ]
+write.csv(res2, file='~/data/heritability_change/dti_fa_residNoSex_OLS_naSlopes133.csv',
+          row.names=F, na='', quote=F)
+res2 = res_clean[fam_subjs, ]
+res2 = res2[res2[, 'ID'] != 7221745, ]
+write.csv(res2, file='~/data/heritability_change/dti_fa_residNoSex_OLS_naSlopes133Clean.csv',
+          row.names=F, na='', quote=F)
+```
+
+Then, it's time to start running heritability per voxel. I ahve the cluster tied
+up in bedpost right now, so let's see how long it'll take to just run the main
+analysis in an interactive node, or even in my own laptop:
+
+```bash
+phen_file=dti_fa_residNoSex_OLS_naSlopes133Clean
+tmp_dir=~/data/heritability_change
+solar_dir=~/data/heritability_change
+mkdir ${tmp_dir}/${phen_file}
+mkdir /tmp/${phen_file}
+for v in 1:14681; do
+    vox=`print %05d $v`;
+    mkdir /tmp/${phen_file}/${vox};
+    cp ${solar_dir}/pedigree.csv ${solar_dir}/procs.tcl ${solar_dir}/${phen_file}.csv /tmp/${phen_file}/${vox}/;
+    cd /tmp/${phen_file}/${vox}/;
+    ~/Download/solar84/solar run_phen_var $phen_file $vox;
+    mv /tmp/${phen_file}/${vox}/i_${vox}/polygenic.out ${tmp_dir}/${phen_file}/${vox}_polygenic.out;
+done
+```
+
+Then, we run the nonClean version for comparison, and both for AD and RD.
+Finally, we need to put the results back into .nii format and clusterize them.
+Hopefully we'll have some decent results, which we will be able to check for
+associations (or, in worst case scenario, run voxelwise association), and do
+permutations to assess cluster significance.
 
