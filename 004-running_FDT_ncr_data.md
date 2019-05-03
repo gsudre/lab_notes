@@ -1196,7 +1196,7 @@ bedpostx will need.
 module load fsl/6.0.0
 cd /data/NCR_SBRB/dti_fdt
 data='';
-for m in `cat xaa`; do
+for m in `cat xac`; do
     if [ ! -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
             echo "No eddy output for $m";
     else
@@ -1215,3 +1215,31 @@ for m in `cat xaa`; do
 done
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc $data;
 ```
+
+from xac:
+No eddy output for 0977
+No eddy output for 0992
+No eddy output for 1031
+No eddy output for 1069
+No eddy output for 1134
+No eddy output for 1140
+No eddy output for 1141
+No eddy output for 1179
+No eddy output for 1190
+No eddy output for 1209
+No eddy output for 1215
+No eddy output for 1280
+No eddy output for 1294
+No eddy output for 1330
+No eddy output for 1386
+No eddy output for 1393
+No eddy output for 1396
+No eddy output for 1504
+No eddy output for 1550
+No eddy output for 1553
+No eddy output for 1578
+No eddy output for 1592
+No eddy output for 1613
+No eddy output for 1644
+
+
