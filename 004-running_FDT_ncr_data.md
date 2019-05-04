@@ -1242,4 +1242,64 @@ No eddy output for 1592
 No eddy output for 1613
 No eddy output for 1644
 
+from xad:
+
+No eddy output for 1723
+No eddy output for 1731
+No eddy output for 1768
+No eddy output for 1771
+No eddy output for 1793
+No eddy output for 1816
+No eddy output for 1826
+No eddy output for 1832
+No eddy output for 1937
+No eddy output for 1942
+No eddy output for 1944
+No eddy output for 1987
+No eddy output for 1989
+No eddy output for 2036
+No eddy output for 2061
+No eddy output for 2067
+No eddy output for 2071
+No eddy output for 2074
+No eddy output for 2094
+No eddy output for 2097
+No eddy output for 2103
+No eddy output for 2110
+No eddy output for 2112
+No eddy output for 2119
+No eddy output for 2121
+No eddy output for 2123
+No eddy output for 2125
+No eddy output for 2141
+No eddy output for 2143
+No eddy output for 2166
+No eddy output for 2169
+
+from xae:
+
+No eddy output for 2174
+No eddy output for 2176
+No eddy output for 2178
+No eddy output for 2192
+No eddy output for 2217
+No eddy output for 2220
+No eddy output for 2223
+No eddy output for 2229
+No eddy output for 2231
+No eddy output for 2241
+No eddy output for 2245
+No eddy output for 2256
+No eddy output for 2272
+No eddy output for 2274
+No eddy output for 2289
+No eddy output for 2290
+No eddy output for 2299
+No eddy output for 2324
+No eddy output for 2354
+No eddy output for 2375
+No eddy output for 2405
+No eddy output for 2447
+No eddy output for 2461
+No eddy output for 2527
 
