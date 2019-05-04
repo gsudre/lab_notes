@@ -580,46 +580,78 @@ And the entire group:
 OK, now we just need to figure out if those clusters are indeed significant, and
 where they're located!
 
+Maybe the easiest thing to do here is to put the clusters in fMRIB58 space. It
+worked before, so we just invert it:
 
-<!-- ic=04
-nperms=1000
-fname=`printf net%02d_p%04d $ic 0`.swarm;
+```bash
+flirt -in mean_final_high_res_fa.nii.gz \
+    -ref /usr/local/neuro/fsl/data/standard/FMRIB58_FA_1mm.nii.gz \
+    -out mean_group_IN_FMRIB58_FA.nii.gz -omat group_to_FMRIB58.mat \
+    -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 \
+    -searchrz -90 90 -dof 12 -interp trilinear
+
+flirt -in mymask.nii \
+    -ref /usr/local/neuro/fsl/data/standard/FMRIB58_FA_1mm.nii.gz \
+    -out mymask_inFMRIB58.nii.gz -applyxfm \
+    -init group_to_FMRIB58.mat -interp nearestneighbour
+
+3dclust -1Dformat -nosum -orient LPI -NN1 5 mymask_inFMRIB58.nii.gz
+```
+
+So, as expected, the COM of ad_n1 is between left uncinate and IFO:
+
+![](images/2019-05-03-19-37-11.png)
+
+The other ones should be easy to check as well. Now, we just need to do some
+permutations. First, we create the permutation files for SOLAR:
+
+```r
+m = 'ad'
+nperms = 500
+d = read.csv(sprintf('~/data/heritability_change/dti_%s_residNoSex_OLS_naSlopes133Clean.csv', m))
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
+d2 = d
+for (p in 1:nperms) {
+    print(p)
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/perms/dti_%s_residNoSex_OLS_naSlopes133Clean_p%04d_sexAndBrainShuffled.csv', m, p)
+    write.csv(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+And for swarms, we'll do something like:
+
+```bash
+cd ~/data
+
+m=ad
+nperms=500
+fname=`printf %s_p%04d $m 0`.swarm;
 # generate voxel file for the first perm
-for i in {1..14574}; do
-    echo "bash ~/research_code/run_solar_voxel.sh net${ic}_p0000 ${i}" >> $fname;
+for i in {1..14681}; do
+    echo "bash ~/research_code/run_solar_voxel.sh dti_${m}_residNoSex_OLS_naSlopes133Clean_p0000_sexAndBrainShuffled ${i}" >> $fname;
 done;
 # just copy it and rename IC and perm for the other ones
-for n in {1..1000}; do
-     perm=`printf %04d $n`;
-    cp $fname `printf net%02d_p%04d $ic $n`.swarm;
-    sed -i -- "s/p0000/p${perm}/g" `printf net%02d_p%04d $ic $n`.swarm;
+for n in `seq 1 $nperms`; do
+    perm=`printf %04d $n`;
+    cur_fname=`printf %s_p%04d $m $n`.swarm;
+    cp $fname $cur_fname;
+    sed -i -- "s/p0000/p${perm}/g" $cur_fname;
 done
 
-And then swarm it all:
-
 # runs all swarms, but wait until we can do it
-
-ic=4
-for n in {1..1000}; do
-    jname=`printf net%02d_p%04d $ic $n`;
-    echo "ERROR" > swarm_wait_${ic}
-    while grep -q ERROR swarm_wait_${ic}; do
+for n in `seq 1 $nperms`; do
+    jname=`printf %s_p%04d $m $n`;
+    echo "ERROR" > swarm_wait_${m}
+    while grep -q ERROR swarm_wait_${m}; do
         echo "Trying $jname"
         swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
             --logdir=${jname} --job-name ${jname} -p 2 --partition quick \
-            --time=1 -b 120 2> swarm_wait_${ic};
-        if grep -q ERROR swarm_wait_${ic}; then
+            --time=1 -b 120 2> swarm_wait_${m};
+        if grep -q ERROR swarm_wait_${m}; then
             echo -e "\tError, sleeping..."
             sleep 10m;
         fi;
     done;
-done -->
-
-Finally, we need to put the results back into .nii format and clusterize them.
-Hopefully we'll have some decent results, which we will be able to check for
-associations (or, in worst case scenario, run voxelwise association), and do
-permutations to assess cluster significance.
-
-```bash
-python ~/research_code/dti/compile_solar_voxel_results.py analysis_name
+done
 ```
