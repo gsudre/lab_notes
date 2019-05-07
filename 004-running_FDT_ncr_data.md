@@ -1303,3 +1303,210 @@ No eddy output for 2447
 No eddy output for 2461
 No eddy output for 2527
 
+# 2019-05-06 09:44:02
+
+Since I finshed the first try on all of them, let me redo a run where I try
+everyone just in case... nothing. But I output the list fo who didn't have eddy
+to no_eddy.txt.
+
+```bash
+for m in `cat xa?`; do
+    if [ ! -e ${m}/eddy_s2v_unwarped_images.nii.gz ]; then
+            echo $m >> no_eddy.txt
+    fi;
+done
+```
+
+We have 144 out of the 500 under that condition.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.track
+for m in `cat xa?`; do
+    if [ -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+    fi;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name track --time 8:00:00 \
+        --logdir trash_track -m fsl/6.0.0 --gres=lscratch:10;
+```
+
+And while that's running, let's go ahead and generate the QC images as well:
+
+While this is running, let's regenerate the QC and TBSS files. Let's run it
+locally so CIT doesn't freak out:
+
+```bash
+module load afni
+cd /lscratch/${SLURM_JOBID}
+for m in `cat /data/NCR_SBRB/dti_fdt/xa?`; do
+    echo $m;
+    mkdir ${m};
+    cp /data/NCR_SBRB/dti_fdt/${m}/dwi_comb.nii.gz \
+        /data/NCR_SBRB/dti_fdt/${m}/b0_brain_mask.nii.gz ${m};
+done
+
+for m in `cat /data/NCR_SBRB/dti_fdt/xa?`; do
+    cd /lscratch/${SLURM_JOBID}/${m}
+    mkdir QC
+    @chauffeur_afni                             \
+        -ulay  dwi_comb.nii.gz[0]                         \
+        -olay  b0_brain_mask.nii.gz                        \
+        -opacity 4                              \
+        -prefix   QC/brain_mask              \
+        -montx 6 -monty 6                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean;
+    cp -r QC /data/NCR_SBRB/dti_fdt/${m}/;
+done
+```
+
+Now, for the other QC images:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt/
+for m in `cat xa?`; do
+    if [ -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m;
+        mkdir /lscratch/${SLURM_JOBID}/${m};
+        cp /data/NCR_SBRB/dti_fdt/preproc/${m}/dti* \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/data.nii.gz \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/*mask* \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/*warp* /lscratch/${SLURM_JOBID}/${m};
+    fi;
+done
+
+module load afni
+module load fsl/6.0.0
+cd /lscratch/${SLURM_JOBID}
+for m in `cat /data/NCR_SBRB/dti_fdt/xa?`; do
+    if [ -e /data/NCR_SBRB/dti_fdt/preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo "==== $m ====";
+        bash ~/research_code/dti/fdt_TBSS_and_QC.sh /lscratch/${SLURM_JOBID}/${m};
+        cp -r ${m}/* /data/NCR_SBRB/dti_fdt/preproc/${m}/;
+        rm -rf ${m}
+    fi;
+done
+```
+
+# 2019-05-07 13:56:49
+
+I'll now go back to the redo_eddy.txt file and check why some of them failed
+eddy to update the QC spreadsheet.
+
+Let's go ahead and collect movement and tract variables.
+
+```bash
+cd /data/NCR_SBRB/dti_fdt/
+for m in `cat xa?`; do
+    if [ -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m;
+        ndone=`grep ^ tracts/$m/*/tracts/waytotal | wc -l`;
+        if [ $ndone == 27 ]; then
+            echo $m >> complete.txt
+        else
+            echo $m >> errors.txt
+        fi
+    fi;
+done
+
+mydir=/lscratch/${SLURM_JOBID}/
+weighted_tracts=~/tmp/ncr_weighted_tracts.csv;
+row="id";
+for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+    for m in fa ad rd; do
+        row=${row}','${t}_${m};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat /data/NCR_SBRB/dti_fdt/complete4.txt`; do
+    echo $m;
+    row="${m}";
+    cd /data/NCR_SBRB/dti_fdt/preproc/$m &&
+    for t in `cut -d" " -f 1 /data/NCR_SBRB/software/autoPtx/structureList`; do
+        if [ -e ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz ]; then
+            # tract mask is higher dimension!
+            3dresample -master dti_FA.nii.gz -prefix ${mydir}/mask.nii \
+                -inset ../../tracts/${m}/${t}/tracts/tractsNorm.nii.gz \
+                -rmode NN -overwrite &&
+            nvox=`3dBrickStat -count -non-zero ${mydir}/mask.nii 2>/dev/null` &&
+            if [ $nvox -gt 0 ]; then
+                if [ -e dti_FA.nii.gz ]; then
+                    fa=`3dmaskave -q -mask ${mydir}/mask.nii dti_FA.nii.gz 2>/dev/null`;
+                else
+                    fa='NA';
+                fi;
+                # had to increment lines piecewise because of some racing condition
+                row=${row}','${fa};
+                if [ -e dti_L1.nii.gz ]; then
+                    ad=`3dmaskave -q -mask ${mydir}/mask.nii dti_L1.nii.gz 2>/dev/null`;
+                else
+                    ad='NA'
+                fi;
+                row=${row}','${ad};
+                if [ -e dti_L2.nii.gz ] && [ -e dti_L3.nii.gz ]; then
+                    3dcalc -a dti_L2.nii.gz -b dti_L3.nii.gz -expr "(a + b) / 2" \
+                        -prefix ${mydir}/RD.nii -overwrite 2>/dev/null &&
+                    rd=`3dmaskave -q -mask ${mydir}/mask.nii ${mydir}/RD.nii 2>/dev/null`;
+                else
+                    rd='NA';
+                fi;
+                row=${row}','${rd};
+            else
+                echo "No nonzero voxels in mask for $t" &&
+                row=${row}',NA,NA,NA';
+            fi;
+        else
+            echo "No tractsNorm for $t" &&
+            row=${row}',NA,NA,NA';
+        fi;
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+out_fname=~/tmp/ncr_mvmt_report.csv;
+echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
+for m in `cat /data/NCR_SBRB/dti_fdt/complete4.txt`; do
+    echo 'Collecting metrics for' $m;
+    if [ -e ${m}/eddy_s2v_unwarped_images.eddy_outlier_report ]; then
+        noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
+        # figuring out the percetnage of total slices the outliers represent
+        nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
+        nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
+        let totalSlices=$nslices*$nvol;
+        pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
+        # figuring out how many volumes were completely removed (row of 1s)
+        awk '{sum=0; for(i=1; i<=NF; i++){sum+=$i}; sum/=NF; print sum}' \
+            ${m}/eddy_s2v_unwarped_images.eddy_outlier_map > outlier_avg.txt;
+        nOutVols=`grep -c -e "^1$" outlier_avg.txt`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '0..2' -collapse_cols euclidean_norm -overwrite \
+            -write trans_norm.1D;
+        trans=`1d_tool.py -infile trans_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_over_time \
+            -select_cols '3..5' -collapse_cols euclidean_norm -overwrite \
+            -write rot_norm.1D;
+        rot=`1d_tool.py -infile rot_norm.1D -show_mmms | \
+            tail -n -1 | awk '{ print $8 }' | sed 's/,//'`;
+        1d_tool.py -infile ${m}/eddy_s2v_unwarped_images.eddy_movement_rms \
+            -show_mmms > mean_rms.txt;
+        vol1=`head -n +2 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+        pvol=`tail -n -1 mean_rms.txt | awk '{ print $8 }' | sed 's/,//'`;
+    else
+        echo "Could not find outlier report for $m"
+        noutliers='NA';
+        pctOutliers='NA';
+        nOutVols='NA';
+        trans='NA';
+        rot='NA';
+        vol1='NA';
+        pvol='NA';
+    fi;
+    echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
+done
+```
