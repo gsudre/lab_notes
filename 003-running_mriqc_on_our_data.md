@@ -179,5 +179,5 @@ That seems to have worked... I just need to carefully check it later for any
 errors, but the results have been copied to shaw/mriqc_output.
 
 # TODO
-* Run MRIQC on all our data
+* Run MRIQC on all our data (collect it)
 * Run Tonya's script on all our data

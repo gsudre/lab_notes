@@ -27,44 +27,81 @@ for maskid in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
 done;
 ```
 
-Now we just do:
-
-```bash
-cd ~/data/heritability_change/fmri_same_space/epi;
-for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
-    m2=`printf %04d $m`;
-    echo $m2;
-    afni_dir=/Volumes/Shaw/MR_data_by_maskid/${m2}/afni/${m2}.rest.subjectSpace.results/;
-    3dNwarpApply -nwarp "../anat/anatQQ.${m2}_WARP.nii ../anat/anatQQ.${m2}.aff12.1D" \
-        -source ${afni_dir}/errts.${m2}.fanaticor+orig.HEAD \
-        -master ../anat/anatQQ.${m2}.nii -dxyz 2.5\
-        -overwrite -prefix ${m2}_epi_NL_inTLRC.nii;
-done
-```
-
 But while that's going on I made sure all the transform QC picture looked
 good...
 
+# 2019-05-10 11:12:17
 
+So, the anatomical warping was taking a very long time to run in the interactive
+nodes. We'll need to swarm it...
 
-    @SSwarper -input ${m2}.nii.gz -base TT_N27_SSW.nii.gz -subid ${m2};
-    3dcalc -a /Volumes/Shaw/freesurfer5.3_subjects/${m2}/SUMA/aparc+aseg_REN_gm.nii.gz \
-        -prefix ${m2}_gm_mask.nii -expr "step(a)";
-    3dNwarpApply -nwarp "anatQQ.${m2}_WARP.nii anatQQ.${m2}.aff12.1D" \
-        -source ${m2}_gm_mask.nii -master anatQQ.${m2}.nii -inter NN \
-        -overwrite -prefix ${m2}_gm_mask_NL_inTLRC.nii;
+```bash
+cd ~/data/heritability_change/fmri_same_space/anat;
+for maskid in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m=`printf %04d $maskid`;
+    if [ ! -e anatQQ.$m.nii ]; then
+        echo "export OMP_NUM_THREADS=16; cd ~/data/heritability_change/fmri_same_space/anat; @SSwarper -input ${m}.nii -base TT_N27_SSW.nii.gz -subid ${m}" >> swarm.SSwarper;
+    fi;
 done;
-
-cd ~/data/baseline_prediction/same_space/epi;
-for m2 in `cat ../../rsfmri_3minWithClinical.tsv`; do
-    echo $m2;
-    3dcopy ${mylink}/afni/${m2}.rest.subjectSpace.results/errts.${m2}.fanaticor+orig.HEAD ${m2}_epi.nii;
-    3dNwarpApply -nwarp "../anat/anatQQ.${m}_WARP.nii ../anat/anatQQ.${m}.aff12.1D" \
-        -source ${mylink}/afni/${m2}.rest.subjectSpace.results/errts.${m2}.fanaticor+orig.HEAD -master ../anat/anatQQ.${m}.nii -dxyz 2.5\
-        -overwrite -prefix ${m}_epi_NL_inTLRC.nii;
-done;
+swarm -g 10 -t 16 --job-name SSwarper --time 2:00:00 -f swarm.SSwarper -m afni --partition quick --logdir trash
 ```
 
-While the transformations were going on, I made sure to check the output of
-SSwarper, which looked fine.
+However, it makes more sense ot run all of this in Luke's framework, but it
+needs them converted to MNI space instead. Let's compute that, shall we?
 
+```bash
+cd ~/data/heritability_change/fmri_same_space/anat_mni;
+for maskid in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m=`printf %04d $maskid`;
+    # mri_convert /data/NCR_SBRB/freesurfer5.3_subjects/${m}/mri/orig.mgz ${m}.nii.gz;
+    echo "export OMP_NUM_THREADS=16; cd ~/data/heritability_change/fmri_same_space/anat_mni; @SSwarper -input ${m}.nii.gz -base MNI152_2009_template_SSW.nii.gz -subid ${m}" >> swarm.SSwarper;
+done;
+swarm -g 10 -t 16 --job-name SSwarper --time 2:00:00 -f swarm.SSwarper -m afni --partition quick --logdir trash
+```
+
+And we need to check on the alignments again. But first, transfer the actual EPI
+signal to MNI space:
+
+Now we just do:
+
+```bash
+cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/fmri_same_space/epi;
+for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m2=`printf %04d $m`;
+    echo $m2;
+    afni_dir=/mnt/shaw/MR_data_by_maskid/${m2}/afni/${m2}.rest.subjectSpace.results/;
+    3dNwarpApply -nwarp "../anat_mni/anatQQ.${m2}_WARP.nii ../anat_mni/anatQQ.${m2}.aff12.1D" \
+        -source ${afni_dir}/errts.${m2}.fanaticor+orig.HEAD \
+        -master ../anat_mni/anatQQ.${m2}.nii -dxyz 2.5\
+        -overwrite -prefix ${m2}_epi_NL_inMNI.nii;
+done
+```
+
+Then, compute the sphere averages and correlations. But instead of having all
+those intermediate files with the ROI timecourse, why not create one big mask
+with all the spheres, and use 3dNetCorr like before? Here' I'll use the same
+numbering from the xlsx file in the Power atlas
+(https://www.jonathanpower.net/2011-neuron-bigbrain.html). 
+
+```bash
+cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/fmri_same_space/epi;
+3dUndump -prefix spheres.nii -master 0411_epi_NL_inMNI.nii -srad 5 \
+    -orient LPI -xyz coords.1D
+net_dir=/mnt/shaw/MR_data_by_maskid/
+cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/
+for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m2=`printf %04d $m`;
+    3dNetCorr                                       \
+        -inset ${m2}_epi_NL_inMNI.nii                    \
+        -in_rois  spheres.nii                       \
+        -prefix  ../../fmri_corr_tables/${m2}_power                           \
+        -fish_z;
+done
+```
+
+# TODO
+
+* check alignment!!!
+* redo EPI warping for mask ids that hadn't finished copying for the cluster
+  (just check which ones don't have warped EPI)
+* run script above to compute 3dNetCorr matrices
