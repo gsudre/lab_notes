@@ -88,7 +88,6 @@ cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/fmri_same_space/epi
 3dUndump -prefix spheres.nii -master 0411_epi_NL_inMNI.nii -srad 5 \
     -orient LPI -xyz coords.1D
 net_dir=/mnt/shaw/MR_data_by_maskid/
-cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/
 for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
     m2=`printf %04d $m`;
     3dNetCorr                                       \
@@ -98,6 +97,43 @@ for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
         -fish_z;
 done
 ```
+
+# 2019-05-13 14:55:17
+
+I created a streamlined version of Neuro_consensus_264 as a csv, only containing
+the important columns.
+
+Some of the IDs failed to create the QC image, so I'll just use the same script
+I used for FDT so that we can have uniform pictures on all scans:
+
+```bash
+module load afni
+cd ~/data/heritability_change/fmri_same_space/anat_mni;
+for m in `cut -d"," -f 1 ../../rsfmri_3min_assoc_n462.csv | tail -n +2`; do
+    m2=`printf %04d $m`;
+    @chauffeur_afni                             \
+        -ulay  /usr/local/apps/afni/current/linux_centos_7_64/MNI152_2009_template.nii.gz                     \
+        -olay  anatQQ.${m2}.nii                         \
+        -ulay_range 0% 150%                     \
+        -func_range_perc 50                     \
+        -pbar_posonly                           \
+        -cbar "red_monochrome"                  \
+        -opacity 8                              \
+        -prefix   ${m2}_QC              \
+        -montx 3 -monty 3                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean
+done
+```
+
+I then created a function that collectes the Power parcellation from 3dNetCorr,
+but also combines the results into the specific networks:
+
+```r
+source('~/research_code/fmri/combine_3dNetCorr_grids.R')
+```
+
 
 # TODO
 
