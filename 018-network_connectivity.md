@@ -134,10 +134,187 @@ but also combines the results into the specific networks:
 source('~/research_code/fmri/combine_3dNetCorr_grids.R')
 ```
 
+# 2019-05-14 09:43:59
+
+Note that for now I'm removing the mask ids that don't have all 264 spheres. It
+could easily be that their transformation is bad, or that the prescription
+didn't cover those regions. In any case, I'll proceed with that for now (we have
+458 mask ids instead of 462 now).
+
+So, time to massage the data that goes into SOLAR:
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN')
+b = read.csv('/Volumes/Shaw/Gustavo/desktop_backup/data/heritability_change/fmri_corr_tables/pearsonZ_3min_n462_power.csv')
+var_names = colnames(b)[2:ncol(b)]
+df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id', all.x=F)
+
+# make sure we still have two scans for everyone
+rm_subjs = names(which(table(df2$Medical.Record...MRN)<2))
+rm_me = df2$Medical.Record...MRN %in% rm_subjs
+df2 = df2[!rm_me, ]
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in var_names) {
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'enormGoodTRs_fmri01 + I(enormGoodTRs_fmri01^2)')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+res = c()
+for (s in unique(mres$Medical.Record...MRN)) {
+    idx = which(mres$Medical.Record...MRN == s)
+    row = c(s, unique(mres[idx, 'Sex']))
+    for (t in var_names) {
+        if (sum(is.na(mres[idx, t])) > 0) {
+            # if any of the variables is NA, make the slope NA
+            row = c(row, NA)
+        } else {
+            fm_str = sprintf('%s ~ age_at_scan', t)
+            fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+            row = c(row, coefficients(fit)[2])
+        }
+    }
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(dim(res)[1])
+}
+colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/rsfmri_3min_assoc_n227_netSlopesZ.csv',
+          row.names=F, na='', quote=F)
+
+res_clean = res
+# and remove outliers
+for (t in var_names) {
+    mydata = as.numeric(res[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-tract outliers
+    res_clean[bad_subjs, t] = NA
+}
+write.csv(res_clean, file='~/data/heritability_change/rsfmri_3min_assoc_n227_slopesCleanZ.csv',
+          row.names=F, na='', quote=F)
+
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+res2_clean = res_clean[fam_subjs, ]
+
+write.csv(res2, file='~/data/heritability_change/rsfmri_3min_n111_netSlopesZ.csv',
+          row.names=F, na='', quote=F)
+write.csv(res2_clean, file='~/data/heritability_change/rsfmri_3min_n111_netSlopesCleanZ.csv',
+          row.names=F, na='', quote=F)
+write.table(var_names, file='~/data/heritability_change/power.txt',
+            row.names=F, col.names=F, quote=F)
+```
+
+And I ran the code above for the regular R and Z version. I could potentially
+explore only absolute correlation... maybe later.
+
+We then run SOLAR, which should be fast enough locally, but I still use the
+voxel-type of calls:
+
+```bash
+phen_file=rsfmri_3min_n111_netSlopes
+tmp_dir=~/data/heritability_change
+solar_dir=~/data/heritability_change
+mkdir ${tmp_dir}/${phen_file}
+mkdir /tmp/${phen_file}
+for vox in `cat ~/data/heritability_change/power.txt`; do
+    mkdir /tmp/${phen_file}/${vox};
+    cp ${solar_dir}/pedigree.csv ${solar_dir}/procs.tcl ${solar_dir}/${phen_file}.csv /tmp/${phen_file}/${vox}/;
+    cd /tmp/${phen_file}/${vox}/;
+    ~/Downloads/solar842/solar run_phen_var $phen_file $vox;
+    mv /tmp/${phen_file}/${vox}/i_${vox} ${tmp_dir}/${phen_file}/;
+done
+```
+
+And as usual, I ran it for Clean and Z versions as well.
+
+I'll need to re-run this because I'm having issues with relpairs in this version
+of SOLAR. So, results might change a bit if I end up having to remove some
+subjects. In any case, let's see what the compiled results look like here...
+
+Only one connection (memory retrieval to ventral attention) was significant.
+Whomp-whomp... it was consistent across all 4 modes, but the only thing
+significant too. Gonna need to get more subjects, or try other things. At least,
+it looks like the results across all 4 are somewhat consistent. Let's choose one
+and play with it a bit.
+
+I checked the alignment, and it looks fine. But the results using absolute
+values only, negative as nan, or negative as zero didn't help. They were
+actually worse.
+
+There are a couple more things I want to try: not remove movement right away,
+and MELODIC. Also, segregation, but I'd expect some hint of results without
+using segregation to begin with... I also don't think movement is going to
+affect it that much, because we're using stepAIC, so it wouldn't remove
+moevement if it didn't need to. So, let's try MELODIC first.
+
 
 # TODO
 
-* check alignment!!!
-* redo EPI warping for mask ids that hadn't finished copying for the cluster
-  (just check which ones don't have warped EPI)
-* run script above to compute 3dNetCorr matrices
+* try not removing movement, and then just checking later if the values in any
+  significant variables are related to movement?
+* try segregation
+* ICA networks from MELODIC?
