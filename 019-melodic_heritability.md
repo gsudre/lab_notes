@@ -18,33 +18,48 @@ cd masks
     -dilate_input 5 -5 -frac 0.7 -fill_holes
 ```
 
+# 2019-05-15 09:21:19
 
-
-
-
-
-
-
+Let's then run melodic. But we'll need to send the data to BW first:
 
 ```bash
-melodic -i 3min.txt -o groupmelodic_union.ica -v --nobet -m group_epi_mask_union.nii --tr=2.5 --report --Oall -a concat;
-melodic -i 3min.txt -o groupmelodic_fancy.ica -v --nobet -m group_epi_mask_fancy.nii --tr=2.5 --report --Oall -a concat;
-melodic -i 3min.txt -o groupmelodic_inter.ica -v --nobet -m group_epi_mask_inter.nii --tr=2.5 --report --Oall -a concat;
+# caterpie
+cd /mnt/shaw/Gustavo/desktop_backup/data/heritability_change/
+for maskid in `cat 3min_mni.txt`; do
+    m=`printf %04d $maskid`;
+    echo ${m}_epi_NL_inMNI.nii >> fmri_same_space/epi/3min_mni_epi.txt;
+done
+scp fmri_same_space/epi/3min_mni_epi.txt bw:~/data/heritability_change/fmri_same_space/epi/;
+
+# bw
+module load fsl/6.0.0
+cd ~/data/heritability_change/fmri_same_space/epi/;
+melodic -i 3min_mni_epi.txt -o groupmelodic_union.ica -v --nobet -m ../group_epi_mask_union.nii --tr=2.5 --report --Oall -a concat;
+melodic -i 3min_mni_epi.txt -o groupmelodic_fancy.ica -v --nobet -m ../group_epi_mask_fancy.nii --tr=2.5 --report --Oall -a concat;
+melodic -i 3min_mni_epi.txt -o groupmelodic_inter.ica -v --nobet -m ../group_epi_mask_inter.nii --tr=2.5 --report --Oall -a concat;
 ```
 
+Now we performt the dual regression to get each subject's values for the ICs:
+
 ```bash
-pipe='fancy';
-cd ~/data/baseline_prediction/same_space/epi/groupmelodic_${pipe}.ica
+pipe='inter';
+cd ~/data/heritability_change/fmri_same_space/epi/groupmelodic_${pipe}.ica
 mkdir dual
-while read s; do
+while read m; do
+    s=`printf %04d $m`;
     echo ${pipe} $s;
-    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d melodic_IC \
-        -o dual/dr_stage1_${s}.txt --demean -m ../group_epi_mask_${pipe}.nii;
-    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inTLRC.nii -d dual/dr_stage1_${s}.txt \
-        -o dual/dr_stage2_$s --demean -m ../group_epi_mask_${pipe}.nii --des_norm \
+    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inMNI.nii -d melodic_IC \
+        -o dual/dr_stage1_${s}.txt --demean -m ../../group_epi_mask_${pipe}.nii;
+    $FSLDIR/bin/fsl_glm -i ../${s}_epi_NL_inMNI.nii -d dual/dr_stage1_${s}.txt \
+        -o dual/dr_stage2_$s --demean -m ../../group_epi_mask_${pipe}.nii --des_norm \
         --out_z=dual/dr_stage2_${s}_Z;
-done < ../3min_clean.txt
+done < ../../../3min_mni.txt
 ```
+
+
+
+
+
 
 ```bash
 #bw
