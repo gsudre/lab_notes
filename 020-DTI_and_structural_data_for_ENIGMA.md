@@ -52,3 +52,23 @@ for m in `cat ids512.txt`; do
 done
 ```
 
+# 2019-05-16 10:17:31
+
+It turns out that 3 IDs weren't really processed. So, I'm replacing those ids.
+They were:
+
+```
+2135
+2080
+2232
+2251
+```
+
+```bash
+#caterpie
+cd /mnt/shaw/dti_robust_tsa/enigma
+source activate python2
+tbss_1_preproc *.nii
+tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
+```
+

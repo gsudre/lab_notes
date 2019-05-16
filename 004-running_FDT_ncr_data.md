@@ -1510,3 +1510,108 @@ for m in `cat /data/NCR_SBRB/dti_fdt/complete4.txt`; do
     echo $m, $noutliers, $pctOutliers, $nOutVols, $trans, $rot, $vol1, $pvol >> $out_fname;
 done
 ```
+
+# 2019-05-16 16:18:24
+
+Apparently the files I prepared for Aman summarizing movement and tract weights
+had lots of NA. I kinda lost track of the pre-processing, so I started a new QC
+file today keeping better track of everything. 
+
+Also, I figured I should trim the subjects that have more than 60 or 80 volumes,
+to better match the TORTOISE pre-processing. Also, I'm not sure we should be
+double-sampling some of the vectors.
+
+Let's reconvert some of them. Primarily, the ones that I didn't transfer the
+dwi_comb file.
+
+```bash
+#caterpie
+exec /usr/bin/ssh-agent $SHELL
+ssh-add ~/.ssh/id_rsa
+
+maskid_file=~/tmp/id3
+out_dir=/scratch/sudregp/
+net_dir=/mnt/shaw/
+
+hpc=e2620047-6d04-11e5-ba46-22000b92c6ec
+caterpie=74b32b98-a3aa-11e7-adbf-22000a92523b
+myfile=~/tmp/dti_dcm_transfers.dat
+
+ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti ]; then mkdir ${out_dir}/dcm_dti/; fi";
+
+rm -rf $myfile
+for m in `cat $maskid_file`; do
+    echo Copying $m
+    ssh -qt helix.nih.gov "if [ ! -d ${out_dir}/dcm_dti/${m} ]; then mkdir ${out_dir}/dcm_dti/${m}; fi";
+    scp -q ${net_dir}/MR_data_by_maskid/${m}/E*/cdi* helix:${out_dir}/dcm_dti/${m}/;
+
+    # find name of date folders
+    ls -1 $net_dir/MR_data_by_maskid/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for dti scans
+    cnt=1
+    while read d; do
+        grep dti $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/dti;
+        awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/dti | sed "s/Series://g" > ~/tmp/dti_clean
+        while read line; do
+            mr_dir=`echo $line | sed "s/,//g"`;
+            echo "--recursive ${net_dir}/MR_data_by_maskid/${m}/${d}/${mr_dir}/ ${out_dir}/dcm_dti/${m}/${mr_dir}/" >> $myfile;
+            let cnt=$cnt+1;
+        done < ~/tmp/dti_clean;
+    done < ~/tmp/date_dirs;
+done;
+
+# assuming globus cli is installed as in:
+# pip2.7 install --upgrade --user globus-cli
+~/.local/bin/globus transfer $caterpie $hpc --batch --label "dti redo" < $myfile
+```
+
+While we wait for these to copy, let's run some eddy again:
+
+```bash
+#caterpie
+for m in `cat ~/tmp/id5`; do
+    echo $m;
+    scp -qr /mnt/shaw/NCR_DTI_FDT/0330 helix:/data/NCR_SBRB/dti_fdt/;
+done
+```
+
+```bash
+# bw
+cd /data/NCR_SBRB/dti_fdt
+rm swarm.fdt
+for m in `cat ~/tmp/id5`; do
+    echo $m;
+    rm -rf ${m}/eddy* ${m}/index.txt ${m}/my_s* ${m}/QC;
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
+    --partition gpu --job-name fdt
+```
+
+In order to check if autoPtx ran ok, there are several things to check:
+
+```bash
+res_file=~/tmp/tracts.csv;
+rm $res_file;
+for m in `cat ~/tmp/id8`; do
+    echo $m;
+    grep ^ /mnt/shaw/NCR_DTI_FDT/tracts/$m/*/tracts/waytotal > ~/tmp/waytotal;
+    ndone=`cat ~/tmp/waytotal | wc -l`;
+    if [ $ndone == 27 ]; then
+        nempty=`grep "waytotal:$" ~/tmp/waytotal | wc -l`;
+        if [ $nempty == 0 ]; then
+            nzeros=`grep "waytotal:0" ~/tmp/waytotal | wc -l`;
+            if [ $nzeros -lt 3 ]; then
+                echo "$m,TRUE," >> $res_file;
+            else
+                echo "$m,FALSE,more than 2 tracts are zero" >> $res_file
+            fi
+        else
+            echo "$m,FALSE,empty tracts" >> $res_file;
+        fi
+    else
+        echo "$m,FALSE,not enough tracts" >> $res_file;
+    fi;
+done
+```
