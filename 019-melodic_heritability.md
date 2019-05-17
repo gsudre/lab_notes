@@ -306,6 +306,7 @@ And of course, redo all of the above for all 6 ICs.
 Now that we hve all files, let's set it up to run voxelwise SOLAR:
 
 ```bash
+cd ~/data/heritability_change/fmri_same_space/
 jname=ic0Clean
 fname=${jname}.swarm;
 for i in {1..154058}; do
@@ -313,8 +314,12 @@ for i in {1..154058}; do
 done;
 swarm --gres=lscratch:1 -f ${fname} --module solar -g 1 -t 1 \
             --logdir=${jname} --job-name ${jname} -p 2 --partition quick \
-            --time=1 -b 120;
+            --time=1 -b 240;
 ```
+
+And of course, do the same for 60, 15, 2, 8, 62, and 5.
+
+
 
 # TODO
 

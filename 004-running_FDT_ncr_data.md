@@ -1645,18 +1645,28 @@ And redo some more eddy:
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
-for m in `cat ~/tmp/id12`; do
+for m in `cat ~/tmp/id13`; do
     echo $m;
     mkdir $m;
     cp /scratch/sudregp/dcm_dti/${m}/dwi_comb* $m/;
 done;
 
 rm swarm.fdt
-for m in `cat ~/tmp/id12`; do
-echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+for m in `cat ~/tmp/id13`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
 done;
 swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
-    --partition gpu --job-name fdt2
+    --partition gpu --job-name fdt3
 ```
 
+In re-importing some of the scans manually, I do something like this:
+
+```bash
+cd /scratch/sudregp/dcm_dti/0593
+rm -rf dwi_comb* grads? mr_dirs.txt s?_proc
+for d in `ls | grep ^mr_`; do echo $d; ls -1 $d | wc -l; ls -1 $d | head -n 1; done
+rm -rf mr_0013
+for i in {1241..2480}; do rm mr_0012/edti_cdiflist09_g02-0${i}.dcm; done
+for d in `ls | grep ^mr_`; do echo $d; ls -1 $d | wc -l; ls -1 $d | head -n 1; done
+bash ~/research_code/dti/convert_ncr_to_nii.sh `pwd`
 ```
