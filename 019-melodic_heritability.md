@@ -303,7 +303,7 @@ And of course, redo all of the above for all 6 ICs.
 
 # 2019-05-17 10:14:19
 
-Now that we hve all files, let's set it up to run voxelwise SOLAR:
+Now that we have all files, let's set it up to run voxelwise SOLAR:
 
 ```bash
 cd ~/data/heritability_change/fmri_same_space/
@@ -319,6 +319,38 @@ swarm --gres=lscratch:1 -f ${fname} --module solar -g 1 -t 1 \
 
 And of course, do the same for 60, 15, 2, 8, 62, and 5.
 
+Time to compile the voxel results. First, create an ijk file:
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+cut -d " " -f 1,2,3 \
+    epi/groupmelodic_fancy.ica/dual/dumps/0901_IC0_Z.txt > ../fancy_mask_ijk.txt
+```
+
+We compile using:
+
+```bash
+python ~/research_code/fmri/compile_solar_voxel_results.py melodic_fancy_slopesClean_n111_IC0
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN3 5 polygen_results_melodic_fancy_slopesClean_n111_IC0.nii 
+```
+
+OK, let's see if any of these results have some association to ADHD. Wrote
+individual masks in AFNI. Then:
+
+```bash
+cd /mnt/shaw/dti_robust_tsa/heritability
+for n in 1 2 3; do
+    for m in fa ad rd; do
+        echo $m $n
+        3dcopy ${m}_n${n}_mask_0001+orig mymask.nii -overwrite;
+        echo maskid,val > ${m}_n${n}.csv;
+        while read s; do
+            val1=`3dmaskave -q -mask mymask.nii ../analysis_may2017/${s}_tensor_diffeo_${m}.nii.gz 2>/dev/null`;
+            echo ${s},${val1} >> ${m}_n${n}.csv;
+        done < maskids_566.txt;
+    done;
+done
+```
 
 
 # TODO
