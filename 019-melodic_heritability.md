@@ -301,6 +301,21 @@ write.csv(res2_clean, file='~/data/heritability_change/fmri_same_space/melodic_f
 
 And of course, redo all of the above for all 6 ICs.
 
+# 2019-05-17 10:14:19
+
+Now that we hve all files, let's set it up to run voxelwise SOLAR:
+
+```bash
+jname=ic0Clean
+fname=${jname}.swarm;
+for i in {1..154058}; do
+    echo "bash ~/research_code/run_solar_voxel.sh melodic_fancy_slopesClean_n111_IC0 ${i}" >> $fname;
+done;
+swarm --gres=lscratch:1 -f ${fname} --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 --partition quick \
+            --time=1 -b 120;
+```
+
 # TODO
 
 * If results are good, make sure there is no correlation between clusters and movement!

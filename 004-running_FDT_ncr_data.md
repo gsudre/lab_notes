@@ -1615,3 +1615,48 @@ for m in `cat ~/tmp/id8`; do
     fi;
 done
 ```
+
+# 2019-05-17 09:47:53
+
+Let's reconvert the pending list:
+
+```bash
+rm swarm.ncr
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat ~/tmp/id2 ~/tmp/id3`; do
+    echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
+done
+swarm -t 2 --job-name ncr2nii --time 30:00 -f swarm.ncr --partition quick \
+    --logdir trash_ncr2nii -m TORTOISE,afni
+```
+
+And we need to redo the tracts for a few other ones:
+
+```bash
+rm swarm.track
+for m in `cat ~/tmp/id10`; do 
+    echo "bash ~/research_code/dti/run_trackSubjectStruct.sh $m" >> swarm.track;
+done
+swarm -t 29 -g 52 -f swarm.track --job-name track --time 8:00:00 \
+        --logdir trash_track -m fsl/6.0.0 --gres=lscratch:10;
+```
+
+And redo some more eddy:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt
+for m in `cat ~/tmp/id12`; do
+    echo $m;
+    mkdir $m;
+    cp /scratch/sudregp/dcm_dti/${m}/dwi_comb* $m/;
+done;
+
+rm swarm.fdt
+for m in `cat ~/tmp/id12`; do
+echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
+    --partition gpu --job-name fdt2
+```
+
+```

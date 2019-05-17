@@ -72,3 +72,6 @@ tbss_1_preproc *.nii
 tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
 ```
 
+# TODO
+
+* Update excel spreadsheets with IDs that changed
