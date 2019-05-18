@@ -324,17 +324,90 @@ Time to compile the voxel results. First, create an ijk file:
 ```bash
 cd ~/data/heritability_change/fmri_same_space/
 cut -d " " -f 1,2,3 \
-    epi/groupmelodic_fancy.ica/dual/dumps/0901_IC0_Z.txt > ../fancy_mask_ijk.txt
+    epi/groupmelodic_fancy.ica/dual/dumps/0901_IC0_Z.txt > ../group_mask_fancy_ijk.txt
 ```
 
 We compile using:
 
 ```bash
 python ~/research_code/fmri/compile_solar_voxel_results.py melodic_fancy_slopesClean_n111_IC0
-3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN3 5 polygen_results_melodic_fancy_slopesClean_n111_IC0.nii 
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 15 \
+    ~/data/tmp/polygen_results_melodic_fancy_slopesClean_n111_IC0.nii
 ```
 
-OK, let's see if any of these results have some association to ADHD. Wrote
+And since we have a weekend tomorrow, let's leave some of the permutations
+running. At least for DMN and FP. On Monday we can check which networks actually
+have clusters that are also associated with ADHD:
+
+```bash
+cd /lscratch/$SLURM_JOBID
+cp ~/data/heritability_change/melodic_fancy_slopesClean_n111_IC0.csv .
+```
+
+```r
+# start it from lscratch
+m = 0
+nperms = 250
+library(data.table)
+dread = fread(sprintf('~/data/heritability_change/melodic_fancy_slopesClean_n111_IC%d.csv', m), header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
+d2 = d
+for (p in 1:nperms) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/perms/melodic_fancy_slopesClean_n111_IC%d_p%04d_sexAndBrainShuffled.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+Unfortunately that's taking too long. Maybe do something like this? 
+https://howto.lintel.in/shuffle-lines-file-linux/ using shuf()?
+
+
+And we need to be careful to only submit the swarms when we can:
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+ic=0;
+nperms=250;
+fname=`printf net%d_p%04d $ic 0`.swarm;
+# generate voxel file for the first perm
+for i in {1..154058}; do
+    echo "bash ~/research_code/run_solar_voxel.sh melodic_fancy_slopesClean_n111_IC0_p0000_sexAndBrainShuffled ${i}" >> $fname;
+done;
+# just copy it and rename IC and perm for the other ones
+for n in `seq 1 $nperms`; do
+    perm=`printf %04d $n`;
+    cp $fname `printf net%d_p%04d $ic $n`.swarm;
+    sed -i -- "s/p0000/p${perm}/g" `printf net%d_p%04d $ic $n`.swarm;
+done
+
+# runs all swarms, but wait until we can do it
+for n in `seq 1 $nperms`; do
+    jname=`printf net%d_p%04d $ic $n`;
+    echo "ERROR" > swarm_wait_${ic}
+    while grep -q ERROR swarm_wait_${ic}; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 --partition quick \
+            --time=1 -b 240 2> swarm_wait_${ic};
+        if grep -q ERROR swarm_wait_${ic}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+
+
+
+
+
+
+
+<!-- OK, let's see if any of these results have some association to ADHD. Wrote
 individual masks in AFNI. Then:
 
 ```bash
@@ -350,7 +423,7 @@ for n in 1 2 3; do
         done < maskids_566.txt;
     done;
 done
-```
+``` -->
 
 
 # TODO
