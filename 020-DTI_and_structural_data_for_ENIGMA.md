@@ -70,6 +70,7 @@ cd /mnt/shaw/dti_robust_tsa/enigma
 source activate python2
 tbss_1_preproc *.nii
 tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
+tbss_3_postreg -S
 ```
 
 # TODO

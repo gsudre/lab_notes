@@ -353,13 +353,15 @@ dread = fread(sprintf('~/data/heritability_change/melodic_fancy_slopesClean_n111
 d = as.data.frame(dread)  # just so we can index them a bit easier
 vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
 d2 = d
-for (p in 1:nperms) {
+for (p in seq(1, nperms, 2)) {
     d2[, vcols] = d[sample(nrow(d)), vcols]
     fname = sprintf('~/data/heritability_change/perms/melodic_fancy_slopesClean_n111_IC%d_p%04d_sexAndBrainShuffled.csv', m, p)
     print(fname)
     fwrite(d2, file=fname, row.names=F, quote=F)
 }
 ```
+
+Also do the above, but +1 so we can do it in parallel.
 
 Unfortunately that's taking too long. Maybe do something like this? 
 https://howto.lintel.in/shuffle-lines-file-linux/ using shuf()?
