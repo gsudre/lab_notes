@@ -402,9 +402,41 @@ for n in `seq 1 $nperms`; do
 done
 ```
 
+# 2019-05-20 11:47:23
 
+I started running into trouble in BW because I was going over the file number
+limit. Not in size, but in number. I'm not too worried because I delete the
+text-wise voxels after they're compiled, but I do have to put a cap in my
+swarms. Either that, or put a conditional job there that either compresses or
+compiles the files right away after the particular job is done.
 
+For now, I don't want to mess with it, so I'll just do 50 at a time, and compile
+ / clean-up as I go (I run into trouble in BW at around 106).
 
+Another option is to leave something like this running in helix:
+
+```bash
+ic=0;
+cur_perm=2;
+cd ~/data/tmp
+while true; do
+    p=`printf %04d $cur_perm`;
+    echo "Checking perm $p";
+    fname=melodic_fancy_slopesClean_n111_IC${ic}_p${p}_sexAndBrainShuffled;
+    nvox=`ls -1 ${fname}/ | wc -l`;
+    if [ $nvox == 154058 ]; then
+        echo "Compressing $fname";
+        tar -zcf ${fname}.tar.gz ${fname} && rm -rf ${fname};
+        let cur_perm=${cur_perm}+1;
+    else
+        echo "$fname not ready... sleeping";
+        sleep 10m;
+    fi;
+done;
+```
+
+That saves in space and file numbers. Then, when compiling the results, I can do
+everything in lscratch.
 
 
 

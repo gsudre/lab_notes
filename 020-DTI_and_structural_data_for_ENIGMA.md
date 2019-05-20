@@ -2,7 +2,7 @@
 
 These are the data for Martine. We couldn't send the matching DTI data to the
 structural data Philip had sent her before because that data was mostly 1.5T.
-So, let's choose based on DTI and then pick the matching Freesurfer to those. 
+So, let's choose based on DTI and then pick the matching Freesurfer to those.
 
 Philip said we can send anyone under 35 y.o., but only cross sectional and one
 per family. I think the easiest thing will be to get all our DTI and family IDs,
@@ -10,7 +10,7 @@ and take the oldest per family, which will hopefully also be the best quality.
 Here, I'll consider only one per extended family as well. So, I start with this
 search in Labmatrix:
 
-![](images/2019-05-15-13-41-03.png)
+![labmatrix search](images/2019-05-15-13-41-03.png)
 
 Note that I decided to go with the TORTOISE pre-processing for this because
 we've used more often in previous work. I'm still playing a bit with the FDT
@@ -70,7 +70,17 @@ cd /mnt/shaw/dti_robust_tsa/enigma
 source activate python2
 tbss_1_preproc *.nii
 tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
-tbss_3_postreg -S
+```
+
+Now we need to check registrations. I'll make some pics using my AFNI scripts,
+to make life easier.
+
+```bash
+cd /Volumes/Shaw/dti_robust_tsa/enigma
+# make transformation QC figure: the template is the edges! Note that the ENIGMA documentation states that the template might be a big bigger than the actual images.
+for m in `cat ids512.txt`; do
+    @snapshot_volreg FA/${m}_fa_FA_to_target.nii.gz enigmaDTI/ENIGMA_DTI_FA.nii.gz QC/${m};
+done
 ```
 
 # TODO
