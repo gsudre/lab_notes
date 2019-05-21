@@ -438,25 +438,238 @@ done;
 That saves in space and file numbers. Then, when compiling the results, I can do
 everything in lscratch.
 
+# 2019-05-21 10:00:50
 
-
-
-<!-- OK, let's see if any of these results have some association to ADHD. Wrote
-individual masks in AFNI. Then:
+I left some more permutations running, but before going nuts on it again, let's
+see if at least the biggest clusters in each network have some relationship with
+ADHD:
 
 ```bash
-cd /mnt/shaw/dti_robust_tsa/heritability
-for n in 1 2 3; do
-    for m in fa ad rd; do
-        echo $m $n
-        3dcopy ${m}_n${n}_mask_0001+orig mymask.nii -overwrite;
-        echo maskid,val > ${m}_n${n}.csv;
+# desktop
+for i in 0 5 62 8 2 15 60; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 10 \
+        -savemask cluster_NN1gt10_ic${i}.nii -overwrite \
+        polygen_results_melodic_fancy_slopesClean_n111_IC${i}.nii;
+done
+
+for i in 0 5 62 8 2 15 60; do
+    for n in 1 2 3; do
+        echo $i $n
+        3dcalc -a cluster_NN1gt10_ic${i}.nii -prefix mymask.nii -overwrite \
+            -expr "amongst(a, $n)";
+        echo maskid,val > ic${i}_cl${n}.csv;
         while read s; do
-            val1=`3dmaskave -q -mask mymask.nii ../analysis_may2017/${s}_tensor_diffeo_${m}.nii.gz 2>/dev/null`;
-            echo ${s},${val1} >> ${m}_n${n}.csv;
-        done < maskids_566.txt;
+            m=`printf %04d $s`;
+            val1=`3dmaskave -q -mask mymask.nii ~/data/heritability_change/fmri_same_space/epi/groupmelodic_fancy.ica/dual/dr_stage2_${m}_Z.nii.gz[${i}].nii.gz 2>/dev/null`;
+            echo ${m},${val1} >> ic${i}_cl${n}.csv;
+        done < ~/data/heritability_change/3min_mni.txt;
     done;
 done
+```
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN')
+clu_names = c()
+for (i in c(0, 5, 62, 8, 2, 15, 60)) {
+    for (n in 1:3) {
+        clu_names = c(clu_names, sprintf('ic%d_cl%d', i, n))
+    }
+}
+b = c()
+for (cl in clu_names) {
+    fname = sprintf('~/data/heritability_change/%s.csv', cl)
+    b2 = read.csv(fname)
+    b = cbind(b, b2[, 2])
+}
+b = cbind(b2[, 1], b)
+colnames(b) = c('mask.id', clu_names)
+var_names = colnames(b)[2:ncol(b)]
+
+df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id', all.x=F)
+
+# make sure we still have two scans for everyone
+rm_subjs = names(which(table(df2$Medical.Record...MRN)<2))
+rm_me = df2$Medical.Record...MRN %in% rm_subjs
+df2 = df2[!rm_me, ]
+
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN)) {
+    idx = which(mres$Medical.Record...MRN == s)
+    row = c(s, unique(mres[idx, 'Sex']))
+    y = mres[idx[2], var_names] - mres[idx[1], var_names]
+    x = mres[idx[2], 'age_at_scan'] - mres[idx[1], 'age_at_scan']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', 'DX', 'DX2'))
+save(res, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.RData')
+
+# and remove outliers
+res_clean = res
+for (t in var_names) {
+    mydata = as.numeric(res_clean[, t])
+    # identifying outliers
+    ul = mean(mydata) + 3 * sd(mydata)
+    ll = mean(mydata) - 3 * sd(mydata)
+    bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+    # remove within-variable outliers
+    res_clean[bad_subjs, t] = NA
+}
+save(res_clean, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopesClean.RData')
+
+# and make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+res2_clean = res_clean[fam_subjs, ]
+
+write.csv(res2, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes_n111.csv', row.names=F, na='', quote=F)
+write.csv(res2_clean, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopesClean_n111.csv', row.names=F, na='', quote=F)
+```
+
+
+<!-- 
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_clusters_residNoSex_OLS_naSlopes283.csv')
+clu_names = c('ad_n1', 'ad_n2', 'ad_n3',
+              'rd_n1', 'rd_n1_2', 'rd_n1_3', 'rd_n2', 'rd_n3',
+              'fa_n1', 'fa_n2', 'fa_n2_2', 'fa_n3')
+tract_names = clu_names
+
+tmp = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopesAndBaseline283.csv')
+data = merge(data, tmp[, c('ID', 'famID')], by='ID')
+data$sex = as.factor(data$sex)
+
+out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
 ``` -->
 
 
