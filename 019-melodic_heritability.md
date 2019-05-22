@@ -545,7 +545,7 @@ for (s in unique(mres$Medical.Record...MRN)) {
 colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline', 'DX', 'DX2'))
-save(res, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.RData')
+write.csv(res, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.csv', row.names=F, na='', quote=F)
 
 # and remove outliers
 res_clean = res
@@ -559,7 +559,7 @@ for (t in var_names) {
     # remove within-variable outliers
     res_clean[bad_subjs, t] = NA
 }
-save(res_clean, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopesClean.RData')
+write.csv(res_clean, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopesClean.csv', row.names=F, na='', quote=F)
 
 # and make sure every family has at least two people
 good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
@@ -586,21 +586,54 @@ write.csv(res2, file='~/data/heritability_change/fmri_same_space/melodic_fancy_c
 write.csv(res2_clean, file='~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopesClean_n111.csv', row.names=F, na='', quote=F)
 ```
 
+# 2019-05-22 12:08:16
 
-<!-- 
+I started running into lots of trouble in BW because of the swarms. After
+talking to Susan, one of the approaches is to use a bigger bundle factor and use
+the norm partition. Let's ry that for now.
+
+```bash
+nperms=99
+# runs all swarms, but wait until we can do it
+for n in `seq 90 $nperms`; do
+    jname=`printf net%d_p%04d $ic $n`;
+    echo "ERROR" > swarm_wait_${ic}
+    while grep -q ERROR swarm_wait_${ic}; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 --partition norm \
+            --time=1 -b 1000 2> swarm_wait_${ic};
+        if grep -q ERROR swarm_wait_${ic}; then
+            echo -e "\tError, sleeping..."
+            sleep 1h;
+        fi;
+    done;
+done
+```
+
+OK, let's run the regressions on the clusters:
+
 ```r
 library(nlme)
-data = read.csv('~/data/heritability_change/dti_clusters_residNoSex_OLS_naSlopes283.csv')
-clu_names = c('ad_n1', 'ad_n2', 'ad_n3',
-              'rd_n1', 'rd_n1_2', 'rd_n1_3', 'rd_n2', 'rd_n3',
-              'fa_n1', 'fa_n2', 'fa_n2_2', 'fa_n3')
+res = read.csv('~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.csv')
+clu_names = c()
+for (i in c(0, 5, 62, 8, 2, 15, 60)) {
+    for (n in 1:3) {
+        clu_names = c(clu_names, sprintf('ic%d_cl%d', i, n))
+    }
+}
 tract_names = clu_names
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+m2$famID = m2$Extended.ID...FamilyIDs
+idx = is.na(m2$famID)
+m2[idx, ]$famID = m2[idx, ]$Nuclear.ID...FamilyIDs
 
-tmp = read.csv('~/data/heritability_change/dti_JHUtracts_residNoSex_OLS_naSlopesAndBaseline283.csv')
-data = merge(data, tmp[, c('ID', 'famID')], by='ID')
+m3 = m2[, c('Medical.Record...MRN', 'famID')]
+m4 = unique(m3)
+data = merge(res, m4, all.x=T, all.y=F, by.x='ID', by.y='Medical.Record...MRN')
 data$sex = as.factor(data$sex)
 
-out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283.csv'
+out_fname = '~/data/heritability_change/assoc_LME_rsfmriClusters_naSlopes227.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
 targets = tract_names
 hold=NULL
@@ -624,7 +657,7 @@ for (i in targets) {
 write.csv(hold, out_fname, row.names=F)
 
 data2 = data[data$DX=='ADHD', ]
-out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283_dx1.csv'
+out_fname = '~/data/heritability_change/assoc_LME_rsfmriClusters_naSlopes227_dx1.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 targets = tract_names
 hold=NULL
@@ -648,7 +681,7 @@ for (i in targets) {
 write.csv(hold, out_fname, row.names=F)
 
 data2 = data[data$DX2=='ADHD', ]
-out_fname = '~/data/heritability_change/assoc_LME_clu_naSlopes283_dx2.csv'
+out_fname = '~/data/heritability_change/assoc_LME_rsfmriClusters_naSlopes227_dx2.csv'
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 targets = tract_names
 hold=NULL
@@ -670,9 +703,325 @@ for (i in targets) {
     }
 }
 write.csv(hold, out_fname, row.names=F)
-``` -->
+```
 
+Well, it looks like we have some results. But they're mostly in clu2 of
+different networks, so it'll depend on how significantly heritable those
+clusters are... For the entire sample:
+
+![](images/2019-05-22-17-05-52.png)
+
+If we use only ADHD_NOS:
+
+![](images/2019-05-22-17-06-59.png)
+
+And ADHD only:
+
+![](images/2019-05-22-17-06-38.png)
+
+But note that none of the results are in DMN... 5 is cognitive, 2 is DAN, but 60
+is visual :( ... 15 is motor... maybe the latter two won't come up as heritable?
+Let's see.
+
+But before we go nuts on more permutations, let's see if the results are still
+there in regular LM and also non-parametric regressions:
+
+```r
+library(nlme)
+res = read.csv('~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.csv')
+clu_names = c()
+for (i in c(0, 5, 62, 8, 2, 15, 60)) {
+    for (n in 1:3) {
+        clu_names = c(clu_names, sprintf('ic%d_cl%d', i, n))
+    }
+}
+tract_names = clu_names
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+m2$famID = m2$Extended.ID...FamilyIDs
+idx = is.na(m2$famID)
+m2[idx, ]$famID = m2[idx, ]$Nuclear.ID...FamilyIDs
+
+m3 = m2[, c('Medical.Record...MRN', 'famID')]
+m4 = unique(m3)
+data = merge(res, m4, all.x=T, all.y=F, by.x='ID', by.y='Medical.Record...MRN')
+data$sex = as.factor(data$sex)
+
+out_fname = '~/data/heritability_change/assoc_rsfmriClusters_naSlopes227.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_rsfmriClusters_naSlopes227_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_rsfmriClusters_naSlopes227_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-lm(as.formula(fm_str), data2, na.action=na.omit)
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+Most of the results hold, if not even stronger, with LM:
+
+![](images/2019-05-22-17-24-24.png)
+
+And using ADHDNOS only:
+
+![](images/2019-05-22-17-25-19.png)
+
+Finally, ADHD DX only:
+
+![](images/2019-05-22-17-26-27.png)
+
+Interesting, pretty much all these results are related to HI, so we'll
+definitely need to show it's not correlated to movement variables!
+
+But before we do that, let's check on non-parametric tests. Note that here I'll
+remove sex firstm because we cannot use covariates in the other package:
+
+```r
+library(mblm)
+res = read.csv('~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.csv')
+clu_names = c()
+for (i in c(0, 5, 62, 8, 2, 15, 60)) {
+    for (n in 1:3) {
+        clu_names = c(clu_names, sprintf('ic%d_cl%d', i, n))
+    }
+}
+tract_names = clu_names
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+m2$famID = m2$Extended.ID...FamilyIDs
+idx = is.na(m2$famID)
+m2[idx, ]$famID = m2[idx, ]$Nuclear.ID...FamilyIDs
+
+m3 = m2[, c('Medical.Record...MRN', 'famID')]
+m4 = unique(m3)
+data = merge(res, m4, all.x=T, all.y=F, by.x='ID', by.y='Medical.Record...MRN')
+data$sex = as.factor(data$sex)
+
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~ sex', t)
+    res.lm <- lm(as.formula(fm_str), data=data)
+    data[, t] = residuals(res.lm)
+}
+
+out_fname = '~/data/heritability_change/assoc_NP_rsfmriClusters_naSlopes227.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_NP_rsfmriClusters_naSlopes227_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data2[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data2[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_NP_rsfmriClusters_naSlopes227_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        idx = !is.na(data2[, i])
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1 = mblm(as.formula(fm_str), data=data2[idx,])
+        temp<-summary(model1)$coefficients
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+As usual, non-parametric is all kinds of significant. Maybe I'll need to run
+some correlations later? Not sure if I'm trusting this MBLM package that much.
+
+![](images/2019-05-22-17-37-07.png)
+
+ADHDNOS:
+
+![](images/2019-05-22-17-38-01.png)
+
+ADHD-only:
+
+![](images/2019-05-22-17-38-54.png)
+
+Let's do it using non-parametric correlations, then:
+
+```r
+res = read.csv('~/data/heritability_change/fmri_same_space/melodic_fancy_clusterSlopes.csv')
+clu_names = c()
+for (i in c(0, 5, 62, 8, 2, 15, 60)) {
+    for (n in 1:3) {
+        clu_names = c(clu_names, sprintf('ic%d_cl%d', i, n))
+    }
+}
+tract_names = clu_names
+m2 = read.csv('~/data/heritability_change/rsfmri_3min_assoc_n462.csv')
+m2$famID = m2$Extended.ID...FamilyIDs
+idx = is.na(m2$famID)
+m2[idx, ]$famID = m2[idx, ]$Nuclear.ID...FamilyIDs
+
+m3 = m2[, c('Medical.Record...MRN', 'famID')]
+m4 = unique(m3)
+data = merge(res, m4, all.x=T, all.y=F, by.x='ID', by.y='Medical.Record...MRN')
+data$sex = as.factor(data$sex)
+
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~ sex', t)
+    res.lm <- lm(as.formula(fm_str), data=data)
+    data[, t] = residuals(res.lm)
+}
+
+out_fname = '~/data/heritability_change/assoc_kendall_rsfmriClusters_naSlopes227.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        model1 = cor.test(data[, i], data[, j], method='kendall')
+        a<-as.vector(model1)
+        a$target = i
+        a$predictor = j
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_kendall_rsfmriClusters_naSlopes227_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        model1 = cor.test(data2[, i], data2[, j], method='kendall')
+        a<-as.vector(model1)
+        a$target = i
+        a$predictor = j
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_kendall_rsfmriClusters_naSlopes227_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        model1 = cor.test(data2[, i], data2[, j], method='kendall')
+        a<-as.vector(model1)
+        a$target = i
+        a$predictor = j
+        hold=rbind(hold,a)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+These are much more believable. Still good, though:
+
+![](images/2019-05-22-17-57-19.png)
+
+ADHD_NOS:
+
+![](images/2019-05-22-17-53-46.png)
+
+ADHD-only:
+
+![](images/2019-05-22-17-56-04.png)
+
+If anything, I can tell I need to run permutations for ICs 5 and 2. I've
+constructed the files for IC5 already, so it's just running that, and then IC2.
+
+I'm also working on a run_solar_voxel_range.sh script, which might make
+permutations run quite a bit faster...
 
 # TODO
 
 * If results are good, make sure there is no correlation between clusters and movement!
+* Where are those goos clusters?
