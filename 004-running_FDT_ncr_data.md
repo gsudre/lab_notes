@@ -1645,18 +1645,18 @@ And redo some more eddy:
 
 ```bash
 cd /data/NCR_SBRB/dti_fdt
-for m in `cat ~/tmp/id13`; do
+for m in `cat ~/tmp/id14`; do
     echo $m;
     mkdir $m;
     cp /scratch/sudregp/dcm_dti/${m}/dwi_comb* $m/;
 done;
 
 rm swarm.fdt
-for m in `cat ~/tmp/id13`; do
+for m in `cat ~/tmp/id14`; do
     echo "bash ~/research_code/dti/fdt_ncr_eddy.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
 done;
 swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
-    --partition gpu --job-name fdt3
+    --partition gpu --job-name fdt4
 ```
 
 In re-importing some of the scans manually, I do something like this:
@@ -1670,3 +1670,62 @@ for i in {1241..2480}; do rm mr_0012/edti_cdiflist09_g02-0${i}.dcm; done
 for d in `ls | grep ^mr_`; do echo $d; ls -1 $d | wc -l; ls -1 $d | head -n 1; done
 bash ~/research_code/dti/convert_ncr_to_nii.sh `pwd`
 ```
+
+# 2019-05-23 16:11:07
+
+We can get information on the volumes that were re-acquired running:
+
+```bash
+for m in `cat ~/tmp/rm.txt`; do
+    v=`grep Volume ../../$m/E*/directionsReplayedInfo.txt | awk '{IFS=" "; print $3 }' | sed "s/://g"`;
+    echo $m,$v >> ~/tmp/rm_me.csv;
+done
+```
+
+But several IDs didn't have the directions file. How were therey imported? It's
+likely that they didn't have 99 then, and the extra volumes are just an error in
+importing. Let's re-import them manually.
+
+# 2019-05-24 10:29:31
+
+Let's grab the volume removal file again:
+
+```bash
+data_dir=/Volumes/Shaw/MR_data_by_maskid/;
+fdt_dir=/Volumes/Shaw/NCR_DTI_FDT/;
+for m in `cat ~/tmp/id16`; do
+    grep Volume $data_dir/$m/E*/directionsReplayedInfo.txt | \
+        awk '{IFS=" "; print $3 }' | sed "s/://g" > ~/tmp/${m}_bad_vols.txt
+    nvols=`fslinfo $fdt_dir/${m}/dwi_comb.nii | grep -e "^dim4" | awk '{ print $2 }'`;
+    keep_str='';
+    for v in `seq 1 $nvols`; do
+        if ! grep -q "^$v$" ~/tmp/${m}_bad_vols.txt; then
+            # afni needs 0-based volumes
+            keep_str=${keep_str}','$(($v-1));
+        fi;
+    done
+    # remove leading comma
+    echo $keep_str | sed "s/^,//" > ~/tmp/${m}_keep_str.txt;
+    fat_proc_filter_dwis                                 \
+        -in_dwi        $fdt_dir/${m}/dwi_comb.nii.gz       \
+        -in_row_vec     $fdt_dir/${m}/dwi_comb_rvec.dat     \
+        -in_bvals       $fdt_dir/${m}/dwi_comb_bval.dat  \
+        -select_file   ~/tmp/${m}_keep_str.txt             \
+        -prefix        $fdt_dir/${m}/dwi_cropped \
+        -no_qc_view
+done
+```
+
+I then ran this to make sure the final number of volumes was either 61 or 81
+(the extra b0 is needed):
+
+```bash
+fdt_dir=/Volumes/Shaw/NCR_DTI_FDT/;
+for m in `cat ~/tmp/id16`; do
+    nvols=`fslinfo $fdt_dir/${m}/dwi_cropped | grep -e "^dim4" | awk '{ print $2 }'`;
+    echo $m, $nvols >> ~/tmp/removed.csv;
+done
+```
+
+
+

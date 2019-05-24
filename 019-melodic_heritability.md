@@ -1021,6 +1021,127 @@ constructed the files for IC5 already, so it's just running that, and then IC2.
 I'm also working on a run_solar_voxel_range.sh script, which might make
 permutations run quite a bit faster...
 
+# 2019-05-23 11:36:18
+
+So, the range script seems to work a bit better. Let's run the IC2 permutations
+that way... actually, I ran the IC5 permutations wrong. So, we'll need to start
+with those.
+
+When I ran interactivelly, 100 voxels took a little over 20-22min. So, let's see if
+we do 30 just to be in the safe side.
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+ic=5;
+nperms=200;
+nvox=154058;
+fname=`printf net%d_p%04d $ic 0`.swarm;
+bundle=100;
+# generate voxel file for the first perm
+cur_vox=1;
+while [ $cur_vox -lt $nvox ]; do
+    let last_vox=${cur_vox}+${bundle}-1;
+    # gets the min
+    last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+    echo "bash ~/research_code/run_solar_voxel_range.sh melodic_fancy_slopesClean_n111_IC${ic}_p0000_sexAndBrainShuffled ${cur_vox} ${last_vox}" >> $fname;
+    let cur_vox=${last_vox}+1;
+done;
+# just copy it and rename IC and perm for the other ones
+for n in `seq 1 $nperms`; do
+    perm=`printf %04d $n`;
+    cp $fname `printf net%d_p%04d $ic $n`.swarm;
+    sed -i -- "s/p0000/p${perm}/g" `printf net%d_p%04d $ic $n`.swarm;
+done
+
+# runs all swarms, but wait until we can do it
+for n in `seq 1 $nperms`; do
+    jname=`printf net%d_p%04d $ic $n`;
+    echo "ERROR" > swarm_wait_${ic}
+    while grep -q ERROR swarm_wait_${ic}; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 --partition quick \
+            --time=30:00 -b 8 --maxrunning 5 --merge-output 2> swarm_wait_${ic};
+        if grep -q ERROR swarm_wait_${ic}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+# 2019-05-24 09:20:01
+
+With the range script, I need to do a better way of getting local disk space.
+With 10 voxels, the directory size was 287Mb. But most of it is the original file.
+For 20 voxels it's still 287Mb, as I'm deleting the temporary directories. So, I
+estimate about for 100 voxels it'll stay the same now.
+
+Let's use Wolfgang's suggestions and increase the local range:
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+ic=5;
+nperms=200;
+nvox=154058;
+fname=`printf net%d_p%04d $ic 0`.swarm;
+bundle=5000;
+# generate voxel file for the first perm
+cur_vox=1;
+while [ $cur_vox -lt $nvox ]; do
+    let last_vox=${cur_vox}+${bundle}-1;
+    # gets the min
+    last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+    echo "bash ~/research_code/run_solar_voxel_range.sh melodic_fancy_slopesClean_n111_IC${ic}_p0000_sexAndBrainShuffled ${cur_vox} ${last_vox}" >> $fname;
+    let cur_vox=${last_vox}+1;
+done;
+# just copy it and rename IC and perm for the other ones
+for n in `seq 1 $nperms`; do
+    perm=`printf %04d $n`;
+    cp $fname `printf net%d_p%04d $ic $n`.swarm;
+    sed -i -- "s/p0000/p${perm}/g" `printf net%d_p%04d $ic $n`.swarm;
+done
+
+n=1;
+jname=`printf net%d_p%04d $ic $n`;
+swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+    --logdir=${jname} --job-name ${jname} -p 2 \
+    --time=25:00:00 --merge-output;
+```
+
+And they asked me to set up the jobs with dependencies. So, let's do the next 5
+depending on the first one complete:
+
+```bash
+ic=5;
+cur_id=27364175;
+for n in {3..13}; do
+    jname=`printf net%d_p%04d $ic $n`;
+    job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+        --logdir=${jname} --job-name ${jname} -p 2 \
+        --time=25:00:00 --merge-output --dependency afterany:$cur_id);
+    echo $job_id;
+    cur_id=$job_id;
+done
+```
+
+And same thing for the next one. This way I keep it to only running two at the
+same time (for now), but don't waste time over the long weekend:
+
+```bash
+ic=5;
+cur_id=27364178;
+for n in {14..24}; do
+    jname=`printf net%d_p%04d $ic $n`;
+    job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+        --logdir=${jname} --job-name ${jname} -p 2 \
+        --time=25:00:00 --merge-output --dependency afterany:$cur_id);
+    echo $job_id;
+    cur_id=$job_id;
+done
+```
+
+
 # TODO
 
 * If results are good, make sure there is no correlation between clusters and movement!
