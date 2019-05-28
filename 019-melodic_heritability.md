@@ -1106,7 +1106,7 @@ n=1;
 jname=`printf net%d_p%04d $ic $n`;
 swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
     --logdir=${jname} --job-name ${jname} -p 2 \
-    --time=25:00:00 --merge-output;
+    --time=36:00:00 --merge-output;
 ```
 
 And they asked me to set up the jobs with dependencies. So, let's do the next 5
@@ -1135,12 +1135,84 @@ for n in {14..24}; do
     jname=`printf net%d_p%04d $ic $n`;
     job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
         --logdir=${jname} --job-name ${jname} -p 2 \
-        --time=25:00:00 --merge-output --dependency afterany:$cur_id);
+        --time=36:00:00 --merge-output --dependency afterany:$cur_id);
     echo $job_id;
     cur_id=$job_id;
 done
 ```
 
+# 2019-05-28 11:04:16
+
+Under this new way of running voxels in a range, and saving them in individual
+tarballs, I ned to change how I'm compiling everything. Basically, instead of
+sending the phenotype name to the compilation script, I can send the entire
+directory, and do the untarring in lscratch.
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+i=1;
+p=`printf %04d $i`;
+phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled;
+mkdir $phen;
+cd $phen;
+cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
+tar -zxf *gz;
+python ~/research_code/fmri/compile_solar_voxel_results.py \
+    /lscratch/${SLURM_JOBID}/ $phen;
+
+for i in {1..50}; do
+    p=`printf %04d $i`;
+    phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled
+    nzips=`ls -1 ~/data/tmp/$phen/*gz | wc -l`;
+    echo $phen $nzips;
+done
+
+```
+
+And Wolfgang said I can try 8 concurrent swarms. Let's see how it goes:
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+ic=5;
+n=71;
+jname=`printf net%d_p%04d $ic $n`;
+cur_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+    --logdir=${jname} --job-name ${jname} -p 2 --time=36:00:00 --merge-output);
+for n in {72..75}; do
+    jname=`printf net%d_p%04d $ic $n`;
+    job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+        --logdir=${jname} --job-name ${jname} -p 2 \
+        --time=36:00:00 --merge-output --dependency afterany:$cur_id);
+    echo $job_id;
+    cur_id=$job_id;
+done
+```
+
+And if we want to run a few more:
+
+```bash
+cd ~/data/heritability_change/fmri_same_space/
+ic=5;
+jstart=100;  # permutation to start with
+jdeps=5;  # number of dependent jobs in each swarm
+nswarms=4;  # number of independent swarms
+for n in `seq 1 $nswarms`; do
+    jname=`printf net%d_p%04d $ic $jstart`;
+    cur_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+        --logdir=${jname} --job-name ${jname} -p 2 --time=36:00:00 --merge-output);
+    echo "Active swarm: ${jname} (${cur_id})"
+    for d in `seq 1 $jdeps`; do
+        let jstart=${jstart}+1;
+        jname=`printf net%d_p%04d $ic $jstart`;
+        job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 \
+            --time=36:00:00 --merge-output --dependency afterany:$cur_id);
+        echo "Dependent swarm: ${jname} (${job_id}, on ${cur_id})"
+        cur_id=$job_id;
+    done;
+    let jstart=${jstart}+1;
+done
+```
 
 # TODO
 
