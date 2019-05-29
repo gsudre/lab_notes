@@ -1193,9 +1193,9 @@ And if we want to run a few more:
 ```bash
 cd ~/data/heritability_change/fmri_same_space/
 ic=5;
-jstart=100;  # permutation to start with
-jdeps=5;  # number of dependent jobs in each swarm
-nswarms=4;  # number of independent swarms
+jstart=124;  # permutation to start with
+jdeps=4;  # number of dependent jobs in each swarm
+nswarms=16;  # number of independent swarms
 for n in `seq 1 $nswarms`; do
     jname=`printf net%d_p%04d $ic $jstart`;
     cur_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
@@ -1214,7 +1214,40 @@ for n in `seq 1 $nswarms`; do
 done
 ```
 
+# 2019-05-29 15:43:16
+
+Right now I only have permutations (and 192 only) for IC0, even though I have no
+association results there. Still, let's see how many voxels we need to have a
+significantly heritable result.
+
+```bash
+ic=0
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 10 \
+        polygen_results_melodic_fancy_slopesClean_n111_IC${ic}.nii;
+# NN1 has a 22, 18, and 17
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 11 \
+    -quiet polygen_results_melodic_fancy_slopesClean_n111_IC${ic}_p*_sexAndBrainShuffled.nii | grep CLUSTERS | wc -l
+```
+
+Just careful because the code above gives us the number of times we DID NOT have
+a cluster of 11 or more voxels. Then, we still need to do (nperms-res)/nperms.
+
+So, NN1 of 22 gives 87 occurrences, but with 191 permutations, that's quite bad.
+In other words, nothing even close to significance here. What if we go for NN2
+or NN3? 
+
+In IC0, the top cluster in NN2 = 42 (87 misses in permutations), NN3 = 65 (99).
+So, neither one helps. That doesnt' give me much hope for our actual results,
+though:
+
+IC5: NN1 = 21, NN2 = 47, NN3 = 59.
+IC2: NN1 = 26, NN2 = 35, NN3 = 77.
+
+Unless the results are quite different from network to network, we're in bad
+shape here...
+
+
 # TODO
 
 * If results are good, make sure there is no correlation between clusters and movement!
-* Where are those goos clusters?
+* Where are those good clusters?
