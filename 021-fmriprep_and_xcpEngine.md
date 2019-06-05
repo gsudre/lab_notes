@@ -20,6 +20,7 @@ And we can swarm something like the bit above for a few IDs, just for
 benchmarking.
 
 ```bash
+cd /data/NCR_SBRB/
 rm fmriprep.swarm;
 for m in `cat ~/tmp/testids.txt`; do
     echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
@@ -32,7 +33,7 @@ for m in `cat ~/tmp/testids.txt`; do
         'mv $TMPDIR/out ' "/data/NCR_SBRB/fmriprep_output/sub-${m};" >> fmriprep.swarm;
 done
 swarm -f fmriprep.swarm --gres=lscratch:10 -g 10 -t 16 --module fmriprep \
-     --time=3:00:00 --merge-output --logdir=trash_fmriprep \
+     --time=4:00:00 --merge-output --logdir=trash_fmriprep \
      --job-name fmriprep1 --partition quick
 ```
 
@@ -44,6 +45,9 @@ more dependent on good T1s... not sure if we wan to do that.
 
 Using 16 cores, it only went up to 6 Gb, and took about 3h. Also, it only took
 about 4G in the local scratch, including working and output directories.
+
+I actually started with 3h, but it was cutting close for a few IDs, so I went up
+to 4h, which is the limit for the quick partition.
 
 Also, make sure all scans being processed have the same TR and slice timing!
 
@@ -88,3 +92,9 @@ swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine \
      --time=15:00 --merge-output --logdir=trash_xcpengine \
      --job-name xcp1 --partition quick
 ```
+
+
+sudregp  28098854_70  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2759  
+sudregp  28098854_72  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2760  
+sudregp  28098854_74  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2761  
+sudregp  28098854_76  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2762  

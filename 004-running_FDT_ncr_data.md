@@ -1727,5 +1727,51 @@ for m in `cat ~/tmp/id16`; do
 done
 ```
 
+# 2019-06-05 10:49:08
 
+Let's use GNU parallel to make the masks go faster:
+
+```bash
+module load afni
+cd /lscratch/${SLURM_JOBID}
+for m in `cat ~/tmp/mm`; do
+    echo $m;
+    mkdir ${m};
+    if [ -e /data/NCR_SBRB/dti_fdt/${m}/dwi_reorient.nii.gz ]; then
+        cp /data/NCR_SBRB/dti_fdt/${m}/dwi_reorient.nii.gz ${m}/dwi.nii.gz;
+    else
+        cp /data/NCR_SBRB/dti_fdt/${m}/dwi_comb.nii.gz ${m}/dwi.nii.gz;
+    fi;
+    cp  /data/NCR_SBRB/dti_fdt/${m}/b0_brain_mask.nii.gz ${m};
+    mkdir ${m}/QC;
+done
+
+cat ~/tmp/mm | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+    @chauffeur_afni                             \
+        -ulay  {}/dwi.nii.gz[0]                         \
+        -olay  {}/b0_brain_mask.nii.gz                        \
+        -opacity 4                              \
+        -prefix   {}/QC/brain_mask              \
+        -montx 6 -monty 6                       \
+        -set_xhairs OFF                         \
+        -label_mode 1 -label_size 3             \
+        -do_clean;
+
+for m in `cat ~/tmp/mm`; do cp -r ${m}/QC /data/NCR_SBRB/dti_fdt/${m}/; done
+```
+
+```bash
+mkdir /data/NCR_SBRB/dti_fdt/summary_QC
+cd /data/NCR_SBRB/dti_fdt/summary_QC/
+mkdir brainmask
+mkdir transform
+mkdir DEC
+mkdir SSE
+for m in `cat ~/tmp/mm`; do
+    echo ${m}
+    cp ../${m}/QC/brain_mask.axi.png brainmask/${m}.axi.png
+    cp ../${m}/QC/brain_mask.sag.png brainmask/${m}.sag.png
+    cp ../${m}/QC/brain_mask.cor.png brainmask/${m}.cor.png
+done
+```
 
