@@ -1775,3 +1775,43 @@ for m in `cat ~/tmp/mm`; do
 done
 ```
 
+Now, for the other QC images:
+
+```bash
+cd /data/NCR_SBRB/dti_fdt/
+for m in `cat ~/tmp/xaa`; do
+    if [ -e preproc/${m}.bedpostX/mean_f1samples.nii.gz ]; then
+        echo $m;
+        mkdir /lscratch/${SLURM_JOBID}/${m};
+        cp /data/NCR_SBRB/dti_fdt/preproc/${m}/dti* \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/data.nii.gz \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/*mask* \
+            /data/NCR_SBRB/dti_fdt/preproc/${m}/*warp* /lscratch/${SLURM_JOBID}/${m};
+    else
+        echo "Cannot find $m";
+    fi;
+done
+
+module load afni
+module load fsl/6.0.0
+cd /lscratch/${SLURM_JOBID}
+cat ~/tmp/xaa | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+    bash ~/research_code/dti/fdt_TBSS_and_QC.sh /lscratch/${SLURM_JOBID}/{};
+for m in `cat ~/tmp/xaa`; do cp -r ${m}/* /data/NCR_SBRB/dti_fdt/preproc/${m}/; done
+rm -rf /lscratch/${SLURM_JOBID}/*
+
+cd /data/NCR_SBRB/dti_fdt/summary_QC/
+for m in `cat ~/tmp/pics`; do
+    echo $m;
+    cp ../preproc/${m}/QC/FA_transform.jpg transform/${m}.jpg
+
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.axi.png DEC/${m}.axi.png
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.sag.png DEC/${m}.sag.png
+    cp ../preproc/${m}/QC/DEC_qc_dec_sca07.cor.png DEC/${m}.cor.png
+
+    cp ../preproc/${m}/QC/sse.axi.png SSE/${m}.axi.png
+    cp ../preproc/${m}/QC/sse.cor.png SSE/${m}.cor.png
+    cp ../preproc/${m}/QC/sse.sag.png SSE/${m}.sag.png
+done
+
+```
