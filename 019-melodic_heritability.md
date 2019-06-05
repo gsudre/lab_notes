@@ -1149,6 +1149,18 @@ sending the phenotype name to the compilation script, I can send the entire
 directory, and do the untarring in lscratch.
 
 ```bash
+for i in {1..118}; do
+    p=`printf %04d $i`;
+    phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled
+    if [ -d ~/data/tmp/$phen ]; then
+        nzips=`ls -1 ~/data/tmp/$phen/*gz 2>/dev/null | wc -l`;
+        if [ $nzips -gt 10 ]; then
+            echo $phen $nzips;
+        fi;
+    fi;
+done
+
+# to compile
 cd /lscratch/${SLURM_JOBID}
 i=1;
 p=`printf %04d $i`;
@@ -1156,17 +1168,45 @@ phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled;
 mkdir $phen;
 cd $phen;
 cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
-tar -zxf *gz;
+for f in `ls *gz`; do tar -zxf $f; done
 python ~/research_code/fmri/compile_solar_voxel_results.py \
     /lscratch/${SLURM_JOBID}/ $phen;
+# if nothing to re-run
+cp ../*.nii ~/data/tmp/
 
-for i in {1..50}; do
+# then, in a big interactive node
+bash ~/research_code/run_solar_voxel_parallel.sh $phen ~/solar_logs/${phen}.voxel_list
+# and re-run the above
+```
+
+Or, if we script it out:
+
+```bash
+# for i in 15 16 25 26 27; do
+# for i in 38 49 61 66 71 76 82; do
+for i in 88 94 100 106 112 118; do
+    cd /lscratch/${SLURM_JOBID}
     p=`printf %04d $i`;
-    phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled
-    nzips=`ls -1 ~/data/tmp/$phen/*gz | wc -l`;
-    echo $phen $nzips;
+    phen=melodic_fancy_slopesClean_n111_IC5_p${p}_sexAndBrainShuffled;
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
+    for f in `ls *gz`; do tar -zxf $f; done
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen;
+    if [ ! -e ../polygen_results_${phen}.nii ]; then 
+        bash ~/research_code/run_solar_voxel_parallel.sh $phen ~/solar_logs/${phen}.voxel_list
+        # do it again, since we should have all voxels by now
+        cd /lscratch/${SLURM_JOBID}
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
+        for f in `ls *gz`; do tar -zxf $f; done
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen;
+    fi;
+    cp /lscratch/${SLURM_JOBID}/polygen_results_${phen}.nii ~/data/tmp/
 done
-
 ```
 
 And Wolfgang said I can try 8 concurrent swarms. Let's see how it goes:
@@ -1245,6 +1285,12 @@ IC2: NN1 = 26, NN2 = 35, NN3 = 77.
 
 Unless the results are quite different from network to network, we're in bad
 shape here...
+
+# 2019-05-30 17:33:05
+
+Yeah, IC5 only completed 16 iterations, but even there I only got 7 permutations
+without a cluster as big as 21... not encouraging. I'm going to kill this and
+spend time in the fmriprep + xcp pipelines.
 
 
 # TODO
