@@ -1813,5 +1813,15 @@ for m in `cat ~/tmp/pics`; do
     cp ../preproc/${m}/QC/sse.cor.png SSE/${m}.cor.png
     cp ../preproc/${m}/QC/sse.sag.png SSE/${m}.sag.png
 done
-
 ```
+
+# 2019-06-07 18:11:11
+
+For correcting the "ECScanManager::set_slice_to_vol_reference: ref index out of
+bounds" error in eddy, it looks like this note is useful:
+https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=ind1804&L=FSL&D=0&P=235400
+
+In a nutshell, we need to run eddy without slice to volume correction, and look
+at the report file to identify if (or simply which one) a slice is identified as
+an outlier across volumes. Then, remove that slice and proceed. If it's a basal
+slice, probably we won't lose much.

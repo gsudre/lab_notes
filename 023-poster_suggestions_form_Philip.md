@@ -1,6 +1,8 @@
 # 2019-06-07 17:19:46
 
 ## Presentation
+* Stick with what's in the introduction: 1) change is heritable; 2) Longitudinal
+  studies didn't look at DTI; 3) It's important for ADHD because...
 * Don't switch back and forth on the phenotype. Use just one term: structural
   connections, and we examine it in a finer level through voxels. We looked at
   two microstructural properties of those structural connections. 
