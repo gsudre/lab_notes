@@ -25,12 +25,13 @@
   related to multiple comparison corrections. Now we have those figured out.
 * How do the baseline results compared to these change results? Use our family
   papers as foundation for it...
-* What do you make of those opposing direction i the uncinate result? It
-  highlights the dissociability of two different pathophysiological processes.
-  We know from previous studies that the driving course of changes in
-  inattention and HI only overlap at about 50% of genes. Here we are focusing on
-  the association of heritable regions, so it's plausible that they would behave
-  differently.
+* What do you make of those opposing direction i the uncinate result?
+  1. In our data the rate of change of inattention and hI are not associated-
+     likely reflecting independent, underlying processes
+  2. Additionally, twin studies show that change in inattention and change in HI
+     are only partly genetically correlated-  that is, they have a largely
+     independent genomic underpinnings.  And in this study we are examining
+     correlations with heritable, genetically driven. change in white matter.
 * What kind of other support do we need? I know that Dr. Shaw's tenure package
   is likely to include a dedicated clinician and more specialized genomic
   support. This will allow me to focus more on the neuroimaging, and more
@@ -42,14 +43,19 @@
   I can further expand my neuroimaging or genomics methods background, are
   always useful. I've also organized the MEG and Depp Learning interest groups
   here at NIH.
-* 
+
 
 ## TODO
 * Re-read our previous papers, especially the ones cited as key papers and the
   heritability one.
 * Make correlation between change in inattention and HI. Send scatterplot and
   values to Philip.
+  - not significant for ADHD_NOS (p=.48) or ADHD (p=.50). Not fair comparison
+    including NVs because of all the 0s. We report the ADHD_NOS results.
 * Check trend direction for forceps minor cluster.
+  - Same direction for inattention (positive T), not close to significance for HI.
 * Find out the heritability and SE of peak voxel in the clusters.
+  - AD: h^2r = .61 ($\pm$ .27)
+  - RD: h^2r = .63 ($\pm$ .21)
 * Remind myself on how SOLAR computes heritability, and how it is different from
   familiarity.

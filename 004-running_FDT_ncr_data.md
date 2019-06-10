@@ -1621,8 +1621,8 @@ done
 Let's reconvert the pending list:
 
 ```bash
-rm swarm.ncr
 cd /data/NCR_SBRB/dti_fdt
+rm swarm.ncr
 for m in `cat ~/tmp/id2 ~/tmp/id3`; do
     echo "bash ~/research_code/dti/convert_ncr_to_nii.sh /scratch/sudregp/dcm_dti/$m" >> swarm.ncr
 done
