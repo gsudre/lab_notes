@@ -1825,3 +1825,38 @@ In a nutshell, we need to run eddy without slice to volume correction, and look
 at the report file to identify if (or simply which one) a slice is identified as
 an outlier across volumes. Then, remove that slice and proceed. If it's a basal
 slice, probably we won't lose much.
+
+# 2019-06-11 09:39:52
+
+Checking which scans died because there were volumes without outliers:
+
+```bash
+for m in `cat ~/tmp/reimport`; do
+    log_name=`grep -l fdt/${m} trash_fdt/fdt99*o`;
+    err_name=`echo $log_name | sed 's/o/e/'`;
+    if grep -q "ref index out of bounds" $err_name; then
+        echo $m;
+    fi;
+done
+```
+
+So, it seems like this approach might work. So, let's compute the non s2v
+version for everyone that failed:
+
+```bash
+rm swarm.fdt
+for m in `cat ~/tmp/nos2v`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy_no_s2v.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
+    --partition gpu --job-name fdt_nos2v
+```
+
+This way we can figure out what's the first volume to be removed. In this case,
+whatever volume has the biggest number of outlier slices. Then, we can keep on
+doing this until the scan runs (or until the number of remaining volumes is too
+small to even continue):
+
+```bash
+Rscript -e "a = read.table('~/tmp/eddy_unwarped_images.eddy_outlier_map', skip=1); which.max(rowSums(a))"
+```

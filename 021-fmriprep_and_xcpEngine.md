@@ -93,8 +93,24 @@ swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine \
      --job-name xcp1 --partition quick
 ```
 
+# 2019-06-11 14:52:21
 
-sudregp  28098854_70  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2759  
-sudregp  28098854_72  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2760  
-sudregp  28098854_74  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2761  
-sudregp  28098854_76  fmriprep1     quick     R   ---        2:56:23     3:00:00      1    16   10GB/node              cn2762  
+Based on Antonio's e-mail, I should use /usr/local/apps/freesurfer/license.txt
+for the license, and that should work...
+
+```bash
+cd /data/NCR_SBRB/
+rm fmriprep.swarm;
+for m in `cat ~/tmp/testids.txt`; do
+    echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+        'fmriprep /data/NCR_SBRB/NCR_BIDS/ $TMPDIR/out ' \
+        "participant --participant_label sub-${m}" '-w $TMPDIR/wrk --use-aroma ' \
+        '--nthreads $SLURM_CPUS_PER_TASK --mem_mb 10000 --notrack ' \
+        '--fs-license-file /usr/local/apps/freesurfer/license.txt --fs-no-reconall; ' \
+        'mv $TMPDIR/out ' "/data/NCR_SBRB/fmriprep_output/sub-${m};" >> fmriprep.swarm;
+done
+swarm -f fmriprep.swarm --gres=lscratch:10 -g 10 -t 16 --module fmriprep \
+     --time=4:00:00 --merge-output --logdir=trash_fmriprep \
+     --job-name fmriprep1 --partition quick
+```
