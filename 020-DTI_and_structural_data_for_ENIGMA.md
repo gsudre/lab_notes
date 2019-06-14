@@ -237,6 +237,80 @@ for subject in `cat ../ids512.txt`; do
     ./averageSubjectTracts_exe ${dirO1}/${subject}_ROIout.csv ${dirO2}/${subject}_ROIout_avg.csv
     echo ${subject},${dirO2}/${subject}_ROIout_avg.csv >> ./subjectList.csv
 done
+```
+
+# 2019-06-14 10:30:07
+
+I finally updated the Excel spreadsheet to contain only the 512 IDs we're
+sending (dti_sent tab). So, now we can run the last part of the script!
+
+But before we do that, I didn't save all the files I needed from scratch, so
+let's make sure we ran it correctly, this time locally:
+
+```bash
+cd ~/tmp/enigma
+# copy all original _fa.nii files here, then...
+tbss_1_preproc *.nii
+tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
+tbss_3_postreg -S
+
+fslmerge -t ./all_FA_QC ./FA/*FA_to_target.nii.gz;
+fslmaths ./all_FA_QC -bin -Tmean -thr 0.9 mean_FA_mask.nii.gz
+fslmaths ./enigmaDTI/ENIGMA_DTI_FA.nii.gz -mas ./mean_FA_mask.nii.gz ./mean_FA.nii.gz
+fslmaths ./enigmaDTI/ENIGMA_DTI_FA_skeleton.nii.gz -mas ./mean_FA_mask.nii.gz ./mean_FA_skeleton.nii.gz
+tbss_4_prestats -0.049
+```
+
+Now, the subject by subject step:
+
+```bash
+cd ~/tmp/enigma
+for subj in `cat ids512.txt`; do
+    echo $subj;
+    mkdir -p ./FA_individ/${subj}/stats/;
+    mkdir -p ./FA_individ/${subj}/FA/;
+    cp ./FA/${subj}_*.nii.gz ./FA_individ/${subj}/FA/;
+    fslmaths ./FA_individ/${subj}/FA/${subj}_*FA_to_target.nii.gz \
+        -mas ./mean_FA_mask.nii.gz ./FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz
+done
+
+for subj in `cat ids512.txt`; do
+    echo $subj;
+    tbss_skeleton -i ./FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz \
+        -p 0.049 ./mean_FA_skeleton_mask_dst \
+        ${FSLDIR}/data/standard/LowerCingulum_1mm.nii.gz \
+        ./FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz \
+        ./FA_individ/${subj}/stats/${subj}_masked_FAskel.nii.gz \
+        -s ./mean_FA_skeleton_mask.nii.gz;
+done
+```
+
+And the ROI step too:
+
+```bash
+cd ~/tmp/enigma
+#part 1 - loop through all subjects to create a subject ROI file
+mkdir ENIGMA_ROI_part1
+cd ROIextraction_info
+dirO1=../ENIGMA_ROI_part1/
+
+for subject in `cat ../ids512.txt`; do
+    ./singleSubjROI_exe ENIGMA_look_up_table.txt ../mean_FA_skeleton.nii.gz \
+        JHU-WhiteMatter-labels-1mm.nii.gz ${dirO1}/${subject}_ROIout \
+        ../FA_individ/${subject}/stats/${subject}_masked_FAskel.nii.gz
+done
+
+#part 2 - loop through all subjects to create ROI file removing ROIs not of interest and averaging others
+#make an output directory for all files
+mkdir ../ENIGMA_ROI_part2
+dirO2=../ENIGMA_ROI_part2/
+
+rm ./subjectList.csv
+
+for subject in `cat ../ids512.txt`; do
+    ./averageSubjectTracts_exe ${dirO1}/${subject}_ROIout.csv ${dirO2}/${subject}_ROIout_avg.csv
+    echo ${subject},${dirO2}/${subject}_ROIout_avg.csv >> ./subjectList.csv
+done
 
 ## part 3 - combine all 
 #######
@@ -256,6 +330,89 @@ Rbin=/usr/local/R-2.9.2_64bit/bin/R
 Rscript --vanilla --no-save --slave --args ${Table} ${subjectIDcol} ${subjectList} ${outTable} ${Ncov} ${covariates} ${Nroi} ${rois} <  ./combine_subject_tables.R  
 ```
 
-# TODO
+And let's run the ProjDist part again, because it didn't finish running last
+time:
 
-* Update excel spreadsheets with IDs that changed
+```bash
+# bw
+cd ~/tmp/enigma
+
+## insert main folder where you ran TBSS
+## just above "stats/" and "FA/"
+maindir="~/tmp/enigma/"
+list=`find $maindir -wholename "*/FA/*_masked_FA.nii.gz"`
+
+## insert full path to mean_FA, skeleton mask and distance map
+mean_FA="/lscratch/$SLURM_JOBID/enigma/mean_FA_mask.nii.gz"
+mask="/lscratch/$SLURM_JOBID/enigma/mean_FA_skeleton_mask.nii.gz"
+dst_map="/lscratch/$SLURM_JOBID/enigma/mean_FA_skeleton_mask_dst.nii.gz"
+
+##############
+### from here it should be working without further adjustments
+rm Proj_Dist.txt
+echo "ID" "Mean_Squared" "Max_Squared" >> Proj_Dist.txt
+
+## for each FA map
+for FAmap in ${list}; do
+	base=`echo $FAmap | awk 'BEGIN {FS="/"}; {print $NF}' | awk 'BEGIN {FS="_"}; {print $1}'`
+    dst_out="dst_vals_"$base""
+ 
+	# get Proj Dist images
+    tbss_skeleton -d -i $mean_FA -p 0.2 $dst_map $FSLDIR/data/standard/LowerCingulum_1mm $FAmap $dst_out
+ 
+	#X direction
+	Xout=""squared_X_"$base"
+	file=""$dst_out"_search_X.nii.gz"
+	fslmaths $file -mul $file $Xout
+ 
+	#Y direction
+	Yout=""squared_Y_"$base"
+	file=""$dst_out"_search_Y.nii.gz"
+	fslmaths $file -mul $file $Yout
+ 
+	#Z direction
+    Zout=""squared_Z_"$base"
+    file=""$dst_out"_search_Z.nii.gz"
+	fslmaths $file -mul $file $Zout
+ 
+	#Overall displacement
+	Tout="Total_ProjDist_"$base""
+	fslmaths $Xout -add $Yout -add $Zout $Tout
+ 
+	# store extracted distances
+	mean=`fslstats -t $Tout -k $mask -m`  
+	max=`fslstats -t $Tout -R | awk '{print $2}'`
+    echo "$base $mean $max" >> Proj_Dist.txt
+
+    # remove X Y Z images
+    ## comment out for debugging
+    rm ./dst_vals_*.nii.gz
+    rm ./squared_*.nii.gz
+ 
+	echo "file $Tout done"
+done
+```
+
+## Structural
+
+I also told Martine I'd send her the structural values for these same scans.
+Hare we go, following the ENIGMA pipeline.
+
+```bash
+out_file=~/tmp/enigma/LandRvolumes.csv
+cd /Volumes/Shaw/freesurfer5.3_subjects/
+echo "SubjID,Lthal,Rthal,Lcaud,Rcaud,Lput,Rput,Lpal,Rpal,Lhippo,Rhippo,Lamyg,Ramyg,Laccumb,Raccumb,ICV" > $out_file
+for subj_id in `cat ~/tmp/enigma/ids_fs.txt`; do #may need to change this so that is selects subjects with FS output
+    echo $subj_id
+    printf "%s,"  "${subj_id}" >> $out_file
+    for x in Left-Thalamus-Proper Right-Thalamus-Proper Left-Caudate Right-Caudate Left-Putamen Right-Putamen Left-Pallidum Right-Pallidum Left-Hippocampus Right-Hippocampus Left-Amygdala Right-Amygdala Left-Accumbens-area Right-Accumbens-area; do
+        printf "%g," `grep  ${x} ${subj_id}/stats/aseg.stats | awk '{print $4}'` >> $out_file
+    done
+    printf "%g" `cat ${subj_id}/stats/aseg.stats | grep IntraCranialVol | awk -F, '{print $4}'` >> $out_file
+    echo "" >> $out_file
+done
+
+ bash ~/tmp/enigma/extract.sh
+ ```
+ 
+# TODO

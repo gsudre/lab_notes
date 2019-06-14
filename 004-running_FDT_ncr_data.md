@@ -1691,8 +1691,8 @@ importing. Let's re-import them manually.
 Let's grab the volume removal file again:
 
 ```bash
-data_dir=/Volumes/Shaw/MR_data_by_maskid/;
-fdt_dir=/Volumes/Shaw/NCR_DTI_FDT/;
+data_dir=/mnt/shaw/MR_data_by_maskid/;
+fdt_dir=/mnt/shaw/NCR_DTI_FDT/;
 for m in `cat ~/tmp/id16`; do
     grep Volume $data_dir/$m/E*/directionsReplayedInfo.txt | \
         awk '{IFS=" "; print $3 }' | sed "s/://g" > ~/tmp/${m}_bad_vols.txt
@@ -1859,4 +1859,48 @@ small to even continue):
 
 ```bash
 Rscript -e "a = read.table('~/tmp/eddy_unwarped_images.eddy_outlier_map', skip=1); which.max(rowSums(a))"
+```
+
+or, the worst 5 volumes:
+
+```bash
+Rscript -e 'a = read.table("~/tmp/dwi_QC/eddy_unwarped_images.eddy_outlier_map", skip=1); b=sort(rowSums(a), decreasing=T, index.return=T); b$ix[1:5]'
+```
+
+# 2019-06-14 11:50:20
+
+```bash
+# bw
+fdt_dir=/data/NCR_SBRB/dti_fdt/;
+
+for m in `cat ~/tmp/eddy_cropped.txt`; do
+    if [ -e $fdt_dir/${m}/dwi_cropped.nii.gz ]; then
+        file_root='dwi_cropped';
+    else
+        file_root='dwi_comb'
+    fi
+    if [ -e $fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map ]; then
+        worst_volume=`Rscript -e "a = read.table('$fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map', skip=1); which.max(rowSums(a))" | awk '{ print $2 }'`;
+        echo "Removing volume $worst_volume in scan $m";
+        echo $worst_volume > ~/tmp/${m}_bad_vols.txt;
+        nvols=`fslinfo $fdt_dir/${m}/${file_root}.nii | grep -e "^dim4" | awk '{ print $2 }'`;
+        keep_str='';
+        for v in `seq 1 $nvols`; do
+            if ! grep -q "^$v$" ~/tmp/${m}_bad_vols.txt; then
+                # afni needs 0-based volumes
+                keep_str=${keep_str}','$(($v-1));
+            fi;
+        done
+
+        # remove leading comma
+        echo $keep_str | sed "s/^,//" > ~/tmp/${m}_keep_str.txt;
+        fat_proc_filter_dwis                                 \
+            -in_dwi        $fdt_dir/${m}/${file_root}.nii.gz       \
+            -in_row_vec     $fdt_dir/${m}/${file_root}_rvec.dat     \
+            -in_bvals       $fdt_dir/${m}/${file_root}_bval.dat  \
+            -select_file   ~/tmp/${m}_keep_str.txt             \
+            -prefix        $fdt_dir/${m}/dwi_cropped \
+            -no_qc_view
+    fi;
+done
 ```
