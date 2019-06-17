@@ -1905,6 +1905,53 @@ for m in `cat ~/tmp/eddy_cropped.txt`; do
 done
 ```
 
-I THINK THAT THERE MIGHT BE SOMETHING TO THE 8-CHANNEL AND 32-CHANNEL COIL SETUP... NEED TO
-MAKE SURE WE'RE PROCESSING 8-CHANNEL SCANS ONLY!
+# 2019-06-17 14:40:40
+
+I'm checking on the suspicion that we might be processing some of the 32-channel
+coil data, which we shouldn't be doing. So, let's check what are the scans that
+have those data first:
+
+```bash
+#caterpie
+for m in {1000..2597}; do 
+    if grep -qr 32Ch ${m}/2*/mr*/README-Series.txt; then
+        echo $m;
+    fi;
+done
+```
+
+We get these scans as having 32-channel versions:
+
+```
+2046
+2047
+2048
+2061
+2064  # kid, DTI is all 8coil
+2065 
+2067
+2070  # kid, DTI is all 8coil
+2071  # kid, DTI is all 8coil
+2073  # kid, DTI is all 8coil
+2094
+2097
+2103
+2120  # processed right one
+2123
+2125  # processed right one
+2134  # processed right one
+2142  # kid, DTI is all 8coil
+2143
+2148  # processed right one
+2169  # 32-channel coil only!!!
+2247  # 32-channel coil only!!!
+2272  # 32-channel coil only!!!
+2274  # 32-channel coil only!!!
+2278  # 32-channel coil only!!!
+2280  # 32-channel coil only!!!
+2298  # 32-channel coil only!!! but glutamate test so it's fine
+2566  # nothing there
+```
+
+So, let's re-process these IDs that need to be redone.
 

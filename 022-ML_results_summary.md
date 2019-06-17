@@ -15,14 +15,14 @@ And now we do accuracy as well:
 
 ![](images/2018-11-27-16-32-58.png)
 
-Each pair of consecutive bar in the plots show a data domain and its
+Each pair of consecutive bars in the plots show a data domain and its
 corresponding results using random data. By random data, it's just data
-generated from a uniform distribution using the feature-specific max and min
+generated from a uniform distribution using feature-specific max and min
 as boundaries. That was just a benchmark to check against overfitting,
 especially when using some of the more complex algorithms.
 
 I'm not sure how familiar you are with the types of data we're using, but here's
-a quick legend including the total N in each dataset (NVs + ADHDs), and variables:
+a quick legend including the total N in each dataset for persistent vs remission, then (NVs + ADHDs), and the number of variables:
 
 * adhd200_10042018: Variables used in the ADHD-200 challenge (Sex, age, Handedness, IQ): N=219 (380); M=4
 * aparc_pcorr_pearson_n215_11152018: rsFMRI: N=118 (215); M=2278
@@ -60,7 +60,7 @@ data, didn't perform as well.
 
 ## Methods
 
-I used H2O's autoML methods for this work. I played with carret and scikit-learn
+I used H2O's autoML methods for this work, using the R API. I played with carret and scikit-learn
 as well, which I'm actually more familiar with. But at the time H2O's Java
 implementation was making better use of all the computation power I could
 allocate in Biowulf, so I went with that.
@@ -90,47 +90,26 @@ cross-validation framework as well. But in any case, we could classify each
 subject in one of 3 classes (e.g. improvers, deterioration, stable) and just
 use those classes as targets for the other datasets.
 
-different tests: same space for example, pca
-tried many different processing, still playing with different one: GIGO.
-Depending on the methods more, or less variables can be included.
+## Data processing
 
+There are always many things one can do to the data in order to make features
+better. Especially in the neuroimaging side, different pre-processing pipelines
+will generate different numbers of features, of varying quality as well. As they
+say, gargage-in, garbage-out. We can also tweak our quality control thresholds
+to include more data at the risk of including more noise (especially due to
+movement, as it's neuroimaging data, in kids, who have ADHD). If we go in that direciton,
+we'd need to be careful to show that any results are not just picking up
+movement...
+
+PCA or other dimensionality reduction techniques, compared to simply downsampling the data, sometimes helped as well.
+
+The results I presented are the best ones we got so far, but we are currently
+working on new DTI and rsFMRI preprocessing pipelines that might yield better
+prediction results. 
 
 ## Going forward
-how to best collaborate in the future: my current framework, but open to other
-ways of collaborating
 
-
-A few things to point out in the bar plots:
-
-
-
-There is **A TON** of things that we can do to improve these results, and I have
-lots of notes on things we discussed on it. Let me know if it's helpful for the
-document and I'll summarize them here.
-
-# 2019-03-21 13:02:47
-
-Philip said he's only interest on methods. So, here's the idea:
-
-We will start by developing models within data-domains. Specifically, separate
-models will be trained to predict ADHD-related variables (e.g. diagnosis,
-symptoms) within structural brain images, white-matter anatomical estimates, and
-functional connectivity (resting state) data. There will also be separate models
-to predict ADHD-related variables from SNP data, neurocognitive behavioral
-tests, and socio-economic variables. This approach gives us an idea of the
-predictive power of each data domain. Domain-specific predictions will be
-combined using a weighted majority voting scheme.
-
-We will employ two different types of models in this analysis: linear and
-nonlinear. For prediction of continuous variables, we will use elastic nets and
-a gradient boosting regressor. For dichotomous classification, we will use a
-linear support vector machine and a gradient boosting classifier. This approach
-allows for testing whether more complex (nonlinear) models can derive useful
-relationships in the data.
-
-In order to produce generalizable models that are not
-overfit to our data, for each data domain we will first split the dataset into training and
-validation set. We will perform feature selection and model hyperparameter
-tuning through cross-validation inside the training set only. The validation set
-will be used solely to provide an estimate of the accuracy of the predictions of
-the best trained model.
+I keep all my code in Github (gsudre) and my lab notes as well, in Markdown
+format. For this project I didn't use Jupyter notebooks, but I'm open to going
+back to it. I'm also open to playing with other tools to make collaboration for
+this project a bit easier.
