@@ -114,3 +114,30 @@ swarm -f fmriprep.swarm --gres=lscratch:10 -g 10 -t 16 --module fmriprep \
      --time=4:00:00 --merge-output --logdir=trash_fmriprep \
      --job-name fmriprep1 --partition quick
 ```
+
+# 2019-06-18 16:03:42
+
+Let's check for proper ending of fmriprep:
+
+```bash
+# caterpie
+for m in `cat /mnt/shaw/AROMA_ICA/kids_n1210_20190618.txt`; do
+    fname=/mnt/shaw/AROMA_ICA/fMRIprep_output/sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_run-1_desc-confounds_regressors.tsv;
+    if [ ! -e $fname ]; then
+        echo $m;
+    else
+        echo $m >> ~/tmp/xcp
+    fi
+done
+```
+
+Then, we can check who finished xcp:
+
+```bash
+for m in `cat ~/tmp/xcp`; do
+    fname=/mnt/shaw/AROMA_ICA/xcpengineoutput/sub-${m}/fcon/power264/sub-${m}_power264.net
+    if [ ! -e $fname ]; then
+        echo $m;
+    fi
+done
+```

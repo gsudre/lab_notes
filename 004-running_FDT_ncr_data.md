@@ -1955,3 +1955,49 @@ We get these scans as having 32-channel versions:
 
 So, let's re-process these IDs that need to be redone.
 
+# 2019-06-18 11:07:25
+
+Let's re-run eddy cropping out bad volumes:
+
+```bash
+# bw
+fdt_dir=/data/NCR_SBRB/dti_fdt/;
+
+for m in `cat ~/tmp/cropme.txt`; do
+    if [ -e $fdt_dir/${m}/dwi_cropped.nii.gz ]; then
+        file_root='dwi_cropped';
+    else
+        file_root='dwi_comb'
+    fi
+    if [ -e $fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map ]; then
+        worst_volume=`Rscript -e "a = read.table('$fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map', skip=1); which.max(rowSums(a))" | awk '{ print $2 }'`;
+        echo "Removing volume $worst_volume in scan $m";
+        echo $worst_volume > ~/tmp/${m}_bad_vols.txt;
+        nvols=`fslinfo $fdt_dir/${m}/${file_root}.nii | grep -e "^dim4" | awk '{ print $2 }'`;
+        keep_str='';
+        for v in `seq 1 $nvols`; do
+            if ! grep -q "^$v$" ~/tmp/${m}_bad_vols.txt; then
+                # afni needs 0-based volumes
+                keep_str=${keep_str}','$(($v-1));
+            fi;
+        done
+
+        # remove leading comma
+        echo $keep_str | sed "s/^,//" > ~/tmp/${m}_keep_str.txt;
+        fat_proc_filter_dwis                                 \
+            -in_dwi        $fdt_dir/${m}/${file_root}.nii.gz       \
+            -in_row_vec     $fdt_dir/${m}/${file_root}_rvec.dat     \
+            -in_bvals       $fdt_dir/${m}/${file_root}_bval.dat  \
+            -select_file   ~/tmp/${m}_keep_str.txt             \
+            -prefix        $fdt_dir/${m}/dwi_clean \
+            -no_qc_view
+    fi;
+done
+```
+
+So, just to remind myself, the data is converted to DICOMs to dwi_comb. Then if
+there was 99, it becomes dwi_cropped. Later, if we need to remove volumes
+because eddy fails, either dwi_cropped or dwi_comb becomes dwi_clean. So, the
+final eddy should be run in either one of the 3, depending on which stage the
+scan is.
+
