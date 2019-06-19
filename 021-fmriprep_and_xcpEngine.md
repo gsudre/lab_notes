@@ -121,6 +121,7 @@ Let's check for proper ending of fmriprep:
 
 ```bash
 # caterpie
+rm ~/tmp/xcp
 for m in `cat /mnt/shaw/AROMA_ICA/kids_n1210_20190618.txt`; do
     fname=/mnt/shaw/AROMA_ICA/fMRIprep_output/sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_run-1_desc-confounds_regressors.tsv;
     if [ ! -e $fname ]; then
@@ -135,9 +136,31 @@ Then, we can check who finished xcp:
 
 ```bash
 for m in `cat ~/tmp/xcp`; do
-    fname=/mnt/shaw/AROMA_ICA/xcpengineoutput/sub-${m}/fcon/power264/sub-${m}_power264.net
+    fname=/mnt/shaw/AROMA_ICA/xcpengine_output_AROMA/sub-${m}/fcon/power264/sub-${m}_power264.net
     if [ ! -e $fname ]; then
         echo $m;
     fi
 done
+```
+
+# 2019-06-19 18:14:27
+
+And we can also run AROMA with GSR:
+
+```bash
+rm xcpengine.swarm;
+for m in `cat ~/tmp/kids_n1210_20190618.txt`; do
+    echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+        'cp /data/NCR_SBRB/fc-aroma-gsr.dsn $TMPDIR/; ' \
+        'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+        'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+        'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+        '-d $TMPDIR/fc-aroma-gsr.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+        '-r /data/NCR_SBRB/fmriprep_output/;' \
+        'mv $TMPDIR/out/sub-'${m}' /data/NCR_SBRB/xcpengine_output/;' >> xcpengine.swarm;
+done
+swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine \
+     --time=15:00 --merge-output --logdir=trash_xcpengine \
+     --job-name xcpgsr --partition quick
 ```

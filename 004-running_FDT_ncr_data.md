@@ -2001,3 +2001,55 @@ because eddy fails, either dwi_cropped or dwi_comb becomes dwi_clean. So, the
 final eddy should be run in either one of the 3, depending on which stage the
 scan is.
 
+# 2019-06-19 18:36:21
+
+Some scans still didn't run, even with the clean version. Let's run it again,
+this time removing 2 volumes. But first we need to check which volume to remove
+under this new ordering:
+
+```bash
+rm swarm.fdt
+for m in `cat ~/tmp/nos2v`; do
+    echo "bash ~/research_code/dti/fdt_ncr_eddy_no_s2v.sh /data/NCR_SBRB/dti_fdt/${m}" >> swarm.fdt;
+done;
+swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
+    --partition gpu --job-name fdt_nos2v
+```
+
+
+```bash
+# bw
+fdt_dir=/data/NCR_SBRB/dti_fdt/;
+
+for m in `cat ~/tmp/cropme.txt`; do
+    if [ -e $fdt_dir/${m}/dwi_cropped.nii.gz ]; then
+        file_root='dwi_cropped';
+    else
+        file_root='dwi_comb'
+    fi
+    if [ -e $fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map ]; then
+        worst_volume=`Rscript -e "a = read.table('$fdt_dir/${m}/eddy_unwarped_images.eddy_outlier_map', skip=1); which.max(rowSums(a))" | awk '{ print $2 }'`;
+        echo "Removing volume $worst_volume in scan $m";
+        echo $worst_volume > ~/tmp/${m}_bad_vols.txt;
+        nvols=`fslinfo $fdt_dir/${m}/${file_root}.nii | grep -e "^dim4" | awk '{ print $2 }'`;
+        keep_str='';
+        for v in `seq 1 $nvols`; do
+            if ! grep -q "^$v$" ~/tmp/${m}_bad_vols.txt; then
+                # afni needs 0-based volumes
+                keep_str=${keep_str}','$(($v-1));
+            fi;
+        done
+
+        # remove leading comma
+        echo $keep_str | sed "s/^,//" > ~/tmp/${m}_keep_str.txt;
+        fat_proc_filter_dwis                                 \
+            -in_dwi        $fdt_dir/${m}/${file_root}.nii.gz       \
+            -in_row_vec     $fdt_dir/${m}/${file_root}_rvec.dat     \
+            -in_bvals       $fdt_dir/${m}/${file_root}_bval.dat  \
+            -select_file   ~/tmp/${m}_keep_str.txt             \
+            -prefix        $fdt_dir/${m}/dwi_clean \
+            -no_qc_view
+    fi;
+done
+```
+
