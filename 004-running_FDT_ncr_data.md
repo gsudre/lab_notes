@@ -2016,13 +2016,19 @@ swarm -g 10 --logdir trash_fdt --gres=gpu:k80:1 --time 6:00:00 -f swarm.fdt \
     --partition gpu --job-name fdt_nos2v
 ```
 
+# 2019-06-20 09:38:15
 
 ```bash
 # bw
+module load R
+module load afni
+
 fdt_dir=/data/NCR_SBRB/dti_fdt/;
 
-for m in `cat ~/tmp/cropme.txt`; do
-    if [ -e $fdt_dir/${m}/dwi_cropped.nii.gz ]; then
+for m in `cat ~/tmp/2`; do
+    if [ -e $fdt_dir/${m}/dwi_clean.nii.gz ]; then
+        file_root='dwi_clean';
+    elif [ -e $fdt_dir/${m}/dwi_cropped.nii.gz ]; then
         file_root='dwi_cropped';
     else
         file_root='dwi_comb'
@@ -2052,4 +2058,6 @@ for m in `cat ~/tmp/cropme.txt`; do
     fi;
 done
 ```
+
+
 
