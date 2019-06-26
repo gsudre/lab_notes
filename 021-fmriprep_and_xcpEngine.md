@@ -167,24 +167,39 @@ swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine \
 
 # 2019-06-20 10:46:36
 
-Let's do some uber_alignment to change the cost function to some of the samples
-that are not aligning properly:
+Running some scrubbing:
 
 ```bash
-while read s; do
-     cd /data/NCR_SBRB/tmp/rsmfri/${s}/${s}.rest.subjectSpace.results;
-     uber_align_test.py -no_gui -save_script align.test  \
-         -uvar anat ${s}_SurfVol_al_junk+orig                      \
-         -uvar epi  vr_base_min_outlier+orig                     \
-         -uvar epi_base 0                                 \
-         -uvar anat_has_skull no                  \
-         -uvar align_centers yes                          \
-         -uvar giant_move yes
-     ./align.test;
-     cd align.results;
-     for f in `ls anat*HEAD`; do
-          \@snapshot_volreg $f epi+orig ${s}_${f};
-          mv *jpg /data/NCR_SBRB/tmp/alignment/;
-     done;
-done < ~/tmp/a
+rm xcpengine.swarm;
+for m in `cat ~/tmp/kids_n1210_20190618.txt`; do
+    echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+        'cp /data/NCR_SBRB/fc-aroma-gsr-p5.dsn $TMPDIR/; ' \
+        'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+        'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+        'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+        '-d $TMPDIR/fc-aroma-gsr-p5.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+        '-r /data/NCR_SBRB/fmriprep_output/;' \
+        'mv $TMPDIR/out/sub-'${m}' /data/NCR_SBRB/xcpengine_output/;' >> xcpengine.swarm;
+done
+swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine \
+     --time=15:00 --merge-output --logdir=trash_xcpengine \
+     --job-name xcpgsr-.5 --partition quick
+```
+
+
+# 2019-06-26 16:45:23
+
+Just so we can run it locally:
+
+```bash
+TMPDIR=/Users/sudregp/data/;
+mkdir -p $TMPDIR/out $TMPDIR/wrk;
+for m in `cat ~/data/heritability_change/kids_n1210_20190618.txt`; do
+    echo id0,img > ${TMPDIR}/${m}.csv;
+    echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+    xcpengine-docker -m s -c $TMPDIR/${m}.csv -d $TMPDIR/fc-aroma-p25.dsn \
+        -i $TMPDIR/work -o $TMPDIR/out \
+        -r /Volumes/Labs/AROMA_ICA/fMRIprep_output/;
+done
 ```

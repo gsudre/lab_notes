@@ -98,8 +98,8 @@ the same time:
 
 ```bash
 net_dir=/Volumes/Shaw
-ls -1 /Volumes/Shaw/MR_data_by_maskid/ | sed 's/\///' > ~/tmp/maskids.txt
-cd /Volumes/Shaw/NCR_BIDS
+ls -1 $net_dir/MR_data_by_maskid/ | sed 's/\///' > ~/tmp/maskids.txt
+cd $net_dir/NCR_BIDS
 # installed jo through homebrew
 jo -p "Name"="Neurobehavioral Clinical Research (NCR) Section neuroimaging database" "BIDSVersion"="1.0.2" >> dataset_description.json;
 while read m; do
@@ -126,7 +126,9 @@ while read m; do
     mkdir sub-${m}/func;
     cnt=1
     while read d; do
-        grep rest $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/rest;
+        grep rest $net_dir/MR_data_by_maskid/${m}/${d}/*README* > ~/tmp/restall;
+        # remove the movie runs for now
+        grep -v movie ~/tmp/restall > ~/tmp/rest;
         awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' ~/tmp/rest | sed "s/Series://g" > ~/tmp/rest_clean
         while read line; do
             mr_dir=`echo $line | sed "s/,//g"`;
