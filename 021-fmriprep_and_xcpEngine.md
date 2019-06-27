@@ -203,3 +203,50 @@ for m in `cat ~/data/heritability_change/kids_n1210_20190618.txt`; do
         -r /Volumes/Labs/AROMA_ICA/fMRIprep_output/;
 done
 ```
+
+# 2019-06-27 10:38:28
+
+When running XCP single subjects in BW, I do this:
+
+```bash
+m=2306
+echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+        'cp /data/NCR_SBRB/fc-aroma-gsr-p5.dsn $TMPDIR/; ' \
+        'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+        'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+        'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+        '-d $TMPDIR/fc-aroma-gsr-p5.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+        '-r /data/NCR_SBRB/fmriprep_output/;';
+```
+
+But if we want to make the scrubbing more automatic: (note the use of single and
+double quotes, because $TMPDIR has to be for each swarm, and not the one
+currently defined in the environment!)
+
+```bash
+rm xcpengine.swarm;
+pipe=-gsr-p5-nc;
+outdir=/data/NCR_SBRB/xcpengine_output_AROMA${pipe}/
+mkdir $outdir;
+for m in `cat ~/tmp/kids_n1210_20190618.txt`; do
+    echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+        'cp /data/NCR_SBRB/fc-aroma'${pipe}'.dsn $TMPDIR/; ' \
+        'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+        'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+        'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+        '-d $TMPDIR/fc-aroma'${pipe}'.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+        '-r /data/NCR_SBRB/fmriprep_output/;' \
+        'mv $TMPDIR/out/sub-'"${m} $outdir;">> xcpengine.swarm;
+done
+swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine/1.0rc1 \
+     --time=20:00 --merge-output --logdir=trash_xcpengine \
+     --job-name xcp${pipe} --partition quick
+```
+
+Sometimes, for one reason of another, the pipeline doesn't finish. So, let's
+make sure we run everyone:
+
+```bash
+grep TRUE ~/data/heritability_change/resting_demo_06262019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' > ~/tmp/kids.txt
