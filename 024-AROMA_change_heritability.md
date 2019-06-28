@@ -430,6 +430,21 @@ The script to filter down the scan was getting too cumbersome, so I created
 ~/research_code/fmri/filter_aroma_scans.R and also
 ~/research_code/fmri/create_aroma_slopes.R.
 
+# 2019-06-28 09:46:53
+
+So, to create all AROMA slope files at the same time, after doing the filter, we
+can just do:
+
+```bash
+# bw
+module load R 
+for t in 0 3 4; do
+    for p in -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+        Rscript ~/research_code/fmri/create_aroma_slopes.R $p $t &
+        done;
+done
+
+```
 
 
 # TODO
