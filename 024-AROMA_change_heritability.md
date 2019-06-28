@@ -443,9 +443,109 @@ for t in 0 3 4; do
         Rscript ~/research_code/fmri/create_aroma_slopes.R $p $t &
         done;
 done
-
 ```
 
+Then, for collecting everything in a loop, we can do something similar:
+
+```bash
+# do it for clean and not clean!
+cd ~/data/tmp;
+for t in 0 3 4; do
+    for p in -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+        pmask=rsfmri_AROMA${p}_${t}min_best2scansFamsSlopes;
+        pheno=`ls | grep ^${pmask}_n`;
+        echo "Working on $pheno";
+        cd $pheno;
+        tar -zxf *tgz;
+        echo "  Compiling...";
+        python ~/research_code/compile_solar_multivar_results.py $pheno;
+        echo "  Cleaning up...";
+        rm conn*;
+        cd ..;
+    done;
+done
+# then, repeat for the unscrubbed pipelines
+for c in '' 'Clean'; do
+    for p in '' '-GSR'; do
+        pmask=rsfmri_AROMA${p}_0min_best2scansFamsSlopes${c};
+        pheno=`ls | grep ^${pmask}_n`;
+        echo "Working on $pheno";
+        cd $pheno;
+        tar -zxf *tgz;
+        echo "  Compiling...";
+        python ~/research_code/compile_solar_multivar_results.py $pheno;
+        echo "  Cleaning up...";
+        rm conn*;
+        cd ..;
+    done;
+done
+```
+
+And let's give it a try plotting the compiled solar results. Looking at files
+like
+/data/NCR_SBRB/xcpengine_output_AROMA/sub-2547/fcon/power264/sub-2547_power264.net,
+I can see that the connections start as 1-2, 1-3... all the way to 1-264, then
+we have 2-3, 2-4..., then 3-4, 3-5... etc. So:
+
+```r
+nverts = 264
+mydir = '~/data/heritability_change/'
+nets = read.csv('~/research_code/fmri/Neuron_consensus_264.csv')
+library(corrplot)
+
+fnames = list.files(mydir, pattern='polygen_results*')
+for (fname in fnames) {
+    vals = matrix(nrow=nverts, ncol=nverts)
+    stats = matrix(nrow=nverts, ncol=nverts)
+
+    # read in the results
+    cat(sprintf('Reading in %s\n', fname))
+    res = read.csv(sprintf('%s/%s', mydir, fname))
+    cnt = 1
+    for (i in 1:(nverts-1)) {
+        for (j in (i+1):nverts) {
+            conn = sprintf('conn%d', cnt)
+            idx = res$phen == conn
+            vals[i, j] = res[idx, 'h2r']
+            stats[i, j] = res[idx, 'h_pval']
+            vals[j, i] = res[idx, 'h2r']
+            stats[j, i] = res[idx, 'h_pval']
+            cnt = cnt + 1
+        }
+    }
+
+    # constructing naming vector and sorting it
+    mynames = sapply(1:nverts, function(x) { sprintf('%s', nets[x, 'system']) } )
+    net_order = sort(mynames, index.return=T)
+
+    # sorting the tables so that all network vertices are together
+    vals = vals[net_order$ix, ]
+    vals = vals[, net_order$ix]
+    stats = stats[net_order$ix, ]
+    stats = stats[, net_order$ix]
+
+    # erasing duplicate names
+    mynames = net_order$x
+    for (cnt in 2:nverts) {
+        if (net_order$x[cnt] == net_order$x[cnt-1]) {
+            mynames[cnt] = ''
+        }
+    }
+    colnames(vals) = mynames
+    rownames(vals) = mynames
+    colnames(stats) = mynames
+    rownames(stats) = mynames
+
+    # plotting
+    junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+    phen = junk[length(junk)]
+    pdf(sprintf('~/tmp/%s.pdf', phen))
+    corrplot(vals, type="upper", method='color', diag=F,
+            p.mat = stats, sig.level = .05, insig = "blank", is.corr=F, tl.cex=.8)
+    title(phen)
+    dev.off()
+}
+```
 
 # TODO
  * check that we're not using same DOA for two different scans!
