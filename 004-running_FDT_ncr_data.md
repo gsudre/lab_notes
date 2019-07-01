@@ -2065,6 +2065,3 @@ This is still not working, even after removing 2 volumes. But here's another
 idea: why don't I increment the outlier threshold in a stepwise fashion, keeping
 track of what was used, and then maybe use that as a covariate?
 
-
-
-# WHEN I GET TO SOMETHING I CAN CALL END HERE, IT'S IMPORTANT TO CHECK THE DATA USED FOR BEDPOST IN ALL OF THEM TO MAKE SURE THEY HAVE THE RIGHT NUMBER OF VOLUMES!

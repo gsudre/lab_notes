@@ -239,14 +239,23 @@ for m in `cat ~/tmp/kids_n1210_20190618.txt`; do
         '-d $TMPDIR/fc-aroma'${pipe}'.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
         '-r /data/NCR_SBRB/fmriprep_output/;' \
         'mv $TMPDIR/out/sub-'"${m} $outdir;">> xcpengine.swarm;
-done
+done`
 swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine/1.0rc1 \
      --time=20:00 --merge-output --logdir=trash_xcpengine \
      --job-name xcp${pipe} --partition quick
 ```
+
+# 2019-07-01 14:15:37
 
 Sometimes, for one reason of another, the pipeline doesn't finish. So, let's
 make sure we run everyone:
 
 ```bash
 grep TRUE ~/data/heritability_change/resting_demo_06262019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' > ~/tmp/kids.txt
+grep redo ~/data/heritability_change/resting_demo_06262019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' >> ~/tmp/kids.txt
+for m in `cat ~/tmp/kids.txt`; do
+    if [ ! -e /Volumes/Labs/AROMA_ICA/fMRIprep_output/sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz ]; then
+        echo $m;
+    fi;
+done
+```
