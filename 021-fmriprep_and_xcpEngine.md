@@ -251,8 +251,8 @@ Sometimes, for one reason of another, the pipeline doesn't finish. So, let's
 make sure we run everyone:
 
 ```bash
-grep TRUE ~/data/heritability_change/resting_demo_06262019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' > ~/tmp/kids.txt
-grep redo ~/data/heritability_change/resting_demo_06262019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' >> ~/tmp/kids.txt
+grep TRUE ~/data/heritability_change/resting_demo_07012019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' > ~/tmp/kids.txt
+grep redo ~/data/heritability_change/resting_demo_07012019.csv | awk '{FS=","; if ( $9 < 18 ) { print $1 }}' >> ~/tmp/kids.txt
 for m in `cat ~/tmp/kids.txt`; do
     if [ ! -e /Volumes/Labs/AROMA_ICA/fMRIprep_output/sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz ]; then
         echo $m;
