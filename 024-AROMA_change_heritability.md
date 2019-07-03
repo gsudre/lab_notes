@@ -547,7 +547,6 @@ for (fname in fnames) {
 }
 ```
 
-# 2019-07-01 14:11:56
 
 
 # TODO
