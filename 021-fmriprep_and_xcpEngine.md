@@ -259,3 +259,31 @@ for m in `cat ~/tmp/kids.txt`; do
     fi;
 done
 ```
+
+# 2019-07-03 10:37:43
+
+Now I have to run several pipelines for a few subjects. So, we can do:
+
+```bash
+rm xcpengine.swarm;
+for g in '' '-gsr'; do
+    for p in '' '-p5' '-p25' '-p5-nc' '-p25-nc'; do
+        pipe=${g}${p};
+        outdir=/data/NCR_SBRB/xcpengine_output_AROMA${pipe}/;
+        for m in 0807 2478 2504; do
+            echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+                'mkdir -p $TMPDIR/out $TMPDIR/wrk; ' \
+                'cp /data/NCR_SBRB/fc-aroma'${pipe}'.dsn $TMPDIR/; ' \
+                'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+                'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+                'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+                '-d $TMPDIR/fc-aroma'${pipe}'.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+                '-r /data/NCR_SBRB/fmriprep_output/;' \
+                'mv $TMPDIR/out/sub-'"${m} $outdir;">> xcpengine.swarm;
+        done
+    done
+done
+swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine/1.0rc1 \
+     --time=20:00 --merge-output --logdir=trash_xcpengine \
+     --job-name xcpredo --partition quick
+```
