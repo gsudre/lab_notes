@@ -439,7 +439,7 @@ can just do:
 # bw
 module load R 
 for t in 0 3 4; do
-    for p in -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+    for p in '' -gsr -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
         Rscript ~/research_code/fmri/create_aroma_slopes.R $p $t &
         done;
 done
@@ -547,11 +547,72 @@ for (fname in fnames) {
 }
 ```
 
+# 2019-07-05 11:48:28
+
+The previous results were a bit too hard to interpret. So, let's collapse the
+matrices using median, mean, and max, and see if it gets any better. Of course,
+we can do that before or after running SOLAR. But since we have a new dataset as
+well, let's re-run the entire thing for now.
+
+I now have the function to create the condensed version, so let's go ahead and
+run that:
+
+```bash
+# bw
+module load R 
+for t in 0 3 4; do
+    for p in '' -gsr -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+        fname=~/data/heritability_change/rsfmri_AROMA${p}_${t}min_best2scans.csv;
+        Rscript ~/research_code/fmri/condense_power_atlas_matrix.R $fname &
+    done;
+done
+```
+
+Then, we need to create the slopes, which goes much faster with the condensed
+files:
+
+```bash
+# bw
+module load R 
+for t in 0 3 4; do
+    for p in '' -gsr -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+        fname=~/data/heritability_change/rsfmri_AROMA${p}_${t}min_best2scansCondensed.csv;
+        Rscript ~/research_code/fmri/create_aroma_slopes.R $fname &
+    done;
+done
+```
+
+Finally, we give SOLAR another try, for the condensed version but also the
+original one:
+
+```bash
+cd ~/data/heritability_change/
+rm swarm.aroma
+for f in `/bin/ls *best2scansFamsSlopes*07052019.csv`; do
+    phen=`echo $f | sed "s/\.csv//"`;
+    echo "bash ~/research_code/run_solar_parallel.sh $phen " \
+        "~/data/heritability_change/power264_conns.txt" >> swarm.aroma;
+done
+swarm --gres=lscratch:10 -f swarm.aroma --module solar -g 10 -t 32 \
+    --logdir=trash_solaroma --job-name solaroma --time=8:00:00 --merge-output
+
+rm swarm.aroma
+for f in `/bin/ls *best2scansCondensedFamsSlopes*07052019.csv`; do
+    phen=`echo $f | sed "s/\.csv//"`;
+    echo "bash ~/research_code/run_solar_parallel.sh $phen " \
+        "~/data/heritability_change/condensed_power264_conns.txt" >> swarm.aroma;
+done
+# these run quite fast, so I can just run it all here:
+bash swarm.aroma
+```
 
 
 # TODO
  * check that we're not using same DOA for two different scans!
-
+ * check that all scans being used passed visual QC!
+ * check data sanity for a given connection!
+ * try other XCP metrics for heritability, like Luke's segregation, allf and reho
+ * try MELODIC
 
 
 
