@@ -606,6 +606,29 @@ done
 bash swarm.aroma
 ```
 
+And collect everything:
+
+```bash
+# do it for clean and not clean!
+cd ~/data/tmp;
+for c in '' 'Clean'; do
+    for t in 0 3 4; do
+        for p in '' -gsr -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+            pmask=rsfmri_AROMA${p}_${t}min_best2scansCondensedFamsSlopes${c};
+            pheno=`ls | grep ^${pmask}_n`;
+            echo "Working on $pheno";
+            cd $pheno;
+            tar -zxf *tgz;
+            echo "  Compiling...";
+            python ~/research_code/compile_solar_multivar_results.py $pheno;
+            echo "  Cleaning up...";
+            rm conn*;
+            cd ..;
+        done;
+    done;
+done
+```
+
 
 # TODO
  * check that we're not using same DOA for two different scans!
