@@ -1467,6 +1467,9 @@ done
 ```
 
 ```bash
+module load fsl/6.0.0
+module load afni
+
 cd /data/NCR_SBRB/dti_fdt
 out_fname=~/tmp/ncr_mvmt_report.csv;
 echo "id,Noutliers,PROPoutliers,NoutVolumes,norm.trans,norm.rot,RMS1stVol,RMSprevVol" > $out_fname;
@@ -1476,7 +1479,7 @@ for m in `cat /data/NCR_SBRB/dti_fdt/complete4.txt`; do
         noutliers=`cat ${m}/eddy_s2v_unwarped_images.eddy_outlier_report | wc -l`;
         # figuring out the percetnage of total slices the outliers represent
         nslices=`tail ${m}/eddy_s2v_unwarped_images.eddy_outlier_map | awk '{ print NF; exit } '`;
-        nvol=`cat ${m}/dwi_comb_cvec.dat | wc -l`;
+        nvol=`fslinfo ${m}/eddy_s2v_unwarped_images | grep -e "^dim4" | awk '{ print $2 }'`;
         let totalSlices=$nslices*$nvol;
         pctOutliers=`echo "scale=4; $noutliers / $totalSlices" | bc`;
         # figuring out how many volumes were completely removed (row of 1s)
