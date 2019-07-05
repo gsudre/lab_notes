@@ -631,6 +631,7 @@ done
 
 
 # TODO
+ * make plots of condensed networks
  * check that we're not using same DOA for two different scans!
  * check that all scans being used passed visual QC!
  * check data sanity for a given connection!
