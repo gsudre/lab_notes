@@ -629,9 +629,273 @@ for c in '' 'Clean'; do
 done
 ```
 
+# 2019-07-08 10:26:34
+
+Let me also compile the results with the entire set of connections.
+
+```bash
+# do it for clean and not clean!
+cd ~/data/tmp;
+for c in '' 'Clean'; do
+    for t in 0 3 4; do
+        for p in '' -gsr -gsr-p25 -gsr-p5 -p25 -p5 -gsr-p25-nc -gsr-p5-nc -p25-nc -p5-nc; do
+            pmask=rsfmri_AROMA${p}_${t}min_best2scansFamsSlopes${c};
+            pheno=`ls | grep ^${pmask}_n | grep 07052019`;
+            echo "Working on $pheno";
+            cd $pheno;
+            tar -zxf *tgz;
+            echo "  Compiling...";
+            python ~/research_code/compile_solar_multivar_results.py $pheno;
+            echo "  Cleaning up...";
+            rm conn*;
+            cd ..;
+        done;
+    done;
+done
+```
+
+And let's plot the condensed results:
+
+```r
+nverts = 14
+mydir = '~/data/heritability_change/'
+library(corrplot)
+
+fnames = list.files(mydir, pattern='polygen_results.*Condensed.*\\.csv')
+for (fname in fnames) {
+    # read in the results
+    cat(sprintf('Reading in %s\n', fname))
+    res = read.csv(sprintf('%s/%s', mydir, fname))
+    # figuring out possible connections
+    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
+    conns = unique(conns)
+    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
+    for (m in c('Max', 'Mean', 'Median')) {
+        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                              vert_names))
+        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                               vert_names))
+        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
+        for (r in 1:nrow(mres)) {
+            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
+            ij = strsplit(junk, 'TO')[[1]]
+            vals[ij[1], ij[2]] = mres[r, 'h2r']
+            stats[ij[1], ij[2]] = mres[r, 'h_pval']
+            vals[ij[2], ij[1]] = mres[r, 'h2r']
+            stats[ij[2], ij[1]] = mres[r, 'h_pval']
+        }
+        # plotting
+        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+        phen = sprintf('%s_%s', m, junk[length(junk)])
+        pdf(sprintf('~/tmp/%s.pdf', phen))
+        corrplot(vals, type="upper", method='color', diag=T,
+                p.mat = stats, sig.level = .05, insig = "blank", is.corr=F, tl.cex=.8)
+        title(phen, cex.main=.8)
+        dev.off()
+    }
+}
+```
+
+I still need to summzrize the SOLAR results in the entire connection matrix. But
+for now I seem to have some interesting results in the p5-nc pipeline. 
+
+![](images/2019-07-08-12-58-08.png)
+
+or this, if not using the clean version:
+
+![](images/2019-07-08-12-58-44.png)
+
+We should later check if it's not just movement correlation, but for now let's
+check if there is any relationship to ADHD change as well.
+
+```r
+library(nlme)
+load('~/data/heritability_change/rsfmri_AROMA-p5-nc_3min_best2scansCondensedSlopesClean_n254_07052019.RData')
+dd = as.data.frame(matrix(unlist(res_clean), nrow=nrow(res_clean)))
+colnames(dd) = colnames(res_clean)
+dd$Medical.Record...MRN = as.numeric(as.character(dd$ID))
+
+# to get famID
+tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+tmp$famID = sapply(1:nrow(tmp), function(x)
+                                if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                    tmp$Nuclear.ID...FamilyIDs[x]
+                                }
+                                else {
+                                    tmp$Extended.ID...FamilyIDs[x]
+                                }
+                  )
+tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+data = merge(dd, tmp3, by='Medical.Record...MRN', all.x=T, all.y=F)
+m = 'Mean'
+targets = colnames(data)[grepl(colnames(data), pattern=sprintf('conn%s', m))]
+for (t in targets) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+for (t in predictors) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+out_fname = '~/data/heritability_change/assoc_LME_aroma.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+               'DX2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_aroma_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_aroma_dx2.csv'
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+Well, the code is working for now. But let's clean up our heritability results a
+bit, and remove some of the crappy networks. Then, instead of making new
+pictures, let's go ahead and flag which ones survive FDR:
+
+```r
+drop_me = c('Visual', 'Auditory', 'Uncertain', 'SensorysomatomotorMouth',
+            'Cerebellar', 'Memoryretrieval')
+nverts = 14
+mydir = '~/data/heritability_change/'
+library(corrplot)
+
+fnames = list.files(mydir, pattern='polygen_results.*Condensed.*\\.csv')
+map_names = c()
+sig_conns = c()
+for (fname in fnames) {
+    # read in the results
+    res = read.csv(sprintf('%s/%s', mydir, fname))
+    # figuring out possible connections
+    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
+    conns = unique(conns)
+    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
+    for (m in c('Max', 'Mean', 'Median')) {
+        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                              vert_names))
+        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                               vert_names))
+        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
+        for (r in 1:nrow(mres)) {
+            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
+            ij = strsplit(junk, 'TO')[[1]]
+            vals[ij[1], ij[2]] = mres[r, 'h2r']
+            stats[ij[1], ij[2]] = mres[r, 'h_pval']
+            vals[ij[2], ij[1]] = mres[r, 'h2r']
+            stats[ij[2], ij[1]] = mres[r, 'h_pval']
+        }
+        drop_idx = sapply(drop_me, function(x) which(vert_names==x))
+        stats = stats[-drop_idx, ]
+        stats = stats[, -drop_idx]
+        vals = vals[-drop_idx, ]
+        vals = vals[, -drop_idx]
+
+        myps = stats[upper.tri(stats, diag=T)]
+        p2 = p.adjust(myps, method='fdr')
+        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+        phen = sprintf('%s_%s', m, junk[length(junk)])
+        sig_conns = c(sig_conns, sum(p2 < .05))
+        map_names = c(map_names, phen)
+    }
+}
+s = sort(sig_conns, index.return=T, decreasing=T)
+for (i in 1:10) {
+    cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+}
+```
+
+The only ones that were different than zero were:
+
+```
+Max_polygen_results_rsfmri_AROMA-p5-nc_3min_best2scansCondensedFamsSlopesClean_n132_07052019: 26
+Mean_polygen_results_rsfmri_AROMA-p5-nc_3min_best2scansCondensedFamsSlopesClean_n132_07052019: 23
+Max_polygen_results_rsfmri_AROMA-p5-nc_3min_best2scansCondensedFamsSlopes_n132_07052019: 13
+Mean_polygen_results_rsfmri_AROMA-p5-nc_3min_best2scansCondensedFamsSlopes_n132_07052019: 11
+Median_polygen_results_rsfmri_AROMA-p5-nc_3min_best2scansCondensedFamsSlopesClean_n132_07052019: 1
+```
+
+So, we were in the right track before. Let's rerun the association for max and
+mean just to be safe here.
+
+Using mean, we are getting some consistent results for dx1, dx2, and the whole
+sample. For example:
+
+all:
+![](images/2019-07-08-15-41-15.png)
+
+dx1:
+![](images/2019-07-08-15-40-54.png)
+
+dx2:
+![](images/2019-07-08-15-41-33.png)
+
+Let's make a scatterplot just to make sure it's not driven by outliers, but just
+to be safe, we should also check that those connections are not correlated to
+movement:
+
+
 
 # TODO
- * make plots of condensed networks
  * check that we're not using same DOA for two different scans!
  * check that all scans being used passed visual QC!
  * check data sanity for a given connection!
