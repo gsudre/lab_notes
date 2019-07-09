@@ -891,15 +891,21 @@ dx2:
 
 Let's make a scatterplot just to make sure it's not driven by outliers, but just
 to be safe, we should also check that those connections are not correlated to
-movement:
+movement...
+
+# 2019-07-09 15:36:19
+
+
 
 
 
 # TODO
  * check that we're not using same DOA for two different scans!
+ * check for no correlation with movement!
  * check that all scans being used passed visual QC!
  * check data sanity for a given connection!
  * try other XCP metrics for heritability, like Luke's segregation, allf and reho
+ * tyr using ztor transform instead of just pearson scores
  * try MELODIC
 
 

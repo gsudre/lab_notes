@@ -4,75 +4,127 @@ We first need to replace the variables in the file Philip sent by the voxels. In
 other words, all we need to do is replace Y* by voxel data. The data needs to be
 residualized after motion and Z scored.
 
-So, let's first extract the list of mask ids and grab the voxel-level data:
-
-```R
-long<-read.csv('/Volumes/Shaw/cross_lag/ctsem/for_gustavo/LONG_file_for_gustavo_3obs.csv', T)
-m = sapply(long$maskid, function(x) {sprintf('%04d', x)})
-write.table(m, file='/Volumes/Shaw/cross_lag/ctsem/for_gustavo/maskids_long.txt', row.names=F, col.names=F, quote=F)
-```
-
 I couldn't find the original .nii.gz diffeos that MArine used, so I'll just use
 the dataframes she was using for voxelwise data. I'll later need to find the
 templates used to extract the voxels, so I can put everything back as nifti.
 
+```R
+long<-read.csv('/Volumes/Labs/cross_lag/ctsem/for_gustavo/LONG_file_for_gustavo_3obs.csv', T)
+load('/Volumes/Labs/marine/dti_crosslag/databases/raw/dti_fa_voxelwise_17JUNE2019.RData.gz')
+nvox = 10814
+header = sapply(1:nvox, function(x) {sprintf('Y%d', x)})
+colnames(data) = c('maskid', header)
+d2 = merge(long, data, by='maskid', all.x=F, all.y=F)
+# renaming some variables with incorrect name
+colnames(d2)[colnames(d2)=='sex'] = 'TI1'
+colnames(d2)[colnames(d2)=='psychostim_group_3'] = 'TI2'
+colnames(d2)[colnames(d2)=='scan_age'] = 'time'
+colnames(d2)[colnames(d2)=='mrn'] = 'id'
+# residualizing and z-scaling
+for (v in header) {
+    fm_str = sprintf('%s ~ motion', v)
+    d2[, v] = scale(residuals(lm(fm_str, data=d2)))
+}
+wide_resid_motion<-ctLongToWide(datalong=d2, id="id", time="time",
+                                manifestNames=c("sx_inatt", "sx_hi", header),
+                                TIpredNames=c("TI1", "TI2"))
+wider_resids_motion<-ctIntervalise(datawide=wide_resid_motion, Tpoints=3,
+                                   n.manifest=(length(header)+2), n.TIpred=2,
+                                   manifestNames=c("sx_inatt", "sx_hi", header),
+                                   TIpredNames=c("TI1", "TI2"),
+                                   individualRelativeTime=FALSE)
+save(wider_resids_motion,
+     file='~/data/ctsem_voxelwise/FA_wider_3obs_developmental_time.RData.gz',
+     compress=T)
+```
+
+Now we need to make a few changes to the ctsem_loop script to run many voxels,
+ideally more efficiently.
+
+With a future goal to eventually run permutations, I set it up so that each R
+script can run a list of voxels (to avoid overloading the filesystem with
+multiple R calls). Still, each R call only uses one thread, so we can use
+gnu-parallel to run multiple R calls (multiple lists of voxels).
+
+If we have 10814 voxels, then we can start with 10 voxels per list, which is 320
+per node if we request 32-core nodes. Also note that a single run of a single
+phenotype takes about 14 min, and it should be safe to just multiple that by the
+length of the phenotype list, as after the first one no package or data needs to
+be loaded again. Also, each thread is only taking .5Gb.
+
+So, in the quick partition I can run a job for 4h. Say, 12 voxels per thread to
+be in the safe side, or increments of 384 per job.
 
 ```bash
-# caterpie
-cd /mnt/shaw/cross_lag/ctsem/for_gustavo/
-sed "s/$/_tensor_diffeo.nii.gz/" maskids_long.txt > subjs_tensor.txt;
-sed "s/^/\/mnt\/shaw\/dti_robust_tsa\/analysis_may2017\//" subjs_tensor.txt > subjs_tensor2.txt;
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+jname=ad_hi;
+fname=swarm.ctsem;
+bundle=384;
+cur_vox=1;
+while [ $cur_vox -lt $nvox ]; do
+    let last_vox=${cur_vox}+${bundle}-1;
+    # gets the min
+    last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+    echo "bash ~/research_code/run_ctsem_voxel_parallel.sh ~/data/ctsem_voxelwise/AD_wider_3obs_developmental_time.RData.gz sx_hi ${cur_vox} ${last_vox}" >> $fname;
+    let cur_vox=${last_vox}+1;
+done;
+swarm --gres=lscratch:1 -f ${fname} --module R -g 20 -t 32 \
+    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+    --partition quick;
+```
 
+This current setup needs 29 jobs, which can be all done in less than 4h if
+executed in parallel.
 
+Note that I've been able to run 171 of such jobs in parallel, which is quite
+nice... it will make things better for future permutations, or it gives me some
+room to play with the length of each list. Less than 12 will run faster, but
+also execute more R instances.
 
+Because of that, if we want to go nuts, we can do:
 
-
-
-
-
-TVMean -in subjs_tensor2.txt -out mean_final_high_res.nii.gz
-TVtool -in mean_final_high_res.nii.gz -fa
-tbss_skeleton -i mean_final_high_res -o mean_fa_skeleton
-flirt -in /usr/local/neuro/fsl/data/standard/FMRIB58_FA_1mm.nii.gz \
-    -ref mean_final_high_res_fa.nii.gz \
-    -out FMRIB58_FA_IN_groupTemplate.nii.gz -omat FMRIB58_to_group.mat \
-    -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 \
-    -searchrz -90 90 -dof 12 -interp trilinear
-
-flirt -in /usr/local/neuro/fsl/data/standard/FMRIB58_FA-skeleton_1mm.nii.gz \
-    -ref mean_final_high_res_fa.nii.gz \
-    -out FMRIB58_FA-skeleton_inGroup.nii.gz -applyxfm \
-    -init FMRIB58_to_group.mat -interp nearestneighbour
-
-3dcalc -a FMRIB58_FA-skeleton_inGroup.nii.gz -prefix fa_skeleton_mask.nii.gz \
-    -expr 'step(a-.2)'
-
-dti_dir=/mnt/shaw/dti_robust_tsa/analysis_may2017/
-mkdir dti_voxels
-for maskid in `cat maskids_566.txt`; do
-     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_fa.txt ${dti_dir}/${maskid}_tensor_diffeo_fa.nii.gz;
-     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_ad.txt ${dti_dir}/${maskid}_tensor_diffeo_ad.nii.gz;
-     3dmaskdump -mask fa_skeleton_mask.nii.gz -o dti_voxels/${maskid}_rd.txt ${dti_dir}/${maskid}_tensor_diffeo_rd.nii.gz;
+```bash
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+jname=all_ctsem;
+fname=swarm.ctsem;
+bundle=384;
+rm $fname;
+for sx in inatt hi; do
+    for p in FA AD RD; do
+        cur_vox=1;
+        while [ $cur_vox -lt $nvox ]; do
+            let last_vox=${cur_vox}+${bundle}-1;
+            # gets the min
+            last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+            echo "bash ~/research_code/run_ctsem_voxel_parallel.sh ~/data/ctsem_voxelwise/${p}_wider_3obs_developmental_time.RData.gz sx_${sx} ${cur_vox} ${last_vox}" >> $fname;
+            let cur_vox=${last_vox}+1;
+        done;
+    done;
 done
+swarm --gres=lscratch:1 -f ${fname} --module R -g 30 -t 32 \
+    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+    --partition quick;
 ```
 
-Then we construct the data files in R:
+## compiling the results
 
-```r
-maskids = read.table('/mnt/shaw/dti_robust_tsa/heritability/maskids_566.txt')[, 1]
-nvox=14681
-for (m in c('fa', 'ad', 'rd')) {
-     print(m)
-     dti_data = matrix(nrow=length(maskids), ncol=nvox)
-     for (s in 1:nrow(dti_data)) {
-          a = read.table(sprintf('/mnt/shaw/dti_robust_tsa/heritability/dti_voxels/%04d_%s.txt',
-                                 maskids[s], m))
-          dti_data[s, ] = a[,4]
-     }
-     dti_data = cbind(maskids, dti_data)
-     cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%05d', d)))
-     colnames(dti_data) = cnames
-     write.csv(dti_data, file=sprintf('/mnt/shaw/dti_robust_tsa/heritability/dti_%s_voxelwise_n566_03052019.csv', m), row.names=F)
-}
-```
+When it's time to compile the results, I think it makes sense to create one .nii
+file per drift, and then the bricks in the nifti file will be estimate, p-value,
+and everything else we use to calculate it: std, ub, lb. I should also mark the
+voxels that didn't converge as NA, and interpolate using nearest neighbors.
 
+The output can be split with:
+
+grep sx_inatt_sx_inatt ~/tmp/oi.csv
+grep _sx_inatt_Y ~/tmp/oi.csv
+grep "Y[0-9]\+_sx_inatt" ~/tmp/oi.csv
+grep "Y[0-9]\+_Y[0-9]\+" ~/tmp/oi.csv
+grep AIC ~/tmp/oi.csv
+grep BIC ~/tmp/oi.csv
+grep msg ~/tmp/oi.csv
+
+
+# TODO
+ * make sure we're setting a seed in the scripts
