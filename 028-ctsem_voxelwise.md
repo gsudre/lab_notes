@@ -125,6 +125,62 @@ grep AIC ~/tmp/oi.csv
 grep BIC ~/tmp/oi.csv
 grep msg ~/tmp/oi.csv
 
+# 2019-07-11 11:00:27
+
+Apparently many of the jobs died because of no time... should I switch it to
+norm?
+
+I tested 2 voxels per core, and the whole thing took 1.5h, so it's more like
+45min per voxel. Let's do 1h to be safe. That means we can do 4 voxels per core,
+128 per 32-core node.
+
+```bash
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+jname=all_ctsem;
+fname=swarm.ctsem;
+bundle=128;
+rm $fname;
+for sx in inatt hi; do
+    for p in FA AD RD; do
+        cur_vox=1;
+        while [ $cur_vox -lt $nvox ]; do
+            let last_vox=${cur_vox}+${bundle}-1;
+            # gets the min
+            last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+            echo "bash ~/research_code/run_ctsem_voxel_parallel.sh ~/data/ctsem_voxelwise/${p}_wider_3obs_developmental_time.RData.gz sx_${sx} ${cur_vox} ${last_vox} ~/data/ctsem_voxelwise/TI1" >> $fname;
+            let cur_vox=${last_vox}+1;
+        done;
+    done;
+done
+swarm --gres=lscratch:1 -f ${fname} --module R -g 30 -t 32 \
+    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+    --partition quick;
+```
+
+Then, we compile everything. First, generate the ijk:
+
+```bash
+3dmaskdump -mask /Volumes/Labs/marine/dti_crosslag/data/mean_FA_skeleton_mask.nii.gz \
+    /Volumes/Labs/marine/dti_crosslag/data/mean_FA_skeleton_mask.nii.gz > ijk.txt;
+cut -d " " -f 1,2,3 ijk.txt > ctsem_ijk.txt;
+```
+
+```bash
+mkdir csv;
+for f in `ls FA_*_inatt*tgz`; do tar -zxf $f -C csv/; done
+# don't output file name
+grep -h sx_inatt_sx_inatt csv/*.csv > sx_sx.csv;
+grep -h _sx_inatt_Y csv/*.csv > sx_voxels.csv;
+grep -h "Y[0-9]\+_sx_inatt" csv/*.csv > voxels_sx.csv;
+grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
+grep -h AIC csv/*.csv > aic.csv;
+grep -h BIC csv/*.csv > bic.csv;
+grep -h msg csv/*.csv > msgs.csv;
+python ~/research_code/fmri/compile_ctsem_voxel_results.py ~/tmp/sx_sx.csv \
+    /Volumes/Labs/marine/dti_crosslag/data/mean_FA_skeleton_mask.nii.gz \
+    /Users/sudregp/tmp/ctsem_ijk.txt
+```
 
 # TODO
  * make sure we're setting a seed in the scripts
