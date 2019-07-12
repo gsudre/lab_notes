@@ -169,11 +169,12 @@ cut -d " " -f 1,2,3 ijk.txt > ctsem_ijk.txt;
 ```bash
 module load afni
 mkdir csv;
-for f in `ls ~/data/ctsem_voxelwise/TI1/FA_*_inatt*tgz`; do tar -zxf $f -C csv/; done
+sx=hi
+for f in `ls ~/data/ctsem_voxelwise/TI1/FA_*_${sx}*tgz`; do tar -zxf $f -C csv/; done
 # don't output file name
-grep -h sx_inatt_sx_inatt csv/*.csv > sx_sx.csv;
-grep -h _sx_inatt_Y csv/*.csv > sx_voxels.csv;
-grep -h "Y[0-9]\+_sx_inatt" csv/*.csv > voxels_sx.csv;
+grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
+grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
+grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
 grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
 grep -h AIC csv/*.csv > aic.csv;
 grep -h BIC csv/*.csv > bic.csv;
