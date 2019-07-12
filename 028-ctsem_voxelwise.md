@@ -180,7 +180,14 @@ grep -h BIC csv/*.csv > bic.csv;
 grep -h msg csv/*.csv > msgs.csv;
 python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
     sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
-    ~/data/ctsem_voxelwise/ctsem_ijk.txt
+    ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv
+
+# and if it completes without reruns
+for f in sx_sx sx_voxels voxels_sx voxel_voxel aic bic; do
+    python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+        ${f}.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+        ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv;
+done
 ```
 
 # 2019-07-12 09:44:39
