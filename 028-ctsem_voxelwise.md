@@ -167,8 +167,9 @@ cut -d " " -f 1,2,3 ijk.txt > ctsem_ijk.txt;
 ```
 
 ```bash
+module load afni
 mkdir csv;
-for f in `ls FA_*_inatt*tgz`; do tar -zxf $f -C csv/; done
+for f in `ls ~/data/ctsem_voxelwise/TI1/FA_*_inatt*tgz`; do tar -zxf $f -C csv/; done
 # don't output file name
 grep -h sx_inatt_sx_inatt csv/*.csv > sx_sx.csv;
 grep -h _sx_inatt_Y csv/*.csv > sx_voxels.csv;
@@ -177,9 +178,23 @@ grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
 grep -h AIC csv/*.csv > aic.csv;
 grep -h BIC csv/*.csv > bic.csv;
 grep -h msg csv/*.csv > msgs.csv;
-python ~/research_code/fmri/compile_ctsem_voxel_results.py ~/tmp/sx_sx.csv \
-    /Volumes/Labs/marine/dti_crosslag/data/mean_FA_skeleton_mask.nii.gz \
-    /Users/sudregp/tmp/ctsem_ijk.txt
+python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+    sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+    ~/data/ctsem_voxelwise/ctsem_ijk.txt
+```
+
+# 2019-07-12 09:44:39
+
+When there are holes, we can re-run the list of voxels like this:
+
+```bash
+split -da 2 -l $((`wc -l < vlist_rerun.sx_sx` /$SLURM_CPUS_PER_TASK)) vlist_rerun.sx_sx vlist --additional-suffix=".txt";
+ls -1 vlist*txt > file_list.txt;
+cp ~/research_code/ctsem_voxel_developmental_time_3_timepoints.R ./;
+cat file_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+    Rscript ctsem_voxel_developmental_time_3_timepoints.R ~/data/ctsem_voxelwise/FA_wider_3obs_developmental_time.RData.gz sx_inatt {} output_{}.csv
+tar -czf FA_wider_3obs_developmental_time_SX_inatt_redo.tgz output_*.csv;
+cp *.tgz ~/data/ctsem_voxelwise/TI1/
 ```
 
 # TODO
