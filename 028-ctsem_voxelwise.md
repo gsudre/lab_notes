@@ -168,6 +168,7 @@ cut -d " " -f 1,2,3 ijk.txt > ctsem_ijk.txt;
 
 ```bash
 module load afni
+rm -rf csv;
 mkdir csv;
 sx=hi
 for f in `ls ~/data/ctsem_voxelwise/TI1/FA_*_${sx}*tgz`; do tar -zxf $f -C csv/; done
