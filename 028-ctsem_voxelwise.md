@@ -206,5 +206,60 @@ tar -czf FA_wider_3obs_developmental_time_SX_inatt_redo.tgz output_*.csv;
 cp *.tgz ~/data/ctsem_voxelwise/TI1/
 ```
 
+So, since I'll be leaving this to run over the weekend...
+
+```bash
+module load afni
+module load R
+sx=hi
+cd /lscratch/$SLURM_JOBID
+for m in FA AD RD; do
+    rm -rf *;
+    mkdir csv;
+    for f in `ls ~/data/ctsem_voxelwise/TI1/${m}_*_${sx}*tgz`; do tar -zxf $f -C csv/; done
+    grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
+    grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
+    grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
+    grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
+    grep -h AIC csv/*.csv > aic.csv;
+    grep -h BIC csv/*.csv > bic.csv;
+    grep -h msg csv/*.csv > msgs.csv;
+    python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+        sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+        ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv
+
+    # re-run whatever needs to be re-run
+    if [ -e vlist_rerun.sx_sx ]; then
+        split -da 2 -l $((`wc -l < vlist_rerun.sx_sx` /$SLURM_CPUS_PER_TASK)) vlist_rerun.sx_sx vlist --additional-suffix=".txt";
+        ls -1 vlist*txt > file_list.txt;
+        # made sure that the script is setup for TI1 now!
+        cat file_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+            Rscript ~/research_code/ctsem_voxel_developmental_time_3_timepoints.R \
+                ~/data/ctsem_voxelwise/${m}_wider_3obs_developmental_time.RData.gz \
+                sx_${sx} {} output_{}.csv;
+        tar -czf ${m}_wider_3obs_developmental_time_SX_${sx}_redo.tgz output_*.csv;
+        cp *.tgz ~/data/ctsem_voxelwise/TI1/;
+    fi;
+
+    # and assuming no other reruns are needed
+    rm csv/*;
+    for f in `ls ~/data/ctsem_voxelwise/TI1/${m}_*_${sx}*tgz`; do tar -zxf $f -C csv/; done
+    grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
+    grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
+    grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
+    grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
+    grep -h AIC csv/*.csv > aic.csv;
+    grep -h BIC csv/*.csv > bic.csv;
+    grep -h msg csv/*.csv > msgs.csv;
+    for f in sx_sx sx_voxels voxels_sx voxel_voxel aic bic; do
+        python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+            ${f}.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+            ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv;
+    done
+    mkdir ~/data/ctsem_voxelwise/TI1/${m}_${sx}/;
+    cp *nii.gz ~/data/ctsem_voxelwise/TI1/${m}_${sx}/;
+done
+```
+
 # TODO
  * make sure we're setting a seed in the scripts
