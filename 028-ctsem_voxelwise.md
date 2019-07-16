@@ -569,10 +569,45 @@ flirt -in mymask.nii \
 
 # just to get the COM coordinates in the new space
 3dclust -1Dformat -nosum -orient LPI -NN1 5 mymask_inHCP1065.nii.gz
-````
+```
 
 OK, so this is working. Before we spend much more time here, let's work on the
-permutation scripts/
+permutation scripts.
+
+There was always a series of voxels for which the whole thing didn't complete
+before. So, let's make sure we give it enough time now:
+
+```bash
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+bundle=128;
+p=FA;
+sx=inatt;
+for i in `seq 1 10`; do
+    jname=${p}_${sx}_p${i};
+    fname=swarm.${jname};
+    rm $fname;
+    seed=${RANDOM};
+    cur_vox=1;
+    while [ $cur_vox -lt $nvox ]; do
+        let last_vox=${cur_vox}+${bundle}-1;
+        # gets the min
+        last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+        echo "bash ~/research_code/run_ctsem_voxel_parallel.sh" \
+            "~/data/ctsem_voxelwise/${p}_wider_3obs_developmental_time.RData.gz" \
+            "sx_${sx} ${cur_vox} ${last_vox}" \
+            "~/data/ctsem_voxelwise/TI1_perms $seed" >> $fname;
+        let cur_vox=${last_vox}+1;
+    done;
+    swarm --gres=lscratch:1 -f ${fname} --module R -g 30 -t 32 \
+        --logdir=trash_${jname} --job-name ${jname} --time=8:00:00 --merge-output \
+        --partition norm;
+done
+```
+
+If this is taking too long to allocate, I could also try bundles of 96 (3 per
+core), and run for 4h in the quick partition?
+
 
 
 # TODO
