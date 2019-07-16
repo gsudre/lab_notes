@@ -227,3 +227,153 @@ singularity exec -B /scratch/sudregp:/mnt docker://poldracklab/mriqc:latest mriq
 ```
 
 I saved everything back in the shared drive in PNC_structural.
+
+# 2019-07-15 11:33:17
+
+I want to double check that we ran through Freesurfer only the 8-chan scans when
+the 32-chan was available. So, let's do some checks:
+
+I'm checking on the suspicion that we might be processing some of the 32-channel
+coil data, which we shouldn't be doing. So, let's check what are the scans that
+have those data first:
+
+```bash
+#caterpie
+for m in {1000..2624}; do 
+    if grep -qr 32Ch ${m}/2*/mr*/README-Series.txt; then
+        echo $m;
+    fi;
+done
+```
+
+We get these scans as having 32-channel versions:
+
+```
+2046
+2047
+2048
+2061
+2064
+2065
+2067
+2070
+2071
+2073
+2094
+2097
+2103
+2120
+2123
+2125
+2134
+2142
+2143
+2148
+2169
+2247
+2272
+2274
+2278
+2280
+2298
+2566
+2620
+```
+
+So, let's check which scan was used, and which scan should have been used.
+Easiest thing is to just go into best_mprages folder.
+
+```bash
+cd /mnt/shaw/best_mprages;
+for m in `cat ~/tmp/32_list.txt`; do
+    echo $m;
+    grep Coil ${m}/R*txt;
+done
+```
+
+```
+2046
+Receive Coil Name: 8HRBRAIN
+2047
+Receive Coil Name: 32Ch Head
+2048
+Receive Coil Name: 8HRBRAIN
+2061
+Receive Coil Name: 8HRBRAIN
+2064
+Receive Coil Name: 8HRBRAIN
+2065
+Receive Coil Name: 8HRBRAIN
+2067
+Receive Coil Name: 8HRBRAIN
+2070
+Receive Coil Name: 8HRBRAIN
+2071
+Receive Coil Name: 8HRBRAIN
+2073
+Receive Coil Name: 8HRBRAIN
+2094
+Receive Coil Name: 32Ch Head
+2097
+Receive Coil Name: 32Ch Head
+2103
+Receive Coil Name: 8HRBRAIN
+2120
+Receive Coil Name: 8HRBRAIN
+2123
+Receive Coil Name: 8HRBRAIN
+2125
+Receive Coil Name: 8HRBRAIN
+2134
+Receive Coil Name: 8HRBRAIN
+2142
+Receive Coil Name: 8HRBRAIN
+2143
+Receive Coil Name: 8HRBRAIN
+2148
+Receive Coil Name: 8HRBRAIN
+2169
+Receive Coil Name: 32Ch Head
+2247
+Receive Coil Name: 32Ch Head
+2272
+Receive Coil Name: 32Ch Head
+2274
+Receive Coil Name: 32Ch Head
+2278
+Receive Coil Name: 32Ch Head
+2280
+Receive Coil Name: 32Ch Head
+2298
+Receive Coil Name: 32Ch Head
+```
+
+And I haven't processed 2566 and 2620 yet. OK, so let's redo those IDs, starting
+by manually copying the correct scan to best_mprage, and then running Freesurfer
+again. In that, I should take the chance and run Freesurfer on eveyrone that we
+still need to run for catch up...
+
+I'm checking Labmatrix for the best score out of the 8-channel ones, but when in
+doubt I take the first one.
+
+```bash
+grep _rage 2047/2*/RE*
+grep Coil 2047/2*/mr_0003/R*
+```
+
+```
+2047
+2094
+2097
+2169  # only scanned as 32-chan
+2247  # only scanned as 32-chan
+2272  # only scanned as 32-chan
+2274  # only scanned as 32-chan
+2278  # only scanned as 32-chan
+2280  # only scanned as 32-chan
+2298  # only scanned as 32-chan
+```
+
+OK, now let's redo those 3, along with everything from 2535 to 2628.
+
+
