@@ -893,7 +893,17 @@ Let's make a scatterplot just to make sure it's not driven by outliers, but just
 to be safe, we should also check that those connections are not correlated to
 movement...
 
-# 2019-07-09 15:36:19
+# 2019-07-17 11:08:18
+
+Luke and I noticed that there was something funky with the FD reported in
+xcpengine, so I wrote a script to compute it based only in the non-censored TRs:
+
+```r
+source('~/research_code/fmri/compute_xcp_movement.R')
+```
+
+Now, I need to change the function that selects best scans as well. We should do
+it based on the most conservative pipeline, and then go from there...
 
 
 

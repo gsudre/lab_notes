@@ -608,7 +608,69 @@ done
 If this is taking too long to allocate, I could also try bundles of 96 (3 per
 core), and run for 4h in the quick partition?
 
+# 2019-07-17 11:42:11
 
+For compiling permutation runs we do:
+
+```bash
+module load afni
+module load R
+sx=inatt
+m=FA
+TI=TI1_perms
+cd /lscratch/$SLURM_JOBID
+for p in `seq 10 20`; do
+    rm -rf *;
+    mkdir csv;
+    pseed=`cut -d" " -f 8 ~/data/ctsem_voxelwise/swarm.${m}_${sx}_p${p} | head -n 1`;
+    for f in `ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}.tgz`; do
+        tar -zxf $f -C csv/;
+    done
+    grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
+    grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
+    grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
+    grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
+    grep -h AIC csv/*.csv > aic.csv;
+    grep -h BIC csv/*.csv > bic.csv;
+    grep -h msg csv/*.csv > msgs.csv;
+    python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+        sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+        ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv
+
+    # re-run whatever needs to be re-run
+    if [ -e vlist_rerun.sx_sx ]; then
+        split -da 2 -l $((`wc -l < vlist_rerun.sx_sx` /$SLURM_CPUS_PER_TASK)) vlist_rerun.sx_sx vlist --additional-suffix=".txt";
+        ls -1 vlist*txt > file_list.txt;
+        # made sure that the script is setup for TI1 now!
+        cat file_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+            Rscript ~/research_code/ctsem_voxel_developmental_time_3_timepoints.R \
+                ~/data/ctsem_voxelwise/${m}_wider_3obs_developmental_time.RData.gz \
+                sx_${sx} {} output_{}.csv;
+        tar -czf ${m}_wider_3obs_developmental_time_SX_${sx}_${pseed}_redo.tgz output_*.csv;
+        cp *.tgz ~/data/ctsem_voxelwise/${TI}/;
+    fi;
+
+    # and assuming no other reruns are needed
+    rm csv/*;
+    for f in `ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}*.tgz`; do
+        tar -zxf $f -C csv/;
+    done
+    grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
+    grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
+    grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
+    grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
+    grep -h AIC csv/*.csv > aic.csv;
+    grep -h BIC csv/*.csv > bic.csv;
+    grep -h msg csv/*.csv > msgs.csv;
+    for f in sx_sx sx_voxels voxels_sx voxel_voxel aic bic; do
+        python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+            ${f}.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+            ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv;
+    done
+    mkdir ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
+    cp *nii.gz ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
+done
+```
 
 # TODO
  * make sure we're setting a seed in the scripts
