@@ -672,6 +672,53 @@ for p in `seq 10 20`; do
 done
 ```
 
+# 2019-07-18 12:18:22
+
+Ben brought up a good point in that we should have smaller bundles so that if
+something fails, it won't take too long to re-run. But they can't be too small,
+otherwise we're starting too many Rs. Let's try to find a good balance:
+
+```bash
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+bundle=24;
+p=FA;
+sx=inatt;
+for i in `seq 60 70`; do
+    jname=${p}_${sx}_p${i};
+    fname=swarm.${jname};
+    rm $fname;
+    seed=${RANDOM};
+    cur_vox=1;
+    while [ $cur_vox -lt $nvox ]; do
+        let last_vox=${cur_vox}+${bundle}-1;
+        # gets the min
+        last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+        echo "bash ~/research_code/run_ctsem_voxel_parallel.sh" \
+            "~/data/ctsem_voxelwise/${p}_wider_3obs_developmental_time.RData.gz" \
+            "sx_${sx} ${cur_vox} ${last_vox}" \
+            "~/data/ctsem_voxelwise/TI1_perms $seed" >> $fname;
+        let cur_vox=${last_vox}+1;
+    done;
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:1 -f ${fname} --module R -g 10 -t 8 \
+            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+            --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Just be careful because we start running into scheduling issues after 6 or 7 of
+these... I even tried to establish dependencies, but it didn't work. So, maybe
+the usual swarm wait style of submission might work better...
+
+
 # TODO
  * make sure we're setting a seed in the scripts
  * test zero masked results
