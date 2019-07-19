@@ -741,7 +741,7 @@ nvox=10814;
 bundle=24;#96;
 p=AD;
 sx=inatt;
-for i in `seq 1 10`; do
+for i in `seq 11 100`; do
     jname=${p}_${sx}_p${i};
     fname=swarm.${jname};
     rm -f $fname;
@@ -760,7 +760,10 @@ for i in `seq 1 10`; do
     echo "ERROR" > swarm_wait;
     while grep -q ERROR swarm_wait; do
         echo "Trying $jname"
-        swarm --gres=lscratch:1 -f ${fname} --module R -g 10 -t 8 \ #-g 30 -t 32 \
+        # swarm --gres=lscratch:1 -f ${fname} --module R -g 30 -t 32 \
+        #     --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+        #     --partition quick,norm 2> swarm_wait;
+        swarm --gres=lscratch:1 -f ${fname} --module R -g 10 -t 8 \
             --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
             --partition quick,norm 2> swarm_wait;
         if grep -q ERROR swarm_wait; then

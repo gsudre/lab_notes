@@ -916,6 +916,20 @@ but it has 50 TRs removed regardless.
 source('~/research_code/fmri/select_xcp_best_scans_FD.R')
 ```
 
+I also created a function to plot the QC-FC metrics. Before I do that, it'll go
+faster if we copy just the functional connectivity data locally:
+
+```bash
+for d in `ls | grep xcpengine_output_AROMA-p`; do
+    echo $d;
+    mkdir ~/data/AROMA_ICA/connectivity/$d;
+    cp $d/*/fcon/power264/*_power264_network.txt ~/data/AROMA_ICA/connectivity/$d/;
+done
+```
+
+Then, we can just do:
+
+
 
 
 # TODO
