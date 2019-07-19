@@ -741,7 +741,7 @@ nvox=10814;
 bundle=24;#96;
 p=AD;
 sx=inatt;
-for i in `seq 11 100`; do
+for i in `seq 19 100`; do
     jname=${p}_${sx}_p${i};
     fname=swarm.${jname};
     rm -f $fname;
@@ -768,7 +768,7 @@ for i in `seq 11 100`; do
             --partition quick,norm 2> swarm_wait;
         if grep -q ERROR swarm_wait; then
             echo -e "\tError, sleeping..."
-            sleep 10m;
+            sleep 30m;
         fi;
     done;
 done
