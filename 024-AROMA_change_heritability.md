@@ -905,7 +905,16 @@ source('~/research_code/fmri/compute_xcp_movement.R')
 Now, I need to change the function that selects best scans as well. We should do
 it based on the most conservative pipeline, and then go from there...
 
+# 2019-07-19 10:13:03
 
+Let's go back to selecting based on overall FD, as it makes more sense that way.
+For example, say we choose scan X based on the most strict pipeline, and it has
+76 TRs left. It's better than another scan Y that has fewer TRs than that left,
+but it has 50 TRs removed regardless.
+
+```r
+source('~/research_code/fmri/select_xcp_best_scans_FD.R')
+```
 
 
 

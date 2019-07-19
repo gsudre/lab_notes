@@ -615,23 +615,22 @@ For compiling permutation runs we do:
 ```bash
 module load afni
 module load R
+module load python/3.7
 sx=inatt
 m=FA
 TI=TI1_perms
 cd /lscratch/$SLURM_JOBID
-for p in `seq 10 20`; do
+for p in `seq 3 20`; do
+    echo "Working on perm $p...";
     rm -rf *;
     mkdir csv;
     pseed=`cut -d" " -f 8 ~/data/ctsem_voxelwise/swarm.${m}_${sx}_p${p} | head -n 1`;
-    for f in `ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}.tgz`; do
+    ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}.tgz > perm_files.txt;
+    ls ~/data/ctsem_voxelwise/${TI}/*${pseed}*redo* >> perm_files.txt;
+    for f in `cat perm_files.txt`; do
         tar -zxf $f -C csv/;
     done
     grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
-    grep -h _sx_${sx}_Y csv/*.csv > sx_voxels.csv;
-    grep -h "Y[0-9]\+_sx_${sx}" csv/*.csv > voxels_sx.csv;
-    grep -h "Y[0-9]\+_Y[0-9]\+" csv/*.csv > voxel_voxel.csv;
-    grep -h AIC csv/*.csv > aic.csv;
-    grep -h BIC csv/*.csv > bic.csv;
     grep -h msg csv/*.csv > msgs.csv;
     python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
         sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
@@ -652,7 +651,10 @@ for p in `seq 10 20`; do
 
     # and assuming no other reruns are needed
     rm csv/*;
-    for f in `ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}*.tgz`; do
+    rm -f sx_sx*.nii.gz;
+    ls ~/data/ctsem_voxelwise/${TI}/${m}_*_${sx}*_${pseed}.tgz > perm_files.txt;
+    ls ~/data/ctsem_voxelwise/${TI}/*${pseed}*redo* >> perm_files.txt;
+    for f in `cat perm_files.txt`; do
         tar -zxf $f -C csv/;
     done
     grep -h sx_${sx}_sx_${sx} csv/*.csv > sx_sx.csv;
@@ -663,12 +665,22 @@ for p in `seq 10 20`; do
     grep -h BIC csv/*.csv > bic.csv;
     grep -h msg csv/*.csv > msgs.csv;
     for f in sx_sx sx_voxels voxels_sx voxel_voxel aic bic; do
+        echo $f perm $p;
         python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
             ${f}.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
             ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv;
     done
-    mkdir ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
-    cp *nii.gz ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
+    # if compiled successfully
+    if [ -e sx_voxels.nii.gz ]; then
+        echo "Cleaning up...";
+        mkdir -p ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
+        # reducing the number of files a bit
+        tar -zcf ${m}_${sx}_p$p.tgz csv/*;
+        cp -v *nii.gz ${m}_${sx}_p$p.tgz ~/data/ctsem_voxelwise/${TI}/${m}_${sx}_p${p}/;
+        for f in `cat perm_files.txt`; do
+            rm -f $f;
+        done;
+    fi;
 done
 ```
 
@@ -718,6 +730,46 @@ Just be careful because we start running into scheduling issues after 6 or 7 of
 these... I even tried to establish dependencies, but it didn't work. So, maybe
 the usual swarm wait style of submission might work better...
 
+# 2019-07-19 09:39:45
+
+Because we don't write to the network drive that often, we might be able to get
+away writing on csv per voxel. Let's try that:
+
+```bash
+cd ~/data/ctsem_voxelwise;
+nvox=10814;
+bundle=24;#96;
+p=AD;
+sx=inatt;
+for i in `seq 1 10`; do
+    jname=${p}_${sx}_p${i};
+    fname=swarm.${jname};
+    rm -f $fname;
+    seed=${RANDOM};
+    cur_vox=1;
+    while [ $cur_vox -lt $nvox ]; do
+        let last_vox=${cur_vox}+${bundle}-1;
+        # gets the min
+        last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+        echo "bash ~/research_code/run_ctsem_voxel_parallel_net.sh" \
+            "~/data/ctsem_voxelwise/${p}_wider_3obs_developmental_time.RData.gz" \
+            "sx_${sx} ${cur_vox} ${last_vox}" \
+            "~/data/ctsem_voxelwise/TI1_perms_${p}_${sx}_p${i} $seed" >> $fname;
+        let cur_vox=${last_vox}+1;
+    done;
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:1 -f ${fname} --module R -g 10 -t 8 \ #-g 30 -t 32 \
+            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+            --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
 
 # TODO
  * make sure we're setting a seed in the scripts
