@@ -774,6 +774,99 @@ for i in `seq 19 100`; do
 done
 ```
 
+# 2019-07-23 14:48:58
+
+So, we have the entire result, masked impute, and masked zero. Ideally they
+would all point in the same direction, but there are good chances that won't
+happen. So, let's find the COM coordinates for all those cases, and leave the
+figures for when I'm back in the office, with two monitors.
+
+```bash
+res_file=~/tmp/all_res.txt;
+for m in FA AD RD; do
+    for sx in inatt hi; do
+        mydir=~/data/ctsem_voxelwise/results/TI1/${m}_${sx}/
+        for f in voxels_sx sx_voxels; do
+            for suf in '' '_maskImpute' '_maskZero'; do
+                fname=${mydir}/${f}${suf}.nii.gz;
+                echo "======= $m $sx $fname ======" >> $res_file;
+                3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 \
+                    -1thresh 0.95 -NN1 15 $fname >> $res_file;
+            done;
+        done;
+    done;
+done;
+```
+
+I copied the result file to ~/data/ctsem_voxelwise/results/TI1. The maskImpute
+version is looking alright, and it's much more similar to the regular results
+than the maskZero ones. In any case, it's not too hard to test them all. So far,
+I only have compiled a few of the FA results, so let's start with them.
+
+| mode | sx  | drift  |  mask | top cluster NN1 |
+|---|---|---|---|---|
+| FA  | inatt | voxels_sx  | none  | 25 | 
+| FA  | inatt | voxels_sx  | impute  | 28 |
+| FA  | inatt | voxels_sx  | zero | 18 | 
+| FA  | inatt | sx_voxels  | none  | 58 | 
+| FA  | inatt | sx_voxels  | impute  | 59 |
+| FA  | inatt | sx_voxels  | zero | 20 | 
+| FA  | hi | voxels_sx  | none  | 50 | 
+| FA  | hi | voxels_sx  | impute  | 51 |
+| FA  | hi | voxels_sx  | zero | 46 | 
+| FA  | hi | sx_voxels  | none  | 33 | 
+| FA  | hi | sx_voxels  | impute  | 33 |
+| FA  | hi | sx_voxels  | zero | 32 | 
+| AD  | inatt | voxels_sx  | none  | 44 | 
+| AD  | inatt | voxels_sx  | impute  | 92 |
+| AD  | inatt | voxels_sx  | zero | 15 | 
+| AD  | inatt | sx_voxels  | none  | 24 | 
+| AD  | inatt | sx_voxels  | impute  | 20 |
+| AD  | inatt | sx_voxels  | zero | 0 | 
+| AD  | hi | voxels_sx  | none  | 111 | 
+| AD  | hi | voxels_sx  | impute  | 88 |
+| AD  | hi | voxels_sx  | zero | 24 | 
+| AD  | hi | sx_voxels  | none  | 15 | 
+| AD  | hi | sx_voxels  | impute  | 26 |
+| AD  | hi | sx_voxels  | zero | 0 | 
+| RD  | inatt | voxels_sx  | none  | 27 | 
+| RD  | inatt | voxels_sx  | impute  | 28 |
+| RD  | inatt | voxels_sx  | zero | 0 | 
+| RD  | inatt | sx_voxels  | none  | 50 | 
+| RD  | inatt | sx_voxels  | impute  | 54 |
+| RD  | inatt | sx_voxels  | zero | 25 | 
+| RD  | hi | voxels_sx  | none  | 44 | 
+| RD  | hi | voxels_sx  | impute  | 45 |
+| RD  | hi | voxels_sx  | zero | 40 | 
+| RD  | hi | sx_voxels  | none  | 89 | 
+| RD  | hi | sx_voxels  | impute  | 89 |
+| RD  | hi | sx_voxels  | zero | 89 | 
+
+```bash
+cd ~/data/ctsem_voxelwise/results/TI1/FA_inatt_perms
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 25 \
+    -quiet */voxels_sx.nii.gz | grep CLUSTERS | wc -l
+```
+
+Just careful because the code above gives us the number of times we DID NOT have
+a cluster of 28 or more voxels. Then, we still need to do (nperms-res)/nperms.
+
+So, a better way to get the p-value is:
+
+```bash
+cd ~/data/ctsem_voxelwise/results/TI1/FA_inatt_perms
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 25 \
+    -quiet */voxels_sx.nii.gz | grep CLUSTERS | wc -l`
+nperms=`ls | grep _p | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+We need more perms, but it looks like the result with 58 voxels is significant,
+but the 25-28 result is not even close.
+
+                
+```
 # TODO
  * make sure we're setting a seed in the scripts
  * test zero masked results
