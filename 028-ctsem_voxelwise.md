@@ -865,10 +865,7 @@ echo negatives=${res}, perms=${nperms}, pval=$p
 We need more perms, but it looks like the result with 58 voxels is significant,
 but the 25-28 result is not even close.
 
-                
-```
+
 # TODO
- * make sure we're setting a seed in the scripts
- * test zero masked results
- * test imputed results
- * start running some permutations for best results
+ * finalize running and ocmpiling perms
+ * visualize results
