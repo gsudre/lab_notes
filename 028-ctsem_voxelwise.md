@@ -1034,8 +1034,20 @@ for p in `seq 1 100`; do
 done
 ```
 
-Whiel we wait for some of these results to compile locally, let's make some
+While we wait for some of these results to compile locally, let's make some
 pictures of the FA results.
+
+```bash
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 50 \
+    -overwrite -savemask mymask.nii results/TI1/FA_inatt/sx_voxels.nii.gz
+fname=FA_inatt_sx_voxels_inHCP1065.nii.gz
+flirt -in mymask.nii \
+    -ref /usr/local/fsl/data/standard/FSL_HCP1065_FA_1mm.nii \
+    -out $fname -applyxfm \
+    -init group_skeleton_to_HCP1065.mat -interp nearestneighbour
+# just to get the COM coordinates in the new space
+3dclust -1Dformat -nosum -orient LPI -NN1 5 $fname
+```
 
 
 # TODO

@@ -929,8 +929,14 @@ done
 
 Then, we can just do:
 
+```r
+source('~/research_code/fmri/plot_qc-fc.R')
+```
 
+# 2019-07-24 16:04:12
 
+I'm now playing with residualizing the data before plotting the effects of the
+pipelines, and also removing outliers. Same plotting function as before.
 
 # TODO
  * check that we're not using same DOA for two different scans!
