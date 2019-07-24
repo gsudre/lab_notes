@@ -938,6 +938,23 @@ source('~/research_code/fmri/plot_qc-fc.R')
 I'm now playing with residualizing the data before plotting the effects of the
 pipelines, and also removing outliers. Same plotting function as before.
 
+This is using spearman Rho:
+
+![](images/2019-07-24-16-37-08.png)
+
+And this is  using Pearson R:
+
+![](images/2019-07-24-16-38-01.png)
+
+There's some benefit over what we were doing before, but not terribly:
+
+![](images/2019-07-24-16-38-37.png)
+
+It is a bit weird that the censored pipelines are more correlated to movement
+than the uncensored one... and even more so, the more data we keep, the better
+it looks? What's that about?
+
+
 # TODO
  * check that we're not using same DOA for two different scans!
  * check for no correlation with movement!
