@@ -955,7 +955,50 @@ than the uncensored one... and even more so, the more data we keep, the better
 it looks? What's that about?
 
 
+# 2019-07-25 13:41:15
+
+Following Luke's expeirments, I decided to run the same types of plots after
+removing some of the worst FD offenders. Here's how the plot looks for the best
+2 scans:
+
+![](images/2019-07-25-13-42-45.png)
+
+So, let's establish a few reasonable thresholds, based on visuals and quantiles:
+
+```
+> quantile(qc)
+        0%        25%        50%        75%       100% 
+0.04554823 0.10067211 0.17830536 0.44216555 6.77467232 
+
+> source('~/research_code/fmri/plot_qc-fc_FDthresh.R')
+```
+
+![](images/2019-07-25-14-39-18.png)
+
+Interestingly it's still going up... maybe there are non-linearities after FD 1,
+but once we remove all outliers we're better?
+
+First, here's what I get if I do Spearman correlation between connections and
+FD, instead of Pearson:
+
+![](images/2019-07-25-14-46-21.png)
+
+Not much better...
+
+Maybe if we cut at 1, then show that results hold across different cut-off we're
+good? We could even residualize movement in each of them to see if it makes a
+difference in the results. The Parkes paper suggests keeping people that have <
+.2 FD, so we could use 1, and .2 thresholds? Let's try that while we wait on the
+36P pipeline...
+
+```r
+source('~/research_code/fmri/make_aroma_slopes_FD.R')
+```
+
+
+
 # TODO
+ * check that allf and reho are in the same space for all scans!
  * check that we're not using same DOA for two different scans!
  * check for no correlation with movement!
  * check that all scans being used passed visual QC!
