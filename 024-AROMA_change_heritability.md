@@ -995,6 +995,11 @@ difference in the results. The Parkes paper suggests keeping people that have <
 source('~/research_code/fmri/make_aroma_slopes_FD.R')
 ```
 
+# 2019-07-26 10:52:34
+
+With those 4 new datasets (regular, gsr, in the two FD thresholds), let's re-run
+SOLAR and then the association analysis.
+
 
 
 # TODO

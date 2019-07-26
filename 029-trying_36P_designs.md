@@ -27,3 +27,14 @@ for s in `cat maskids_23.txt`; do
         -r /Volumes/Labs/AROMA_ICA/fMRIprep_output/;
 done
 ```
+
+# 2019-07-26 11:25:59
+
+The worry then is 2-fold:
+
+1) remove crappy scans; then
+2) make sure changes in movement are not driving the results in change of connectivity
+
+So, we start with the best 2 or 3 scans per person. Here, we measured best based
+on mean FD, but it could even be a ranked combination of FD and RMS. Then, it's
+a matter of removing any scans
