@@ -37,4 +37,32 @@ The worry then is 2-fold:
 
 So, we start with the best 2 or 3 scans per person. Here, we measured best based
 on mean FD, but it could even be a ranked combination of FD and RMS. Then, it's
-a matter of removing any scans
+a matter of removing any scans.
+
+# 2019-07-29 16:10:29
+
+My initial tests showed the vanilla 36P pipeline to remove the bivariate
+distribution we were seeing across the board with AROMA. Let's see what we get
+when we run it in the cluster, now that it's back in business:
+
+```bash
+pipe='fc-36p';
+cd /data/NCR_SBRB/
+rm xcpengine.swarm;
+outdir=/data/NCR_SBRB/xcpengine_output_${pipe}/
+mkdir $outdir;
+for m in `cat /data/NCR_SBRB/maskids_23.txt`; do
+    echo 'export TMPDIR=/lscratch/$SLURM_JOBID; ' \
+        'mkdir -p $TMPDIR/out $TMPDIR/work; ' \
+        'echo id0,img > ${TMPDIR}/'${m}'.csv; ' \
+        'cp /data/NCR_SBRB/'${pipe}'.dsn $TMPDIR/; ' \
+        'echo sub-'${m}',sub-'${m}'/fmriprep/sub-'${m}'/func/sub-'${m}'_task-rest_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/'${m}'.csv; ' \
+        'xcpEngine -c $TMPDIR/'${m}'.csv ' \
+        '-d $TMPDIR/'${pipe}'.dsn -i $TMPDIR/work -o $TMPDIR/out ' \
+        '-r /data/NCR_SBRB/fmriprep_output/;' \
+        'mv $TMPDIR/out/sub-'"${m} $outdir;">> xcpengine.swarm;
+done
+swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine/1.0rc1 \
+     --time=30:00 --merge-output --logdir=trash_xcpengine_${pipe} \
+     --job-name xcp${pipe} --partition quick,norm
+```

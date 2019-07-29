@@ -1049,6 +1049,69 @@ flirt -in mymask.nii \
 3dclust -1Dformat -nosum -orient LPI -NN1 5 $fname
 ```
 
+# 2019-07-29 15:46:38
+
+Now that BW is back, we should just make a big swarm file with everything that
+needs to be re-run for FA perms, and just swarm that, instead of doing them
+locally in interactive machines!
+
+```bash
+#bw
+module load afni
+module load R
+module load python/3.7
+
+# just so we have a single place to refer to
+mkdir /scratch/sudregp/ctsem/
+for v in `seq 1 10814`; do
+    echo Y${v} > /scratch/sudregp/ctsem/Y${v}.txt;
+done
+
+sx=inatt
+m=FA
+TI=TI1_perms
+cd /lscratch/$SLURM_JOBID
+sfile=~/data/ctsem_voxelwise/swarm.rerun3
+for p in `seq 41 60`; do
+    clean_fname=~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/${m}_inatt_p${p}.tgz
+    echo "Working on perm $p...";
+    rm -rf csv/;
+    tar -zxf $clean_fname;
+    csv_dir=csv/;
+    rm -f *.csv *.txt vlist_rerun.sx_sx *tgz vlist* $csv_dir/output*.csv;
+    # create big file just once, breaking it up because initial list of arguments is too long
+    cat ${csv_dir}/*.csv > mega_file.csv
+    grep -h sx_${sx}_sx_${sx} mega_file.csv > sx_sx.csv;
+    grep -h msg mega_file.csv > msgs.csv;
+    python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+        sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+        ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv
+
+    # re-run whatever needs to be re-run
+    if [ -e vlist_rerun.sx_sx ]; then
+        pseed=`cut -d" " -f 8 ~/data/ctsem_voxelwise/swarm.${m}_${sx}_p${p} | head -n 1`;
+        for y in `cat vlist_rerun.sx_sx`; do
+            echo "Rscript ~/research_code/ctsem_voxel_developmental_time_3_timepoints.R" \
+                "~/data/ctsem_voxelwise/${m}_wider_3obs_developmental_time.RData.gz" \
+                "sx_${sx} /scratch/sudregp/ctsem/${y}.txt " \
+                "~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/redo_${y}.csv" \
+                "$pseed" >> $sfile;
+        done
+    fi;
+done
+```
+
+Then, it's just a matter of how long we think this whole think will take, and
+how much we think the cluster can handle. Since it's a one-time thing, I'll try
+to run it all at once with a bundling that doesn't allow more than a few hundred
+accesses to the network at a time.
+
+```bash
+#bw
+cd ~/data/ctsem_voxelwise/
+swarm -f swarm.rerun -t 2 --module R,afni,python/3.7 --time=1:00:00 \
+    --merge-output --logdir=trash_FAcomp --job-name FAcomp --partition quick
+```
 
 # TODO
  * finalize running and ocmpiling perms
