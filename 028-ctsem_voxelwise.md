@@ -1071,8 +1071,8 @@ sx=inatt
 m=FA
 TI=TI1_perms
 cd /lscratch/$SLURM_JOBID
-sfile=~/data/ctsem_voxelwise/swarm.rerun3
-for p in `seq 41 60`; do
+sfile=~/data/ctsem_voxelwise/swarm.rerun5
+for p in `seq 81 100`; do
     clean_fname=~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/${m}_inatt_p${p}.tgz
     echo "Working on perm $p...";
     rm -rf csv/;
