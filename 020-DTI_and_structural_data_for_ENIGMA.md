@@ -248,8 +248,9 @@ But before we do that, I didn't save all the files I needed from scratch, so
 let's make sure we ran it correctly, this time locally:
 
 ```bash
+# desktop
 cd ~/tmp/enigma
-# copy all original _fa.nii files here, then...
+# copy all original _fa.nii files here from /Volumes/Labs/dti_robust_tsa/enigma/origdata/, then...
 tbss_1_preproc *.nii
 tbss_2_reg -t enigmaDTI/ENIGMA_DTI_FA.nii.gz
 tbss_3_postreg -S
@@ -400,9 +401,9 @@ Hare we go, following the ENIGMA pipeline.
 
 ```bash
 out_file=~/tmp/enigma/LandRvolumes.csv
-cd /Volumes/Shaw/freesurfer5.3_subjects/
+cd /Volumes/Labs/freesurfer5.3_subjects/
 echo "SubjID,Lthal,Rthal,Lcaud,Rcaud,Lput,Rput,Lpal,Rpal,Lhippo,Rhippo,Lamyg,Ramyg,Laccumb,Raccumb,ICV" > $out_file
-for subj_id in `cat ~/tmp/enigma/ids_fs.txt`; do #may need to change this so that is selects subjects with FS output
+for subj_id in `cat ~/tmp/enigma/fs.txt`; do
     echo $subj_id
     printf "%s,"  "${subj_id}" >> $out_file
     for x in Left-Thalamus-Proper Right-Thalamus-Proper Left-Caudate Right-Caudate Left-Putamen Right-Putamen Left-Pallidum Right-Pallidum Left-Hippocampus Right-Hippocampus Left-Amygdala Right-Amygdala Left-Accumbens-area Right-Accumbens-area; do
@@ -412,7 +413,15 @@ for subj_id in `cat ~/tmp/enigma/ids_fs.txt`; do #may need to change this so tha
     echo "" >> $out_file
 done
 
- bash ~/tmp/enigma/extract.sh
+# change the script from the enigma website to loop through IDs in our list
+bash ~/tmp/enigma/extract.sh
+mv CorticalMeasuresENIGMA_SurfAvg.csv CorticalMeasuresENIGMA_ThickAvg.csv \
+    ~/tmp/enigma/
  ```
- 
+
+# 2019-08-01 14:12:21
+
+I asked Sam to help out figuring out who can be sent.
+
+
 # TODO

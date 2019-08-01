@@ -1254,6 +1254,82 @@ for p in `seq 51 100`; do
 done
 ```
 
+# 2019-08-01 15:17:58
+
+Let's recompile the ones that were re-run. If they still aren't done, it's
+usually because of a single pesky voxel that didn't finish even after running it
+twice, so I removed the set.seed() from the R script to see if it would help.
+Those voxels are likely crap anyways, so I'm not too worried.
+
+```bash
+#bw
+module load afni
+module load R
+module load python/3.7
+sx=inatt
+m=FA
+TI=TI1_perms
+cd /lscratch/$SLURM_JOBID
+sfile=~/data/ctsem_voxelwise/swarm.FArerun
+rm $sfile
+for p in `seq 1 100`; do
+    if [ ! -d ~/data/ctsem_voxelwise/TI1_perms/clean/${m}_${sx}_p${p} ]; then
+        clean_fname=~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/${m}_inatt_p${p}.tgz
+        echo "Working on perm $p...";
+        rm -rf csv/;
+        tar -zxf $clean_fname;
+        csv_dir=csv/;
+        rm -f *.csv *.txt *.nii.gz *tgz vlist* $csv_dir/output*.csv vlist_rerun.sx_sx;
+        cp ~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/redo_*.csv csv/;
+        # create big file just once, breaking it up because initial list of arguments is too long
+        cat ${csv_dir}/*.csv > mega_file.csv
+        grep -h sx_${sx}_sx_${sx} mega_file.csv > sx_sx.csv;
+        grep -h msg mega_file.csv > msgs.csv;
+        python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+            sx_sx.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+            ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv
+
+        # re-run whatever needs to be re-run
+        if [ -e vlist_rerun.sx_sx ]; then
+            pseed=`cut -d" " -f 8 ~/data/ctsem_voxelwise/swarm.${m}_${sx}_p${p} | head -n 1`;
+            echo "Random seed: $pseed";
+            for y in `cat vlist_rerun.sx_sx`; do
+                echo "Rscript ~/research_code/ctsem_voxel_developmental_time_3_timepoints.R" \
+                    "~/data/ctsem_voxelwise/${m}_wider_3obs_developmental_time.RData.gz" \
+                    "sx_${sx} /scratch/sudregp/ctsem/${y}.txt " \
+                    "~/data/ctsem_voxelwise/TI1_perms/${m}_inatt_p${p}/redo_${y}.csv" \
+                    "$pseed" >> $sfile;
+            done
+        else
+            # and assuming no other reruns are needed
+            rm -f sx_sx*.nii.gz *.csv *.txt;
+            cat ${csv_dir}/*.csv > mega_file.csv
+            grep -h sx_${sx}_sx_${sx} mega_file.csv > sx_sx.csv;
+            grep -h _sx_${sx}_Y mega_file.csv > sx_voxels.csv;
+            grep -h "Y[0-9]\+_sx_${sx}" mega_file.csv > voxels_sx.csv;
+            grep -h "Y[0-9]\+_Y[0-9]\+" mega_file.csv > voxel_voxel.csv;
+            grep -h AIC mega_file.csv > aic.csv;
+            grep -h BIC mega_file.csv > bic.csv;
+            grep -h msg mega_file.csv > msgs.csv;
+            for f in sx_sx sx_voxels voxels_sx voxel_voxel aic bic; do
+                echo $f perm $p;
+                python3 ~/research_code/fmri/compile_ctsem_voxel_results.py \
+                    ${f}.csv ~/data/ctsem_voxelwise/mean_FA_skeleton_mask.nii.gz \
+                    ~/data/ctsem_voxelwise/ctsem_ijk.txt msgs.csv;
+            done
+            # if compiled successfully
+            if [ -e sx_voxels.nii.gz ]; then
+                echo "Cleaning up...";
+                mkdir -p ~/data/ctsem_voxelwise/TI1_perms/clean/${m}_${sx}_p${p};
+                # reducing the number of files a bit
+                tar -zcf ${m}_${sx}_p$p.tgz csv/*;
+                cp -v *nii.gz ${m}_${sx}_p$p.tgz ~/data/ctsem_voxelwise/TI1_perms/clean/${m}_${sx}_p${p}/;
+            fi;
+        fi;
+    fi;
+done
+```
+
 # TODO
  * finalize running and ocmpiling perms
  * visualize results
