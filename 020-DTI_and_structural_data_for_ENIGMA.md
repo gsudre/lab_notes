@@ -289,13 +289,15 @@ done
 And the ROI step too:
 
 ```bash
-cd ~/tmp/enigma
+# has to run in Linux!
+
+cd /mnt/shaw/enigma_dti_share
 #part 1 - loop through all subjects to create a subject ROI file
 mkdir ENIGMA_ROI_part1
 cd ROIextraction_info
 dirO1=../ENIGMA_ROI_part1/
 
-for subject in `cat ../ids512.txt`; do
+for subject in `cat ../dti.txt`; do
     ./singleSubjROI_exe ENIGMA_look_up_table.txt ../mean_FA_skeleton.nii.gz \
         JHU-WhiteMatter-labels-1mm.nii.gz ${dirO1}/${subject}_ROIout \
         ../FA_individ/${subject}/stats/${subject}_masked_FAskel.nii.gz
@@ -308,28 +310,32 @@ dirO2=../ENIGMA_ROI_part2/
 
 rm ./subjectList.csv
 
-for subject in `cat ../ids512.txt`; do
+for subject in `cat ../dti.txt`; do
     ./averageSubjectTracts_exe ${dirO1}/${subject}_ROIout.csv ${dirO2}/${subject}_ROIout_avg.csv
     echo ${subject},${dirO2}/${subject}_ROIout_avg.csv >> ./subjectList.csv
 done
 
 ## part 3 - combine all 
 #######
-Table=./ALL_Subject_Info.txt
-subjectIDcol=subjectID
+Table=../subject_info.csv
+subjectIDcol=SubjectID
 subjectList=./subjectList.csv
 outTable=./combinedROItable.csv
 Ncov=2
 covariates="Age;Sex"
 Nroi="all" #2
-rois="IC;EC"
+rois="all" #IC;EC"
 
-#location of R binary 
-Rbin=/usr/local/R-2.9.2_64bit/bin/R
-
+# back in Desktop
+cd /Volumes/Labs/enigma_dti_share/ROIextraction_info
 #Run the R code
-Rscript --vanilla --no-save --slave --args ${Table} ${subjectIDcol} ${subjectList} ${outTable} ${Ncov} ${covariates} ${Nroi} ${rois} <  ./combine_subject_tables.R  
+# Rscript --vanilla --no-save --slave --args ${Table} ${subjectIDcol} ${subjectList} ${outTable} ${Ncov} ${covariates} ${Nroi} ${rois} <  ./combine_subject_tables.R 
+# I ended up running just the script after hard coding the variables:
+Rscript --vanilla ./combine_subject_tables.R 
 ```
+
+The final file is FULL_ROItable.csv in
+/Volumes/Labs/enigma_dti_share/ROIextraction_info
 
 And let's run the ProjDist part again, because it didn't finish running last
 time:
@@ -423,5 +429,7 @@ mv CorticalMeasuresENIGMA_SurfAvg.csv CorticalMeasuresENIGMA_ThickAvg.csv \
 
 I asked Sam to help out figuring out who can be sent.
 
+Now we just need to trim the DTI and Freesurfer files to include only the IDs we
+can send, and then maybe add DX?
 
 # TODO
