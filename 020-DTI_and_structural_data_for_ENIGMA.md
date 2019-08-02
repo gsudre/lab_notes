@@ -278,11 +278,11 @@ done
 for subj in `cat ids512.txt`; do
     echo $subj;
     tbss_skeleton -i ./FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz \
-        -p 0.049 ./mean_FA_skeleton_mask_dst \
+        -p 0.049 ./stats/mean_FA_skeleton_mask_dst \
         ${FSLDIR}/data/standard/LowerCingulum_1mm.nii.gz \
         ./FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz \
         ./FA_individ/${subj}/stats/${subj}_masked_FAskel.nii.gz \
-        -s ./mean_FA_skeleton_mask.nii.gz;
+        -s ./stats/mean_FA_skeleton_mask.nii.gz;
 done
 ```
 
@@ -340,13 +340,13 @@ cd ~/tmp/enigma
 
 ## insert main folder where you ran TBSS
 ## just above "stats/" and "FA/"
-maindir="~/tmp/enigma/"
+maindir="/Users/sudregp/tmp/enigma/"
 list=`find $maindir -wholename "*/FA/*_masked_FA.nii.gz"`
 
 ## insert full path to mean_FA, skeleton mask and distance map
-mean_FA="/lscratch/$SLURM_JOBID/enigma/mean_FA_mask.nii.gz"
-mask="/lscratch/$SLURM_JOBID/enigma/mean_FA_skeleton_mask.nii.gz"
-dst_map="/lscratch/$SLURM_JOBID/enigma/mean_FA_skeleton_mask_dst.nii.gz"
+mean_FA="$maindir/mean_FA_mask.nii.gz"
+mask="$maindir/stats/mean_FA_skeleton_mask.nii.gz"
+dst_map="/$maindir/stats/mean_FA_skeleton_mask_dst.nii.gz"
 
 ##############
 ### from here it should be working without further adjustments

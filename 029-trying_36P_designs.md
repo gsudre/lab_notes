@@ -77,3 +77,153 @@ is looking solid, so let's go with that:
 source('~/research_code/fmri/make_aroma_condensed_data_FD.R')
 ```
 
+And it looks like residualizing the connections before taking the slope takes
+care of all associations with FD:
+
+```r
+a = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD0.25_slopes_n146_08022019.csv')
+mycols = colnames(a)[grepl(colnames(a), pattern='connMedian')]
+ar = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD0.25_residSlopes_n146_08022019.csv')
+> ps = sapply(mycols, function(x) cor.test(a$qc, a[, x])$p.value)
+> sum(ps<.05)
+[1] 105
+> ps2 = p.adjust(ps, method='fdr')
+> sum(ps2<.05)
+[1] 105
+> ps = sapply(mycols, function(x) cor.test(ar$qc, ar[, x])$p.value)
+> sum(ps<.05)
+[1] 36
+> ps2 = p.adjust(ps, method='fdr')
+> sum(ps2<.05)
+[1] 0
+```
+
+And that was also tru if we were more lenient at FD1.0:
+
+```r
+> a = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD1.00_slopes_n260_08022019.csv')
+> ar = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD1.00_residSlopes_n260_08022019.csv')
+> ps = sapply(mycols, function(x) cor.test(a$qc, a[, x])$p.value)
+> sum(ps<.05)
+[1] 104
+> ps2 = p.adjust(ps, method='fdr')
+> sum(ps2<.05)
+[1] 104
+> ps = sapply(mycols, function(x) cor.test(ar$qc, ar[, x])$p.value)
+> sum(ps<.05)
+[1] 14
+> ps2 = p.adjust(ps, method='fdr')
+> sum(ps2<.05)
+[1] 0
+```
+
+Sure, that's using all 105 connections, so once I trim them to only the networks
+we care about things might look slightly different. Still, I think we should be
+good to go here. Now it's a matter of checking whether the results look good.
+
+```r
+library(nlme)
+dd = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD0.25_residSlopes_n146_08022019.csv')
+dd$Medical.Record...MRN = as.numeric(as.character(dd$ID))
+
+# to get famID
+tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+tmp$famID = sapply(1:nrow(tmp), function(x)
+                                if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                    tmp$Nuclear.ID...FamilyIDs[x]
+                                }
+                                else {
+                                    tmp$Extended.ID...FamilyIDs[x]
+                                }
+                  )
+tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+data = merge(dd, tmp3, by='Medical.Record...MRN', all.x=T, all.y=F)
+
+m = 'Median'
+targets = colnames(data)[grepl(colnames(data), pattern=sprintf('conn%s', m))]
+for (t in targets) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+for (t in predictors) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+
+out_fname = '~/data/heritability_change/assoc_LME_36p_despike_FD0.25.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+               'DX2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub('.csv', x=out_fname, '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub('dx1', x=out_fname, 'dx2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+The DX1 results didn't run, likely because of lack of subject (less than 50),
+but the others did. We have some hits, but let's see if there is any
+heritability which is the crux of the paper. We might also need to increase our
+FD threshold just to make heritability work... let's see.
+

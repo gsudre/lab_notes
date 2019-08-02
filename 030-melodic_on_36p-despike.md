@@ -49,3 +49,35 @@ cd masks
 3dmask_tool -input ????_automask.nii -prefix ../group_epi_mask_fancy.nii \
     -dilate_input 5 -5 -frac 0.7 -fill_holes
 ```
+
+Let's then run melodic. But we'll need to send the data to BW first:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike
+for maskid in `cat ids_1.txt`; do
+    m=`printf %04d $maskid`;
+    echo $mydir/sub-${m}/norm/sub-${m}_std.nii.gz >> fd1_epi.txt;
+done
+
+melodic -i fd1_epi.txt -o groupmelodic_fancy.ica -v --nobet -m group_epi_mask_fancy.nii --tr=2.5 --report --Oall -a concat;
+
+melodic -i fd1_epi.txt -o groupmelodic_inter.ica -v --nobet -m group_epi_mask_inter.nii --tr=2.5 --report --Oall -a concat;
+```
+
+Now we performt the dual regression to get each subject's values for the ICs:
+
+```bash
+pipe='inter';
+cd ~/data/heritability_change/xcp-36p_despike/groupmelodic_${pipe}.ica
+mkdir dual
+while read maskid; do
+    s=`printf %04d $m`;
+    m=`printf %04d $maskid`;
+    echo ${pipe} $m;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d melodic_IC \
+        -o dual/dr_stage1_${m}.txt --demean -m ../../group_epi_mask_${pipe}.nii;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d dual/dr_stage1_${m}.txt \
+        -o dual/dr_stage2_${m} --demean -m ../../group_epi_mask_${pipe}.nii --des_norm \
+        --out_z=dual/dr_stage2_${m}_Z;
+done < ../ids_1.txt
+```
