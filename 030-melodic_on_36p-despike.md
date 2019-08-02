@@ -21,6 +21,14 @@ all we need is to know the IDs of the two scans we'll be including.
 Rscript ~/research_code/fmri/make_aroma_condensed_data_FD.R
 ```
 
+# 2019-08-02 10:36:29
+
+I just noticed that the recommendation of one of the papers is to remove anyone
+with mFD above .2. So, clearly there is no consensus in the field. Let's just
+pick one that makes sense with our data (1), and then we can test later if
+results hold with more stringent threshold (if necessary).
+
+
 ```bash
 # desktop
 cd ~/data/heritability_change/
@@ -28,15 +36,13 @@ mkdir xcp-36p_despike
 cd xcp-36p_despike
 mkdir masks;
 mydir=/Volumes/Labs/rsfmri_36p/xcpengine_output_fc-36p_despike/
-fname=rsfmri_fc-36p_despike_condensed_posOnly_FD2.5_scans608_08012019.csv;
-cut -d"," -f 1 ../$fname | tail -n +2 > ids_2p5.txt;
-fname=rsfmri_fc-36p_despike_condensed_posOnly_FD1.0_scans608_08012019.csv;
-cut -d"," -f 1 ../$fname | tail -n +2 > ids_1.txt;
-# all IDs in 2.5 will also be included in .1
-for maskid in `cat ids_2p5.txt`; do
+fname=rsfmri_fc-36p_despike_condensed_posOnly_FD1.00_scans520_08022019.csv;
+awk '{FS=","; print $1}' ../$fname | tail -n +2 > ids_1.txt;
+for maskid in `cat ids_1.txt`; do
     m=`printf %04d $maskid`;
+    # this file is the target of the sub-???.nii.gz symlink
     3dAutomask -prefix masks/${m}_automask.nii \
-        $mydir/sub-${m}/regress/sub-${m}_residualised.nii.gz;
+        $mydir/sub-${m}/norm/sub-${m}_std.nii.gz;
 done
 cd masks
 3dmask_tool -input ????_automask.nii -prefix ../group_epi_mask_inter.nii -frac 1

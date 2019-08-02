@@ -66,3 +66,14 @@ swarm -f xcpengine.swarm --gres=lscratch:10 -g 10 -t 16 --module xcpengine/1.0rc
      --time=30:00 --merge-output --logdir=trash_xcpengine_${pipe} \
      --job-name xcp${pipe} --partition quick,norm
 ```
+
+# 2019-08-02 12:14:27
+
+So, while I'm running the MELODIC pipeline in the 030 note, let's keep on going
+with the general power264 connectivity framework here. The 36p_deskpike pipeline
+is looking solid, so let's go with that:
+
+```R
+source('~/research_code/fmri/make_aroma_condensed_data_FD.R')
+```
+
