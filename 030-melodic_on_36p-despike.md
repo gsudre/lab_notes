@@ -81,38 +81,35 @@ while read maskid; do
 done < ../ids_1.txt
 ```
 
-Now, it's time to figure out which ICs we are going to use:
+Now, it's time to figure out which ICs we are going to use.
 
-We are already in MNI space, like the Yeo networks. So, let's go with that:
-
-
+# 2019-08-05 10:52:29
 
 
-
+We are already in MNI space, like the Yeo networks (I checke dit visually). But
+the inter mask looked a bit funky, so I'll stay with the fancy mask for now.
 
 ```bash
-#bw
-cd ~/data/heritability_change/fmri_same_space/epi/;
+cd ~/data/heritability_change/xcp-36p_despike
 for i in {1..7}; do
-    3dcalc -prefix Yeo_liberal_inMNI_net${i}.nii \
-        -a /data/NCR_SBRB/software/Yeo_JNeurophysiol11_MNI152/Yeo2011_7Networks_MNI152_FreeSurferConformed1mm_LiberalMask.nii.gz -expr "amongst(a,${i})";
+    3dcalc -prefix Yeo_liberal_net${i}.nii \
+        -a ~/data/Yeo_JNeurophysiol11_MNI152/Yeo2011_7Networks_MNI152_FreeSurferConformed1mm_LiberalMask.nii.gz -expr "amongst(a,${i})";
 done
-3dTcat -prefix Yeo_liberal_inMNI_combined.nii Yeo_liberal_inMNI_net1.nii \
-    Yeo_liberal_inMNI_net2.nii Yeo_liberal_inMNI_net3.nii \
-    Yeo_liberal_inMNI_net4.nii Yeo_liberal_inMNI_net5.nii \
-    Yeo_liberal_inMNI_net6.nii Yeo_liberal_inMNI_net7.nii
+3dTcat -prefix Yeo_liberal_combined.nii Yeo_liberal_net1.nii \
+    Yeo_liberal_net2.nii Yeo_liberal_net3.nii \
+    Yeo_liberal_net4.nii Yeo_liberal_net5.nii \
+    Yeo_liberal_net6.nii Yeo_liberal_net7.nii
 3dresample -master groupmelodic_inter.ica/melodic_IC.nii.gz \
-    -prefix Yeo_nets.nii -inset Yeo_liberal_inMNI_combined.nii \
+    -prefix Yeo_nets.nii -inset Yeo_liberal_combined.nii \
     -rmode NN -overwrite
 ```
 
 So, let's figure out what are the best matching networks for each mask:
 
 ```bash
-#bw
-cd ~/data/heritability_change/fmri_same_space/epi/groupmelodic_inter.ica/
+cd ~/data/heritability_change/xcp-36p_despike/groupmelodic_fancy.ica/
 3dMatch -inset melodic_IC.nii.gz -refset ../Yeo_nets.nii \
-    -mask ../../group_epi_mask_inter.nii -prefix matches -overwrite
+    -mask ../group_epi_mask_fancy.nii -prefix matches -overwrite
 cat matches_REF_coeff.vals
 ```
 
@@ -128,67 +125,60 @@ Keep in mind that the code is:
 6: DMN
 ```
 
-inter:
-
 ```
-0               41              0.173           0.251
-1               48              0.240           0.144
-2               35              0.325           0.083
-3               23              0.214           0.170
-4               214             0.261           0.025
-5               228             0.174           0.191
-6               0               0.179           0.296
+0               3               0.386           0.176
+1               22              0.335           0.155
+2               18              0.294           0.123
+3               1               0.441           0.111
+4               39              0.394           0.078
+5               27              0.281           0.153
+6               10              0.313           0.229
 ```
 
-I didn't like the DMN component in inter.
-
-fancy:
-
-```
-0               60              0.364           0.138
-1               15              0.344           0.122
-2               2               0.381           0.097
-3               8               0.365           0.086
-4               62              0.413           0.074
-5               5               0.350           0.122
-6               0               0.322           0.181
-```
-
-The one from fancy looks much better:
-
-![](images/2019-05-16-11-31-29.png)
-
-And this is cognitive:
-
-![](images/2019-05-16-11-43-11.png)
-
-Let's go with fancy for now.
-
-union:
-
-```
-0               107             0.340           0.054
-1               138             0.295           0.048
-2               70              0.310           0.038
-3               34              0.310           0.033
-4               67              0.405           0.029
-5               98              0.256           0.048
-6               48              0.267           0.073
-```
-
-Union mask has too much crap...
+The maps are not great, but at least it's data-driven. Another idea is to use
+the actual network maps for the dual regression:
 
 ```bash
-pipe=fancy;
-cd ~/data/heritability_change/fmri_same_space/epi/groupmelodic_${pipe}.ica/dual
+cd ~/data/heritability_change/xcp-36p_despike/yeo_masks
+mydir=/Volumes/Labs/rsfmri_36p/xcpengine_output_fc-36p_despike/
+mkdir dual
+while read maskid; do
+    m=`printf %04d $maskid`;
+    echo yeo_masks $m;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d ../Yeo_nets.nii \
+        -o dual/dr_stage1_${m}.txt --demean -m ../group_epi_mask_fancy.nii;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d dual/dr_stage1_${m}.txt \
+        -o dual/dr_stage2_${m} --demean -m ../group_epi_mask_fancy.nii --des_norm \
+        --out_z=dual/dr_stage2_${m}_Z;
+done < ../ids_1.txt
+```
+
+Time to dump to R:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/groupmelodic_fancy.ica/
 mkdir dumps
-for m in `cat ../../../../3min_mni.txt`; do
+for m in `cat ../ids_1.txt`; do
     maskid=`printf %04d $m`;
     echo $maskid;
     rm dumps/${maskid}_*.txt
-    for i in 60 15 2 8 62 5 0; do  # fancy
-        3dmaskdump -mask ../../../group_epi_mask_${pipe}.nii \
-            -o dumps/${maskid}_IC${i}_Z.txt dr_stage2_${maskid}_Z.nii.gz[${i}];
+    for i in 3 22 18 1 39 27 10; do
+        3dmaskdump -mask ../group_epi_mask_fancy.nii \
+            -o dumps/${maskid}_IC${i}_Z.txt dual/dr_stage2_${maskid}_Z.nii.gz[${i}];
+    done;
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/yeo_masks/
+mkdir dumps
+for m in `cat ../ids_1.txt`; do
+    maskid=`printf %04d $m`;
+    echo $maskid;
+    rm dumps/${maskid}_*.txt
+    for i in {0..6}; do
+        3dmaskdump -mask ../group_epi_mask_fancy.nii \
+            -o dumps/${maskid}_net${i}_Z.txt dual/dr_stage2_${maskid}_Z.nii.gz[${i}];
     done;
 done
 ```
@@ -196,26 +186,351 @@ done
 Then, we collect our results in R:
 
 ```r
-maskids = read.table('~/data/heritability_change/3min_mni.txt')[, 1]
-nvox=154058
-for (m in c(60, 15, 2, 8, 62, 5, 0)) {
+maskids = read.table('~/data/heritability_change/xcp-36p_despike/ids_1.txt')[, 1]
+nvox=231015
+for (m in c(3, 22, 18, 1, 39, 27, 10)) {
     print(m)
     brain_data = matrix(nrow=length(maskids), ncol=nvox)
     for (s in 1:nrow(brain_data)) {
-        fname = sprintf('~/data/heritability_change/fmri_same_space/epi/groupmelodic_fancy.ica/dual/dumps/%04d_IC%d_Z.txt', maskids[s], m)
+        fname = sprintf('~/data/heritability_change/xcp-36p_despike/groupmelodic_fancy.ica/dumps/%04d_IC%d_Z.txt', maskids[s], m)
         a = read.table(fname)
         brain_data[s, ] = a[,4]
      }
      brain_data = cbind(maskids, brain_data)
      cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
      colnames(brain_data) = cnames
-     fname = sprintf('~/data/heritability_change/fmri_same_space/melodic_fancy_IC%d.RData', m)
-     save(brain_data, file=fname)
+     fname = sprintf('~/data/heritability_change/xcp-36p_despike/melodic_fancy_IC%d.RData.gz', m)
+     save(brain_data, file=fname, compress=T)
 }
 ```
 
-Now that the data is into CSV, we need to assign MRNs, calculate slopes, and
+Then, repeat the same for the yeo_masks dual regression.
+
+```r
+maskids = read.table('~/data/heritability_change/xcp-36p_despike/ids_1.txt')[, 1]
+nvox=231015
+for (m in 0:6) {
+    print(m)
+    brain_data = matrix(nrow=length(maskids), ncol=nvox)
+    for (s in 1:nrow(brain_data)) {
+        fname = sprintf('~/data/heritability_change/xcp-36p_despike/yeo_masks/dumps/%04d_net%d_Z.txt', maskids[s], m)
+        a = read.table(fname)
+        brain_data[s, ] = a[,4]
+     }
+     brain_data = cbind(maskids, brain_data)
+     cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
+     colnames(brain_data) = cnames
+     fname = sprintf('~/data/heritability_change/xcp-36p_despike/yeo_masks_fancy_net%d.RData.gz', m)
+     save(brain_data, file=fname, compress=T)
+}
+```
+
+The downside of not using MELODIC, but the Yeo masks instead is that hopefully
+ICA would also get rid of movement. So, let's see if doing ICA in the FD.25
+group gives better results:
+
+```bash
+mydir=/Volumes/Labs/rsfmri_36p/xcpengine_output_fc-36p_despike/
+cd ~/data/heritability_change/xcp-36p_despike
+fname=rsfmri_fc-36p_despike_condensed_posOnly_FD0.25_scans292_08022019.csv;
+awk '{FS=","; print $1}' ../$fname | tail -n +2 > ids_p25.txt;
+for maskid in `cat ids_p25.txt`; do
+    m=`printf %04d $maskid`;
+    echo $mydir/sub-${m}/norm/sub-${m}_std.nii.gz >> fdp25_epi.txt;
+done
+
+melodic -i fdp25_epi.txt -o groupmelodic_fancyp25.ica -v --nobet \
+    -m group_epi_mask_fancy.nii --tr=2.5 --report --Oall -a concat;
+
+cd groupmelodic_fancyp25.ica
+3dMatch -inset melodic_IC.nii.gz -refset ../Yeo_nets.nii \
+    -mask ../group_epi_mask_fancy.nii -prefix matches -overwrite
+cat matches_REF_coeff.vals
+```
+
+```
+0               2               0.375           0.176
+1               27              0.361           0.155
+2               10              0.428           0.123
+3               4               0.447           0.111
+4               31              0.415           0.078
+5               29              0.305           0.153
+6               7               0.328           0.229
+```
+
+Yeah, it does look better in the p25 sample. So, maybe we should run that as
+well.
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/groupmelodic_fancyp25.ica
+mkdir dual
+while read maskid; do
+    m=`printf %04d $maskid`;
+    echo ${pipe} $m;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d melodic_IC \
+        -o dual/dr_stage1_${m}.txt --demean -m ../group_epi_mask_${pipe}.nii;
+    $FSLDIR/bin/fsl_glm -i $mydir/sub-${m}/norm/sub-${m}_std.nii.gz -d dual/dr_stage1_${m}.txt \
+        -o dual/dr_stage2_${m} --demean -m ../group_epi_mask_${pipe}.nii --des_norm
+        --out_z=dual/dr_stage2_${m}_Z;
+done < ../ids_p25.txt
+
+mkdir dumps
+for m in `cat ../ids_p25.txt`; do
+    maskid=`printf %04d $m`;
+    echo $maskid;
+    rm dumps/${maskid}_*.txt
+    for i in 2 27 10 4 31 29 7; do
+        3dmaskdump -mask ../group_epi_mask_fancy.nii \
+            -o dumps/${maskid}_IC${i}_Z.txt dual/dr_stage2_${maskid}_Z.nii.gz[${i}];
+    done;
+done
+```
+
+```r
+maskids = read.table('~/data/heritability_change/xcp-36p_despike/ids_p25.txt')[, 1]
+nvox=231015
+for (m in c(2, 27, 10, 4, 31, 29, 7)) {
+    print(m)
+    brain_data = matrix(nrow=length(maskids), ncol=nvox)
+    for (s in 1:nrow(brain_data)) {
+        fname = sprintf('~/data/heritability_change/xcp-36p_despike/groupmelodic_fancyp25.ica/dumps/%04d_IC%d_Z.txt', maskids[s], m)
+        a = read.table(fname)
+        brain_data[s, ] = a[,4]
+     }
+     brain_data = cbind(maskids, brain_data)
+     cnames = c('mask.id', sapply(1:nvox, function(d) sprintf('v%06d', d)))
+     colnames(brain_data) = cnames
+     fname = sprintf('~/data/heritability_change/xcp-36p_despike/melodic_fancyp25_IC%d.RData.gz', m)
+     save(brain_data, file=fname, compress=T)
+}
+```
+
+Now it's just a matter of assigning MRNs, calculate slopes, and
 prepare it for SOLAR voxelwise.
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+df = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD1.00_scans520_08022019.csv')
+mydir='~/data/heritability_change/xcp-36p_despike/'
+for (ic in c(3, 22, 18, 1, 39, 27, 10)) {
+    fname = sprintf('%s/melodic_fancy_IC%d.RData.gz', mydir, ic)
+    load(fname)
+    b = brain_data
+    var_names = colnames(b)[2:ncol(b)]
+    df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id', all.x=F)
+
+    # make sure we still have two scans for everyone
+    rm_subjs = names(which(table(df2$Medical.Record...MRN)<2))
+    rm_me = df2$Medical.Record...MRN %in% rm_subjs
+    df2 = df2[!rm_me, ]
+
+    mres = df2
+    mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+    mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+    res = c()
+    for (s in unique(mres$Medical.Record...MRN)) {
+        idx = which(mres$Medical.Record...MRN == s)
+        row = c(s, unique(mres[idx, 'Sex']))
+        y = mres[idx[2], var_names] - mres[idx[1], var_names]
+        x = mres[idx[2], 'age_at_scan'] - mres[idx[1], 'age_at_scan']
+        slopes = y / x
+        row = c(row, slopes)
+        for (t in c('SX_inatt', 'SX_HI', 'qc')) {
+            fm_str = sprintf('%s ~ age_at_scan', t)
+            fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+            row = c(row, coefficients(fit)[2])
+        }
+        # grabbing inatt and HI at baseline
+        base_DOA = which.min(mres[idx, 'age_at_scan'])
+        row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+        row = c(row, mres[idx[base_DOA], 'SX_HI'])
+        # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+        if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+            if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+                DX = 'ADHD'
+            } else {
+                DX = 'NV'
+            }
+        } else {
+            if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+                DX = 'ADHD'
+            } else {
+                DX = 'NV'
+            }
+        }
+        if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+            DX2 = 'ADHD'
+        } else {
+            DX2 = 'NV'
+        }
+        row = c(row, DX)
+        row = c(row, DX2)
+        res = rbind(res, row)
+        print(nrow(res))
+    }
+    colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI', 'qc',
+                                                'inatt_baseline',
+                                                'HI_baseline', 'DX', 'DX2'))
+    # we only open this in R, so it's OK to be RData to load faster
+    fname = sprintf('%s/melodic_fancy_slopes_IC%d.rds', mydir, ic)
+    saveRDS(res, file=fname)
+
+    # and remove outliers
+    res_clean = res
+    for (t in var_names) {
+        mydata = as.numeric(res_clean[, t])
+        # identifying outliers
+        ul = mean(mydata) + 3 * sd(mydata)
+        ll = mean(mydata) - 3 * sd(mydata)
+        bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+        # remove within-variable outliers
+        res_clean[bad_subjs, t] = NA
+    }
+    fname = sprintf('%s/melodic_fancy_slopesClean_IC%d.rds', mydir, ic)
+    saveRDS(res_clean, file=fname)
+
+    # and make sure every family has at least two people
+    good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+    good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+    keep_me = c()
+    for (f in good_nuclear) {
+        keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                                'Medical.Record...MRN'])
+    }
+    for (f in good_extended) {
+        keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                                'Medical.Record...MRN'])
+    }
+    keep_me = unique(keep_me)
+
+    fam_subjs = c()
+    for (s in keep_me) {
+        fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+    }
+    res2 = res[fam_subjs, ]
+    res2_clean = res_clean[fam_subjs, ]
+
+    fname = sprintf('%s/melodic_fancy_slopesFam_IC%d.csv', mydir, ic)
+    write.csv(res2, file=fname, row.names=F, na='', quote=F)
+    fname = sprintf('%s/melodic_fancy_slopesCleanFam_IC%d.csv', mydir, ic)
+    write.csv(res2_clean, file=fname, row.names=F, na='', quote=F)
+}
+```
+
+And for the Yeo masks:
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+df = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD1.00_scans520_08022019.csv')
+mydir='~/data/heritability_change/xcp-36p_despike/'
+for (ic in 0:6) {
+    fname = sprintf('%s/yeo_masks_fancy_net%d.RData.gz', mydir, ic)
+    load(fname)
+    b = brain_data
+    var_names = colnames(b)[2:ncol(b)]
+    df2 = merge(df, b, by.x='Mask.ID', by.y='mask.id', all.x=F)
+
+    # make sure we still have two scans for everyone
+    rm_subjs = names(which(table(df2$Medical.Record...MRN)<2))
+    rm_me = df2$Medical.Record...MRN %in% rm_subjs
+    df2 = df2[!rm_me, ]
+
+    mres = df2
+    mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+    mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+    res = c()
+    for (s in unique(mres$Medical.Record...MRN)) {
+        idx = which(mres$Medical.Record...MRN == s)
+        row = c(s, unique(mres[idx, 'Sex']))
+        y = mres[idx[2], var_names] - mres[idx[1], var_names]
+        x = mres[idx[2], 'age_at_scan'] - mres[idx[1], 'age_at_scan']
+        slopes = y / x
+        row = c(row, slopes)
+        for (t in c('SX_inatt', 'SX_HI', 'qc')) {
+            fm_str = sprintf('%s ~ age_at_scan', t)
+            fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+            row = c(row, coefficients(fit)[2])
+        }
+        # grabbing inatt and HI at baseline
+        base_DOA = which.min(mres[idx, 'age_at_scan'])
+        row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+        row = c(row, mres[idx[base_DOA], 'SX_HI'])
+        # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+        if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+            if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+                DX = 'ADHD'
+            } else {
+                DX = 'NV'
+            }
+        } else {
+            if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+                DX = 'ADHD'
+            } else {
+                DX = 'NV'
+            }
+        }
+        if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+            DX2 = 'ADHD'
+        } else {
+            DX2 = 'NV'
+        }
+        row = c(row, DX)
+        row = c(row, DX2)
+        res = rbind(res, row)
+        print(nrow(res))
+    }
+    colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI', 'qc',
+                                                'inatt_baseline',
+                                                'HI_baseline', 'DX', 'DX2'))
+    # we only open this in R, so it's OK to be RData to load faster
+    fname = sprintf('%s/yeo_masks_fancy_slopes_net%d.rds', mydir, ic)
+    saveRDS(res, file=fname)
+
+    # and remove outliers
+    res_clean = res
+    for (t in var_names) {
+        mydata = as.numeric(res_clean[, t])
+        # identifying outliers
+        ul = mean(mydata) + 3 * sd(mydata)
+        ll = mean(mydata) - 3 * sd(mydata)
+        bad_subjs = c(which(mydata < ll), which(mydata > ul))
+
+        # remove within-variable outliers
+        res_clean[bad_subjs, t] = NA
+    }
+    fname = sprintf('%s/yeo_masks_fancy_slopesClean_net%d.rds', mydir, ic)
+    saveRDS(res_clean, file=fname)
+
+    # and make sure every family has at least two people
+    good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+    good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+    keep_me = c()
+    for (f in good_nuclear) {
+        keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                                'Medical.Record...MRN'])
+    }
+    for (f in good_extended) {
+        keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                                'Medical.Record...MRN'])
+    }
+    keep_me = unique(keep_me)
+
+    fam_subjs = c()
+    for (s in keep_me) {
+        fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+    }
+    res2 = res[fam_subjs, ]
+    res2_clean = res_clean[fam_subjs, ]
+
+    fname = sprintf('%s/yeo_masks_fancy_slopesFam_net%d.csv', mydir, ic)
+    write.csv(res2, file=fname, row.names=F, na='', quote=F)
+    fname = sprintf('%s/yeo_masks_fancy_slopesCleanFam_net%d.csv', mydir, ic)
+    write.csv(res2_clean, file=fname, row.names=F, na='', quote=F)
+}
+```
 
 **Note that I won' be removing movement here! Mostly because since we're using
 ICA, the movement components should have been isolated already. But we can
