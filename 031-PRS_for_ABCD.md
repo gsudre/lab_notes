@@ -120,20 +120,50 @@ cd /data/NCR_SBRB/ABCD/
     -b /data/NCR_SBRB/ABCD/ABCD_release_2_genomics_smokescreen/ABCD_release_2.0_r2.bed
 ```
 
+*This took 8h for the SVD step!!!*
+
 Finally, merge everything:
 
 ```r
 # this takes a while because we're reading in TXT files!
+a = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_jun2017.all.score', header=1)
+b = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_eur_jun2017.all.score', header=1)
+s = read.table('/data/NCR_SBRB/ABCD/SCZ.all.score', header=1)
+d = read.table('/data/NCR_SBRB/ABCD/ASD.all.score', header=1)
+pcs = read.table('/data/NCR_SBRB/ABCD/kingpc.ped')
 
 # keep only some of the PRs columns that were created
-mycols = c('FID', 'IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
             'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
             'X0.5', 'X0.4', 'X0.3', 'X0.2')
-a = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_jun2017.all.score', header=1)
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHD_PRS%f', x)))
 af = a[, mycols]
-b = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_eur_jun2017.all.score', header=1)
+colnames(af) = new_names
 bf = b[, mycols]
+new_names = gsub('ADHD', x=new_names, 'ADHDeur')
+colnames(bf) = new_names
+df = d[, mycols]
+new_names = gsub('ADHDeur', x=new_names, 'ASD')
+colnames(df) = new_names
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4001', 'X0.3002', 'X0.2002')
+sf = s[,mycols]
+new_names = gsub('ASD', x=new_names, 'SCZ')
+colnames(sf) = new_names
 
-m = merge(af, bf, by='IID', suffixes = c('.ADHD', '.ADHDeur'))
+m = merge(af, bf, by='IID')
+m = merge(m, df, by='IID')
+m = merge(m, sf, by='IID')
 
+pcsf = pcs[, c(2, 7:26)]
+new_names = c('IID', sapply(1:20, function(x) sprintf('PC%.2d', x)))
+colnames(pcsf) = new_names
+m = merge(m, pcsf, by='IID')
+
+m = merge(pcs[, 1:2], m, by.x='V2', by.y='IID')
+colnames(m)[1:2] = c('IID', 'FID')
+write.csv(m, file='/data/NCR_SBRB/ABCD/merged_PRS_08062019.csv', row.names=F)
 ```

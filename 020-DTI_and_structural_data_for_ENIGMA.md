@@ -432,4 +432,29 @@ I asked Sam to help out figuring out who can be sent.
 Now we just need to trim the DTI and Freesurfer files to include only the IDs we
 can send, and then maybe add DX?
 
-# TODO
+# 2019-08-06 16:42:35
+
+Merging everything after Sam helped out grabbing the neuropsych data:
+
+```r
+# all in shaw/enigma_dti_share
+mrn2enigma = read.table('mrn2enigma.txt', header=1)
+maskid2mrn = read.table('mrn2maskid.txt', header=1)
+fs = read.csv('CorticalMeasuresENIGMA_SurfAvg.csv')
+m = merge(maskid2mrn, fs, by.x='maskid_fs', by.y='SubjID', all.y=F)
+m = merge(mrn2enigma, m, by.x='MRN', by.y='MRN', all.y=F)
+write.csv(m, file='enigma_CorticalMeasuresENIGMA_SurfAvg.csv', row.names=F)
+
+fs = read.csv('CorticalMeasuresENIGMA_ThickAvg.csv')
+m = merge(maskid2mrn, fs, by.x='maskid_fs', by.y='SubjID', all.y=F)
+m = merge(mrn2enigma, m, by.x='MRN', by.y='MRN', all.y=F)
+write.csv(m, file='enigma_CorticalMeasuresENIGMA_ThickAvg.csv', row.names=F)
+
+proj = read.table('Proj_Dist.txt', header=1)
+rois = read.csv('ROIextraction_info/FULL_ROItable.csv')
+dti = merge(proj, rois, by.x='ID', by.y='subjectID')
+m = merge(maskid2mrn, dti, by.x='maskid_dti', by.y='ID', all.y=F)
+m = merge(mrn2enigma, m, by.x='MRN', by.y='MRN', all.y=F)
+write.csv(m, file='enigma_DTI_ROIsAndProjDists.csv', row.names=F)
+# then remove all superfluous columns manually!
+```

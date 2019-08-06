@@ -392,15 +392,15 @@ for (ic in c(3, 22, 18, 1, 39, 27, 10)) {
     saveRDS(res_clean, file=fname)
 
     # and make sure every family has at least two people
-    good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
-    good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+    good_nuclear = names(table(df2$Nuclear.ID...FamilyIDs))[table(df2$Nuclear.ID...FamilyIDs) >= 4]
+    good_extended = names(table(df2$Extended.ID...FamilyIDs))[table(df2$Extended.ID...FamilyIDs) >= 4]
     keep_me = c()
     for (f in good_nuclear) {
-        keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+        keep_me = c(keep_me, df2[which(df2$Nuclear.ID...FamilyIDs == f),
                                 'Medical.Record...MRN'])
     }
     for (f in good_extended) {
-        keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+        keep_me = c(keep_me, df2[which(df2$Extended.ID...FamilyIDs == f),
                                 'Medical.Record...MRN'])
     }
     keep_me = unique(keep_me)
@@ -505,15 +505,15 @@ for (ic in 0:6) {
     saveRDS(res_clean, file=fname)
 
     # and make sure every family has at least two people
-    good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
-    good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+    good_nuclear = names(table(df2$Nuclear.ID...FamilyIDs))[table(df2$Nuclear.ID...FamilyIDs) >= 4]
+    good_extended = names(table(df2$Extended.ID...FamilyIDs))[table(df2$Extended.ID...FamilyIDs) >= 4]
     keep_me = c()
     for (f in good_nuclear) {
-        keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+        keep_me = c(keep_me, df2[which(df2$Nuclear.ID...FamilyIDs == f),
                                 'Medical.Record...MRN'])
     }
     for (f in good_extended) {
-        keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+        keep_me = c(keep_me, df2[which(df2$Extended.ID...FamilyIDs == f),
                                 'Medical.Record...MRN'])
     }
     keep_me = unique(keep_me)
@@ -536,3 +536,65 @@ for (ic in 0:6) {
 ICA, the movement components should have been isolated already. But we can
 always check any results later against correlation to movement.
 **
+
+# 2019-08-06 09:46:43
+
+As the CSV files are getting ready, let's dig out the commands to run the
+voxelwise SOLAR:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike
+# create master list of voxels
+nvox=231015;
+for i in `seq 1 $nvox`; do
+    echo $i >> voxel_list.txt;
+done
+# our previous experiments had chunks of 5K voxels
+split -da 2 -l 5000 voxel_list.txt vlist --additional-suffix=".txt";
+```
+
+Now we set up the swarm:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+phen_file=melodic_fancyp25_slopesCleanFam_IC2;
+jname=fancyp25_2c;
+swarm_file=swarm.${jname};
+
+rm -f $swarm_file;
+for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+    echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+done;
+swarm --gres=lscratch:100 -f $swarm_file --module solar -t 32 -g 20 \
+        --logdir=trash_${jname} --job-name ${jname} --time=2:00:00 --merge-output \
+        --partition quick,norm
+```
+
+For fancyp25 I ran 1000 voxels in a 32core node in 13 min. So, if I'm doing
+bundles of 5000, I think I'll be safe to do allocate 2h for each. And even with
+32 cores it's only taking 2.5Gb of RAM.
+
+The swarms actually completed in about 1h, so 2h is quite conservative indeed. I
+wonder if we can go to 16 cores (to get machines more quickly)? And cap it to 4h
+just to stay conservative and still fit into the quick partititon, even though I
+think we can probably do it in 3h... keep in mind this is the p25 set, so maybe
+the bigger set will take longer.
+
+
+# NEED TO RUN THIS STILL, AFTER FILES ARE DONE CREATING IN DESKTOP AND CAN BE COPIED TO BW!
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in 2 27 10 4 31 29 7; do
+    phen_file=melodic_fancyp25_slopesFam_IC${i};
+    jname=fancyp25_${i}c;
+    swarm_file=swarm.${jname};
+
+    rm -f $swarm_file;
+    for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+    swarm --gres=lscratch:10 -f $swarm_file --module solar -t 16 -g 5 \
+            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+            --partition quick,norm
+done
+```
