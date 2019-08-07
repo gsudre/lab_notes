@@ -637,7 +637,7 @@ For FD1, we do:
 cd ~/data/heritability_change/xcp-36p_despike;
 for i in 18 22 3 1 39 27 10; do
     phen_file=melodic_fancy_slopesCleanFam_IC${i};
-    jname=fancyp25_${i}c;
+    jname=fancy_${i}c;
     swarm_file=swarm.${jname};
 
     rm -f $swarm_file;
