@@ -580,13 +580,16 @@ just to stay conservative and still fit into the quick partititon, even though I
 think we can probably do it in 3h... keep in mind this is the p25 set, so maybe
 the bigger set will take longer.
 
+It's taking about 2.5h in a 16 core node, which is pretty good and should be ok
+for the FD1 sample as well?
+
 # 2019-08-07 08:40:50
 
 ```bash
 cd ~/data/heritability_change/xcp-36p_despike;
 for i in 2 27 10 4 31 29 7; do
-    phen_file=melodic_fancyp25_slopesFam_IC${i};
-    jname=fancyp25_${i};
+    phen_file=melodic_fancyp25_slopesCleanFam_IC${i};
+    jname=fancyp25_${i}c;
     swarm_file=swarm.${jname};
 
     rm -f $swarm_file;
@@ -609,15 +612,20 @@ cut -d " " -f 1,2,3 \
 ```
 
 ```bash
+module load afni
+
 cd /lscratch/${SLURM_JOBID}
-phen=melodic_fancyp25_slopesCleanFam_IC2;
-mkdir $phen;
-cd $phen;
-cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
-for f in `/bin/ls *gz`; do tar -zxf $f; done
-python ~/research_code/fmri/compile_solar_voxel_results.py \
-    /lscratch/${SLURM_JOBID}/ $phen \
-    ~/data/heritability_change/xcp-36p_despike/group_epi_mask_fancy.nii;
+for i in 2 27 10 4 31 29 7; do
+    phen=melodic_fancyp25_slopesFam_IC${i};
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/group_epi_mask_fancy.nii;
+done
 
 3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 15 \
     ~/data/tmp/polygen_results_melodic_fancy_slopesClean_n111_IC0.nii
