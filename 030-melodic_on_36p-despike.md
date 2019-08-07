@@ -630,3 +630,43 @@ done
 3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 15 \
     ~/data/tmp/polygen_results_melodic_fancy_slopesClean_n111_IC0.nii
 ```
+
+For FD1, we do:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in 18 22 3 1 39 27 10; do
+    phen_file=melodic_fancy_slopesCleanFam_IC${i};
+    jname=fancyp25_${i}c;
+    swarm_file=swarm.${jname};
+
+    rm -f $swarm_file;
+    for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+    swarm --gres=lscratch:10 -f $swarm_file --module solar -t 16 -g 5 \
+            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+            --partition quick,norm
+done
+```
+
+And Yeo masks:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in {0..6}; do
+    phen_file=yeo_masks_fancy_slopesCleanFam_net${i};
+    jname=yeo_${i}c;
+    swarm_file=swarm.${jname};
+
+    rm -f $swarm_file;
+    for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+    swarm --gres=lscratch:10 -f $swarm_file --module solar -t 16 -g 5 \
+            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+            --partition quick,norm
+done
+```
+
+As usual, do it for clean and nonClean, just for kicks...
