@@ -248,6 +248,18 @@ cd groupmelodic_fancyp25.ica
 cat matches_REF_coeff.vals
 ```
 
+Keep in mind that the code is:
+
+```
+0: visual
+1: somatomotor
+2: DAN
+3: VAN
+4: limbic
+5: cognitive (frontoparietal)
+6: DMN
+```
+
 ```
 0               2               0.375           0.176
 1               27              0.361           0.155
@@ -626,9 +638,6 @@ for i in 2 27 10 4 31 29 7; do
         /lscratch/${SLURM_JOBID}/ $phen \
         ~/data/heritability_change/xcp-36p_despike/group_epi_mask_fancy.nii;
 done
-
-3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 15 \
-    ~/data/tmp/polygen_results_melodic_fancy_slopesClean_n111_IC0.nii
 ```
 
 For FD1, we do:
@@ -670,3 +679,129 @@ done
 ```
 
 As usual, do it for clean and nonClean, just for kicks...
+
+# 2019-08-08 10:03:53
+
+Good to know: some of the FD1 sets are not finishing... might need to increase
+the time? Or run in 32 cores? Even the ones that completed took 3h:45min, so
+that's cutting close. We either do more time and forgo the quick partition, or
+increase it to 32 cores...
+
+Let's check some of the results we already have:
+
+```bash
+#desktop
+cd ~/data/heritability_change/xcp-36p_despike
+rm fancyp25_clean_clusters.txt;
+for f in `/bin/ls polygen_results_melodic_fancyp25_slopesCleanFam_IC*.nii`; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 \
+        -NN1 30 $f >> fancyp25_clean_clusters.txt;
+done
+rm fancyp25_clusters.txt;
+for f in `/bin/ls polygen_results_melodic_fancyp25_slopesFam_IC*.nii`; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 \
+        -NN1 30 $f >> fancyp25_clusters.txt;
+done
+```
+
+The unClean results look stronger... but now it's the chicken/egg situation. Run
+permutations first or look at results? Since we have the cluster empty, let's
+run some permutations bundled so we don't crush it. But first, let's generate
+some permutations, for the more interesting networks first:
+
+```r
+# start it from lscratch
+# 2 27 10 4 31 29 7
+m = 7
+nperms = 100
+library(data.table)
+dread = fread(sprintf('~/data/heritability_change/melodic_fancyp25_slopesFam_IC%d.csv', m), header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
+d2 = d
+for (p in seq(1, nperms, 2)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/melodic_fancyp25_slopesFam_IC%d_p%03d.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+<!-- while [ $cur_vox -lt $nvox ]; do
+    let last_vox=${cur_vox}+${bundle}-1;
+    # gets the min
+    last_vox=$(($last_vox<$nvox?$last_vox:$nvox))
+    echo "bash ~/research_code/run_solar_voxel_range.sh melodic_fancy_slopesClean_n111_IC${ic}_p0000_sexAndBrainShuffled ${cur_vox} ${last_vox}" >> $fname;
+    let cur_vox=${last_vox}+1;
+done;
+# just copy it and rename IC and perm for the other ones
+for n in `seq 1 $nperms`; do
+    perm=`printf %04d $n`;
+    cp $fname `printf net%d_p%04d $ic $n`.swarm;
+    sed -i -- "s/p0000/p${perm}/g" `printf net%d_p%04d $ic $n`.swarm;
+done
+
+cd ~/data/heritability_change/fmri_same_space/
+ic=5;
+jstart=124;  # permutation to start with
+jdeps=4;  # number of dependent jobs in each swarm
+nswarms=16;  # number of independent swarms
+for n in `seq 1 $nswarms`; do
+    jname=`printf net%d_p%04d $ic $jstart`;
+    cur_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+        --logdir=${jname} --job-name ${jname} -p 2 --time=36:00:00 --merge-output);
+    echo "Active swarm: ${jname} (${cur_id})"
+    for d in `seq 1 $jdeps`; do
+        let jstart=${jstart}+1;
+        jname=`printf net%d_p%04d $ic $jstart`;
+        job_id=$(swarm --gres=lscratch:1 -f ${jname}.swarm --module solar -g 1 -t 1 \
+            --logdir=${jname} --job-name ${jname} -p 2 \
+            --time=36:00:00 --merge-output --dependency afterany:$cur_id);
+        echo "Dependent swarm: ${jname} (${job_id}, on ${cur_id})"
+        cur_id=$job_id;
+    done;
+    let jstart=${jstart}+1;
+done-->
+
+While that's being generated, let's see if the current clusters look nice. Going
+backwards to start with DMN:
+
+```bash
+#desktop
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+    -savemask mymask.nii -NN1 60 \
+    polygen_results_melodic_fancyp25_slopesFam_IC7.nii
+```
+
+IC7 (DMN) doesn't look that great, mostly sensory cortex? It does have 2
+clusters above 60 (whatever that means, as we don't have significance thresholds
+yet), and the second one is in IFG.
+
+![](images/2019-08-08-11-49-17.png)
+![](images/2019-08-08-11-50-27.png)
+
+The only cluster for cognitive control was in the inferior temporal gyrus, and
+it's only 50 voxels:
+
+![](images/2019-08-08-11-52-50.png)
+
+For affective we had a 61 cluster (postcentral), and a 58 cluster (postcentral too):
+
+![](images/2019-08-08-12-03-36.png)
+![](images/2019-08-08-12-04-19.png)
+
+For VAN (4), we got 3 clusters above 60: SFG, lingual, and the last one looks to
+be in a ventricle... never good.
+
+![](images/2019-08-08-12-13-05.png)
+![](images/2019-08-08-12-13-46.png)
+![](images/2019-08-08-12-14-50.png)
+
+Finally, for DAN (10) only saw a single cluster above 50, and it's falling in
+the white matter too... not good:
+
+![](images/2019-08-08-12-17-17.png)
+
+I'm not too excited about these results, so I stopped the p25 permutations.
+Let's see if the FD1 or ye-Masks results are better.
+
