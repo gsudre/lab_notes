@@ -826,4 +826,422 @@ done
 ```
 
 I got some huge clusters, especially compared to what I was seeing for p25.
-Maybe it'll be different for FD1... 
+Maybe it'll be different for FD1... This is how I compare just the top 3
+clusters:
+
+```bash
+for f in `/bin/ls polygen_results_yeo_masks_fancy_slopesFam_net*.nii`; do
+    echo $f;
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 \
+        -NN1 100 $f 2>/dev/null | tail -n +13 | head -n 3;
+done
+```
+
+```
+polygen_results_yeo_masks_fancy_slopesFam_net0.nii
+    475   -2.2   79.9   19.5  -18.0   18.0   62.0  102.0    4.0   34.0   0.5166   0.0052   0.9782    8.0   72.0   24.0 
+    334  -52.5    5.1   28.3  -64.0  -38.0  -18.0   28.0   12.0   44.0   0.5066   0.0055   0.8823  -54.0   -8.0   20.0 
+    130  -56.1   50.5   15.2  -68.0  -46.0   36.0   60.0    8.0   20.0   0.4603   0.0073   0.7217  -50.0   58.0   16.0 
+polygen_results_yeo_masks_fancy_slopesFam_net1.nii
+    168    8.9   -6.8   17.7   -2.0   16.0  -18.0    6.0    8.0   28.0   0.5072   0.0077   0.8768   12.0    0.0   16.0 
+    164   41.8  -47.3   -5.0   32.0   56.0  -60.0  -36.0  -14.0    0.0   0.4857   0.0075   0.8831   36.0  -48.0   -6.0 
+    161    4.5   72.4   24.4  -14.0   22.0   62.0   84.0   18.0   32.0   0.5076   0.0085   0.9145    8.0   72.0   22.0 
+polygen_results_yeo_masks_fancy_slopesFam_net2.nii
+    306  -51.1   60.9   33.1  -64.0  -40.0   50.0   72.0   22.0   48.0   0.4834   0.0053   0.7995  -52.0   70.0   34.0 
+    180   47.3  -35.5   10.7   38.0   56.0  -48.0  -26.0    0.0   18.0   0.4989    0.008        1   54.0  -36.0   16.0 
+    136   54.2   41.2   29.3   42.0   64.0   32.0   54.0   22.0   36.0   0.5249   0.0098   0.8864   54.0   38.0   30.0 
+polygen_results_yeo_masks_fancy_slopesFam_net3.nii
+    192  -35.6   72.8  -46.0  -44.0  -20.0   58.0   82.0  -52.0  -34.0    0.524   0.0094   0.9533  -36.0   76.0  -48.0 
+    178  -28.3  -42.2   18.6  -44.0  -14.0  -54.0  -32.0    8.0   24.0   0.4857   0.0077    0.861  -30.0  -46.0   20.0 
+    156   -9.1  -54.3   21.2  -28.0    4.0  -66.0  -42.0   14.0   34.0   0.4602   0.0066   0.7665    0.0  -60.0   20.0 
+polygen_results_yeo_masks_fancy_slopesFam_net4.nii
+    240  -42.2   58.2   -8.6  -54.0  -26.0   42.0   74.0  -18.0    6.0   0.5262   0.0073   0.9154  -40.0   54.0  -14.0 
+    189   55.4   40.3   -3.6   46.0   68.0   22.0   56.0  -10.0    2.0   0.5152   0.0087        1   52.0   26.0   -2.0 
+    163   10.8   68.0   16.2    0.0   24.0   50.0   80.0    4.0   26.0   0.4795   0.0073   0.8529    6.0   60.0   20.0 
+polygen_results_yeo_masks_fancy_slopesFam_net5.nii
+    191   42.8  -17.2    4.1   28.0   60.0  -32.0   -8.0   -8.0   18.0    0.504   0.0064   0.8476   34.0  -18.0   10.0 
+    163   13.1  -48.4   15.4    0.0   34.0  -60.0  -40.0    6.0   22.0   0.5292   0.0085   0.9227   12.0  -48.0   14.0 
+    135    9.4   72.4   26.0   -4.0   18.0   58.0   82.0   20.0   34.0   0.4964   0.0094   0.8721   10.0   74.0   32.0 
+polygen_results_yeo_masks_fancy_slopesFam_net6.nii
+    187   48.4  -18.3   30.8   38.0   56.0  -32.0   -8.0   20.0   38.0   0.5052   0.0073   0.8148   54.0  -16.0   28.0 
+    181  -52.9   45.4   -0.7  -64.0  -44.0   30.0   64.0   -8.0   10.0   0.5049   0.0071   0.8025  -52.0   42.0   -2.0 
+    129  -50.2   51.1   29.0  -64.0  -34.0   38.0   62.0   26.0   34.0   0.4761   0.0079    0.757  -46.0   58.0   28.0 
+```
+
+```
+polygen_results_yeo_masks_fancy_slopesCleanFam_net0.nii
+    424   -1.1   77.9   20.0  -18.0   18.0   62.0   92.0    6.0   30.0   0.5321   0.0056   0.9805    2.0   88.0   26.0 
+    220  -52.6    7.1   30.7  -64.0  -40.0   -4.0   20.0   20.0   44.0   0.5144    0.007   0.8464  -58.0    2.0   32.0 
+    120   25.2  -35.0   15.6   14.0   36.0  -44.0  -24.0    8.0   26.0   0.5389   0.0117   0.9237   28.0  -40.0   12.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net1.nii
+    221    9.8   -7.8   12.6   -4.0   20.0  -18.0    6.0   -2.0   24.0   0.5266   0.0083   0.9665   12.0    0.0   16.0 
+    155    3.6   73.4   25.3  -16.0   22.0   62.0   84.0   18.0   38.0   0.5128   0.0092    0.896    8.0   72.0   22.0 
+    103   51.8  -35.6   14.3   46.0   56.0  -44.0  -28.0    6.0   24.0   0.5688   0.0106   0.8544   54.0  -34.0   20.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net2.nii
+    158  -49.2   64.6   31.1  -58.0  -40.0   54.0   74.0   22.0   38.0   0.5108   0.0079   0.8822  -44.0   64.0   32.0 
+    135   45.0  -34.2   11.0   30.0   54.0  -42.0  -26.0    2.0   20.0   0.4892   0.0083   0.9279   54.0  -36.0   16.0 
+    106  -28.1   -1.2   53.7  -36.0  -16.0  -10.0    8.0   46.0   62.0   0.5072   0.0084   0.7839  -30.0   -8.0   52.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net3.nii
+    148  -30.3  -50.0   18.8  -46.0  -16.0  -58.0  -40.0   14.0   24.0   0.5129   0.0088   0.8807  -28.0  -48.0   20.0 
+    110  -35.2   75.1  -48.7  -44.0  -20.0   68.0   82.0  -52.0  -44.0    0.545   0.0124   0.9078  -28.0   76.0  -50.0 
+    101    9.5   78.1   25.0   -8.0   18.0   68.0   88.0   20.0   32.0   0.5262   0.0101   0.8686    0.0   70.0   22.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net4.nii
+    204  -41.7   58.4   -8.7  -56.0  -26.0   44.0   74.0  -18.0    4.0   0.5249   0.0078   0.8995  -40.0   54.0  -14.0 
+    125    8.1  -44.7    2.6   -4.0   20.0  -52.0  -34.0   -6.0   10.0   0.5344   0.0098   0.7745   16.0  -48.0   -2.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net5.nii
+    126   48.5  -17.0    1.0   36.0   60.0  -30.0   -8.0   -6.0    8.0   0.5156   0.0083   0.8868   54.0  -22.0    0.0 
+    112   11.6   71.0   26.4    0.0   20.0   58.0   78.0   20.0   34.0   0.5259   0.0107   0.8721   10.0   74.0   32.0 
+    111   12.9  -48.4   16.1    2.0   28.0  -58.0  -42.0   10.0   24.0   0.5396     0.01    0.871   10.0  -50.0   14.0 
+polygen_results_yeo_masks_fancy_slopesCleanFam_net6.nii
+    171  -53.0   44.4   -1.1  -64.0  -44.0   26.0   64.0   -8.0   12.0   0.5185   0.0076   0.8131  -54.0   40.0   -2.0 
+    147  -26.6   79.5  -34.6  -40.0  -18.0   62.0   88.0  -42.0  -28.0   0.5217   0.0096        1  -26.0   86.0  -34.0 
+    113    2.2   17.0   18.7  -10.0   16.0    8.0   26.0   12.0   24.0   0.5328   0.0093   0.8569    8.0   16.0   20.0 
+```
+
+Again, in general, the unClean results were better. Let's check where they are:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike
+for i in {0..6}; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+        -savemask yeomask${i}.nii -NN1 125 \
+        polygen_results_yeo_masks_fancy_slopesFam_net${i}.nii
+done
+```
+
+I'll just report the top 2, mostly because I have no idea what will be
+significant:
+
+**0: visual**
+
+First cluster is quite split, but mostly visual:
+![](images/2019-08-09-13-23-45.png)
+
+Second is somewhat somatosensory... correlated to movement?
+![](images/2019-08-09-13-24-51.png)
+
+These big clusters (> 200) seem to be split clusters... need to see how
+important that actually is...
+
+**1: somatomotor**
+
+I'll skip this one, not really important... should have skipped visual too for
+that matter.
+
+**2: DAN**
+**3: VAN**
+**4: limbic**
+**5: cognitive (frontoparietal)**
+
+This is one of those split clusters again... maybe it'll be better if I do NN3?
+
+![](images/2019-08-09-13-30-32.png)
+
+The second cluster is somewhat cingular, so that looks interesting too:
+
+![](images/2019-08-09-13-31-38.png)
+
+**6: DMN**
+
+Nice MFG cluster... hopefully it's not related to movement!
+
+![](images/2019-08-09-13-27-11.png)
+
+Some MTG slope is heritable as well:
+
+![](images/2019-08-09-13-28-36.png)
+
+Because I'm getting a few split clusters, let me check how these clusters look
+at NN3:
+
+**6: DMN**
+
+The first DMN cluster is a bit more generous, precuneus:
+
+![](images/2019-08-09-13-59-38.png)
+
+Then we get a nice and strong MTG cluster again:
+
+![](images/2019-08-09-14-00-29.png)
+
+And not too far behind, we have the MFG cluster:
+
+![](images/2019-08-09-14-01-24.png)
+
+OK, these look quie interesting. Let's average them and see if there is any sort
+of correlation with movement, or even better, association with ADHD. If it all
+looks great, we can run some permutations.
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/yeo_masks
+3dmaskdump -mask ../group_epi_mask_fancy.nii -o yeomask_NN3_6.txt \
+    ../yeomask_NN3_6.nii;
+```
+
+```r
+clusters = read.table('~/data/heritability_change/xcp-36p_despike/yeo_masks/yeomask_NN3_6.txt')[, 4]
+nvox = length(clusters)
+cnames = sapply(1:nvox, function(d) sprintf('v%06d', d))
+library(data.table)
+dread = fread('~/data/heritability_change/yeo_masks_fancy_slopesFam_net6.csv',
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+cdata = d$ID
+header = c()
+for (myc in 1:3) {
+    keep_vox = cnames[which(clusters == myc)]
+    cdata = cbind(cdata, rowMeans(d[, keep_vox]))
+    header = c(header, sprintf('cl%d', myc))
+}
+colnames(cdata) = c('ID', header)
+cdata = cbind(cdata, d[, c('sex', 'SX_inatt', 'SX_HI', 'qc', 'inatt_baseline',
+                                                'HI_baseline', 'DX', 'DX2')])
+write.csv(cdata, row.names=F,
+          file='~/data/heritability_change/xcp-36p_despike/yeo_masks/cluster_means_NN3_net6.csv')
+```
+
+```r
+library(nlme)
+mydir = '~/data/heritability_change/xcp-36p_despike/yeo_masks/'
+p = 'cluster_means_NN3_net6'
+
+dd = read.csv(sprintf('%s/cluster_means_NN3_net6.csv', mydir))
+
+# to get famID
+tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+tmp$famID = sapply(1:nrow(tmp), function(x)
+                                if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                    tmp$Nuclear.ID...FamilyIDs[x]
+                                }
+                                else {
+                                    tmp$Extended.ID...FamilyIDs[x]
+                                }
+                    )
+tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+data = merge(dd, tmp3, by.x='ID', by.y='Medical.Record...MRN', all.x=T, all.y=F)
+
+targets = colnames(data)[grepl(colnames(data), pattern='cl')]
+for (t in targets) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+for (t in predictors) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+
+out_fname = sprintf('%s/assoc_LME_%s.csv', mydir, p)
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+                'DX2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub('.csv', x=out_fname, '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub('dx1', x=out_fname, 'dx2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+This is an interesting results for cluster 1, NN3, dx2:
+
+![](images/2019-08-09-17-01-43.png)
+
+It's not there for DX or DX1. And I had already showed that it's not correlated
+with movement:
+
+```
+> cor.test(data$qc, data$cl1)
+
+        Pearson's product-moment correlation
+
+data:  data$qc and data$cl1
+t = 0.79795, df = 137, p-value = 0.4263
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ -0.09961322  0.23189040
+sample estimates:
+       cor 
+0.06801567 
+```
+
+Now, this is definitely worth running some permutations!!! Even though the other
+ones are not associated, it'll be cool if they're significantly heritable.
+
+```r
+m = 6
+nperms = 100
+step=10
+start=1
+
+library(data.table)
+dread = fread(sprintf('~/data/heritability_change/yeo_masks_fancy_slopesFam_net%d.csv', m),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/yeo_masks_fancy_slopesFam_net%d_p%03d.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+i=6
+for p in {1..100}; do
+    perm=`printf %03d $p`;
+    phen_file=yeo_masks_fancy_slopesFam_net${i}_p${perm};
+    swarm_file=swarm.yeo6p${perm};
+
+    for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+done
+
+for p in {5..100}; do
+    perm=`printf %03d $p`;
+    jname=yeo${i}p${perm};
+    swarm_file=swarm.${jname};
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 30m;
+        fi;
+    done;
+done
+```
+
+Let this running in the cluster during the weekend...
+
+
+Now, since we had a moderate success with DMN, why not look at the other
+interesting networks? Let's just look at top 3, and then we can always narrow it
+down (or go nuts) based on permutation results of any interesting networks:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for i in 2 3 4 5; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+        -savemask yeomask_NN3_${i}.nii -NN3 125 \
+        polygen_results_yeo_masks_fancy_slopesFam_net${i}.nii
+done
+
+cd yeo_masks
+for i in 2 3 4 5; do
+    3dmaskdump -mask ../group_epi_mask_fancy.nii -o yeomask_NN3_${i}.txt \
+        ../yeomask_NN3_${i}.nii;
+done
+```
+
+**Note that I haven't really visualized these NN3 clusters yet. So, they might be
+a bust to begin with!**
+
+```r
+for (i in c(2, 3, 4, 5)) {
+    fname=sprintf('~/data/heritability_change/xcp-36p_despike/yeo_masks/yeomask_NN3_%d.txt', i)
+    clusters = read.table(fname)[, 4]
+    nvox = length(clusters)
+    cnames = sapply(1:nvox, function(d) sprintf('v%06d', d))
+    library(data.table)
+    fname = sprintf('~/data/heritability_change/yeo_masks_fancy_slopesFam_net%d.csv', i)
+    dread = fread(fname, header = T, sep = ',')
+    d = as.data.frame(dread)  # just so we can index them a bit easier
+    cdata = d$ID
+    header = c()
+    for (myc in 1:3) {
+        keep_vox = cnames[which(clusters == myc)]
+        cdata = cbind(cdata, rowMeans(d[, keep_vox]))
+        header = c(header, sprintf('cl%d', myc))
+    }
+    colnames(cdata) = c('ID', header)
+    cdata = cbind(cdata, d[, c('sex', 'SX_inatt', 'SX_HI', 'qc', 'inatt_baseline',
+                                                    'HI_baseline', 'DX', 'DX2')])
+    fname = sprintf('~/data/heritability_change/xcp-36p_despike/yeo_masks/cluster_means_NN3_net%d.csv', i)
+    write.csv(cdata, row.names=F,
+            file=fname)
+}
+```
+
+```r
+source('~/research_code/baseline_prediction/aux_functions.R')
+mydir = '~/data/heritability_change/xcp-36p_despike/yeo_masks/'
+data = read.csv(sprintf('%s/cluster_means_NN3_net6.csv', mydir))
+data2 = data[data$DX2=='ADHD', ]
+ggplotRegression(lm('cl1 ~ SX_inatt + sex', data2, na.action=na.omit)) + ylim(c(-.1,.1)) + xlim(c(-4,4))
+```
+
+
+
+
+
+
+# TODO
+* plot DMN cluster to make sure it's not an oulier! (gpglot2 not working on laptop...)
+* FSL recommends not using the Z version of dual regression... maybe try that? https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/DualRegression/UserGuide
