@@ -173,21 +173,25 @@ write.csv(res2_clean, file=fname, row.names=F, na='', quote=F)
 
 We can later to p25 FD threshold if we get somewhat decent results.
 
-<!-- Finally, set up the swarms:
+# 2019-08-09 09:27:22
+
+Finally, set up the swarms:
 
 ```bash
 cd ~/data/heritability_change/xcp-36p_despike;
-for i in 2 27 10 4 31 29 7; do
-    phen_file=melodic_fancyp25_slopesCleanFam_IC${i};
-    jname=fancyp25_${i}c;
-    swarm_file=swarm.${jname};
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen_file=${m}_fancy_slopesFam${s};
+        jname=${m}${s};
+        swarm_file=swarm.${jname};
 
-    rm -f $swarm_file;
-    for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
-        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        rm -f $swarm_file;
+        for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+        swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                --partition quick,norm
     done;
-    swarm --gres=lscratch:10 -f $swarm_file --module solar -t 16 -g 5 \
-            --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
-            --partition quick,norm
 done
-``` -->
+```

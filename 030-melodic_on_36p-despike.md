@@ -805,3 +805,25 @@ the white matter too... not good:
 I'm not too excited about these results, so I stopped the p25 permutations.
 Let's see if the FD1 or ye-Masks results are better.
 
+# 2019-08-09 09:54:47
+
+Let's then investigate the Yeo mask results and the MELODIC FD1 to see if
+anything looks interesting. 
+
+```bash
+#desktop
+cd ~/data/heritability_change/xcp-36p_despike
+rm ym_clean_clusters.txt;
+for f in `/bin/ls polygen_results_yeo_masks_fancy_slopesCleanFam_net*.nii`; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 \
+        -NN1 100 $f >> ym_clean_clusters.txt;
+done
+rm ym_clusters.txt;
+for f in `/bin/ls polygen_results_yeo_masks_fancy_slopesFam_net*.nii`; do
+    3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 \
+        -NN1 100 $f >> ym_clusters.txt;
+done
+```
+
+I got some huge clusters, especially compared to what I was seeing for p25.
+Maybe it'll be different for FD1... 
