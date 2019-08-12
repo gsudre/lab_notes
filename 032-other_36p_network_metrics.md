@@ -195,3 +195,148 @@ for m in reho alff; do
     done;
 done
 ```
+
+# 2019-08-12 14:43:04
+
+Let's go back to these results, for compiling and clustering:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_fancy_slopesFam${s};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/group_epi_mask_fancy.nii;
+        rm -rf $phen;
+    done;
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_fancy_slopesFam${s};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+            -savemask ${phen}_NN1_clusters.nii -NN1 125 \
+            polygen_results_${phen}.nii >> NN1_results.txt;
+    done
+done
+```
+
+So, we do have some interesting clusters here. Let's then check if they are at
+all correlated to movement:
+
+```bash
+for m in reho alff; do
+    cd ~/data/heritability_change/xcp-36p_despike/$m
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_fancy_slopesFam${s};
+        3dmaskdump -mask ../group_epi_mask_fancy.nii -o ${phen}_NN1_cluster1.txt \
+            ../${phen}_NN1_clusters.nii;
+    done;
+done
+```
+
+I named the files wrong.... even though they are called cluster1, they have all
+top clusters there... each has its own integer!
+
+```r
+for (m in c('reho', 'alff')) {
+    for (s in c('', '_sm6', 'Z', 'Z_sm6')) {
+        fname=sprintf('~/data/heritability_change/xcp-36p_despike/%s/%s_fancy_slopesFam%s_NN1_cluster1.txt', m, m, s)
+        clusters = read.table(fname)[, 4]
+        nvox = length(clusters)
+        cnames = sapply(1:nvox, function(d) sprintf('v%06d', d))
+        library(data.table)
+        fname = sprintf('~/data/heritability_change/%s_fancy_slopesFam%s.csv', m, s)
+        dread = fread(fname, header = T, sep = ',')
+        d = as.data.frame(dread)  # just so we can index them a bit easier
+        cdata = d$ID
+        header = c()
+        for (myc in 1:3) {
+            keep_vox = cnames[which(clusters == myc)]
+            cdata = cbind(cdata, rowMeans(d[, keep_vox]))
+            header = c(header, sprintf('cl%d', myc))
+        }
+        colnames(cdata) = c('ID', header)
+        cdata = cbind(cdata, d[, c('sex', 'SX_inatt', 'SX_HI', 'qc', 'inatt_baseline',
+                                                        'HI_baseline', 'DX', 'DX2')])
+        fname = sprintf('~/data/heritability_change/xcp-36p_despike/%s/cluster_means_NN1%s.csv', m, s)
+        write.csv(cdata, row.names=F,
+                file=fname)
+    }
+}
+```
+
+OK, let's check on correlation to movement then:
+
+```r
+for (m in c('reho', 'alff')) {
+    for (s in c('', '_sm6', 'Z', 'Z_sm6')) {
+        fname = sprintf('~/data/heritability_change/xcp-36p_despike/%s/cluster_means_NN1%s.csv', m, s)
+        df = read.csv(fname)
+        for (myc in 1:3) {
+            print(fname)
+            print(myc)
+            print(cor.test(df[,'qc'], df[, sprintf('cl%d', myc)]))
+        }
+    }
+}
+```
+
+reho isn't correlated, at least not the first cluster (or the 3rd). Also, the
+results without Z seem better than with it, and of course the clusters after
+smoothing are bigger. But alff is extremely correlated. We'll definitely need to
+re-run SOLAR again removing qc as well, if we want to calculate heritability
+properly. Or, the other option is to show that heritability is still there even
+after removing qc from the average of the cluster. Before we run permutation for
+the reho cluster, let's see where it is:
+
+![](images/2019-08-12-16-16-57.png)
+
+It looks parietal/angular, even though the atlas is saying visual in the white
+matter. That's not great, but maybe we should just go ahead and use a
+grey-matter atlas? This way there is no risk of falling in white matter again...
+
+I checked and the template.nii.gz file used for all xcpengine processing is the
+same as the one in FSL. Basically, just a MNI 2x2x2 brain. Now, I just need to
+find a grey matter mask for that brain, so we don't keep falling in white
+matter, right? 
+
+I could use the grey mask Luke sent (Slack), but I'd lose anything that's cerebellar.
+Given that some subjects don't even have that covered, it might not be a bad
+idea. Let's generate that, then:
+
+```bash
+#desktop
+mydir=/Volumes/Labs/rsfmri_36p/xcpengine_output_fc-36p_despike/
+cd ~/data/heritability_change/xcp-36p_despike
+mkdir reho_gray
+for maskid in `cat ids_1.txt`; do
+    m=`printf %04d $maskid`;
+    echo $m;
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        3dmaskdump -mask gray_matter_mask.nii \
+            -o reho_gray/${m}${s}.txt $mydir/sub-${m}/norm/sub-${m}_reho${s}Std.nii.gz;
+    done;
+done
+
+mkdir alff_gray
+for maskid in `cat ids_1.txt`; do
+    m=`printf %04d $maskid`;
+    echo $m;
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        3dmaskdump -mask gray_matter_mask.nii \
+            -o alff_gray/${m}${s}.txt $mydir/sub-${m}/norm/sub-${m}_alff${s}Std.nii.gz;
+    done;
+done
+```

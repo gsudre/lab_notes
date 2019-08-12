@@ -1129,9 +1129,9 @@ ones are not associated, it'll be cool if they're significantly heritable.
 
 ```r
 m = 6
+start=1
 nperms = 100
 step=10
-start=1
 
 library(data.table)
 dread = fread(sprintf('~/data/heritability_change/yeo_masks_fancy_slopesFam_net%d.csv', m),
@@ -1153,7 +1153,7 @@ i=6
 for p in {1..100}; do
     perm=`printf %03d $p`;
     phen_file=yeo_masks_fancy_slopesFam_net${i}_p${perm};
-    swarm_file=swarm.yeo6p${perm};
+    swarm_file=swarm.yeo${i}p${perm};
 
     for vlist in `ls $PWD/vlist*txt`; do  # getting full path to files
         echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
@@ -1229,19 +1229,198 @@ for (i in c(2, 3, 4, 5)) {
 }
 ```
 
+# 2019-08-12 10:01:44
+
 ```r
 source('~/research_code/baseline_prediction/aux_functions.R')
 mydir = '~/data/heritability_change/xcp-36p_despike/yeo_masks/'
 data = read.csv(sprintf('%s/cluster_means_NN3_net6.csv', mydir))
 data2 = data[data$DX2=='ADHD', ]
-ggplotRegression(lm('cl1 ~ SX_inatt + sex', data2, na.action=na.omit)) + ylim(c(-.1,.1)) + xlim(c(-4,4))
+ggplotRegression(lm('cl1 ~ SX_inatt + sex', data2, na.action=na.omit))
 ```
 
+![](images/2019-08-12-10-01-49.png)
 
+It looks OK, but we should probably check whether it survives non-parametric
+tests. That's also LM and not LME, so that's why the values are different.
 
+I'll also try to run the non-Z values, as recommended by the FSL folks (note
+33).
 
+Now, let's see how significant the cluster actually is. 
 
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+net=6;
+for i in {1..100}; do
+    perm=`printf %03d ${i}`;
+    phen=yeo_masks_fancy_slopesFam_net${net}_p${perm};
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/$phen/*.out ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/group_epi_mask_fancy.nii;
+    rm -rf $phen;
+done
+```
+
+While that's compiling, let's see if there is any other significant relationship
+for nets 2:5. 
+
+```r
+library(nlme)
+mydir = '~/data/heritability_change/xcp-36p_despike/yeo_masks/'
+for (i in 2:5) {
+    p = sprintf('cluster_means_NN3_net%d', i)
+
+    dd = read.csv(sprintf('%s/cluster_means_NN3_net%d.csv', mydir, i))
+
+    # to get famID
+    tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+    tmp$famID = sapply(1:nrow(tmp), function(x)
+                                    if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                        tmp$Nuclear.ID...FamilyIDs[x]
+                                    }
+                                    else {
+                                        tmp$Extended.ID...FamilyIDs[x]
+                                    }
+                        )
+    tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+    tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+    data = merge(dd, tmp3, by.x='ID', by.y='Medical.Record...MRN', all.x=T, all.y=F)
+
+    targets = colnames(data)[grepl(colnames(data), pattern='cl')]
+    for (t in targets) {
+        data[, t] = as.numeric(as.character(data[, t]))
+    }
+    predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+    for (t in predictors) {
+        data[, t] = as.numeric(as.character(data[, t]))
+    }
+
+    out_fname = sprintf('%s/assoc_LME_%s.csv', mydir, p)
+    predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+                    'DX2')
+    hold=NULL
+    for (i in targets) {
+        cat(sprintf('%s\n', i))
+        for (j in predictors) {
+            fm_str = sprintf('%s ~ %s + sex', i, j)
+            model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+            if (length(model1) > 1) {
+                temp<-summary(model1)$tTable
+                a<-as.data.frame(temp)
+                a$formula<-fm_str
+                a$target = i
+                a$predictor = j
+                a$term = rownames(temp)
+                hold=rbind(hold,a)
+            } else {
+                hold=rbind(hold, NA)
+            }
+        }
+    }
+    write.csv(hold, out_fname, row.names=F)
+
+    data2 = data[data$DX=='ADHD', ]
+    out_fname = gsub('.csv', x=out_fname, '_dx1.csv')
+    predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+    hold=NULL
+    for (i in targets) {
+        cat(sprintf('%s\n', i))
+        for (j in predictors) {
+            fm_str = sprintf('%s ~ %s + sex', i, j)
+            model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+            if (length(model1) > 1) {
+                temp<-summary(model1)$tTable
+                a<-as.data.frame(temp)
+                a$formula<-fm_str
+                a$target = i
+                a$predictor = j
+                a$term = rownames(temp)
+                hold=rbind(hold,a)
+            } else {
+                hold=rbind(hold, NA)
+            }
+        }
+    }
+    write.csv(hold, out_fname, row.names=F)
+
+    data2 = data[data$DX2=='ADHD', ]
+    out_fname = gsub('dx1', x=out_fname, 'dx2')
+    hold=NULL
+    for (i in targets) {
+        cat(sprintf('%s\n', i))
+        for (j in predictors) {
+            fm_str = sprintf('%s ~ %s + sex', i, j)
+            model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+            if (length(model1) > 1) {
+                temp<-summary(model1)$tTable
+                a<-as.data.frame(temp)
+                a$formula<-fm_str
+                a$target = i
+                a$predictor = j
+                a$term = rownames(temp)
+                hold=rbind(hold,a)
+            } else {
+                hold=rbind(hold, NA)
+            }
+        }
+    }
+    write.csv(hold, out_fname, row.names=F)
+}
+```
+
+There was something for NN3 cluster 2 in limbic:
+
+![](images/2019-08-12-10-42-37.png)
+
+And for NN3 cluster 3 in cognitive:
+
+![](images/2019-08-12-10-43-06.png)
+
+Nothing for DAN or VAN. These could also be outliers, or won't survive
+permutations later... but it's something. Those are all DX2 results, so let's
+see if there is anything else... yep. Both results are still there when looking
+at DX1 only. Let's see where those results are:
+
+![](images/2019-08-12-10-51-27.png)
+
+I'm getting a cerebellar cluster for cognitive, but it's only 205 voxels... not
+sure if it's big enough. 
+
+![](images/2019-08-12-10-53-27.png)
+
+For limbic cluster 2 is 276 voxels big and it's located in MTG, so not bad.
+
+Just because the cluster will be idle while the noZ slopes are computing, I'm
+going to start permutations for cognitive and maybe limbic, using the code from
+above.
+
+And now that the DMN results are compiled, let's see how good our current
+clusters actually are:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN3 200 \
+    -quiet polygen_results_yeo_masks_fancy_slopesFam_net6_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 polygen_results_yeo_masks_fancy_slopesFam_net6_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+Oh wow, for NN3 even 300 voxel clusters are not even close to significance. LEt
+me see what I get for NN1 and NN2... no luck. Oh well... WAIT! ARE ALL MY RANDOM
+FILES DIFFERENT? Maybe when I created them in individual R sessions, they all
+got the same seed? Good try... but no, they're all different :(
+
+I still have the cognitive network permutations running. But I can also try the
+nonZ data files when they are done being created, and also play a bit with ALFF
+and reho. 
 
 # TODO
-* plot DMN cluster to make sure it's not an oulier! (gpglot2 not working on laptop...)
-* FSL recommends not using the Z version of dual regression... maybe try that? https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/DualRegression/UserGuide
