@@ -295,3 +295,6 @@ for (ic in 0:6) {
     write.csv(res2_clean, file=fname, row.names=F, na='', quote=F)
 }
 ```
+
+I stopped this analysis because I've been playing a bit more with the gray mask.
+But at least the csv files were created (desktop).
