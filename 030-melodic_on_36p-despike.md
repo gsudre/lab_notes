@@ -86,7 +86,7 @@ Now, it's time to figure out which ICs we are going to use.
 # 2019-08-05 10:52:29
 
 
-We are already in MNI space, like the Yeo networks (I checke dit visually). But
+We are already in MNI space, like the Yeo networks (I checked it visually). But
 the inter mask looked a bit funky, so I'll stay with the fancy mask for now.
 
 ```bash
