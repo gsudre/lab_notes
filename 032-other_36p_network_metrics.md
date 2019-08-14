@@ -508,3 +508,77 @@ for m in reho_gray alff_gray; do
     done;
 done
 ```
+
+# 2019-08-14 09:30:32
+
+Let's compile these gray matter results:
+
+```bash
+#desktop
+cd ~/data/heritability_change/xcp-36p_despike/
+cut -d " " -f 1,2,3 \
+    groupmelodic_gray.ica/dumps/1351_IC8_Z.txt > gray_matter_mask_ijk.txt
+```
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_gray_slopesFam${s};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_gray_slopesFam${s};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+            -savemask ${phen}_NN1_clusters.nii -NN1 300 \
+            polygen_results_${phen}.nii >> NN1_gray_results.txt;
+    done
+done
+```
+
+Of course, sm6 clusters are bigger. But nonZ results are a bit bigger as well.
+ALFF clusters were also not very big, especially not when compared to REHO. But
+maybe they'll survive on permutations?
+
+I already removed movement from SOLAR, so there is not need to check for
+correlation with movement now. But before we get excited about the results like
+before, let's run a few permutations. Let's try reho and alff for now, but maybe
+smoothed later.
+
+```r
+m = 'reho'
+start=1
+nperms = 100
+step=10
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam.csv', m),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_p%03d.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
