@@ -582,3 +582,99 @@ for (p in seq(start, nperms, step)) {
     fwrite(d2, file=fname, row.names=F, quote=F)
 }
 ```
+
+# 2019-08-15 11:40:29
+
+Let's now compile the reho permutations and see what we get:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+m='reho';
+suf='';
+for p in {1..100}; do
+    phen=`printf ${m}_gray_slopesFam${suf}_p%03d $p`;
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+    rm -rf $phen;
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 796 \
+    -quiet polygen_results_reho_gray_slopesFam_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 polygen_results_reho_gray_slopesFam_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+Hum, not even the 796 result is good enough... only p=.2. The NN2 cluster is
+p=.08, and same for NN3. Maybe check sm6?
+
+```r
+m = 'reho'
+start=1
+nperms = 25
+step=1
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam_sm6.csv', m),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_sm6_p%03d.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for p in {1..25}; do
+    perm=`printf %03d $p`;
+    phen_file=reho_gray_slopesFam_sm6_p${perm};
+    swarm_file=swarm.rsm6_p${perm};
+
+    for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+done
+
+for p in {1..25}; do
+    perm=`printf %03d $p`;
+    jname=rsm6_p${perm};
+    swarm_file=swarm.${jname};
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 30m;
+        fi;
+    done;
+done;
+```
+
+# TODO:
+* try running permutations for smoothed reho... second cluster was quite close,
+  so maybe smoothed data will make it also significant?
+* I could try running only 25 perms, just to test the waters? That gives me .04
+  if a single perm goes bad, but it could be indicative of good thresholds?
+
+  

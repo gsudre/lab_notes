@@ -414,7 +414,7 @@ done
 
 And of course, same thing for Yeo masks:
 
-<!-- ```bash
+```bash
 cd ~/data/heritability_change/xcp-36p_despike;
 for i in {0..6}; do
     for suf in '' '_Z'; do
@@ -431,4 +431,106 @@ for i in {0..6}; do
                 --merge-output --partition quick,norm
     done;
 done
-``` -->
+```
+
+# 2019-08-15 11:53:09
+
+Let's see if we get any sort of results for the ICs with grey matter mask.
+First, we need to compile them:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in 1 33 10 6 27 9 8; do
+    for suf in '' '_Z'; do
+        phen=melodic_gray_slopesFam_IC${i}${suf};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+```
+
+Let's first check if the _Z results are better than regular ones. 
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for i in 1 33 10 6 27 9 8; do
+    for suf in '' '_Z'; do
+        phen=melodic_gray_slopesFam_IC${i}${suf};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+            -savemask ${phen}_NN1_clusters.nii -NN1 50 \
+            polygen_results_${phen}.nii >> NN1_melodic_gray_results.txt;
+    done
+done
+```
+
+There was no clear winner. Cluster weren't even in the same place... 
+
+Why don't we run 25 perms just for kicks and to get a flavor of what's actually
+significant? I'll do it for the suffix with biggest cluster, and only for the
+interesting networks:
+
+```r
+m = 'melodic'
+suf = '10_Z'
+start=1
+nperms = 25
+step=1
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam_IC%s.csv', m, suf),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_IC%s_p%03d.csv', m, suf, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in '8' '9_Z' '27' '6_Z' '10_Z'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen_file=melodic_gray_slopesFam_IC${i}_p${perm};
+        swarm_file=swarm.m${i}_p${perm};
+
+        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+    done;
+done
+
+for i in '8' '9_Z' '27' '6_Z' '10_Z'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        jname=m${i}_p${perm};
+        swarm_file=swarm.${jname};
+        echo "ERROR" > swarm_wait;
+        while grep -q ERROR swarm_wait; do
+            echo "Trying $jname"
+            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                    --partition quick,norm 2> swarm_wait;
+            if grep -q ERROR swarm_wait; then
+                echo -e "\tError, sleeping..."
+                sleep 30m;
+            fi;
+        done;
+    done;
+done
+```
