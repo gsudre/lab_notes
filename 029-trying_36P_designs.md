@@ -513,5 +513,78 @@ is related to symptom change.
 We should still make the data sanity plots (slopes) we discussed with Philip,
 just to make sure the data going into SOLAR looks fine.
 
+# 2019-08-16 14:54:12
+
+Let's go back to this and see if we can remove some trash connection from our
+matrices.
+
+```r
+drop_me = c('Visual', 'Auditory', 'Uncertain', 'SensorysomatomotorMouth',
+            'Cerebellar', 'Memoryretrieval', 'SensorysomatomotorHand', 'Subcortical')
+nverts = 14
+mydir = '~/data/heritability_change/'
+
+fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_condensed.*lopes.*\\.csv')
+map_names = c()
+sig_conns = c()
+for (fname in fnames) {
+    # read in the results
+    res = read.csv(sprintf('%s/%s', mydir, fname))
+    # figuring out possible connections
+    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
+    conns = unique(conns)
+    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
+    for (m in c('Max', 'Mean', 'Median')) {
+        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                              vert_names))
+        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
+                                                               vert_names))
+        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
+        for (r in 1:nrow(mres)) {
+            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
+            ij = strsplit(junk, 'TO')[[1]]
+            vals[ij[1], ij[2]] = mres[r, 'h2r']
+            stats[ij[1], ij[2]] = mres[r, 'h_pval']
+            vals[ij[2], ij[1]] = mres[r, 'h2r']
+            stats[ij[2], ij[1]] = mres[r, 'h_pval']
+        }
+        drop_idx = sapply(drop_me, function(x) which(vert_names==x))
+        stats = stats[-drop_idx, ]
+        stats = stats[, -drop_idx]
+        vals = vals[-drop_idx, ]
+        vals = vals[, -drop_idx]
+
+        myps = stats[upper.tri(stats, diag=T)]
+        p2 = p.adjust(myps, method='fdr')
+        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+        phen = sprintf('%s_%s', m, junk[length(junk)])
+        sig_conns = c(sig_conns, sum(p2 < .05))
+        # sig_conns = c(sig_conns, sum(myps < .05))
+        map_names = c(map_names, phen)
+
+        # plotting
+        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+        phen = sprintf('%s_%s', m, junk[length(junk)])
+        pdf(sprintf('~/tmp/cropped_%s.pdf', phen))
+        corrplot(vals, type="upper", method='color', diag=T,
+                p.mat = stats, sig.level = .05, insig = "blank", is.corr=F, tl.cex=.8)
+        title(phen, cex.main=.8)
+        dev.off()
+    }
+}
+s = sort(sig_conns, index.return=T, decreasing=T)
+for (i in 1:10) {
+    cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+}
+```
+
+Still, nothing significant at the current FDR threshold... and I only have very
+few connections left:
+
+![](images/2019-08-16-15-21-53.png)
+
+Maybe Meff would be an option, but now we're grasping at straws...
+
+
 # TODO
 * slope plots for data sanity

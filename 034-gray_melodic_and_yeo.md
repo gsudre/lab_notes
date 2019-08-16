@@ -534,3 +534,119 @@ for i in '8' '9_Z' '27' '6_Z' '10_Z'; do
     done;
 done
 ```
+
+# 2019-08-16 11:30:03
+
+While the perms for melodic are running, let's take a look at the yeo mask
+results. Are they worth checking on through the small permutation approach? Are
+Z results better than regular?
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in {0..6}; do
+    for suf in '' '_Z'; do
+        phen=yeo_masks_gray_slopesFam_net${i}${suf};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+cp polygen*yeo_masks_gray_slopesFam_net*nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/
+for i in {0..6}; do
+    for suf in '' '_Z'; do
+        phen=yeo_masks_gray_slopesFam_net${i}${suf};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -orient LPI \
+            -savemask ${phen}_NN1_clusters.nii -NN1 50 \
+            polygen_results_${phen}.nii >> NN1_yeo_masks_gray_results.txt;
+    done
+done
+```
+
+The difference wasn't huge, for for most of the ICs that matter the best result
+was with the nonZ results. Let's make a few figures to see if they are worth
+exploring, as we cannot submit much new stuff in the queue at this moment
+anyways. I'm centering my figures for now on max intensity, because the clusters
+are looking better this way, compared to using COM.
+
+cognitive:
+![](images/2019-08-16-12-44-03.png)
+That's a very nice precuneus hit, which is normally associated with DMN. That
+seems to be the second hit for _Z. There, the first hit is quite frontal.
+
+DMN: 
+got a hit on frontal pole... could be interesting if it survives
+permutations
+![](images/2019-08-16-12-39-34.png)
+Note that the best cluster for DMN_Z is in mFG/iFG, so that could potentially be
+more interesting...
+![](images/2019-08-16-12-42-00.png)
+
+But let's not get too excited about these results. It'll be cool if they
+survive, but let's run some perms before we do much else:
+
+```r
+m = 'yeo_masks'
+suf = '10_Z'
+start=1
+nperms = 25
+step=1
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam_net%s.csv', m, suf),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_net%s_p%03d.csv', m, suf, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+<!-- ```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen_file=yeo_masks_gray_slopesFam_net${i}_p${perm};
+        swarm_file=swarm.ymg${i}_p${perm};
+
+        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+    done;
+done
+
+for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        jname=ymg${i}_p${perm};
+        swarm_file=swarm.${jname};
+        echo "ERROR" > swarm_wait;
+        while grep -q ERROR swarm_wait; do
+            echo "Trying $jname"
+            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                    --partition quick,norm 2> swarm_wait;
+            if grep -q ERROR swarm_wait; then
+                echo -e "\tError, sleeping..."
+                sleep 30m;
+            fi;
+        done;
+    done;
+done
+``` -->

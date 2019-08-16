@@ -671,10 +671,33 @@ for p in {1..25}; do
 done;
 ```
 
+# 2019-08-16 09:31:12
+
+Even though I'm not too hopeful, I'm compiling the permutations for alff
+following the code above. I'm going to use Ben's idea for ctsem and just figure
+out how many voxels we need to get .05.
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+froot=polygen_results_alff_gray_slopesFam
+cp ~/data/heritability_change/xcp-36p_despike/perms/${froot}_p*nii .
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=1;
+step=5
+cur_clu=500;
+while [ $(echo "$p > .05" | bc -l) == 1 ]; do
+    echo "Trying cluster size $cur_clu";
+    res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 $cur_clu \
+    -quiet ${froot}_p*.nii 2>/dev/null | grep CLUSTERS | wc -l`;
+    p=$(bc <<<"scale=3;($nperms - $res)/$nperms");
+    echo negatives=${res}, perms=${nperms}, pval=$p;
+    let cur_clu=$cur_clu+$step
+done
+```
+
+So, I already knew that for reho I needed about 1465 voxels, so we're not even
+close. For ALFF, I need way more than the 300 or so I'm seeing. So, no dice.
+
 # TODO:
-* try running permutations for smoothed reho... second cluster was quite close,
-  so maybe smoothed data will make it also significant?
-* I could try running only 25 perms, just to test the waters? That gives me .04
-  if a single perm goes bad, but it could be indicative of good thresholds?
 
   
