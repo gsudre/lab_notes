@@ -617,7 +617,7 @@ for (p in seq(start, nperms, step)) {
 }
 ```
 
-<!-- ```bash
+```bash
 cd ~/data/heritability_change/xcp-36p_despike;
 for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
     for p in {1..25}; do
@@ -649,4 +649,4 @@ for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
         done;
     done;
 done
-``` -->
+```
