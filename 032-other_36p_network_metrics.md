@@ -562,8 +562,8 @@ before, let's run a few permutations. Let's try reho and alff for now, but maybe
 smoothed later.
 
 ```r
-m = 'reho'
 start=1
+m = 'alff'
 nperms = 100
 step=10
 
@@ -581,4 +581,35 @@ for (p in seq(start, nperms, step)) {
     print(fname)
     fwrite(d2, file=fname, row.names=F, quote=F)
 }
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+m='reho'
+for p in {1..100}; do
+    perm=`printf %03d $p`;
+    phen_file=${m}_gray_slopesFam_p${perm};
+    swarm_file=swarm.${m}_g_p${perm};
+
+    for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+done
+
+for p in {1..100}; do
+    perm=`printf %03d $p`;
+    jname=${m}_g_p${perm};
+    swarm_file=swarm.${jname};
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
+        swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 30m;
+        fi;
+    done;
+done
 ```

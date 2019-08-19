@@ -414,7 +414,7 @@ done
 
 And of course, same thing for Yeo masks:
 
-<!-- ```bash
+```bash
 cd ~/data/heritability_change/xcp-36p_despike;
 for i in {0..6}; do
     for suf in '' '_Z'; do
@@ -431,4 +431,4 @@ for i in {0..6}; do
                 --merge-output --partition quick,norm
     done;
 done
-``` -->
+```
