@@ -583,22 +583,79 @@ for (p in seq(start, nperms, step)) {
 }
 ```
 
+# 2019-08-15 11:40:29
+
+Let's now compile the reho permutations and see what we get:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+m='reho';
+suf='';
+for p in {1..100}; do
+    phen=`printf ${m}_gray_slopesFam${suf}_p%03d $p`;
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+    rm -rf $phen;
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 796 \
+    -quiet polygen_results_reho_gray_slopesFam_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 polygen_results_reho_gray_slopesFam_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+Hum, not even the 796 result is good enough... only p=.2. The NN2 cluster is
+p=.08, and same for NN3. Maybe check sm6?
+
+```r
+m = 'reho'
+start=1
+nperms = 25
+step=1
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam_sm6.csv', m),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_sm6_p%03d.csv', m, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
 ```bash
 cd ~/data/heritability_change/xcp-36p_despike;
-m='reho'
-for p in {1..100}; do
+for p in {1..25}; do
     perm=`printf %03d $p`;
-    phen_file=${m}_gray_slopesFam_p${perm};
-    swarm_file=swarm.${m}_g_p${perm};
+    phen_file=reho_gray_slopesFam_sm6_p${perm};
+    swarm_file=swarm.rsm6_p${perm};
 
     for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
         echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
     done;
 done
 
-for p in {1..100}; do
+for p in {1..25}; do
     perm=`printf %03d $p`;
-    jname=${m}_g_p${perm};
+    jname=rsm6_p${perm};
     swarm_file=swarm.${jname};
     echo "ERROR" > swarm_wait;
     while grep -q ERROR swarm_wait; do
@@ -611,5 +668,82 @@ for p in {1..100}; do
             sleep 30m;
         fi;
     done;
+done;
+```
+
+# 2019-08-16 09:31:12
+
+Even though I'm not too hopeful, I'm compiling the permutations for alff
+following the code above. I'm going to use Ben's idea for ctsem and just figure
+out how many voxels we need to get .05.
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+froot=polygen_results_alff_gray_slopesFam
+cp ~/data/heritability_change/xcp-36p_despike/perms/${froot}_p*nii .
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=1;
+step=5
+cur_clu=500;
+while [ $(echo "$p > .05" | bc -l) == 1 ]; do
+    echo "Trying cluster size $cur_clu";
+    res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 $cur_clu \
+    -quiet ${froot}_p*.nii 2>/dev/null | grep CLUSTERS | wc -l`;
+    p=$(bc <<<"scale=3;($nperms - $res)/$nperms");
+    echo negatives=${res}, perms=${nperms}, pval=$p;
+    let cur_clu=$cur_clu+$step
 done
 ```
+
+So, I already knew that for reho I needed about 1465 voxels, so we're not even
+close. For ALFF, I need way more than the 300 or so I'm seeing. So, no dice.
+
+# 2019-08-19 10:08:47
+
+Last try, compiling the few permutations for reho smoothed 6:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+m='reho';
+suf='_sm6';
+for p in {1..25}; do
+    phen=`printf ${m}_gray_slopesFam${suf}_p%03d $p`;
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+    rm -rf $phen;
+done
+cp -v /lscratch/${SLURM_JOBID}/polygen*${m}*${suf}*.nii ~/data/heritability_change/xcp-36p_despike/perms;
+```
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+froot=polygen_results_${m}_gray_slopesFam${suf}
+cp ~/data/heritability_change/xcp-36p_despike/perms/${froot}_p*nii .
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=1;
+step=10;
+cur_clu=700;
+while [ $(echo "$p > .05" | bc -l) == 1 ]; do
+    echo "Trying cluster size $cur_clu";
+    res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 $cur_clu \
+    -quiet ${froot}_p*.nii 2>/dev/null | grep CLUSTERS | wc -l`;
+    p=$(bc <<<"scale=3;($nperms - $res)/$nperms");
+    echo negatives=${res}, perms=${nperms}, pval=$p;
+    let cur_clu=$cur_clu+$step
+done
+```
+
+We needed 2840 voxels here... not even close. Our best result had 1364.
+
+
+# TODO:
+
+  
