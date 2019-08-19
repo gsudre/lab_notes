@@ -650,3 +650,87 @@ for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
     done;
 done
 ```
+
+# 2019-08-19 10:01:45
+
+Let's compile all permutations we've been waiting on:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in '6' '6_Z' '5' '5_Z' '2' '3' '4'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen=yeo_masks_gray_slopesFam_net${i}_p${perm};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+```
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in '8' '9_Z' '27' '6_Z' '10_Z'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen=melodic_gray_slopesFam_IC${i}_p${perm};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+```
+
+Because we have many different combinations, I don't want to use the loop code
+to figure out optimal cluster size. Also, with only 25 permutations it won't
+tell me much. I much rather just check the chances of our buggest cluster and
+see what I get:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_gray_slopesFam_net6
+csize=145;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+melodic:
+'8': 78 (p=.24)
+'9_Z': 80 (p=.24)
+'27': 77 (p=.24)
+'6_Z': 72 (p=.24)
+'10_Z': 53 ...
+
+yeo
+'6': 145 (p = .434)
+'6_Z': 149 (p=.56)
+'5': 233 (p=.08)
+'5_Z': 166 (p=.28)
+'2': 193 (p=.28)
+'3': 114 ...
+'4': 188 ...
+
+Again, these are using only 25 perms. But they don't look too promising. Yeo 5
+might work out, but it will be though. And that's just one too...
+
+The IC results look weird. Probably an error somewhere, but not promising enough
+to look into it. 

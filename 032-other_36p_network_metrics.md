@@ -698,6 +698,52 @@ done
 So, I already knew that for reho I needed about 1465 voxels, so we're not even
 close. For ALFF, I need way more than the 300 or so I'm seeing. So, no dice.
 
+# 2019-08-19 10:08:47
+
+Last try, compiling the few permutations for reho smoothed 6:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+m='reho';
+suf='_sm6';
+for p in {1..25}; do
+    phen=`printf ${m}_gray_slopesFam${suf}_p%03d $p`;
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+    rm -rf $phen;
+done
+cp -v /lscratch/${SLURM_JOBID}/polygen*${m}*${suf}*.nii ~/data/heritability_change/xcp-36p_despike/perms;
+```
+
+```bash
+cd /lscratch/${SLURM_JOBID}
+froot=polygen_results_${m}_gray_slopesFam${suf}
+cp ~/data/heritability_change/xcp-36p_despike/perms/${froot}_p*nii .
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=1;
+step=10;
+cur_clu=700;
+while [ $(echo "$p > .05" | bc -l) == 1 ]; do
+    echo "Trying cluster size $cur_clu";
+    res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.95 -NN1 $cur_clu \
+    -quiet ${froot}_p*.nii 2>/dev/null | grep CLUSTERS | wc -l`;
+    p=$(bc <<<"scale=3;($nperms - $res)/$nperms");
+    echo negatives=${res}, perms=${nperms}, pval=$p;
+    let cur_clu=$cur_clu+$step
+done
+```
+
+We needed 2840 voxels here... not even close. Our best result had 1364.
+
+
 # TODO:
 
   
