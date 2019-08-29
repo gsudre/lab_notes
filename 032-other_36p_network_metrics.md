@@ -743,6 +743,36 @@ done
 
 We needed 2840 voxels here... not even close. Our best result had 1364.
 
+# 2019-08-21 16:25:13
+
+Luke gave an interesting idea: what if we do a smallest voxelwise threshold?
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for m in reho alff; do
+    for s in '' '_sm6' 'Z' 'Z_sm6'; do
+        phen=${m}_gray_slopesFam${s};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
+            -savemask ${phen}_NN1_clusters_p01.nii -NN1 100 \
+            polygen_results_${phen}.nii >> NN1_gray_p01_results.txt;
+    done
+done
+```
+
+OK, so how do they look in permutations?
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_alff_gray_slopesFam_sm6
+csize=225;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+Still nothing... 
 
 # TODO:
 

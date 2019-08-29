@@ -734,3 +734,101 @@ might work out, but it will be though. And that's just one too...
 
 The IC results look weird. Probably an error somewhere, but not promising enough
 to look into it. 
+
+# 2019-08-21 16:53:22
+
+Let's just check on p<.01:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/
+for i in {0..6}; do
+    for suf in '' '_Z'; do
+        phen=yeo_masks_gray_slopesFam_net${i}${suf};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
+            -savemask ${phen}_NN1_clusters_p01.nii -NN1 20 \
+            polygen_results_${phen}.nii >> NN1_yeo_masks_gray_results_p01.txt;
+    done
+done
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_gray_slopesFam_net4
+csize=59;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+yeo
+'6': 60 (p=0)
+'6_Z': 46 (p=.16)
+'5': 39 (p=.32)
+'5_Z': 32 (p=.24)
+'2': 57 (p=.12)
+'3': 23 ...
+'4': 59 (p=0)
+
+Well, there might be some interesting stuff here. Let's leave some more perms
+running then:
+
+```r
+m = 'yeo_masks'
+suf = '6'
+start = 27 # 26
+nperms = 100
+step = 2
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_gray_slopesFam_net%s.csv', m, suf),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_gray_slopesFam_net%s_p%03d.csv', m, suf, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in '6' '4' '2' '3' '5'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        phen_file=yeo_masks_gray_slopesFam_net${i}_p${perm};
+        swarm_file=swarm.ymg${i}_p${perm};
+
+        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+    done;
+done
+
+# just because I couldn't wait before starting this...
+sleep 5h;
+for i in '6' '4' '2' '3' '5'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        jname=ymg${i}_p${perm};
+        swarm_file=swarm.${jname};
+        echo "ERROR" > swarm_wait;
+        while grep -q ERROR swarm_wait; do
+            echo "Trying $jname"
+            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                    --partition quick,norm 2> swarm_wait;
+            if grep -q ERROR swarm_wait; then
+                echo -e "\tError, sleeping..."
+                sleep 30m;
+            fi;
+        done;
+    done;
+done
+```
