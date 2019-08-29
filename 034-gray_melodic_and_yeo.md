@@ -857,3 +857,23 @@ for i in '6' '4' '2' '3' '5'; do
     done;
 done
 ```
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_gray_slopesFam_net4
+csize=59;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+yeo
+'6': 60 (p=.081, n=98)
+'5': 39 (p=.32, n=25)
+'2': 57 (p=.1, n=100)
+'3': 23 (p=.83, n=66)
+'4': 59 (p=.05, n=100)
+
+We're hovering, but definitely not good enough. Let's try the other options...
