@@ -832,3 +832,28 @@ for i in '6' '4' '2' '3' '5'; do
     done;
 done
 ```
+
+# 2019-08-29 09:32:50
+
+Let's go ahead and try compiling these new permutations:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in '6' '4' '2' '3' '5'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        phen=yeo_masks_gray_slopesFam_net${i}_p${perm};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+```

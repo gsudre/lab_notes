@@ -361,8 +361,7 @@ Note that both in AD and RD, the n2 and n3 clusters are the same! We'd probably
 only pick N anyways, but at least we can do either n1 or n2, ad n3 won't add
 much (at least not for those 2 modalities).
 
-Now, let's compute the slopes and see if it's at
-all related to ADHD:
+Now, let's compute the slopes and see if it's at all related to ADHD:
 
 ```r
 b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
@@ -1139,3 +1138,84 @@ write.csv(hold, out_fname, row.names=F)
 ```
 
 It didn't work for total...
+
+# 2019-08-29 12:54:17
+
+Philip asked me to create a file with the SX and voxel value for each voxel in
+the heritable blobs, and also in each time point (i.e. no slopes). Let's work on
+that.
+
+```r
+b = read.csv('~/data/heritability_change/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+
+clu_names = c('ad_n1', 'rd_n2')
+b = c()
+for (cl in clu_names) {
+    fname = sprintf('~/data/heritability_change/%s.csv', cl)
+    b2 = read.csv(fname)
+    b = cbind(b, b2[, 2])
+}
+b = cbind(b2[, 1], b)
+colnames(b) = c('mask.id', clu_names)
+
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='mask.id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in clu_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +',
+                   'missingVolumes')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+df3 = mres[, c("Mask.ID...Scan", "Medical.Record...MRN...Subjects",
+               "Sex...Subjects", "Race.s....Subjects", "Ethnicity...Subjects",
+               "age_at_scan...Scan...Subjects", "SX_inatt",
+               "dateX.minus.dateY.months", "ad_n1", "rd_n2", "SX_HI",
+               "Extended.ID...FamilyIDs", "Nuclear.ID...FamilyIDs")]
+write.csv(df3, file='~/data/heritability_change/dti_sig_cluster_for_philip.csv',
+          row.names=F)
+```
