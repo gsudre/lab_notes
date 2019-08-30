@@ -1,21 +1,13 @@
-# 2019-08-15 15:57:32
+# 2019-08-30 16:11:55
 
-Using the design files for 36P gave us a few other functional connectivity
-atlases as a bonus. One of them is the Schaefer 2018 atlas, which comes form the
-same Yeo lab. So, it has a nice many-to-one match to Yeo networks. Let's
-consense it that way, which gives less comparisons and it's a bit more similar
-to our previous work.
-
-https://github.com/ThomasYeoLab/CBIG/tree/master/stable_projects/brain_parcellation/Schaefer2018_LocalGlobal
-
-So, let's condense the network, starting with 100 nodes because it goes faster
-that way:
+As I mentioned in note 36, let me see how goo the results are if I use a ROI to
+netowkr matrix. I'll try 100 and 400 ROIs, just for starters.
 
 ```R
-source('~/research_code/fmri/make_schaefer_condensed_data_FD.R')
+source('~/research_code/fmri/make_schaefer_roi2nets_data_FD.R')
 ```
 
-# 2019-08-16 11:18:26
+<!-- # 2019-08-16 11:18:26
 
 And let's make sure that residualizing the connections before taking the slope takes
 care of all associations with FD:
@@ -312,11 +304,11 @@ Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_re
 Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_slopes_n296_08152019: 3
 Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_residSlopes_n260_08162019: 2
 Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_slopes_n260_08162019: 2
-```
+``` -->
 
-Nothing collapsed :(
 
 # TODO:
 
+* try the single region connectivity idea
 * how about connectivity of each of the 400 to each of the networks? e.g. 400x
-  14 or 400 by 7 matrix?
+  14 or 400 by 7 matrix? -->
