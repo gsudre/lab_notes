@@ -288,6 +288,101 @@ yeo
 And I don't think the perms will make much difference here, so I won't even run
 them. Let's put our eggs in the p25 basket for now.
 
+# 2019-09-04 08:34:33
+
+Time to compile the p25 results.
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in {0..6}; do
+    for suf in '' '_Z'; do
+        phen=yeo_masks_grayp25_slopesFam_net${i}${suf};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+cp polygen*yeo_masks_grayp25_slopesFam_net*nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/
+for i in {0..6}; do
+    for suf in '' '_Z'; do
+        phen=yeo_masks_grayp25_slopesFam_net${i}${suf};
+        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
+            -savemask ${phen}_grayFamp25_NN1_clusters.nii -NN1 40 \
+            polygen_results_${phen}.nii >> NN1_yeo_masks_grayFamp25_results.txt;
+    done
+done
+```
+
+All: ('' / '_Z')
+0: 69 / 72
+1: 0 / 0
+2: 0 / 0 
+3: 42 / 0
+4: 54 / 54
+5: 0 / 45
+6: 54 / 59
+
+Fam: ('' / '_Z')
+0: 68 / 43
+1: 0 / 0
+2: 0 / 0
+3: 0 / 0
+4: 0 / 60
+5: 0 / 0
+6: 0 / 59
+
+In general, the _Z results were a tiny bit betetr. Then, comparing Fam and all
+results, All was better (bigger clusters). But nothing Earth-shattering. We
+could potentially do this just for DMN and see if it looks good? I didn't run any perms for these, and they might work
+especially because they're at about the same range as the other ones. It's a
+smaller sample so we will need perms again. Let's do perms just for DMN as see
+how big of a cluster we need, both in Fam and in All:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in '' 'Fam'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen_file=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
+        swarm_file=swarm.ymgp256${i}_p${perm};
+
+        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+    done;
+done
+
+for i in '' 'Fam'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        jname=ymgp256${i}_p${perm};
+        swarm_file=swarm.${jname};
+        echo "ERROR" > swarm_wait;
+        while grep -q ERROR swarm_wait; do
+            echo "Trying $jname"
+            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                    --partition quick,norm 2> swarm_wait;
+            if grep -q ERROR swarm_wait; then
+                echo -e "\tError, sleeping..."
+                sleep 30m;
+            fi;
+        done;
+    done;
+done
+```
+
+
 
 <!--
 
