@@ -382,7 +382,102 @@ for i in '' 'Fam'; do
 done
 ```
 
+# 2019-09-05 09:35:26
 
+Now let's compile:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in '' 'Fam'; do
+    for p in {1..25}; do
+        perm=`printf %03d $p`;
+        phen=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_grayp25_slopes${i}_net6_Z
+csize=59;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+Well, that's good. I got 0 times for a cluster size 59 or more... let's bump it
+up to 100 perms to see if it gets better:
+
+```r
+start=26
+suf = '6_Z'
+m = 'yeo_masks'
+nperms = 100
+step=5
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_grayp25_slopesFam_net%s.csv', m, suf),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_grayp25_slopesFam_net%s_p%03d.csv', m, suf, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+And when that's done running, we fire up the remaining perms:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for i in '' 'Fam'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        phen_file=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
+        swarm_file=swarm.ymgp256${i}_p${perm};
+
+        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+        done;
+    done;
+done
+
+for i in '' 'Fam'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        jname=ymgp256${i}_p${perm};
+        swarm_file=swarm.${jname};
+        echo "ERROR" > swarm_wait;
+        while grep -q ERROR swarm_wait; do
+            echo "Trying $jname"
+            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                    --partition quick,norm 2> swarm_wait;
+            if grep -q ERROR swarm_wait; then
+                echo -e "\tError, sleeping..."
+                sleep 30m;
+            fi;
+        done;
+    done;
+done
+```
 
 <!--
 
