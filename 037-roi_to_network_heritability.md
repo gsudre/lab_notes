@@ -251,65 +251,14 @@ something in FDR???
 
 Interesting... let's see what they are...
 
+# 2019-09-06 10:26:38
 
-# TODO
-* Try the 400 rois dataset just for kicks...
-
-<!-- # 2019-08-16 11:18:26
-
-And let's make sure that residualizing the connections before taking the slope takes
-care of all associations with FD:
-
-```r
-a = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_slopes_n146_08152019.csv')
-mycols = colnames(a)[grepl(colnames(a), pattern='connMedian')]
-ar = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_residSlopes_n146_08152019.csv')
-ps = sapply(mycols, function(x) cor.test(a$qc, a[, x], method='spearman')$p.value)
-sum(ps<.05)
-[1] 28
-ps2 = p.adjust(ps, method='fdr')
-sum(ps2<.05)
-[1] 28
-ps = sapply(mycols, function(x) cor.test(ar$qc, ar[, x], method='spearman')$p.value)
-sum(ps<.05)
-[1] 0
-idx = grepl(colnames(ar), pattern='conn')
-write.table(colnames(ar)[idx],
-            file='~/data/heritability_change/condensed_schaefer100_conns.txt',
-            col.names=F, row.names=F, quote=F)
-```
-
-OK, let's see if there is any heritability in the condensed matrices.
-
-```bash
-# desktop
-# remove the double quotes from the files otherwise SOLAR can't run
-cd ~/data/heritability_change/
-for f in `/bin/ls rsfmri_fc-36p_despike_schaefer100Condensed*08152019.csv`; do
-    sed -i -e "s/\"//g" $f;
-done
-```
-
-This should take too long to run, so we can do it in the desktop or even
-interactively:
-
-```bash
-cd ~/data/heritability_change/
-rm swarm.sch100c
-for f in `/bin/ls rsfmri_fc-36p_despike_schaefer100Condensed*081?2019.csv`; do
-    phen=`echo $f | sed "s/\.csv//"`;
-    echo "bash ~/research_code/run_solar_parallel.sh $phen " \
-        "~/data/heritability_change/condensed_schaefer100_conns.txt" >> swarm.sch100c;
-done
-# these run quite fast, so I can just run it all here:
-bash swarm.sch100c
-```
-
-And collect everything:
+The 400 ROI analysis ran overnight. Let's see if the results are better or
+worse...
 
 ```bash
 cd ~/data/tmp;
-for f in `/bin/ls ~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100Condensed*081?2019.csv`; do
+for f in `/bin/ls ~/data/heritability_change/rsfmri_fc-36p_despike_schaefer400roi2nets_*_09052019.csv`; do
     pheno=`echo $f | sed "s/\.csv//" | cut -d"/" -f 6`;
     echo "Working on $pheno";
     cd $pheno;
@@ -317,52 +266,42 @@ for f in `/bin/ls ~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100Co
     echo "  Compiling...";
     python ~/research_code/compile_solar_multivar_results.py $pheno;
     echo "  Cleaning up...";
-    rm conn*;
+    rm *.out;
     cd ..;
 done
 ```
 
-Now it's a matter of checking the figures for heritable connections like before.
-Or we could maybe rank all figures just so we have an idea of the best ones
-first:
+As usual, let's ran the different files by how many significant connections each
+one has:
 
 ```r
-nverts = 7
 mydir = '~/data/heritability_change/'
-
-fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_schaefer100C.*lopes.*\\.csv')
+nnets = 7
+nrois = 400
+fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_.*s.*\\.csv')
+roi_names = sapply(1:nrois, function(x) sprintf('roi%03d', x))
 map_names = c()
 sig_conns = c()
 for (fname in fnames) {
     # read in the results
     res = read.csv(sprintf('%s/%s', mydir, fname))
     # figuring out possible connections
-    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
-    conns = unique(conns)
-    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
-    for (m in c('Max', 'Mean', 'Median')) {
-        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                              vert_names))
-        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                               vert_names))
-        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
-        for (r in 1:nrow(mres)) {
-            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
-            ij = strsplit(junk, 'TO')[[1]]
-            vals[ij[1], ij[2]] = mres[r, 'h2r']
-            stats[ij[1], ij[2]] = mres[r, 'h_pval']
-            vals[ij[2], ij[1]] = mres[r, 'h2r']
-            stats[ij[2], ij[1]] = mres[r, 'h_pval']
-        }
-
-        myps = stats[upper.tri(stats, diag=T)]
-        p2 = p.adjust(myps, method='fdr')
-        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
-        phen = sprintf('%s_%s', m, junk[length(junk)])
-        # sig_conns = c(sig_conns, sum(p2 < .05))
-        sig_conns = c(sig_conns, sum(myps < .05))
-        map_names = c(map_names, phen)
+    nets = sapply(as.character(res$phen), function(x) strsplit(x, 'TO')[[1]][1])
+    nets = unique(nets)        
+    vals = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+    stats = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+    for (r in 1:nrow(res)) {
+        ij = strsplit(as.character(res$phen[r]), 'TO')[[1]]
+        rname = sprintf('roi%s', ij[2])
+        cname = ij[1]
+        vals[rname, cname] = res[r, 'h2r']
+        stats[rname, cname] = res[r, 'h_pval']
     }
+    p2 = p.adjust(stats, method='fdr')
+    phen = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+    sig_conns = c(sig_conns, sum(p2 < .05, na.rm=T))
+    # sig_conns = c(sig_conns, sum(stats < .05, na.rm=T))
+    map_names = c(map_names, phen)
 }
 s = sort(sig_conns, index.return=T, decreasing=T)
 for (i in 1:10) {
@@ -370,193 +309,375 @@ for (i in 1:10) {
 }
 ```
 
-Nothing significant using FDR, but this is what comes up when I use nominal ps:
-
 ```
-Median_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_slopes_n146_08152019: 10
-Median_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_residSlopes_n146_08152019: 9
-Mean_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_residSlopes_n146_08152019: 6
-Mean_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_slopes_n146_08152019: 6
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD2.50_residSlopes_n296_08162019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD2.50_slopes_n296_08162019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_residSlopes_n296_08152019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_slopes_n296_08152019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_residSlopes_n260_08162019: 2
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_slopes_n260_08162019: 2
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD1.00_slopes_n260_09052019: 756
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.75_slopes_n238_09052019: 588
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.50_slopes_n210_09052019: 565
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.25_slopes_n146_09052019: 544
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD2.50_slopes_n296_09052019: 510
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_slopes_n146_09052019: 236
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_residSlopes_n146_09052019: 224
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.25_residSlopes_n146_09052019: 209
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_residSlopes_n210_09052019: 138
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.50_residSlopes_n210_09052019: 137
 ```
 
-OK, so let's check how the pictures look:
+And that's out of 2800 connections. So, our top has 27% of significant
+connections. If I look at FDR correct values instead, then I get:
+
+```
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD1.00_slopes_n260_09052019: 615
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.75_slopes_n238_09052019: 407
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.50_slopes_n210_09052019: 386
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.25_slopes_n146_09052019: 333
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD2.50_slopes_n296_09052019: 184
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_residSlopes_n146_09052019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_slopes_n146_09052019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_residSlopes_n210_09052019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_slopes_n210_09052019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.75_residSlopes_n238_09052019: 0
+```
+
+Oh wait... are we removing movement here? Yep... we were when significant! OK
+then. Now we need to decide which FD threshold we'll keep, and whether we'll use
+the 100 or the 400 set. We could make pictures of the heritability, then
+association, then intersection, and see if there is a trend, and what looks
+best.
+
+The last stage, of course, will be to make plots of the brain with network and
+ROI colors, so that we can best interpret the results.
+
+## Association analysis
 
 ```r
-#desktop
-nverts = 7
-mydir = '~/data/heritability_change/'
-library(corrplot)
+library(nlme)
+dd = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD1.00_slopes_n260_09052019.csv')
+dd$Medical.Record...MRN = as.numeric(as.character(dd$ID))
+# to get famID
+tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+tmp$famID = sapply(1:nrow(tmp), function(x)
+                                if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                    tmp$Nuclear.ID...FamilyIDs[x]
+                                }
+                                else {
+                                    tmp$Extended.ID...FamilyIDs[x]
+                                }
+                  )
+tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+data = merge(dd, tmp3, by='Medical.Record...MRN', all.x=T, all.y=F)
+targets = colnames(data)[grepl(colnames(data), pattern='TO')]
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+for (t in predictors) {
+    data[, t] = as.numeric(as.character(data[, t]))
+}
+out_fname = '~/data/heritability_change/assoc_LME_100posOnlyFD1.csv'
 
-fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_schaefer100C.*lopes.*\\.csv')
-for (fname in fnames) {
-    # read in the results
-    cat(sprintf('Reading in %s\n', fname))
-    res = read.csv(sprintf('%s/%s', mydir, fname))
-    # figuring out possible connections
-    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
-    conns = unique(conns)
-    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
-    for (m in c('Max', 'Mean', 'Median')) {
-        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                              vert_names))
-        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                               vert_names))
-        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
-        for (r in 1:nrow(mres)) {
-            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
-            ij = strsplit(junk, 'TO')[[1]]
-            vals[ij[1], ij[2]] = mres[r, 'h2r']
-            stats[ij[1], ij[2]] = mres[r, 'h_pval']
-            vals[ij[2], ij[1]] = mres[r, 'h2r']
-            stats[ij[2], ij[1]] = mres[r, 'h_pval']
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+               'DX2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
         }
-        # plotting
-        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
-        phen = sprintf('%s_%s', m, junk[length(junk)])
-        pdf(sprintf('~/tmp/%s.pdf', phen))
-        corrplot(vals, type="upper", method='color', diag=T,
-                p.mat = stats, sig.level = .05, insig = "blank", is.corr=F, tl.cex=.8)
-        title(phen, cex.main=.8)
-        dev.off()
     }
 }
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub('.csv', x=out_fname, '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline' )
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub('dx1', x=out_fname, 'dx2')
+hold=NULL
+for (i in targets) {
+    cat(sprintf('%s\n', i))
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
 ```
 
-No, unfortunately it's all like this:
-
-![](images/2019-08-16-14-11-38.png)
-
-So, somatomotor dominating everything, even thought I have removed QC slope
-already. Maybe it's real, just not that interesting. 
-
-## Single region connectivity?
-
-What if I used the 400 schaefer parcellation and calculated overall connectivity
-for each region? Maybe that would survive FDR? Then we could go stepwise to
-check what regions are connected to a particular node.
-
-```R
-source('~/research_code/fmri/make_schaefer_collapsed_data_FD.R')
-```
-
-# 2019-08-19 11:13:01
-
-OK, let's see then if any of these overall connections is heritable:
-
-```bash
-# desktop
-# remove the double quotes from the files otherwise SOLAR can't run
-cd ~/data/heritability_change/
-for f in `/bin/ls rsfmri_fc-36p_despike_schaefer100Collapsed*08192019.csv`; do
-    sed -i -e "s/\"//g" $f;
-done
-```
-
-This should take too long to run, so we can do it in the desktop or even
-interactively:
-
-```bash
-cd ~/data/heritability_change/
-rm swarm.sch100col
-for f in `/bin/ls rsfmri_fc-36p_despike_schaefer100Collapsed*08192019.csv`; do
-    phen=`echo $f | sed "s/\.csv//"`;
-    echo "bash ~/research_code/run_solar_parallel.sh $phen " \
-        "~/data/heritability_change/collapsed_schaefer100_conns.txt" >> swarm.sch100col;
-done
-# these run quite fast, so I can just run it all here:
-module load solar
-bash swarm.sch100col
-```
-
-And collect everything:
-
-<!-- ```bash
-cd ~/data/tmp;
-for f in `/bin/ls ~/data/heritability_change/rsfmri_fc-36p_despike_schaefer100Condensed*081?2019.csv`; do
-    pheno=`echo $f | sed "s/\.csv//" | cut -d"/" -f 6`;
-    echo "Working on $pheno";
-    cd $pheno;
-    tar -zxf *tgz;
-    echo "  Compiling...";
-    python ~/research_code/compile_solar_multivar_results.py $pheno;
-    echo "  Cleaning up...";
-    rm conn*;
-    cd ..;
-done
-``` -->
-
-Now it's a matter of checking the figures for heritable connections like before.
-Or we could maybe rank all figures just so we have an idea of the best ones
-first:
+I'm running the code above in separate R instances to go faster. But then, the
+idea is to compile the data in the same ways we were compiling the heritability
+results. Except that now we have multiple different predictors to account for:
 
 ```r
-nverts = 7
 mydir = '~/data/heritability_change/'
-
-fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_schaefer100C.*lopes.*\\.csv')
-map_names = c()
-sig_conns = c()
-for (fname in fnames) {
-    # read in the results
-    res = read.csv(sprintf('%s/%s', mydir, fname))
-    # figuring out possible connections
-    conns = sapply(as.character(res$phen), function(x) strsplit(x, '_')[[1]][2])
-    conns = unique(conns)
-    vert_names = unique(unlist(lapply(conns, function(x) strsplit(x, 'TO')[[1]])))
-    for (m in c('Max', 'Mean', 'Median')) {
-        vals = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                              vert_names))
-        stats = matrix(nrow=nverts, ncol=nverts, dimnames=list(vert_names,
-                                                               vert_names))
-        mres = res[grepl(res$phen, pattern=sprintf('conn%s', m)), ]
+nnets = 7
+nrois = 100
+fnames = list.files(mydir, pattern='assoc_LME_100posOnlyFD.*\\.csv')
+roi_names = sapply(1:nrois, function(x) sprintf('roi%03d', x))
+for (pred in c('SX_inatt', 'SX_HI')) {
+    cat(sprintf('predictor: %s\n', pred))
+    map_names = c()
+    sig_conns = c()
+    sig_conns_fdr = c()
+    for (fname in fnames) {
+        # read in the results
+        res = read.csv(sprintf('%s/%s', mydir, fname))
+        # figuring out possible connections
+        nets = sapply(as.character(res$target), function(x) strsplit(x, 'TO')[[1]][1])
+        nets = unique(nets)
+        nets = nets[!is.na(nets)]
+        vals = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+        stats = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+        mres = res[which(res$predictor==pred & res$term==pred), ]
         for (r in 1:nrow(mres)) {
-            junk = gsub(sprintf('conn%s_', m), x=mres$phen[r], '')
-            ij = strsplit(junk, 'TO')[[1]]
-            vals[ij[1], ij[2]] = mres[r, 'h2r']
-            stats[ij[1], ij[2]] = mres[r, 'h_pval']
-            vals[ij[2], ij[1]] = mres[r, 'h2r']
-            stats[ij[2], ij[1]] = mres[r, 'h_pval']
+            ij = strsplit(as.character(mres$target[r]), 'TO')[[1]]
+            rname = sprintf('roi%s', ij[2])
+            cname = ij[1]
+            vals[rname, cname] = mres[r, 't.value']
+            stats[rname, cname] = mres[r, 'p.value']
         }
-
-        myps = stats[upper.tri(stats, diag=T)]
-        p2 = p.adjust(myps, method='fdr')
-        junk = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
-        phen = sprintf('%s_%s', m, junk[length(junk)])
-        # sig_conns = c(sig_conns, sum(p2 < .05))
-        sig_conns = c(sig_conns, sum(myps < .05))
+        p2 = p.adjust(stats, method='fdr')
+        phen = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+        sig_conns_fdr = c(sig_conns_fdr, sum(p2 < .05, na.rm=T))
+        sig_conns = c(sig_conns, sum(stats < .05, na.rm=T))
         map_names = c(map_names, phen)
     }
+    cat('Nominal\n')
+    s = sort(sig_conns, index.return=T, decreasing=T)
+    for (i in 1:10) {
+        cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+    }
+    cat('FDR\n')
+    s = sort(sig_conns_fdr, index.return=T, decreasing=T)
+    for (i in 1:10) {
+        cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+    }
 }
+```
+
+Association after FDR is getting a bit difficult, but maybe we can restrict it
+to only the heritable connections? This way we'll have less comparison to deal
+with.
+
+In any case, it still worked for p25, which might be what we end up with anyways
+because of the stricter threshold on movement:
+
+```
+predictor: SX_inatt
+Nominal
+assoc_LME_100posOnlyFDp25: 124
+assoc_LME_100posOnlyFD1: 101
+assoc_LME_100posOnlyFDp5: 77
+assoc_LME_100posOnlyFDp75: 60
+assoc_LME_100posOnlyFD1_dx2: 41
+assoc_LME_100posOnlyFD1_dx1: 38
+assoc_LME_100posOnlyFDp75_dx2: 18
+assoc_LME_100posOnlyFDp5_dx2: 16
+assoc_LME_100posOnlyFDp25_dx1: 14
+assoc_LME_100posOnlyFDp75_dx1: 14
+FDR
+assoc_LME_100posOnlyFDp25: 7
+assoc_LME_100posOnlyFDp25_dx1: 1
+assoc_LME_100posOnlyFD1_dx1: 0
+assoc_LME_100posOnlyFD1_dx2: 0
+assoc_LME_100posOnlyFD1: 0
+assoc_LME_100posOnlyFDp25_dx2: 0
+assoc_LME_100posOnlyFDp5_dx1: 0
+assoc_LME_100posOnlyFDp5_dx2: 0
+assoc_LME_100posOnlyFDp5: 0
+assoc_LME_100posOnlyFDp75_dx1: 0
+predictor: SX_HI
+Nominal
+assoc_LME_100posOnlyFDp75: 91
+assoc_LME_100posOnlyFD1: 64
+assoc_LME_100posOnlyFD1_dx2: 55
+assoc_LME_100posOnlyFDp5: 39
+assoc_LME_100posOnlyFDp25: 32
+assoc_LME_100posOnlyFDp75_dx2: 32
+assoc_LME_100posOnlyFD1_dx1: 27
+assoc_LME_100posOnlyFDp5_dx2: 26
+assoc_LME_100posOnlyFDp5_dx1: 22
+assoc_LME_100posOnlyFDp25_dx2: 17
+FDR
+assoc_LME_100posOnlyFD1_dx1: 0
+assoc_LME_100posOnlyFD1_dx2: 0
+assoc_LME_100posOnlyFD1: 0
+assoc_LME_100posOnlyFDp25_dx1: 0
+assoc_LME_100posOnlyFDp25_dx2: 0
+assoc_LME_100posOnlyFDp25: 0
+assoc_LME_100posOnlyFDp5_dx1: 0
+assoc_LME_100posOnlyFDp5_dx2: 0
+assoc_LME_100posOnlyFDp5: 0
+assoc_LME_100posOnlyFDp75_dx1: 0
+```
+
+With 400 connections, we get:
+
+```
+predictor: SX_inatt
+Nominal
+assoc_LME_400posOnlyFD1: 350
+assoc_LME_400posOnlyFDp25: 342
+assoc_LME_400posOnlyFDp75: 271
+assoc_LME_400posOnlyFD1_dx2: 179
+assoc_LME_400posOnlyFD1_dx1: 116
+assoc_LME_400posOnlyFDp5: 101
+assoc_LME_400posOnlyFDp75_dx2: 82
+assoc_LME_400posOnlyFDp25_dx1: 63
+assoc_LME_400posOnlyFDp75_dx1: 47
+assoc_LME_400posOnlyFDp5_dx2: 41
+FDR
+assoc_LME_400posOnlyFDp25: 4
+assoc_LME_400posOnlyFDp25_dx1: 3
+assoc_LME_400posOnlyFDp25_dx2: 2
+assoc_LME_400posOnlyFD1_dx1: 1
+assoc_LME_400posOnlyFDp75_dx1: 1
+assoc_LME_400posOnlyFD1_dx2: 0
+assoc_LME_400posOnlyFD1: 0
+assoc_LME_400posOnlyFDp5_dx1: 0
+assoc_LME_400posOnlyFDp5_dx2: 0
+assoc_LME_400posOnlyFDp5: 0
+predictor: SX_HI
+Nominal
+assoc_LME_400posOnlyFDp75: 265
+assoc_LME_400posOnlyFD1: 259
+assoc_LME_400posOnlyFD1_dx2: 208
+assoc_LME_400posOnlyFD1_dx1: 132
+assoc_LME_400posOnlyFDp25: 112
+assoc_LME_400posOnlyFDp75_dx2: 110
+assoc_LME_400posOnlyFDp75_dx1: 68
+assoc_LME_400posOnlyFDp5: 64
+assoc_LME_400posOnlyFDp25_dx1: 62
+assoc_LME_400posOnlyFDp5_dx2: 55
+FDR
+assoc_LME_400posOnlyFDp75_dx1: 3
+assoc_LME_400posOnlyFDp75: 1
+assoc_LME_400posOnlyFD1_dx1: 0
+assoc_LME_400posOnlyFD1_dx2: 0
+assoc_LME_400posOnlyFD1: 0
+assoc_LME_400posOnlyFDp25_dx1: 0
+assoc_LME_400posOnlyFDp25_dx2: 0
+assoc_LME_400posOnlyFDp25: 0
+assoc_LME_400posOnlyFDp5_dx1: 0
+assoc_LME_400posOnlyFDp5_dx2: 0
+```
+
+OK, so let's do a more principled approach. First, remove all the NAs. When
+dealing with positive only, remove all the NAs. Then, keep only the rows that
+are significant using FDR. Then, look at association only for those connections.
+
+```r
+fd = 1
+nrois = 100
+
+mydir = '~/data/heritability_change/'
+fmask = sprintf('polygen_results_.*er%droi2nets_posOnly_FD%.2f_slop.*s.*\\.csv', nrois, fd)
+fname = list.files(mydir, pattern=fmask)[1]  # has SOLAR results
+
+res = read.csv(sprintf('%s/%s', mydir, fname))
+# figuring out possible connections
+bad_conns = is.na(res$h_pval)
+res = res[!bad_conns, ]
+res$p2 = p.adjust(res$h_pval, method='fdr')
+cat(sprintf('Nominal p<.05 heritable: %d out of %d\n', sum(res$h_pval<.05), nrow(res)))
+cat(sprintf('FDR q<.05 heritable: %d\n', sum(res$p2<.05)))
+
+nets = sapply(as.character(res$phen), function(x) strsplit(x, 'TO')[[1]][1])
+nets = unique(nets)
+roi_names = sapply(as.character(res$phen), function(x) strsplit(x, 'TO')[[1]][2])
+roi_names = sapply(unique(roi_names), function(x) sprintf('roi%s', x))
+
+vals = matrix(nrow=length(roi_names), ncol=length(nets), dimnames=list(roi_names, nets))
+stats = matrix(nrow=length(roi_names), ncol=length(nets), dimnames=list(roi_names, nets))
+for (r in 1:nrow(res)) {
+    ij = strsplit(as.character(res$phen[r]), 'TO')[[1]]
+    rname = sprintf('roi%s', ij[2])
+    cname = ij[1]
+    vals[rname, cname] = res[r, 'h2r']
+    stats[rname, cname] = res[r, 'p2']
+}
+phen = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+
 s = sort(sig_conns, index.return=T, decreasing=T)
 for (i in 1:10) {
     cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
 }
 ```
 
-Nothing significant using FDR, but this is what comes up when I use nominal ps:
+I had to stop this analysis because I was getting several results with
+heritability==1, which is quite weird (e.g. ContTO012 and ContTO020 in
+rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.25_slopes_n146_09052019.csv).
+Need to check what's going on there. Yes, it looks like lots of NAs!
 
-```
-Median_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_slopes_n146_08152019: 10
-Median_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_residSlopes_n146_08152019: 9
-Mean_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_residSlopes_n146_08152019: 6
-Mean_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD0.25_slopes_n146_08152019: 6
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD2.50_residSlopes_n296_08162019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD2.50_slopes_n296_08162019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_residSlopes_n296_08152019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_posOnly_FD2.50_slopes_n296_08152019: 3
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_residSlopes_n260_08162019: 2
-Max_polygen_results_rsfmri_fc-36p_despike_schaefer100Condensed_FD1.00_slopes_n260_08162019: 2
-``` -->
+So, for posOnly we get lots of NAs whenever one of the two scans had NA for the
+connection. Also, that's why it's still possible to have negative data, because
+it's the slope of two positive connections over time. In any case, if we have
+many NAs for any connection, then the heritability estimate might be unstable.
+In that situation we're getting too high heritability values. So, we'll need to
+figure out the proportion of NAs we can still rely on for the heritability
+estimate. So, far I'm seeing more than 63% causing instability, but that's in
+the 146 dataset. 
+
+But it doesn't look like SOLAR is pulling the correct number of individuals
+either... OK, I was missing 3 of them from the pedigree file. Actually, let's
+make sure everyone in the FD2.5 file is there, just in case.
+
+These were missing:
+
+7766622
+7212288
+7762197
+7746465
+4540621
+7600811
+
+At least for DTI they're all there.
+
+OK, so I fixed the pedigree file, and I noticed that I need to make sure all my
+csv fileas have NA in them, not NaN! Also, I should probably change the
+compilation function as well to grab the number of individuals we're using, just
+in case... the H2 is still high, but the p-value isn't as good anymore.
 
 
-# TODO:
 
-* try the single region connectivity idea
-* how about connectivity of each of the 400 to each of the networks? e.g. 400x
-  14 or 400 by 7 matrix? -->
+
