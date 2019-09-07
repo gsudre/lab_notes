@@ -678,6 +678,8 @@ csv fileas have NA in them, not NaN! Also, I should probably change the
 compilation function as well to grab the number of individuals we're using, just
 in case... the H2 is still high, but the p-value isn't as good anymore.
 
+Now, redoing everything, but using the files from 0906 instead...
+
 
 
 
