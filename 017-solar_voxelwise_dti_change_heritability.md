@@ -1219,3 +1219,218 @@ df3 = mres[, c("Mask.ID...Scan", "Medical.Record...MRN...Subjects",
 write.csv(df3, file='~/data/heritability_change/dti_sig_cluster_for_philip.csv',
           row.names=F)
 ```
+
+# 2019-09-12 11:04:25
+
+Let's create cluster averages for slopes and their baseline values:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+pct = m$missingVolumes / m$numVolumes
+idx = m$norm.trans < 5 & m$norm.rot < .1 & pct < .15
+m = m[idx,]
+# down to 902 scans
+keep_me = c()
+for (s in unique(m$Medical.Record...MRN...Subjects)) {
+    subj_scans = m[m$Medical.Record...MRN...Subjects==s, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                 format="%m/%d/%Y")
+    if (length(dates) >= 2) {
+        sdates = sort(dates)  # not sure why index.return is not working...
+        # make sure there is at least 6 months between scans
+        next_scan = 2
+        while (((sdates[next_scan] - sdates[1]) < 180) && (next_scan < length(sdates))) {
+            next_scan = next_scan + 1
+        }
+        first_scan_age = subj_scans[dates==sdates[1], 'age_at_scan...Scan...Subjects']
+        if (((sdates[next_scan] - sdates[1]) >= 180) && (first_scan_age < 26)) {
+            idx1 = which(dates == sdates[1])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx1, 'Mask.ID...Scan']))
+            idx2 = which(dates == sdates[next_scan])
+            keep_me = c(keep_me, which(m$Mask.ID...Scan == subj_scans[idx2, 'Mask.ID...Scan']))
+        }
+    }
+}
+m2 = m[keep_me, ]
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(m2, clin, unique(m2$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+clu_names = c('ad_n1', 'ad_n2', 'ad_n3',
+              'rd_n1', 'rd_n1_2', 'rd_n1_3', 'rd_n2', 'rd_n3',
+              'fa_n1', 'fa_n2', 'fa_n2_2', 'fa_n3')
+b = c()
+for (cl in clu_names) {
+    fname = sprintf('/Volumes/Shaw/dti_robust_tsa/heritability/%s.csv', cl)
+    b2 = read.csv(fname)
+    b = cbind(b, b2[, 2])
+}
+b = cbind(b2[, 1], b)
+colnames(b) = c('mask.id', clu_names)
+tract_names = colnames(b)[2:ncol(b)]
+
+df2 = merge(df, b, by.x='Mask.ID...Scan', by.y='mask.id')
+
+library(MASS)
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str,
+                   'norm.rot + I(norm.rot^2) + norm.trans + I(norm.trans^2) +',
+                   'missingVolumes')
+    res.lm <- lm(as.formula(fm_str), data = mres, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    y = mres[idx[2], tract_names] - mres[idx[1], tract_names]
+    x = mres[idx[2], 'age_at_scan...Scan...Subjects'] - mres[idx[1], 'age_at_scan...Scan...Subjects']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    row = c(row, mres[idx[base_DOA], tract_names])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+tract_base = sapply(tract_names, function(x) sprintf('%s_baseline', x))
+colnames(res) = c('ID', 'sex', tract_names, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', tract_base,
+                                              'DX', 'DX2'))
+
+# make sure every family has at least two people
+good_nuclear = names(table(m2$Nuclear.ID...FamilyIDs))[table(m2$Nuclear.ID...FamilyIDs) >= 4]
+good_extended = names(table(m2$Extended.ID...FamilyIDs))[table(m2$Extended.ID...FamilyIDs) >= 4]
+keep_me = c()
+for (f in good_nuclear) {
+    keep_me = c(keep_me, m2[which(m2$Nuclear.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+for (f in good_extended) {
+    keep_me = c(keep_me, m2[which(m2$Extended.ID...FamilyIDs == f),
+                            'Medical.Record...MRN...Subjects'])
+}
+keep_me = unique(keep_me)
+
+fam_subjs = c()
+for (s in keep_me) {
+    fam_subjs = c(fam_subjs, which(res[, 'ID'] == s))
+}
+res2 = res[fam_subjs, ]
+res2 = res2[res2[, 'ID'] != 7221745, ]
+
+write.csv(res2, file='~/data/heritability_change/dti_clusters_residNoSex_OLS_naSlopes133AndBaseline.csv',
+          row.names=F, na='', quote=F)
+```
+
+Now we try genetic correlation (function dti_clusters_base_slope_correlation in
+SOLAR).
+
+```bash
+cd ~/data/heritability_change/dti_clusters_base_slope_correlation
+grep -r RhoG */polygenic.out
+```
+
+```
+ad_n1_AND_basead_n1/polygenic.out:                       RhoG is -0.0431550
+ad_n1_AND_basead_n1/polygenic.out:             RhoG Std. Error:  0.5412052
+ad_n1_AND_basead_n1/polygenic.out:             RhoG different from zero  p = 0.9385874
+ad_n1_AND_basead_n1/polygenic.out:             RhoG different from -1.0  p = 0.2559219
+ad_n2_AND_basead_n2/polygenic.out:                       RhoG is -0.3469303
+ad_n2_AND_basead_n2/polygenic.out:             RhoG Std. Error:  0.2456382
+ad_n2_AND_basead_n2/polygenic.out:             RhoG different from zero  p = 1
+ad_n2_AND_basead_n2/polygenic.out:             RhoG different from -1.0  p = 0.0109456
+fa_n1_AND_basefa_n1/polygenic.out:                       RhoG is -0.3089691
+fa_n1_AND_basefa_n1/polygenic.out:             RhoG Std. Error:  0.2470575
+fa_n1_AND_basefa_n1/polygenic.out:             RhoG different from zero  p = 0.2597048
+fa_n1_AND_basefa_n1/polygenic.out:             RhoG different from -1.0  p = 0.0014931
+fa_n2_2_AND_basefa_n2_2/polygenic.out:                   RhoG is -0.5063867
+fa_n2_2_AND_basefa_n2_2/polygenic.out:         RhoG Std. Error:  0.2234823
+fa_n2_2_AND_basefa_n2_2/polygenic.out:         RhoG different from zero  p = 0.0347377
+fa_n2_2_AND_basefa_n2_2/polygenic.out:         RhoG different from -1.0  p = 0.0291344
+fa_n2_AND_basefa_n2/polygenic.out:                       RhoG is 0.2916344
+fa_n2_AND_basefa_n2/polygenic.out:             RhoG Std. Error:  2.4129492
+fa_n2_AND_basefa_n2/polygenic.out:             RhoG different from zero  p = 0.8338983
+fa_n2_AND_basefa_n2/polygenic.out:             RhoG different from 1.0   p = 0.4670722
+fa_n3_AND_basefa_n3/polygenic.out:                       RhoG is 0.0761690
+fa_n3_AND_basefa_n3/polygenic.out:             RhoG Std. Error:  0.5293930
+fa_n3_AND_basefa_n3/polygenic.out:             RhoG different from zero  p = 0.8810121
+fa_n3_AND_basefa_n3/polygenic.out:             RhoG different from 1.0   p = 0.1463704
+rd_n1_2_AND_baserd_n1_2/polygenic.out:                   RhoG is 1.0000000
+rd_n1_2_AND_baserd_n1_2/polygenic.out:         RhoG Std. Error:  Not Computable
+rd_n1_2_AND_baserd_n1_2/polygenic.out:         RhoG different from zero  p = 0.3339328
+rd_n1_3_AND_baserd_n1_3/polygenic.out:                   RhoG is 0.2379508
+rd_n1_3_AND_baserd_n1_3/polygenic.out:         RhoG Std. Error:  1.2379720
+rd_n1_3_AND_baserd_n1_3/polygenic.out:         RhoG different from zero  p = 0.8275006
+rd_n1_3_AND_baserd_n1_3/polygenic.out:         RhoG different from 1.0   p = 0.3629477
+rd_n1_AND_baserd_n1/polygenic.out:                       RhoG is -0.7314625
+rd_n1_AND_baserd_n1/polygenic.out:             RhoG Std. Error:  0.1728570
+rd_n1_AND_baserd_n1/polygenic.out:             RhoG different from zero  p = 0.0016082
+rd_n1_AND_baserd_n1/polygenic.out:             RhoG different from -1.0  p = 0.0671435
+rd_n2_AND_baserd_n2/polygenic.out:                       RhoG is -0.5545692
+rd_n2_AND_baserd_n2/polygenic.out:             RhoG Std. Error:  0.3067576
+rd_n2_AND_baserd_n2/polygenic.out:             RhoG different from zero  p = 1
+rd_n2_AND_baserd_n2/polygenic.out:             RhoG different from -1.0  p = 0.1624866
+```
+
+Also interesting is RhoP:
+
+```
+ad_n1_AND_basead_n1/polygenic.out:             Derived Estimate of RhoP is -0.4526894
+ad_n2_AND_basead_n2/polygenic.out:             Derived Estimate of RhoP is -0.2907571
+fa_n1_AND_basefa_n1/polygenic.out:             Derived Estimate of RhoP is -0.3230527
+fa_n2_2_AND_basefa_n2_2/polygenic.out:         Derived Estimate of RhoP is -0.3651318
+fa_n2_AND_basefa_n2/polygenic.out:             Derived Estimate of RhoP is -0.2659582
+fa_n3_AND_basefa_n3/polygenic.out:             Derived Estimate of RhoP is -0.3910134
+rd_n1_2_AND_baserd_n1_2/polygenic.out:         Derived Estimate of RhoP is -0.2319629
+rd_n1_3_AND_baserd_n1_3/polygenic.out:         Derived Estimate of RhoP is -0.2538339
+rd_n1_AND_baserd_n1/polygenic.out:             Derived Estimate of RhoP is -0.4430285
+rd_n2_AND_baserd_n2/polygenic.out:             Derived Estimate of RhoP is -0.3470776
+```
+
+OK, now we need to go back to SOLAR to interpret rhoG different than -1 and
+different than 0. We are definitely interested in the ones different than 0, but
+what does it mean to be different than -1? 

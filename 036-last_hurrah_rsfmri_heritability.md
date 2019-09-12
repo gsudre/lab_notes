@@ -479,6 +479,97 @@ for i in '' 'Fam'; do
 done
 ```
 
+# 2019-09-12 10:47:19
+
+Now let's compile:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for i in '' 'Fam'; do
+    for p in {26..100}; do
+        perm=`printf %03d $p`;
+        phen=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
+        mkdir $phen;
+        cd $phen;
+        cp ~/data/tmp/${phen}/*gz .;
+        for f in `/bin/ls *gz`; do tar -zxf $f; done
+        cd ..
+        python ~/research_code/fmri/compile_solar_voxel_results.py \
+            /lscratch/${SLURM_JOBID}/ $phen \
+            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+        rm -rf $phen;
+    done;
+done
+cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/perms/
+
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_grayp25_slopes${i}_net6_Z
+csize=59;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo $froot, negatives=${res}, perms=${nperms}, pval=$p
+```
+
+It survived for Fam, but not using everyone. Using Fam, we are at .01 for a
+cluster of size 59. 
+
+```
+polygen_results_yeo_masks_grayp25_slopes_net6_Z, negatives=87, perms=100, pval=.130
+polygen_results_yeo_masks_grayp25_slopesFam_net6_Z, negatives=99, perms=100, pval=.010
+```
+
+OK, so let's investigate that Fam cluster then. It was the only one at NN1, but
+at NN2 I have 67 and 43, and 67, 44, 40 at NN3. Do they survive?
+
+NN2 67 survives at .02, but not 43. I don't think 44 will either for NN3. What
+if we go for voxelwise .05? We have 213, 165 and 140 for NN1, 402, 318 and 173
+for NN2, and 632, 424, and 241 for NN3. Only NN2 402 survived at .04, but based
+on location it seems like it's the same as the .01 cluster. In NN3 we get 632 at
+.01. So, let's go with our original result then.
+
+Let's see where this DMN cluster is located:
+
+```
+-bash-4.2$ 3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI -NN1 40 polygen_results_${phen}.nii
+++ 3dclust: AFNI version=AFNI_19.2.23 (Sep  6 2019) [64-bit]
+++ Authored by: RW Cox et alii
+#
+#Cluster report for file polygen_results_yeo_masks_grayp25_slopesFam_net6_Z.nii
+#[Connectivity radius = 1.11 mm  Volume threshold = 320.00 ]
+#[Single voxel volume = 8.0 (microliters) ]
+#[Voxel datum type    = float ]
+#[Voxel dimensions    = 2.000 mm X 2.000 mm X 2.000 mm ]
+#[Coordinates Order   = LPI ]
+#[Fake voxel dimen    = 1.000 mm X 1.000 mm X 1.000 mm ]
+#Mean and SEM based on Absolute Value of voxel intensities:
+#
+#Volume  CM LR  CM PA  CM IS  minLR  maxLR  minPA  maxPA  minIS  maxIS    Mean     SEM    Max Int  MI LR  MI PA  MI IS
+#------  -----  -----  -----  -----  -----  -----  -----  -----  -----  -------  -------  -------  -----  -----  -----
+     59   57.6  -43.2   14.1   44.0   70.0  -48.0  -38.0    8.0   18.0   0.9381   0.0088        1   70.0  -42.0    8.0
+```
+
+![](images/2019-09-12-14-27-05.png) 
+
+![](images/2019-09-12-14-27-25.png)
+
+OK, the change in connectivity (slope) between the red blob (supramarginal gyrus
+/ angular gyrus / mtg) and the DMN is heritable (voxelwise p < .01, clusterwise
+p = .01). If we make this into a "voxelwise connectivity to the DMN" analysis,
+then we don't need correct across networks It's resting data, so I don't think
+it's too far fetched to do it that way. The blob itself is almost entirely
+contained in VAN, according to Yeo atlas.
+
+Now we do some more tests on this blob... how does it look like? If we include
+everyone, is it correlated to SX?
+
+
+
+
+
 <!--
 
 # 2019-08-16 11:30:03
