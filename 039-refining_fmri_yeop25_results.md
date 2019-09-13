@@ -1,56 +1,184 @@
-# 2019-08-30 08:20:52
+# 2019-09-13 09:24:14
 
-After the disappointing results I got yesterday with the p<.01 threshold, I
-wondered whether I could push them over the edge by considering everyone in the
-sample (instead of only kids with sibs) when calculating heritability. Or,
-another option would be to use a more stringent threshold (more than FD=1) to
-get cleaner data for SOLAR. Let's try those options.
-
-But I'll only run them for the results that were close:
-
-yeo
-'6': 60 (p=.081, n=98)
-'2': 57 (p=.1, n=100)
-'4': 59 (p=.05, n=100)
-
-My last resort will actually be to try a 400x7 connectivity matrix (or less than
-400... we'll see).
-
-```r
-mydir='~/data/heritability_change/xcp-36p_despike/'
-suf = ''
-for (ic in c(2, 4, 6)) {
-    for (suf in c('', '_Z')) {
-        print(ic)
-        print(suf)
-        fname = sprintf('%s/yeo_masks_gray_slopes_net%d%s.rds', mydir, ic, suf)
-        res = readRDS(fname)
-        fname = sprintf('%s/yeo_masks_gray_slopes_net%d%s.csv', mydir, ic, suf)
-        write.csv(res, file=fname, row.names=F, na='', quote=F)
-    }
-}
-```
+Now that I have some decent results using the Yeo mask in the DMN (p25 FD
+threshold, see note 37), let me try to make it a bit better. For starters, I
+noticed while playing with the roi2nets analysis that we were missing some
+subjects in the pedigree file. So, I added them. Let's first check that our
+cluster is still there and, if yes, if it still survives permutations. Note here
+that I'll need to run all 250 perms again, because of the new pedigree file.
+Still, we have a weekend coming up, so it should be an issue.
 
 ```bash
 cd ~/data/heritability_change/xcp-36p_despike;
-for i in 2 4 6; do
-    for suf in '' '_Z'; do
-        phen_file=yeo_masks_gray_slopes_net${i}${suf};
-        jname=ymAll_${i}${suf};
-        swarm_file=swarm.${jname};
+phen_file=yeo_masks_grayp25_slopesFam_net6_Z;
+jname=dmn;
+swarm_file=swarm.${jname};
 
-        rm -f $swarm_file;
-        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
-            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
-        done;
+rm -f $swarm_file;
+for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+    echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+        --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 \
+        --merge-output --partition quick,norm
+```
+
+Quick note that we only have 67 subjects in the Fam dataset... 
+
+Because the change was just in the pedigree file, I can reuse the previous
+random files, and just make new ones starting at 100.
+
+```r
+start=101
+suf = '6_Z'
+m = 'yeo_masks'
+nperms = 250
+step=10
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread(sprintf('~/data/heritability_change/%s_grayp25_slopesFam_net%s.csv', m, suf),
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))),
+          which(grepl("qc",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/%s_grayp25_slopesFam_net%s_p%03d.csv', m, suf, p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+SOLAR now sees all 67 subjects. Let's fire-up the permutation swarms:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+for p in {1..250}; do
+    perm=`printf %03d $p`;
+    phen_file=yeo_masks_grayp25_slopesFam_net6_Z_p${perm};
+    swarm_file=swarm.dmn_p${perm};
+
+    for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+        echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+    done;
+done
+
+for p in {1..250}; do
+    perm=`printf %03d $p`;
+    jname=dmn_p${perm};
+    swarm_file=swarm.${jname};
+    echo "ERROR" > swarm_wait;
+    while grep -q ERROR swarm_wait; do
+        echo "Trying $jname"
         swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
-                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 \
-                --merge-output --partition quick,norm
+                --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
+                --partition quick,norm 2> swarm_wait;
+        if grep -q ERROR swarm_wait; then
+            echo -e "\tError, sleeping..."
+            sleep 30m;
+        fi;
     done;
 done
 ```
 
-Then, while that's running, let's set up a few situations with cleaner data.
+And we can check if the result is still there:
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+phen=yeo_masks_grayp25_slopesFam_net6_Z;
+mkdir $phen;
+cd $phen;
+cp ~/data/tmp/${phen}/*gz .;
+for f in `/bin/ls *gz`; do tar -zxf $f; done
+cd ..
+python ~/research_code/fmri/compile_solar_voxel_results.py \
+    /lscratch/${SLURM_JOBID}/ $phen \
+    ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+rm -rf $phen;
+
+cp polygen_results_${phen}.nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
+    -savemask ${phen}_grayp25_NN1_clusters.nii -NN1 40 \
+    polygen_results_${phen}.nii;
+```
+
+```
+++ 3dclust: AFNI version=AFNI_19.2.23 (Sep  6 2019) [64-bit]
+++ Authored by: RW Cox et alii
+#
+#Cluster report for file polygen_results_yeo_masks_grayp25_slopesFam_net6_Z.nii 
+#[Connectivity radius = 1.11 mm  Volume threshold = 320.00 ]
+#[Single voxel volume = 8.0 (microliters) ]
+#[Voxel datum type    = float ]
+#[Voxel dimensions    = 2.000 mm X 2.000 mm X 2.000 mm ]
+#[Coordinates Order   = LPI ]
+#[Fake voxel dimen    = 1.000 mm X 1.000 mm X 1.000 mm ]
+#Mean and SEM based on Absolute Value of voxel intensities: 
+#
+#Volume  CM LR  CM PA  CM IS  minLR  maxLR  minPA  maxPA  minIS  maxIS    Mean     SEM    Max Int  MI LR  MI PA  MI IS
+#------  -----  -----  -----  -----  -----  -----  -----  -----  -----  -------  -------  -------  -----  -----  -----
+++ Output dataset ./yeo_masks_grayp25_slopesFam_net6_Z_grayp25_NN1_clusters.nii
+     56  -51.3   15.3   34.3  -56.0  -48.0    8.0   28.0   28.0   38.0   0.9167   0.0099        1  -50.0   16.0   34.0 
+     48  -58.2  -37.4    2.9  -64.0  -54.0  -40.0  -32.0   -2.0    8.0   0.8955   0.0116        1  -62.0  -38.0    0.0 
+```
+
+OK, it went down in size... hopefully it still survives permutations... it's not
+in the same location either.
+
+
+
+
+
+REDO THIS BECAUSE SO FAR WE ONLY HAVE 30 REPS!
+
+```bash
+module load afni
+
+cd /lscratch/${SLURM_JOBID}
+for p in {1..30}; do
+    perm=`printf %03d $p`;
+    phen=yeo_masks_grayp25_slopesFam_net6_Z_p${perm};
+    mkdir $phen;
+    cd $phen;
+    cp ~/data/tmp/${phen}/*gz .;
+    for f in `/bin/ls *gz`; do tar -zxf $f; done
+    cd ..
+    python ~/research_code/fmri/compile_solar_voxel_results.py \
+        /lscratch/${SLURM_JOBID}/ $phen \
+        ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+    rm -rf $phen;
+done;
+cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/perms
+froot=polygen_results_yeo_masks_grayp25_slopes${i}_net6_Z
+csize=59;
+res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
+    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
+nperms=`ls -1 ${froot}_p*.nii | wc -l`;
+p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
+echo negatives=${res}, perms=${nperms}, pval=$p
+```
+
+CHECK FOR SX CORRELATION
+CHECK CORRELATION OF SLOPE OF CONNECTIVITY AND SLOPE OF MOVEMENT
+
+
+
+
+
+
+
+
+
+
+<!-- Then, while that's running, let's set up a few situations with cleaner data.
 Because this is not MELODIC, we don't need to recalculate masks.
 
 Keep in mind that the code is:
@@ -246,36 +374,7 @@ for (p in seq(start, nperms, step)) {
 
 OK, let's see if the clusters are any bigger using this bigger sample:
 
-```bash
-module load afni
 
-cd /lscratch/${SLURM_JOBID}
-for i in 2 4 6; do
-    for suf in '' '_Z'; do
-        phen=yeo_masks_gray_slopes_net${i}${suf};
-        mkdir $phen;
-        cd $phen;
-        cp ~/data/tmp/${phen}/*gz .;
-        for f in `/bin/ls *gz`; do tar -zxf $f; done
-        cd ..
-        python ~/research_code/fmri/compile_solar_voxel_results.py \
-            /lscratch/${SLURM_JOBID}/ $phen \
-            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
-        rm -rf $phen;
-    done;
-done
-cp polygen*yeo_masks_gray_slopes_net*nii ~/data/heritability_change/xcp-36p_despike/
-
-cd ~/data/heritability_change/xcp-36p_despike/
-for i in 2 4 6; do
-    for suf in '' '_Z'; do
-        phen=yeo_masks_gray_slopes_net${i}${suf};
-        3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
-            -savemask ${phen}_grayAll_NN1_clusters.nii -NN1 40 \
-            polygen_results_${phen}.nii >> NN1_yeo_masks_grayAll_results.txt;
-    done
-done
-```
 
 There wasn't again a clear difference between Z and non-Z, but the size of the
 clusters wasn't much different, as expected based on how SOLAR works:
@@ -348,74 +447,12 @@ especially because they're at about the same range as the other ones. It's a
 smaller sample so we will need perms again. Let's do perms just for DMN as see
 how big of a cluster we need, both in Fam and in All:
 
-```bash
-cd ~/data/heritability_change/xcp-36p_despike;
-for i in '' 'Fam'; do
-    for p in {1..25}; do
-        perm=`printf %03d $p`;
-        phen_file=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
-        swarm_file=swarm.ymgp256${i}_p${perm};
-
-        for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
-            echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
-        done;
-    done;
-done
-
-for i in '' 'Fam'; do
-    for p in {1..25}; do
-        perm=`printf %03d $p`;
-        jname=ymgp256${i}_p${perm};
-        swarm_file=swarm.${jname};
-        echo "ERROR" > swarm_wait;
-        while grep -q ERROR swarm_wait; do
-            echo "Trying $jname"
-            swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
-                    --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 --merge-output \
-                    --partition quick,norm 2> swarm_wait;
-            if grep -q ERROR swarm_wait; then
-                echo -e "\tError, sleeping..."
-                sleep 30m;
-            fi;
-        done;
-    done;
-done
-```
 
 # 2019-09-05 09:35:26
 
 Now let's compile:
 
-```bash
-module load afni
 
-cd /lscratch/${SLURM_JOBID}
-for i in '' 'Fam'; do
-    for p in {1..25}; do
-        perm=`printf %03d $p`;
-        phen=yeo_masks_grayp25_slopes${i}_net6_Z_p${perm};
-        mkdir $phen;
-        cd $phen;
-        cp ~/data/tmp/${phen}/*gz .;
-        for f in `/bin/ls *gz`; do tar -zxf $f; done
-        cd ..
-        python ~/research_code/fmri/compile_solar_voxel_results.py \
-            /lscratch/${SLURM_JOBID}/ $phen \
-            ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
-        rm -rf $phen;
-    done;
-done
-cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/
-
-cd ~/data/heritability_change/xcp-36p_despike/perms
-froot=polygen_results_yeo_masks_grayp25_slopes${i}_net6_Z
-csize=59;
-res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
-    -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
-nperms=`ls -1 ${froot}_p*.nii | wc -l`;
-p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
-echo negatives=${res}, perms=${nperms}, pval=$p
-```
 
 Well, that's good. I got 0 times for a cluster size 59 or more... let's bump it
 up to 100 perms to see if it gets better:
@@ -565,4 +602,4 @@ contained in VAN, according to Yeo atlas.
 
 Now we do some more tests on this blob... how does it look like? If we include
 everyone, is it correlated to SX?
-
+ -->

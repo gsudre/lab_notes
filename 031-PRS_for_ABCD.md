@@ -167,3 +167,34 @@ m = merge(pcs[, 1:2], m, by.x='V2', by.y='IID')
 colnames(m)[1:2] = c('IID', 'FID')
 write.csv(m, file='/data/NCR_SBRB/ABCD/merged_PRS_08062019.csv', row.names=F)
 ```
+
+# 2019-09-13 13:08:02
+
+Sam is having issues defining the ethnic groups based on the MDS components. So,
+I'm running the pca through KING as well, just in case:
+
+I'm also running MDS through plink, following the ENIGMA pipeline, to see if we
+get anything better:
+
+http://enigma.ini.usc.edu/wp-content/uploads/2012/07/ENIGMA2_1KGP_cookbook_v3.pdf
+
+So, it goes like this:
+
+```bash
+cd /data/NCR_SBRB/ABCD/
+wget "http://enigma.ini.usc.edu/wp-content/uploads/2012/07/HM3.bed.gz"
+wget "http://enigma.ini.usc.edu/wp-content/uploads/2012/07/HM3.bim.gz"
+wget "http://enigma.ini.usc.edu/wp-content/uploads/2012/07/HM3.fam.gz"
+export datafileraw=/data/NCR_SBRB/ABCD/ABCD_release_2_genomics_smokescreen/ABCD_release_2.0_r2
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb --make-bed --out ${datafileraw}_filtered
+gunzip HM3*.gz
+export datafile=${datafileraw}_filtered
+awk '{print $2}' HM3.bim > HM3.snplist.txt
+plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > local.snplist.txt
+plink --bfile HM3 --extract local.snplist.txt --make-bed --noweb --out external
+plink --bfile local --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
+plink --bfile local --flip HM3merge-merge.missnp --make-bed --noweb --out flipped
+plink --bfile flipped --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
+plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplist.txt --noweb --out HM3mds
+```
