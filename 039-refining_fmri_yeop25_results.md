@@ -131,17 +131,13 @@ cd ~/data/heritability_change/xcp-36p_despike/
 OK, it went down in size... hopefully it still survives permutations... it's not
 in the same location either.
 
-
-
-
-
-REDO THIS BECAUSE SO FAR WE ONLY HAVE 30 REPS!
+# 2019-09-16 10:00:02
 
 ```bash
 module load afni
 
 cd /lscratch/${SLURM_JOBID}
-for p in {1..30}; do
+for p in {1..250}; do
     perm=`printf %03d $p`;
     phen=yeo_masks_grayp25_slopesFam_net6_Z_p${perm};
     mkdir $phen;
@@ -154,11 +150,11 @@ for p in {1..30}; do
         ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
     rm -rf $phen;
 done;
-cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/
+cp -v polygen*yeo_masks_grayp25_slopes*_net6_Z_p*nii ~/data/heritability_change/xcp-36p_despike/perms
 
 cd ~/data/heritability_change/xcp-36p_despike/perms
-froot=polygen_results_yeo_masks_grayp25_slopes${i}_net6_Z
-csize=59;
+froot=polygen_results_yeo_masks_grayp25_slopesFam_net6_Z
+csize=56;
 res=`3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -NN1 $csize \
     -quiet ${froot}_p*.nii | grep CLUSTERS | wc -l`
 nperms=`ls -1 ${froot}_p*.nii | wc -l`;
@@ -166,8 +162,194 @@ p=$(bc <<<"scale=3;($nperms - $res)/$nperms")
 echo negatives=${res}, perms=${nperms}, pval=$p
 ```
 
-CHECK FOR SX CORRELATION
-CHECK CORRELATION OF SLOPE OF CONNECTIVITY AND SLOPE OF MOVEMENT
+We're at p=0.044 with 250 perms. Let's characterize the cluster then.
+
+![](images/2019-09-16-13-59-17.png)
+
+Average h2 in the cluster is .92 (+- .01). That's with 56 voxels. The location
+is 41% MFG, 12%IFG and the voxels are a bit more divided according to the Yeo
+atlas: only 10 on DMN, 29 in cognitive, and 14 in DAN. So, in other words, 82%
+out of network. Now, time to check for correlation with SX.
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike
+echo maskid,val > yeo_dmnGrayp25_clu.csv;
+for m in `cat ids_p25.txt`; do
+    maskid=`printf %04d $m`;
+    echo $maskid;
+    val1=`3dmaskave -q -mask yeo_masks_grayp25_slopesFam_net6_Z_grayp25_NN1_clusters.nii yeo_masks_gray/dual/dr_stage2_${maskid}_Z.nii.gz[6] 2>/dev/null`;
+    echo ${maskid},${val1} >> yeo_dmnGrayp25_clu.csv;
+done
+```
+
+Finally, make the slopes:
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+df = read.csv('~/data/heritability_change/rsfmri_fc-36p_despike_condensed_posOnly_FD0.25_scans292_08022019.csv')
+mydir='~/data/heritability_change/xcp-36p_despike/'
+
+b = read.csv(sprintf('%s/yeo_dmnGrayp25_clu.csv', mydir))
+var_names = c('val')
+df2 = merge(df, b, by.x='Mask.ID', by.y='maskid', all.x=F)
+
+# make sure we still have two scans for everyone
+rm_subjs = names(which(table(df2$Medical.Record...MRN)<2))
+rm_me = df2$Medical.Record...MRN %in% rm_subjs
+df2 = df2[!rm_me, ]
+
+mres = df2
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN)) {
+    idx = which(mres$Medical.Record...MRN == s)
+    row = c(s, unique(mres[idx, 'Sex']))
+    y = mres[idx[2], var_names] - mres[idx[1], var_names]
+    x = mres[idx[2], 'age_at_scan'] - mres[idx[1], 'age_at_scan']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI', 'qc')) {
+        fm_str = sprintf('%s ~ age_at_scan', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    row = c(row, mres[idx[base_DOA], var_names])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+var_base = sapply(var_names, function(x) sprintf('%s_baseline', x))
+colnames(res) = c('ID', 'sex', var_names, c('SX_inatt', 'SX_HI', 'qc',
+                                            'inatt_baseline',
+                                            'HI_baseline', var_base, 'DX', 'DX2'))
+fname = sprintf('%s/yeo_dmnGrayp25_clu.csv', mydir)
+write.csv(res, fname, row.names=F)
+```
+
+Now we run the actual regressions:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/xcp-36p_despike/yeo_dmnGrayp25_clu.csv')
+tract_names = c('val')
+
+# to get famID
+tmp = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+tmp$famID = sapply(1:nrow(tmp), function(x)
+                                if (is.na(tmp$Extended.ID...FamilyIDs[x])) {
+                                    tmp$Nuclear.ID...FamilyIDs[x]
+                                }
+                                else {
+                                    tmp$Extended.ID...FamilyIDs[x]
+                                }
+                  )
+tmp2 = tmp[, c('Medical.Record...MRN', 'famID')]
+tmp3 = tmp2[!duplicated(tmp2[, 'Medical.Record...MRN']), ]
+data = merge(data, tmp3, by.x='ID', by.y='Medical.Record...MRN', all.x=T, all.y=F)
+
+out_fname = '~/data/heritability_change/assoc_LME_rsfmri_grapDMNp25Clu.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX',
+               'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_rsfmri_grapDMNp25Clu_dx1.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = '~/data/heritability_change/assoc_LME_rsfmri_grapDMNp25Clu_dx2.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s + sex + qc', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|famID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+Actually, I'm not sure if this matter anymore. At this point we're only looking
+at 16 ADHDs, 33 if we take NOS...
+
+
 
 
 

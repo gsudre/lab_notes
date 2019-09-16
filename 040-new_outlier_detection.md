@@ -180,4 +180,164 @@ So, in the end we still have 456 scans, which is much more than what we had
 before. Let's try using that for heritability and also for association (just to
 simplify the analysis), and let's see what we get.
 
+# 2019-09-16 10:02:29
+
+Time to compute slopes. Let's re-use the code and keep some baseline metrics in
+there as well:
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes", "pct")
+clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+df = mergeOnClosestDate(filtered_data, clin,
+                        unique(filtered_data$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+library(MASS)
+mres = df
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    y = mres[idx[2], c(tract_names, qc_vars)] - mres[idx[1], c(tract_names, qc_vars)]
+    x = mres[idx[2], 'age_at_scan...Scan...Subjects'] - mres[idx[1], 'age_at_scan...Scan...Subjects']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    row = c(row, mres[idx[base_DOA], tract_names])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+tract_base = sapply(tract_names, function(x) sprintf('%s_baseline', x))
+colnames(res) = c('ID', 'sex', tract_names, qc_vars, c('SX_inatt', 'SX_HI',
+                                              'inatt_baseline',
+                                              'HI_baseline', tract_base,
+                                              'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/dti_tracts_OD.csv',
+          row.names=F, na='', quote=F)
+```
+
+Philip suggested that I should make a few plots showing the quality metrics for
+the bad scans and the good scans. Just as a sanity check that the method is
+doing what it's supposed to. So, let's try it:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+m$pct = m$missingVolumes / m$numVolumes
+
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes", "pct")
+
+m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
+
+library(solitude)
+iso <- isolationForest$new()
+iso$fit(m[, qc_vars])
+scores_if = as.matrix(iso$scores)[,3]
+
+idx_good = which(scores_if < .45)
+m$group = 'outlier'
+m[idx_good,]$group = 'normal'
+
+par(mfrow=c(2,4))
+for (v in qc_vars) {
+    fm_str = sprintf('%s ~ group', v)
+    boxplot(as.formula(fm_str), data=m, main=v)
+}
+
+```
+
+![](images/2019-09-16-12-50-35.png)
+
+This seems to be doing what we expect. Let's just make sure LOF is also looking
+good:
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+m$pct = m$missingVolumes / m$numVolumes
+
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes", "pct")
+
+m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
+
+library(dbscan)
+scores_lof = lof(m[, qc_vars], k = round(.5 * nrow(m)))
+
+idx_good = which(scores_lof < 2.5)
+m$group = 'outlier'
+m[idx_good,]$group = 'normal'
+
+par(mfrow=c(2,4))
+for (v in qc_vars) {
+    fm_str = sprintf('%s ~ group', v)
+    boxplot(as.formula(fm_str), data=m, main=v)
+}
+```
+
+![](images/2019-09-16-12-52-29.png)
+
+OK, let's take some SOLAR metrics on this new sample size. I wrote a special
+function in SOLAR because I didn't residualize it in the scan space, as I didn't
+want to corrupt the data to much. It'll need to be dealt with if slopes are
+correlated, but only then. So, the SOLAR function deals with that, and I'll need
+to deal with that in the regression cases as well.
+
+```bash
+# interactive
+for m in fa ad rd; do
+    for t in left_cst left_ifo left_ilf left_slf left_unc right_cst right_ifo \
+        right_ilf right_slf right_unc cc; do
+        solar run_phen_var_OD_tracts dti_tracts_OD ${m}_${t};
+    done;
+done;
+```
+
+
+
 
