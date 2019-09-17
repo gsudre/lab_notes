@@ -680,6 +680,121 @@ in case... the H2 is still high, but the p-value isn't as good anymore.
 
 Now, redoing everything, but using the files from 0906 instead...
 
+# 2019-09-09 14:08:58
 
+```bash
+cd ~/data/tmp;
+for f in `/bin/ls ~/data/heritability_change/rsfmri_fc-36p_despike_schaefer?00roi2nets_*_09062019.csv`; do
+    pheno=`echo $f | sed "s/\.csv//" | cut -d"/" -f 6`;
+    echo "Working on $pheno";
+    cd $pheno;
+    tar -zxf *tgz;
+    echo "  Compiling...";
+    python ~/research_code/compile_solar_multivar_results.py $pheno;
+    echo "  Cleaning up...";
+    rm *.out;
+    cd ..;
+done
+```
 
+Let's look at 100 and 400 connection results separately, otherwise it's not
+really fair to the 100 connection sets:
 
+```r
+mydir = '~/data/heritability_change/'
+nnets = 7
+nrois = 100
+fnames = list.files(mydir, pattern='polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_.*s.*09062019\\.csv')
+roi_names = sapply(1:nrois, function(x) sprintf('roi%03d', x))
+map_names = c()
+sig_conns = c()
+sig_conns_fdr = c()
+for (fname in fnames) {
+    # read in the results
+    res = read.csv(sprintf('%s/%s', mydir, fname))
+    # figuring out possible connections
+    nets = sapply(as.character(res$phen), function(x) strsplit(x, 'TO')[[1]][1])
+    nets = unique(nets)        
+    vals = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+    stats = matrix(nrow=nrois, ncol=nnets, dimnames=list(roi_names, nets))
+    for (r in 1:nrow(res)) {
+        ij = strsplit(as.character(res$phen[r]), 'TO')[[1]]
+        rname = sprintf('roi%s', ij[2])
+        cname = ij[1]
+        vals[rname, cname] = res[r, 'h2r']
+        stats[rname, cname] = res[r, 'h_pval']
+    }
+    p2 = p.adjust(stats, method='fdr')
+    phen = strsplit(strtrim(fname, nchar(fname)-4), '/')[[1]]
+    sig_conns_fdr = c(sig_conns_fdr, sum(p2 < .05, na.rm=T))
+    sig_conns = c(sig_conns, sum(stats < .05, na.rm=T))
+    map_names = c(map_names, phen)
+}
+cat(sprintf('Nominal:\n'))
+s = sort(sig_conns, index.return=T, decreasing=T)
+for (i in 1:10) {
+    cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+}
+cat(sprintf('FDR:\n'))
+s = sort(sig_conns_fdr, index.return=T, decreasing=T)
+for (i in 1:10) {
+    cat(sprintf('%s: %d\n', map_names[s$ix[i]], s$x[i]))
+}
+```
+
+```
+Nominal:
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.25_residSlopes_n146_09062019: 74
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.25_slopes_n146_09062019: 68
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.25_residSlopes_n146_09062019: 59
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.25_slopes_n146_09062019: 56
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.50_slopes_n210_09062019: 38
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD2.50_residSlopes_n296_09062019: 37
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD2.50_slopes_n296_09062019: 36
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.50_residSlopes_n210_09062019: 35
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.50_slopes_n210_09062019: 33
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.75_slopes_n238_09062019: 33
+FDR:
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.25_residSlopes_n146_09062019: 1
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.25_slopes_n146_09062019: 1
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.25_residSlopes_n146_09062019: 1
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_posOnly_FD0.25_slopes_n146_09062019: 1
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.50_residSlopes_n210_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.50_slopes_n210_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.75_residSlopes_n238_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD0.75_slopes_n238_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD1.00_residSlopes_n260_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer100roi2nets_FD1.00_slopes_n260_09062019: 0
+```
+
+This makes more sense, but it's a bit disheartening...
+
+For 400, we get:
+
+```
+Nominal:
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_slopes_n146_09062019: 249
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_posOnly_FD0.25_residSlopes_n146_09062019: 242
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_residSlopes_n146_09062019: 232
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_residSlopes_n210_09062019: 162
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_slopes_n210_09062019: 159
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.75_slopes_n238_09062019: 142
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.75_residSlopes_n238_09062019: 136
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD1.00_residSlopes_n260_09062019: 122
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD2.50_slopes_n296_09062019: 118
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD2.50_residSlopes_n296_09062019: 115
+FDR:
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_residSlopes_n146_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.25_slopes_n146_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_residSlopes_n210_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.50_slopes_n210_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.75_residSlopes_n238_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD0.75_slopes_n238_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD1.00_residSlopes_n260_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD1.00_slopes_n260_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD2.50_residSlopes_n296_09062019: 0
+polygen_results_rsfmri_fc-36p_despike_schaefer400roi2nets_FD2.50_slopes_n296_09062019: 0
+```
+
+Maybe Meff? But it could also be that we have too many connections with very
+small N, which would generate several crappy p-values. 

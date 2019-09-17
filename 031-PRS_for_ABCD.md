@@ -198,3 +198,6 @@ plink --bfile local --flip HM3merge-merge.missnp --make-bed --noweb --out flippe
 plink --bfile flipped --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
 plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplist.txt --noweb --out HM3mds
 ```
+
+BTW, using straight up PCA in KING is not converging, even after 24h.
+
