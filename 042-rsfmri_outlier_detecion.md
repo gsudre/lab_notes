@@ -23,8 +23,14 @@ for (s in a$Mask.ID) {
         data = rbind(data, subj_data)
     }
 }
+```
 
-qc_vars = colnames(data)[2:ncol(data)]
+So, we started with 1783 scans, and went down to 1306 to keep only kids. Then,
+only 793 were processed all the way to the end in the fc-36p_despike pipeline. 
+
+```r
+# column names that are not constant
+qc_vars = names(which(apply(data[,2:ncol(data)], 2, var, na.rm=TRUE)!=0))
 
 library(solitude)
 iso <- isolationForest$new()
@@ -37,6 +43,10 @@ hist(sscores, breaks=20, main='Anomaly score distribution')
 plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Isolation Forest')
 ```
+
+![](images/2019-09-17-16-04-21.png)
+
+I think .5 seems like a reasonable threshold for IF.
 
 Let's see how it looks for LOF:
 
@@ -51,26 +61,114 @@ plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Local Outlier Factor')
 ```
 
+![](images/2019-09-17-16-07-41.png)
 
+For LOF it wasn't as clear. Maybe 1.5, and let the intersection with IF, and the
+actual data remove the rest?
 
-For LOF I think about 2.5 looks alright. So, maybe an agreement between both
-methods should be OK?
-
-From that starting point, let's use the same approach for the entire data. Here'
-it will depend on whether we're using voxels or tracts. Let's do tracts first.
+Now, we need to decide which dataset to use. I like the roi2net idea. Let's see
+if there is anything interesting there. We can try other condensed/collapsed
+datasets later, or even voxelwise if nothing comes out of this. 
 
 ```r
-idx = scores_lof < 2.5 & scores_if < .45
-tracts = read.csv('~/data/heritability_change/dti_mean_phenotype_1020.csv')
-# somehow I have two entries for 1418?
-x = duplicated(tracts$file)
-data = merge(m[idx, ], tracts[!x, ], by.x='Mask.ID...Scan', by.y='file')
-tract_names = colnames(tracts)[2:ncol(tracts)]
+idx = scores_lof < 1.5 & scores_if < .55
+nrois = 100
 
+fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
+                nrois)
+nets = read.table(fname)
+all_net_names = sapply(as.character(unique(nets[,2])),
+                       function(y) strsplit(x=y, split='_')[[1]][3])
+net_names = unique(all_net_names)
+nnets = length(net_names)
+
+data2 = data[idx, ]
+fc = c()
+for (s in data2$id0) {
+    fname = sprintf('%s/%s/fcon/schaefer%d/%s_schaefer%d.net',
+                        mydir, s, nrois, s, nrois)
+    subj_data = read.table(fname, skip=2)
+    b = matrix(nrow=nrois, ncol=nrois)
+    for (r in 1:nrow(data)) {
+        b[subj_data[r,1], subj_data[r,2]] = subj_data[r,3]
+        b[subj_data[r,2], subj_data[r,1]] = subj_data[r,3]
+    }
+    # at this point we have a nrois by nrois mirror matrix for the
+    # subject. All we need to do is average within each network
+    roi_conn = c()
+    for (n in 1:nnets) {
+        net_idx = all_net_names==net_names[n]
+        roi_conn = c(roi_conn, rowMeans(b[, net_idx], na.rm=T))
+    }
+    fc = rbind(fc, roi_conn)
+}
+```
+
+Now we perform outlier detection on the actual data... it turns out that I
+cannot have more variables than observations. I could PCAit, but let's do a
+network to network approach first, just to see if this is at all promising.
+
+```r
+idx = scores_lof < 1.5 & scores_if < .55
+nrois = 100
+
+fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
+                nrois)
+nets = read.table(fname)
+all_net_names = sapply(as.character(unique(nets[,2])),
+                       function(y) strsplit(x=y, split='_')[[1]][3])
+net_names = unique(all_net_names)
+nnets = length(net_names)
+
+# figure out which connection goes to which network
+cat('Creating connection map...\n')
+nverts = nrow(nets)
+cnt = 1
+conn_map = c()
+for (i in 1:(nverts-1)) {
+    for (j in (i+1):nverts) {
+        conn = sprintf('conn%d', cnt)
+        conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
+        cnt = cnt + 1
+    }
+}
+
+data2 = data[idx, ]
+fc = c()
+for (s in data2$id0) {
+    fname = sprintf('%s/%s/fcon/schaefer%d/%s_schaefer%d_network.txt',
+                                mydir, s, nrois, s, nrois)
+    subj_data = read.table(fname)[, 1]
+    fc = cbind(fc, subj_data)
+}
+fc = t(fc)
+var_names = sapply(1:ncol(fc), function(x) sprintf('conn%d', x))
+colnames(fc) = var_names
+net_data = c()
+header = c()
+for (i in 1:nnets) {
+    for (j in i:nnets) {
+        cat(sprintf('Evaluating connections from %s to %s\n',
+                    net_names[i], net_names[j]))
+        idx = (conn_map[,2]==net_names[i] | conn_map[,2]==net_names[j] |
+            conn_map[,3]==net_names[i] | conn_map[,3]==net_names[j])
+        res = apply(fc[, var_names[idx]], 1, mean, na.rm=T)
+        net_data = cbind(net_data, res)
+        header = c(header, sprintf('conn_%sTO%s', net_names[i],
+                                                net_names[j]))
+    }
+}
+colnames(net_data) = header
+rownames(net_data) = data2$id0
+```
+
+Now, time to see how the outlier plots look like:
+
+```r
 iso <- isolationForest$new()
-iso$fit(data[, tract_names])
+iso$fit(as.data.frame(net_data))
 scores_if = as.matrix(iso$scores)[,3]
-scores_lof = lof(data[, tract_names], k = round(.5 * nrow(data)))
+scores_lof = lof(net_data, k = round(.5 * nrow(net_data)))
 
 par(mfrow=c(2,2))
 sscores = sort(scores_lof)
@@ -83,41 +181,50 @@ plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Isolation Forest')
 ```
 
-![](images/2019-09-13-16-15-35.png)
+![](images/2019-09-17-17-26-09.png)
 
-I think a fair threshold for LOF is 1.2 and for IF is .525. Now, let's see how
+I think a fair threshold for LOF is 1.25 and for IF is .5. Now, let's see how
 many scans we end up with:
 
 ```r
-idx = scores_lof < 1.2 & scores_if < .525
+idx = scores_lof < 1.25 & scores_if < .5
 ```
 
-We are still at 720 scans, coming from initial 971 kiddie scans. So, a 26%
+We are still at 543 scans, coming from initial 793 kiddie scans. So, a 32%
 reduction. What happens when we keep the best two scans of each kid that has 2
 or more scans? And here we'll define as "best" as just the LOF score, which is a
 bit easier to interpret and it doesn't look like a normal distribution.
 
+First, let's add our qc metrics:
+
 ```r
+data3 = cbind(data2, net_data)
+data3 = data3[idx, ]
+
+data3$mask.id = as.numeric(gsub(data3$id0, pattern='sub-', replacement=''))
+
+df = merge(data3, a, by.x='mask.id', by.y='Mask.ID', all.x=T, all.y=F)
+
 num_scans = 2  # number of scans to select
-data$scores = scores_lof
-a = data[idx, ]
+df$scores = scores_lof[idx]
+
 # removing people with less than num_scans scans
-idx = which(table(a$Medical.Record...MRN)>=num_scans)
-long_subjs = names(table(a$Medical.Record...MRN))[idx]
+idx = which(table(df$Medical.Record...MRN)>=num_scans)
+long_subjs = names(table(df$Medical.Record...MRN))[idx]
 keep_me = c()
-for (m in 1:nrow(a)) {
-    if (a[m, ]$Medical.Record...MRN %in% long_subjs) {
+for (m in 1:nrow(df)) {
+    if (df[m, ]$Medical.Record...MRN %in% long_subjs) {
         keep_me = c(keep_me, m)
     }
 }
-a = a[keep_me,]
+df = df[keep_me,]
 cat(sprintf('Down to %d to keep only subjects with more than %d scans\n',
-            nrow(a), num_scans))
+            nrow(df), num_scans))
 keep_me = c()
-for (s in unique(a$Medical.Record...MRN)) {
+for (s in unique(df$Medical.Record...MRN)) {
     found = F
-    subj_idx = which(a$Medical.Record...MRN==s)
-    subj_scans = a[subj_idx, ]
+    subj_idx = which(df$Medical.Record...MRN==s)
+    subj_scans = df[subj_idx, ]
     dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
                                     format="%m/%d/%Y")
     best_scans = sort(subj_scans$scores, index.return=T)
@@ -154,30 +261,26 @@ for (s in unique(a$Medical.Record...MRN)) {
         keep_me = c(keep_me, subj_idx[cur_choice])
     }
 }
-filtered_data = a[keep_me, ]
+filtered_data = df[keep_me, ]
 ```
 
-So, in the end we still have 456 scans, which is much more than what we had
+So, in the end we still have 394 scans, which is much more than what we had
 before. Let's try using that for heritability and also for association (just to
 simplify the analysis), and let's see what we get.
-
-# 2019-09-16 10:02:29
 
 Time to compute slopes. Let's re-use the code and keep some baseline metrics in
 there as well:
 
+NEED TO FIGURE OUT WHAT'S GOING ON HERE! JUST CLEAN UP CLINICAL FILE, OR
+CONSTRUCT A MORE RECENT ONE. THEN, USE IT FOR BOTH DTI AND FMRI!
+
 ```r
 source('~/research_code/lab_mgmt/merge_on_closest_date.R')
-
-qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
-            "meanX.rot", "meanY.rot", "meanZ.rot",
-            "goodVolumes", "pct")
-clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+clin = read.csv('~/data/heritability_change/clinical_06262019.csv')
 df = mergeOnClosestDate(filtered_data, clin,
-                        unique(filtered_data$Medical.Record...MRN...Subjects),
+                        unique(filtered_data$Medical.Record...MRN),
                          x.date='record.date.collected...Scan',
-                         x.id='Medical.Record...MRN...Subjects')
-library(MASS)
+                         x.id='Medical.Record...MRN')
 mres = df
 mres$SX_HI = as.numeric(as.character(mres$SX_hi))
 mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
