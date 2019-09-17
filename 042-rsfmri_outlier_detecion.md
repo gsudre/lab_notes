@@ -1,49 +1,36 @@
-# 2019-09-13 15:08:06
+# 2019-09-17 12:15:23
 
-I'm doing some testing with new outlier detection methods. The reasoning here is
-that if it's a linear relationship, we'll be removing it when we covary the
-metric in the models. If it's not, then thresholding the data based on when the
-correlation goes away is not a good metric anyways. Unless we use non-arametric
-correlation. But still, which metric to use to evaluate the correlation? All of
-them?
-
-So, let's see if using some anomaly detection method would help here. I'll try
-Isolation Forest and Local Outlier Factor, which are both not too hard to
-understand. They each give scores of the likelihood of the sample being an
-outlier, and we can threshold the data based on that.
-
-We should do this based on the metadata, but also on the data themselves, for
-extra cleansing. Some cuts will need to be done prior to cleaning, such as age
-cut, as kids will likely move more than adults. But we could keep people with
-a single scan, as they would also inform the normal distribution.
+We'll do something similar to what we did for note 040, but this time for fMRI.
 
 ```r
-b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
-a = read.csv('~/data/heritability_change/ready_1020.csv')
-m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+a = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+cat(sprintf('Starting from %d scans\n', nrow(a)))
 
-# restrict based on QC
-m$pct = m$missingVolumes / m$numVolumes
+# keeping it to kids only to make sure everyone has been processed
+a = a[a$age_at_scan < 18, ]
+cat(sprintf('Down to %d to keep < 18 only\n', nrow(a)))
 
-qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
-            "meanX.rot", "meanY.rot", "meanZ.rot",
-            "goodVolumes", "pct")
+# let's grab QC metrics on everyone
+# note that this only works for non-censoring pipelines!
+mydir = '/Volumes/Shaw/rsfmri_36P/xcpengine_output_fc-36p_despike/'
+data = c()
+for (s in a$Mask.ID) {
+    subj = sprintf('sub-%04d', s)
+    # if it processed all the way
+    std_fname = sprintf('%s/%s/norm/%s_std.nii.gz', mydir, subj, subj)
+    if (file.exists(std_fname)) {
+        subj_data = read.csv(sprintf('%s/%s/%s_quality.csv', mydir, subj, subj))
+        data = rbind(data, subj_data)
+    }
+}
 
-m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
+qc_vars = colnames(data)[2:ncol(data)]
 
 library(solitude)
 iso <- isolationForest$new()
-iso$fit(m[, qc_vars])
+iso$fit(data[, qc_vars])
 scores_if = as.matrix(iso$scores)[,3]
-```
 
-The scores for IF are informative, as the original paper suggest that scores
-closer to 1 are likely outliers, but if the distribution is hovering around .5
-for all samples than there shouldn't be many outliers. We could then make a
-histogram of those scores, and also a plot to show us what score to use
-depending on how much data we want to keep:
-
-```r
 par(mfrow=c(1,2))
 sscores = sort(scores_if)
 hist(sscores, breaks=20, main='Anomaly score distribution')
@@ -51,18 +38,12 @@ plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Isolation Forest')
 ```
 
-![](images/2019-09-13-15-57-09.png)
-
-I think we can be conservative here and stick with .45, which gets to be about
-the elbow of the cumulative distribution and still gives us about 900 scans to
-play with. Or, we can go for .6 to just get those outliers. 
-
 Let's see how it looks for LOF:
 
 ```r
 library(dbscan)
 # here I set the number of neighbors to a percentage of the total data
-scores_lof = lof(m[, qc_vars], k = round(.5 * nrow(m)))
+scores_lof = lof(data[, qc_vars], k = round(.5 * nrow(data)))
 par(mfrow=c(1,2))
 sscores = sort(scores_lof)
 hist(sscores, breaks=20, main='Anomaly score distribution')
@@ -70,7 +51,7 @@ plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Local Outlier Factor')
 ```
 
-![](images/2019-09-13-15-55-24.png)
+
 
 For LOF I think about 2.5 looks alright. So, maybe an agreement between both
 methods should be OK?
