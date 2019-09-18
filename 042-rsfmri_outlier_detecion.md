@@ -268,15 +268,14 @@ So, in the end we still have 394 scans, which is much more than what we had
 before. Let's try using that for heritability and also for association (just to
 simplify the analysis), and let's see what we get.
 
+# 2019-09-18 11:00:25
+
 Time to compute slopes. Let's re-use the code and keep some baseline metrics in
 there as well:
 
-NEED TO FIGURE OUT WHAT'S GOING ON HERE! JUST CLEAN UP CLINICAL FILE, OR
-CONSTRUCT A MORE RECENT ONE. THEN, USE IT FOR BOTH DTI AND FMRI!
-
 ```r
 source('~/research_code/lab_mgmt/merge_on_closest_date.R')
-clin = read.csv('~/data/heritability_change/clinical_06262019.csv')
+clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
 df = mergeOnClosestDate(filtered_data, clin,
                         unique(filtered_data$Medical.Record...MRN),
                          x.date='record.date.collected...Scan',
@@ -284,27 +283,28 @@ df = mergeOnClosestDate(filtered_data, clin,
 mres = df
 mres$SX_HI = as.numeric(as.character(mres$SX_hi))
 mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+tract_names = header
 
 res = c()
-for (s in unique(mres$Medical.Record...MRN...Subjects)) {
-    idx = which(mres$Medical.Record...MRN...Subjects == s)
-    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+for (s in unique(mres$Medical.Record...MRN)) {
+    idx = which(mres$Medical.Record...MRN == s)
+    row = c(s, unique(mres[idx, 'Sex']))
     y = mres[idx[2], c(tract_names, qc_vars)] - mres[idx[1], c(tract_names, qc_vars)]
-    x = mres[idx[2], 'age_at_scan...Scan...Subjects'] - mres[idx[1], 'age_at_scan...Scan...Subjects']
+    x = mres[idx[2], 'age_at_scan'] - mres[idx[1], 'age_at_scan']
     slopes = y / x
     row = c(row, slopes)
     for (t in c('SX_inatt', 'SX_HI')) {
-        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fm_str = sprintf('%s ~ age_at_scan', t)
         fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
         row = c(row, coefficients(fit)[2])
     }
     # grabbing inatt and HI at baseline
-    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    base_DOA = which.min(mres[idx, 'age_at_scan'])
     row = c(row, mres[idx[base_DOA], tract_names])
     row = c(row, mres[idx[base_DOA], 'SX_inatt'])
     row = c(row, mres[idx[base_DOA], 'SX_HI'])
     # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
-    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+    if (mres[idx[base_DOA], 'age_at_scan'] < 16) {
         if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
             DX = 'ADHD'
         } else {
@@ -333,104 +333,57 @@ colnames(res) = c('ID', 'sex', tract_names, qc_vars, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline',
                                               'DX', 'DX2'))
-write.csv(res, file='~/data/heritability_change/dti_tracts_OD.csv',
+write.csv(res, file='~/data/heritability_change/rsfmri_7by7from100_OD.csv',
           row.names=F, na='', quote=F)
 ```
 
-Philip suggested that I should make a few plots showing the quality metrics for
-the bad scans and the good scans. Just as a sanity check that the method is
-doing what it's supposed to. So, let's try it:
-
-```r
-b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
-a = read.csv('~/data/heritability_change/ready_1020.csv')
-m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
-
-# restrict based on QC
-m$pct = m$missingVolumes / m$numVolumes
-
-qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
-            "meanX.rot", "meanY.rot", "meanZ.rot",
-            "goodVolumes", "pct")
-
-m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
-
-library(solitude)
-iso <- isolationForest$new()
-iso$fit(m[, qc_vars])
-scores_if = as.matrix(iso$scores)[,3]
-
-idx_good = which(scores_if < .45)
-m$group = 'outlier'
-m[idx_good,]$group = 'normal'
-
-par(mfrow=c(2,4))
-for (v in qc_vars) {
-    fm_str = sprintf('%s ~ group', v)
-    boxplot(as.formula(fm_str), data=m, main=v)
-}
+Let's see how many unrelated subjects SOLAR finds, so we can create a Fam file
+for rsfmri as well.
 
 ```
-
-![](images/2019-09-16-12-50-35.png)
-
-This seems to be doing what we expect. Let's just make sure LOF is also looking
-good:
-
-```r
-b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
-a = read.csv('~/data/heritability_change/ready_1020.csv')
-m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
-
-# restrict based on QC
-m$pct = m$missingVolumes / m$numVolumes
-
-qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
-            "meanX.rot", "meanY.rot", "meanZ.rot",
-            "goodVolumes", "pct")
-
-m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
-
-library(dbscan)
-scores_lof = lof(m[, qc_vars], k = round(.5 * nrow(m)))
-
-idx_good = which(scores_lof < 2.5)
-m$group = 'outlier'
-m[idx_good,]$group = 'normal'
-
-par(mfrow=c(2,4))
-for (v in qc_vars) {
-    fm_str = sprintf('%s ~ group', v)
-    boxplot(as.formula(fm_str), data=m, main=v)
-}
+    NPairs  Relationship
+  ========  ===========================================
+       197  Self
+        46  Siblings
+         3  1st cousins
+         1  2nd cousins
 ```
 
-![](images/2019-09-16-12-52-29.png)
-
-OK, let's take some SOLAR metrics on this new sample size. I wrote a special
-function in SOLAR because I didn't residualize it in the scan space, as I didn't
-want to corrupt the data to much. It'll need to be dealt with if slopes are
-correlated, but only then. So, the SOLAR function deals with that, and I'll need
-to deal with that in the regression cases as well.
+If we tolerate 2nd cousins, then we should be ok... that does look a bit weird
+though. I'll double check it later when I create familyID for regressions. For
+now, let's check if there is any sort of heritability.
 
 ```bash
 # interactive
 cd ~/data/heritability_change
-for m in fa ad rd; do
-    for t in left_cst left_ifo left_ilf left_slf left_unc right_cst right_ifo \
-        right_ilf right_slf right_unc cc; do
-        solar run_phen_var_OD_tracts dti_tracts_OD ${m}_${t};
-    done;
+for t in "conn_VisTOVis" "conn_VisTOSomMot" "conn_VisTODorsAttn" \
+    "conn_VisTOSalVentAttn" "conn_VisTOLimbic" "conn_VisTOCont" \
+    "conn_VisTODefault" "conn_SomMotTOSomMot" "conn_SomMotTODorsAttn" \
+    "conn_SomMotTOSalVentAttn" "conn_SomMotTOLimbic" "conn_SomMotTOCont" \
+    "conn_SomMotTODefault" "conn_DorsAttnTODorsAttn" \
+    "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+    "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+    "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+    "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+    "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp rsfmri_7by7from100_OD ${t};
 done;
-mv dti_tracts_OD ~/data/tmp/
-cd ~/data/tmp/dti_tracts_OD/
+mv rsfmri_7by7from100_OD ~/data/tmp/
+cd ~/data/tmp/rsfmri_7by7from100_OD/
 for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-python ~/research_code/compile_solar_multivar_results.py dti_tracts_OD
+python ~/research_code/compile_solar_multivar_results.py rsfmri_7by7from100_OD
 ```
 
-![](images/2019-09-17-10-59-05.png)
+That ran, but the majority of the connection broke solar. That's interesting.
+Let's make a positive-only dataset, and also do a 17x17 version of the
+phenotype.
 
-Well, this seem to work. Especially if we focus on FA only. Let's make a new
-note so we can explore this with other phenotypes.
+Note that in all 3 cases we'll need to re-calculate the thresholds to remove
+outliers!
+
+
+
+
 
 

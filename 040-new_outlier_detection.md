@@ -191,12 +191,11 @@ source('~/research_code/lab_mgmt/merge_on_closest_date.R')
 qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
             "meanX.rot", "meanY.rot", "meanZ.rot",
             "goodVolumes", "pct")
-clin = read.csv('~/data/heritability_change/clinical_03132019.csv')
+clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
 df = mergeOnClosestDate(filtered_data, clin,
                         unique(filtered_data$Medical.Record...MRN...Subjects),
                          x.date='record.date.collected...Scan',
                          x.id='Medical.Record...MRN...Subjects')
-library(MASS)
 mres = df
 mres$SX_HI = as.numeric(as.character(mres$SX_hi))
 mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))

@@ -201,3 +201,11 @@ plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplis
 
 BTW, using straight up PCA in KING is not converging, even after 24h.
 
+# 2019-09-18 10:26:38
+
+Philip asked to join the PNC and our cohort with the ABCD data before generating
+the MDS components according to the ENIGMA paradigm. Here is the code:
+
+```bash
+
+```
