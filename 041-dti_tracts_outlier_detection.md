@@ -557,9 +557,548 @@ But that's the only thing. Good to know the main result is significant under
 more stringent thresholds. But I'll likely need to use more people to get a
 stronger result. Let's revise our thresholds then.
 
+# 2019-09-19 09:06:39
 
+Since the correlation between variables is not that high, let's go ahead and
+redo the whole analysis, but this time removing the extra scans and pct.
 
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
 
+# restrict based on QC
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes")
+m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
+m = m[m$"goodVolumes" <= 61, ]
+m = m[m$"numVolumes" < 80, ]
+
+library(solitude)
+iso <- isolationForest$new()
+iso$fit(m[, qc_vars])
+scores_if = as.matrix(iso$scores)[,3]
+library(dbscan)
+# here I set the number of neighbors to a percentage of the total data
+scores_lof = lof(m[, qc_vars], k = round(.5 * nrow(m)))
+
+par(mfrow=c(2,2))
+sscores = sort(scores_lof)
+hist(sscores, breaks=20, main='LOF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Local Outlier Factor')
+sscores = sort(scores_if)
+hist(sscores, breaks=20, main='IF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Isolation Forest')
+```
+
+![](images/2019-09-19-09-09-48.png)
+
+I'll go with 2 for LOF and .5 for IF:
+
+```r
+idx = scores_lof < 2 & scores_if < .5
+tracts = read.csv('~/data/heritability_change/dti_mean_phenotype_1020.csv')
+# somehow I have two entries for 1418?
+x = duplicated(tracts$file)
+data = merge(m[idx, ], tracts[!x, ], by.x='Mask.ID...Scan', by.y='file')
+tract_names = colnames(tracts)[2:ncol(tracts)]
+
+iso <- isolationForest$new()
+iso$fit(data[, tract_names])
+scores_if = as.matrix(iso$scores)[,3]
+scores_lof = lof(data[, tract_names], k = round(.5 * nrow(data)))
+
+par(mfrow=c(2,2))
+sscores = sort(scores_lof)
+hist(sscores, breaks=20, main='LOF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Local Outlier Factor')
+sscores = sort(scores_if)
+hist(sscores, breaks=20, main='IF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Isolation Forest')
+```
+
+![](images/2019-09-19-09-13-59.png)
+
+I think 1.25 and .5 are again good thresholds. That gives us 700 out of the
+initial 971 kids, so a 28% reduction. Now, let's grab the best two scans for
+each person:
+
+```r
+idx = scores_lof < 1.25 & scores_if < .5
+num_scans = 2  # number of scans to select
+data$scores = scores_lof
+a = data[idx, ]
+# removing people with less than num_scans scans
+idx = which(table(a$Medical.Record...MRN)>=num_scans)
+long_subjs = names(table(a$Medical.Record...MRN))[idx]
+keep_me = c()
+for (m in 1:nrow(a)) {
+    if (a[m, ]$Medical.Record...MRN %in% long_subjs) {
+        keep_me = c(keep_me, m)
+    }
+}
+a = a[keep_me,]
+cat(sprintf('Down to %d to keep only subjects with more than %d scans\n',
+            nrow(a), num_scans))
+keep_me = c()
+for (s in unique(a$Medical.Record...MRN)) {
+    found = F
+    subj_idx = which(a$Medical.Record...MRN==s)
+    subj_scans = a[subj_idx, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                    format="%m/%d/%Y")
+    best_scans = sort(subj_scans$scores, index.return=T)
+    # make sure they are at least 6 months apart. This is the idea:
+    # grab the best X scans. Check the time difference between them.
+    # Any time the time difference is not enough, remove the worse
+    # scan and replace by the next in line. Keep doing this until
+    # the time difference is enough between all scans, or we run out
+    # of scans
+    cur_scan = 1
+    last_scan = num_scans
+    cur_choice = best_scans$ix[cur_scan:last_scan]
+    while (!found && last_scan <= nrow(subj_scans)) {
+        time_diffs = abs(diff(dates[cur_choice]))
+        if (all(time_diffs > 180)) {
+            found = TRUE
+        } else {
+            # figure out which scan to remove. If there is more than one
+            # to be removed, it will be taken care in the next iteration
+            bad_diff = which.min(time_diffs)
+            if (subj_scans$scores[cur_choice[bad_diff]] >
+                subj_scans$scores[cur_choice[bad_diff + 1]]) {
+                rm_scan = cur_choice[bad_diff]
+            } else {
+                rm_scan = cur_choice[bad_diff + 1]
+            }
+            last_scan = last_scan + 1
+            if (last_scan <= nrow(subj_scans)) {
+                cur_choice[cur_choice == rm_scan] = best_scans$ix[last_scan]
+            }
+        }
+    }
+    if (found) {
+        keep_me = c(keep_me, subj_idx[cur_choice])
+    }
+}
+filtered_data = a[keep_me, ]
+```
+
+I now have 226 people, which is quite similar to the dataset I had my initial
+results (227). Don't expect many surprises here.
+
+```r
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
+clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
+df = mergeOnClosestDate(filtered_data, clin,
+                        unique(filtered_data$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+mres = df
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    y = mres[idx[2], c(tract_names, qc_vars)] - mres[idx[1], c(tract_names, qc_vars)]
+    x = mres[idx[2], 'age_at_scan...Scan...Subjects'] - mres[idx[1], 'age_at_scan...Scan...Subjects']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], tract_names])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+tract_base = sapply(tract_names, function(x) sprintf('%s_baseline', x))
+colnames(res) = c('ID', 'sex', tract_names, qc_vars, c('SX_inatt', 'SX_HI',
+                                              tract_base,
+                                              'inatt_baseline',
+                                              'HI_baseline',
+                                              'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/dti_tracts_OD_n226.csv',
+          row.names=F, na='', quote=F)
+```
+
+SOLAR found one unrelated cae, so let's remove our usual suspect:
+
+```r
+res = read.csv('~/data/heritability_change/dti_tracts_OD_n226.csv')
+res2 = res[res$ID != 7221745, ]
+write.csv(res2, file='~/data/heritability_change/dti_tracts_OD_n226_Fam.csv',
+          row.names=F, na='', quote=F)
+```
+
+And run for everyone:
+
+```bash
+# interactive
+cd ~/data/heritability_change
+for m in fa ad rd; do
+    for t in left_cst left_ifo left_ilf left_slf left_unc right_cst right_ifo \
+        right_ilf right_slf right_unc cc; do
+        solar run_phen_var_OD_tracts dti_tracts_OD_n226_Fam ${m}_${t};
+    done;
+done;
+mv dti_tracts_OD_n226_Fam ~/data/tmp/
+cd ~/data/tmp/dti_tracts_OD_n226_Fam/
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py dti_tracts_OD_n226_Fam
+```
+
+We might need to run Meff to make it survive. But what about the JHU tracts?
+Would it looks better there?
+
+```r
+b = read.csv('/Volumes/Shaw/MasterQC/master_qc_20190314.csv')
+a = read.csv('~/data/heritability_change/ready_1020.csv')
+m = merge(a, b, by.y='Mask.ID', by.x='Mask.ID...Scan', all.x=F)
+
+# restrict based on QC
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes")
+m = m[m$"age_at_scan...Scan...Subjects" < 18, ]
+m = m[m$"goodVolumes" <= 61, ]
+m = m[m$"numVolumes" < 80, ]
+idx = scores_lof < 2 & scores_if < .5
+m = m[idx, ]
+
+tracts = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+# somehow I have two entries for 1418?
+x = duplicated(tracts$id)
+data = merge(m, tracts[!x, ], by.x='Mask.ID...Scan', by.y='id')
+tract_names = colnames(tracts)[2:ncol(tracts)]
+
+iso <- isolationForest$new()
+iso$fit(data[, tract_names])
+scores_if = as.matrix(iso$scores)[,3]
+scores_lof = lof(data[, tract_names], k = round(.5 * nrow(data)))
+
+par(mfrow=c(2,2))
+sscores = sort(scores_lof)
+hist(sscores, breaks=20, main='LOF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Local Outlier Factor')
+sscores = sort(scores_if)
+hist(sscores, breaks=20, main='IF Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Isolation Forest')
+```
+
+![](images/2019-09-19-09-45-01.png)
+
+I think the previous thresholds should still be safe to use here.
+
+```r
+idx = scores_lof < 1.25 & scores_if < .5
+num_scans = 2  # number of scans to select
+data$scores = scores_lof
+a = data[idx, ]
+# removing people with less than num_scans scans
+idx = which(table(a$Medical.Record...MRN)>=num_scans)
+long_subjs = names(table(a$Medical.Record...MRN))[idx]
+keep_me = c()
+for (m in 1:nrow(a)) {
+    if (a[m, ]$Medical.Record...MRN %in% long_subjs) {
+        keep_me = c(keep_me, m)
+    }
+}
+a = a[keep_me,]
+cat(sprintf('Down to %d to keep only subjects with more than %d scans\n',
+            nrow(a), num_scans))
+keep_me = c()
+for (s in unique(a$Medical.Record...MRN)) {
+    found = F
+    subj_idx = which(a$Medical.Record...MRN==s)
+    subj_scans = a[subj_idx, ]
+    dates = as.Date(as.character(subj_scans$"record.date.collected...Scan"),
+                                    format="%m/%d/%Y")
+    best_scans = sort(subj_scans$scores, index.return=T)
+    # make sure they are at least 6 months apart. This is the idea:
+    # grab the best X scans. Check the time difference between them.
+    # Any time the time difference is not enough, remove the worse
+    # scan and replace by the next in line. Keep doing this until
+    # the time difference is enough between all scans, or we run out
+    # of scans
+    cur_scan = 1
+    last_scan = num_scans
+    cur_choice = best_scans$ix[cur_scan:last_scan]
+    while (!found && last_scan <= nrow(subj_scans)) {
+        time_diffs = abs(diff(dates[cur_choice]))
+        if (all(time_diffs > 180)) {
+            found = TRUE
+        } else {
+            # figure out which scan to remove. If there is more than one
+            # to be removed, it will be taken care in the next iteration
+            bad_diff = which.min(time_diffs)
+            if (subj_scans$scores[cur_choice[bad_diff]] >
+                subj_scans$scores[cur_choice[bad_diff + 1]]) {
+                rm_scan = cur_choice[bad_diff]
+            } else {
+                rm_scan = cur_choice[bad_diff + 1]
+            }
+            last_scan = last_scan + 1
+            if (last_scan <= nrow(subj_scans)) {
+                cur_choice[cur_choice == rm_scan] = best_scans$ix[last_scan]
+            }
+        }
+    }
+    if (found) {
+        keep_me = c(keep_me, subj_idx[cur_choice])
+    }
+}
+filtered_data = a[keep_me, ]
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+
+clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
+df = mergeOnClosestDate(filtered_data, clin,
+                        unique(filtered_data$Medical.Record...MRN...Subjects),
+                         x.date='record.date.collected...Scan',
+                         x.id='Medical.Record...MRN...Subjects')
+mres = df
+mres$SX_HI = as.numeric(as.character(mres$SX_hi))
+mres$SX_inatt = as.numeric(as.character(mres$SX_inatt))
+
+res = c()
+for (s in unique(mres$Medical.Record...MRN...Subjects)) {
+    idx = which(mres$Medical.Record...MRN...Subjects == s)
+    row = c(s, unique(mres[idx, 'Sex...Subjects']))
+    y = mres[idx[2], c(tract_names, qc_vars)] - mres[idx[1], c(tract_names, qc_vars)]
+    x = mres[idx[2], 'age_at_scan...Scan...Subjects'] - mres[idx[1], 'age_at_scan...Scan...Subjects']
+    slopes = y / x
+    row = c(row, slopes)
+    for (t in c('SX_inatt', 'SX_HI')) {
+        fm_str = sprintf('%s ~ age_at_scan...Scan...Subjects', t)
+        fit = lm(as.formula(fm_str), data=mres[idx, ], na.action=na.exclude)
+        row = c(row, coefficients(fit)[2])
+    }
+    # grabbing inatt and HI at baseline
+    base_DOA = which.min(mres[idx, 'age_at_scan...Scan...Subjects'])
+    row = c(row, mres[idx[base_DOA], tract_names])
+    row = c(row, mres[idx[base_DOA], 'SX_inatt'])
+    row = c(row, mres[idx[base_DOA], 'SX_HI'])
+    # DX1 is DSMV definition, DX2 will make SX >=4 as ADHD
+    if (mres[idx[base_DOA], 'age_at_scan...Scan...Subjects'] < 16) {
+        if ((row[length(row)] >= 6) || (row[length(row)-1] >= 6)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    } else {
+        if ((row[length(row)] >= 5) || (row[length(row)-1] >= 5)) {
+            DX = 'ADHD'
+        } else {
+            DX = 'NV'
+        }
+    }
+    if ((row[length(row)] >= 4) || (row[length(row)-1] >= 4)) {
+        DX2 = 'ADHD'
+    } else {
+        DX2 = 'NV'
+    }
+    row = c(row, DX)
+    row = c(row, DX2)
+    res = rbind(res, row)
+    print(nrow(res))
+}
+tract_base = sapply(tract_names, function(x) sprintf('%s_baseline', x))
+colnames(res) = c('ID', 'sex', tract_names, qc_vars, c('SX_inatt', 'SX_HI',
+                                              tract_base,
+                                              'inatt_baseline',
+                                              'HI_baseline',
+                                              'DX', 'DX2'))
+write.csv(res, file='~/data/heritability_change/dti_JHUtracts_OD_n256.csv',
+          row.names=F, na='', quote=F)
+```
+
+SOLAR didn't see any unrelated people in these 256, only a pair of second
+cousins. Let's keep everyone then.
+
+```bash
+# interactive
+cd ~/data/heritability_change
+for m in fa ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts dti_JHUtracts_OD_n256 ${m}_${t};
+    done;
+done;
+mv dti_JHUtracts_OD_n256 ~/data/tmp/
+cd ~/data/tmp/dti_JHUtracts_OD_n256/
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py dti_JHUtracts_OD_n256
+```
+
+![](images/2019-09-19-09-57-48.png)
+
+But I just noticed that SOLAR's output of relpairs is not reliably showing
+unrelated subjects... let's do it the old way then:
+
+```r
+data = read.csv('~/data/heritability_change/dti_JHUtracts_OD_n256.csv')
+# to get famID
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# and make sure every family has at least two people
+related = names(table(data$FAMID))[table(data$FAMID) >= 2]
+keep_me = data$FAMID %in% related
+data2 = data[keep_me, ]
+write.csv(data2, file='~/data/heritability_change/dti_JHUtracts_OD_n256_Fam_n122.csv',
+          row.names=F, na='', quote=F)
+```
+
+Do the results change much?
+
+```bash
+# interactive
+cd ~/data/heritability_change
+for m in fa ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts dti_JHUtracts_OD_n256_Fam_n122 ${m}_${t};
+    done;
+done;
+mv dti_JHUtracts_OD_n256_Fam_n122 ~/data/tmp/
+cd ~/data/tmp/dti_JHUtracts_OD_n256_Fam_n122/
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py dti_JHUtracts_OD_n256_Fam_n122
+```
+
+Somewhat. Everything that was nominally significant in the entire dataset is
+still significant in the Fam dataset. But not everything significant in the Fam
+dataset is significant in the entire dataset. So, let's see if we get
+association to ADHD in the Fam dataset.
+
+Let's calculate the association to ADHD:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_OD_n256_Fam_n122.csv')
+
+tract_names = colnames(data)[3:62]
+
+# let's run just the residuals after stepwise regression
+mres = data
+library(MASS)
+for (t in tract_names) {
+    print(t)
+    fm_str = sprintf('%s ~', t)
+    fm_str = paste(fm_str, 'sex + meanX.trans + meanY.trans + meanZ.trans + meanX.rot + meanY.rot + meanZ.rot + goodVolumes')
+    res.lm <- lm(as.formula(fm_str), data = data)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    mres[, t] = residuals(step)
+}
+
+out_fname = '~/data/heritability_change/assoc_LME_JHUtracts_OD_n256_Fam_n122.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1<-try(lme(as.formula(fm_str), mres, ~1|FAMID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = mres[mres$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = mres[mres$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+targets = tract_names
+hold=NULL
+for (i in targets) {
+    for (j in predictors) {
+        fm_str = sprintf('%s ~ %s', i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+Yep, we have results there. I'm going to keep on investigating the fMRI side
+just o see if anything exciting comes up in that side.
+t
 # TODO
-* JHU tracts?
-
