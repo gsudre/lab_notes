@@ -204,8 +204,497 @@ BTW, using straight up PCA in KING is not converging, even after 24h.
 # 2019-09-18 10:26:38
 
 Philip asked to join the PNC and our cohort with the ABCD data before generating
-the MDS components according to the ENIGMA paradigm. Here is the code:
+the MDS components according to the ENIGMA paradigm. First, we need to figure
+out what's going on with PNC genomics. The most recent version of the dbGap link is this one:
+https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000607.v3.p2,
+, according to the original PNC paper:
+https://www.sciencedirect.com/science/article/pii/S1053811915002529?via%3Dihub#s0015
+
+I downloaded the data a while ago, and it looks like all samples the first
+version are in the second version. 
 
 ```bash
+HG-02113362-DM4:GenotypeFiles sudregp$ wc -l */_*
+    8715 phg000381.v2.NIMH_NeurodevelopmentalGenomics.sample-info.MULTI/_fam_sub_mot_fat_sam_sex_con_file_7removed
+    9269 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.sample-info.MULTI/_fam_sub_mot_fat_sam_sex_con_use-nosra
+   17984 total
+HG-02113362-DM4:GenotypeFiles sudregp$ head phg000381.v2.NIMH_NeurodevelopmentalGenomics.sample-info.MULTI/_fam_sub_mot_fat_sam_sex_con_file_7removed
+600001676724    600001676724    0       0       600001676724    2       1       GO_Affy60
+600003245643    600003245643    0       0       600003245643    1       1       GO_Affy60
+600004963801    600004963801    0       0       600004963801    2       1       GO_Affy60
+600005394890    600005394890    0       0       600005394890    1       1       GO_Affy60
+600005726384    600005726384    0       0       600005726384    1       1       GO_Affy60
+600008688531    600008688531    0       0       600008688531    1       1       GO_Affy60
+600009963128    600009963128    0       0       600009963128    2       1       GO_Affy60
+600010814166    600010814166    0       0       600010814166    2       1       GO_Affy60
+600012815174    600012815174    0       0       600012815174    1       1       GO_Affy60
+600013511285    600013511285    0       0       600013511285    1       1       GO_Affy60
+HG-02113362-DM4:GenotypeFiles sudregp$ grep 600001676724 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.sample-info.MULTI/_fam_sub_mot_fat_sam_sex_con_use-nosra
+0       600001676724    0       0       600001676724    2       1       Array_SNP
+HG-02113362-DM4:GenotypeFiles sudregp$ grep 600010814166 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.sample-info.MULTI/_fam_sub_mot_fat_sam_sex_con_use-nosra
+0       600010814166    0       0       600010814166    2       1       Array_SNP
+```
+
+I didn't test all of them, but the numbers are somewhat indicative, and the 9269
+number is a closer match to what the wbesite says they have. Also, closer to 500
+or so subjects they say they added from version 1 to 2.
+
+Now, we just need to get the PLINK files and start playing. But it does seem
+like there were many different genotyping arrays, which will make things quite
+interesting in merging the datasets.
+
+```
+HG-02113362-DM4:GenotypeFiles sudregp$ wc -l */*fam
+     722 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.Axiom.c1.GRU-NPU/GO_Axiom.fam
+      66 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.Genome-Wide_Human_SNP_Array_6.0.c1.GRU-NPU/GO_Affy60.fam
+    3802 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.Human610-Quadv1_B.c1.GRU-NPU/GO_Quad_5removed.fam
+     555 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.HumanHap550_v1.c1.GRU-NPU/GO_v1_1removed.fam
+    1913 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.HumanHap550_v3.c1.GRU-NPU/GO_v3_1removed.fam
+    1657 phg000381.v2.NIMH_NeurodevelopmentalGenomics.genotype-calls-matrixfmt.HumanOmniExpress.c1.GRU-NPU/GO_Omni.fam
+     225 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.Axiom.c1.GRU-NPU/GO_AxiomTx.fam
+      40 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.Axiom.c1.GRU-NPU/GO_Axiom_set2.fam
+      17 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.BDCHP-1X10-HUMANHAP550.c1.GRU-NPU/GO_v1set2.fam
+     141 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.Human1M-Duov3_B.c1.GRU-NPU/GO_1MDuo.fam
+      40 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.Human610-Quadv1_B.c1.GRU-NPU/GO_Quadset2.fam
+      31 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.HumanHap550_v3.c1.GRU-NPU/GO_v3set2.fam
+      37 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.HumanOmniExpress-12v1_A.c1.GRU-NPU/GO_Omniset2.fam
+      18 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.HumanOmniExpress-12v1_B.c1.GRU-NPU/GO_OMNI12v11.fam
+       3 phg000661.v1.NIMH_NeurodevelopmentalGenomics_v2.genotype-calls-matrixfmt.HumanOmniExpressExome-8v1_A.c1.GRU-NPU/GO_OEE.fam
+    9267 total
+```
+
+My plan is to modify the ENIGMA protocol slightly to account for the different
+datasets. HEre, they will be ours, ABCD, and all of PNC. I'll extract just the
+HM3 SNPS from each of them, and merge only afterwards.
+
+http://enigma.ini.usc.edu/wp-content/uploads/2012/07/ENIGMA2_1KGP_cookbook_v3.pdf
+
+```bash
+# interactive
+cd /data/NCR_SBRB/combined_genetics
+module load plink
+
+[sudregp@cn1741 combined_genetics]$ ls -1 *bed
+ABCD_release_2.0_r2.bed
+CIDR_1to22.bed
+GO_1MDuo.bed
+GO_Affy60.bed
+GO_Axiom.bed
+GO_Axiom_set2.bed
+GO_AxiomTx.bed
+GO_OEE.bed
+GO_OMNI12v11.bed
+GO_Omni.bed
+GO_Omniset2.bed
+GO_Quad_5removed.bed
+GO_Quadset2.bed
+GO_v1_1removed.bed
+GO_v1set2.bed
+GO_v3_1removed.bed
+GO_v3set2.bed
+HM3.bed
+Shaw01_2017_1to22.bed
+Shaw02_2017_1to22.bed
+Shaw03_1to22.bed
+Shaw03_2017_1to22.bed
+Shaw04_1to22.bed
+Shaw04_2017_1to22.bed
+Shaw05_2017_1to22.bed
+Shaw06_2017_1to22.bed
+Shaw07_2017_1to22.bed
+twins_1to22.bed
+
+awk '{print $2}' HM3.bim > HM3.snplist.txt;
+for data in `ls *bed`; do
+    datafileraw=`basename -s .bed $data`;
+    if [ $datafileraw != 'HM3' ]; then
+        plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+            --make-bed --out ${datafileraw}_filtered
+        datafile=${datafileraw}_filtered;
+        plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out ${datafile}_local;
+        awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' ${datafile}.bim | grep -v ambig > ${datafile}_local.snplist.txt;
+    fi;
+done
+[sudregp@cn1741 combined_genetics]$ wc -l *local.snplist.txt
+   334195 ABCD_release_2.0_r2_filtered_local.snplist.txt
+   673148 CIDR_1to22_filtered_local.snplist.txt
+  1029421 GO_1MDuo_filtered_local.snplist.txt
+   705032 GO_Affy60_filtered_local.snplist.txt
+   459738 GO_Axiom_filtered_local.snplist.txt
+   330049 GO_Axiom_set2_filtered_local.snplist.txt
+   549524 GO_AxiomTx_filtered_local.snplist.txt
+   511493 GO_OEE_filtered_local.snplist.txt
+   628580 GO_OMNI12v11_filtered_local.snplist.txt
+   653198 GO_Omni_filtered_local.snplist.txt
+   687381 GO_Omniset2_filtered_local.snplist.txt
+   459395 GO_Quad_5removed_filtered_local.snplist.txt
+   577678 GO_Quadset2_filtered_local.snplist.txt
+   516440 GO_v1_1removed_filtered_local.snplist.txt
+   517539 GO_v1set2_filtered_local.snplist.txt
+   475132 GO_v3_1removed_filtered_local.snplist.txt
+   539374 GO_v3set2_filtered_local.snplist.txt
+   680975 Shaw01_2017_1to22_filtered_local.snplist.txt
+   637883 Shaw02_2017_1to22_filtered_local.snplist.txt
+   633280 Shaw03_1to22_filtered_local.snplist.txt
+   675513 Shaw03_2017_1to22_filtered_local.snplist.txt
+   694192 Shaw04_1to22_filtered_local.snplist.txt
+   676186 Shaw04_2017_1to22_filtered_local.snplist.txt
+   661454 Shaw05_2017_1to22_filtered_local.snplist.txt
+   421349 Shaw06_2017_1to22_filtered_local.snplist.txt
+   666876 Shaw07_2017_1to22_filtered_local.snplist.txt
+   645735 twins_1to22_filtered_local.snplist.txt
+
+```
+
+There's lots of variability in the number of SNPs in each dataset, even after
+extracting only the ones that are in HM3. So, let's grab only the intersection
+of the lists, and then re-extract everything, including HM3.
+
+```bash
+cp ABCD_release_2.0_r2_filtered_local.snplist.txt intersect.snplist.txt
+for f in `ls *_filtered_local.snplist.txt`; do 
+    echo $f;
+    # combine the two files, sort them, and then display only the lines that appear more than once: that is, the ones that appear in both files.
+    sort intersect.snplist.txt $f | uniq -d > junk.txt;
+    cp junk.txt intersect.snplist.txt;
+    wc -l intersect.snplist.txt;
+done
+```
+
+```
+ABCD_release_2.0_r2_filtered_local.snplist.txt
+331992 intersect.snplist.txt
+CIDR_1to22_filtered_local.snplist.txt
+68279 intersect.snplist.txt
+GO_1MDuo_filtered_local.snplist.txt
+57286 intersect.snplist.txt
+GO_Affy60_filtered_local.snplist.txt
+22407 intersect.snplist.txt
+GO_Axiom_filtered_local.snplist.txt
+10295 intersect.snplist.txt
+GO_Axiom_set2_filtered_local.snplist.txt
+7729 intersect.snplist.txt
+GO_AxiomTx_filtered_local.snplist.txt
+6028 intersect.snplist.txt
+GO_OEE_filtered_local.snplist.txt
+4383 intersect.snplist.txt
+GO_OMNI12v11_filtered_local.snplist.txt
+4302 intersect.snplist.txt
+GO_Omni_filtered_local.snplist.txt
+4297 intersect.snplist.txt
+GO_Omniset2_filtered_local.snplist.txt
+4269 intersect.snplist.txt
+GO_Quad_5removed_filtered_local.snplist.txt
+2792 intersect.snplist.txt
+GO_Quadset2_filtered_local.snplist.txt
+2788 intersect.snplist.txt
+GO_v1_1removed_filtered_local.snplist.txt
+2625 intersect.snplist.txt
+GO_v1set2_filtered_local.snplist.txt
+2549 intersect.snplist.txt
+GO_v3_1removed_filtered_local.snplist.txt
+2523 intersect.snplist.txt
+GO_v3set2_filtered_local.snplist.txt
+2497 intersect.snplist.txt
+Shaw01_2017_1to22_filtered_local.snplist.txt
+2481 intersect.snplist.txt
+Shaw02_2017_1to22_filtered_local.snplist.txt
+2476 intersect.snplist.txt
+Shaw03_1to22_filtered_local.snplist.txt
+2470 intersect.snplist.txt
+Shaw03_2017_1to22_filtered_local.snplist.txt
+2469 intersect.snplist.txt
+Shaw04_1to22_filtered_local.snplist.txt
+2465 intersect.snplist.txt
+Shaw04_2017_1to22_filtered_local.snplist.txt
+2463 intersect.snplist.txt
+Shaw05_2017_1to22_filtered_local.snplist.txt
+2406 intersect.snplist.txt
+Shaw06_2017_1to22_filtered_local.snplist.txt
+1533 intersect.snplist.txt
+Shaw07_2017_1to22_filtered_local.snplist.txt
+1528 intersect.snplist.txt
+twins_1to22_filtered_local.snplist.txt
+1528 intersect.snplist.txt
+```
+
+The number of SNPs went down really fast. Not sure if we can run anything with
+this... but let's see.
+
+```bash
+for data in `ls *_filtered_local.bed`; do
+    datafile=`basename -s .bed $data`;
+    plink --bfile ${datafile} --extract intersect.snplist.txt --make-bed --noweb --out ${datafile}_tiny;
+    echo "${datafile}_tiny.bed ${datafile}_tiny.bim ${datafile}_tiny.fam" >> merge_list.txt
+done
+plink --bfile HM3 --extract intersect.snplist.txt --make-bed --noweb --out HM3_tiny;
+```
+
+I'm running into several issues of flipping variants, so I'll have to merge them
+slowly...
+
+```
+datafile=ABCD_release_2.0_r2_filtered_local_tiny;
+cnt=1;
+plink --bfile HM3_tiny -bmerge ${datafile}.bed ${datafile}.bim ${datafile}.fam --make-bed --noweb --out HM3merge${cnt};
+
+datafile=CIDR_1to22_filtered_local_tiny;
+plink --bfile HM3merge${cnt} -bmerge ${datafile}.bed ${datafile}.bim ${datafile}.fam --make-bed --noweb --out HM3merge$(( cnt + 1))
+plink --bfile $datafile --flip HM3merge$(( cnt + 1))-merge.missnp --make-bed --noweb --out ${datafile}_flipped
+plink --bfile HM3merge${cnt} -bmerge ${datafile}_flipped.bed ${datafile}_flipped.bim ${datafile}_flipped.fam --make-bed --noweb --out HM3merge$(( cnt + 1))
+let cnt=$cnt+1;
+
+datafile=GO_1MDuo_filtered_local_tiny;
+plink --bfile HM3merge${cnt} -bmerge ${datafile}.bed ${datafile}.bim ${datafile}.fam --make-bed --noweb --out HM3merge$(( cnt + 1))
+plink --bfile $datafile --flip HM3merge$(( cnt + 1))-merge.missnp --make-bed --noweb --out ${datafile}_flipped
+plink --bfile HM3merge${cnt} -bmerge ${datafile}_flipped.bed ${datafile}_flipped.bim ${datafile}_flipped.fam --make-bed --noweb --out HM3merge$(( cnt + 1))
+let cnt=$cnt+1;
+
+```
+
+I don't like where this is going... maybe the best approach will be to do the
+intersection of each one with HM3?
+
+At least for within PNC, I'll need to find a way to merge them. I could impute
+each one first, and then merge? That would take care of the flipping. What's the
+intersection of just PNC?
+
+```bash
+cd /data/NCR_SBRB/PNC_genetics
+for f in `ls *bim`; do
+    fname=`basename -s .bim $f`;
+    awk '{print $2}' $f > $fname.snplist.txt;
+done
+cp GO_1MDuo.snplist.txt intersect.snplist.txt;
+for f in `ls *.snplist.txt`; do
+    echo $f;
+    # combine the two files, sort them, and then display only the lines that appear more than once: that is, the ones that appear in both files.
+    sort intersect.snplist.txt $f | uniq -d > junk.txt;
+    cp junk.txt intersect.snplist.txt;
+    wc -l intersect.snplist.txt;
+done
+```
+
+```
+GO_1MDuo.snplist.txt
+1199187 intersect.snplist.txt
+GO_Affy60.snplist.txt
+308753 intersect.snplist.txt
+GO_Axiom_set2.snplist.txt
+92294 intersect.snplist.txt
+GO_Axiom.snplist.txt
+92294 intersect.snplist.txt
+GO_AxiomTx.snplist.txt
+23952 intersect.snplist.txt
+GO_OEE.snplist.txt
+16221 intersect.snplist.txt
+GO_OMNI12v11.snplist.txt
+16056 intersect.snplist.txt
+GO_Omniset2.snplist.txt
+16056 intersect.snplist.txt
+GO_Omni.snplist.txt
+16056 intersect.snplist.txt
+GO_Quad_5removed.snplist.txt
+10547 intersect.snplist.txt
+GO_Quadset2.snplist.txt
+10547 intersect.snplist.txt
+GO_v1_1removed.snplist.txt
+10061 intersect.snplist.txt
+GO_v1set2.snplist.txt
+10061 intersect.snplist.txt
+GO_v3_1removed.snplist.txt
+10059 intersect.snplist.txt
+GO_v3set2.snplist.txt
+10059 intersect.snplist.txt
+```
+
+Even within PNC we're losing lots of SNPs. I'll go ahead and run the ENIGMA
+protocol just on these, and we can see what we get in the end. Merging will be a
+nightmare, but let's give it a try. 
+
+```bash
+cd /data/NCR_SBRB/PNC_genetics
+cp ../ABCD/HM3.??? .
+awk '{print $2}' HM3.bim > HM3.snplist.txt;
+for data in `ls *bed`; do
+    datafileraw=`basename -s .bed $data`;
+    if [ $datafileraw != 'HM3' ]; then
+        plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+            --make-bed --out ${datafileraw}_filtered
+        datafile=${datafileraw}_filtered;
+        plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out ${datafile}_local;
+        awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' ${datafile}.bim | grep -v ambig > ${datafile}_local.snplist.txt;
+    fi;
+done
+
+cp GO_1MDuo_filtered_local.snplist.txt intersect.snplist.txt
+for f in `ls *_filtered_local.snplist.txt`; do
+    echo $f;
+    # combine the two files, sort them, and then display only the lines that appear more than once: that is, the ones that appear in both files.
+    sort intersect.snplist.txt $f | uniq -d > junk.txt;
+    cp junk.txt intersect.snplist.txt;
+    wc -l intersect.snplist.txt;
+done
+```
+
+```
+GO_1MDuo_filtered_local.snplist.txt
+1029421 intersect.snplist.txt
+GO_Affy60_filtered_local.snplist.txt
+264439 intersect.snplist.txt
+GO_Axiom_filtered_local.snplist.txt
+75443 intersect.snplist.txt
+GO_Axiom_set2_filtered_local.snplist.txt
+53395 intersect.snplist.txt
+GO_AxiomTx_filtered_local.snplist.txt
+15144 intersect.snplist.txt
+GO_OEE_filtered_local.snplist.txt
+8051 intersect.snplist.txt
+GO_OMNI12v11_filtered_local.snplist.txt
+7793 intersect.snplist.txt
+GO_Omni_filtered_local.snplist.txt
+7721 intersect.snplist.txt
+GO_Omniset2_filtered_local.snplist.txt
+7672 intersect.snplist.txt
+GO_Quad_5removed_filtered_local.snplist.txt
+4324 intersect.snplist.txt
+GO_Quadset2_filtered_local.snplist.txt
+4319 intersect.snplist.txt
+GO_v1_1removed_filtered_local.snplist.txt
+4081 intersect.snplist.txt
+GO_v1set2_filtered_local.snplist.txt
+3964 intersect.snplist.txt
+GO_v3_1removed_filtered_local.snplist.txt
+3909 intersect.snplist.txt
+GO_v3set2_filtered_local.snplist.txt
+3873 intersect.snplist.txt
+```
+
+Again, not much overlap. Actually mirroring what we had when combining all
+datasets. I actually re-ran the numbers and without any filtering the
+intersection between PNC and HM# goes from 10: to 8K SNPs. So, the other 5K we
+are losing above is because of QC. But I'm not sure if using QC in those small
+sets is really that fair. So, let's merge the datasets first, 
+
+OK, let's do this slowly then:
+
+```bash
+[sudregp@cn1741 PNC_genetics]$ ls -1 *bim
+GO_1MDuo.bim
+GO_Affy60.bim
+GO_Axiom.bim
+GO_Axiom_set2.bim
+GO_AxiomTx.bim
+GO_OEE.bim
+GO_OMNI12v11.bim
+GO_Omni.bim
+GO_Omniset2.bim
+GO_Quad_5removed.bim
+GO_Quadset2.bim
+GO_v1_1removed.bim
+GO_v1set2.bim
+GO_v3_1removed.bim
+GO_v3set2.bim
+```
+
+```bash
+#starting with Illumina arrays
+plink --bfile GO_Omni -bmerge GO_Omniset2.bed GO_Omniset2.bim GO_Omniset2.fam --make-bed --noweb --out mergeOmni
+plink --bfile GO_v1_1removed -bmerge GO_v1set2.bed GO_v1set2.bim GO_v1set2.fam --make-bed --noweb --out mergev1
+plink --bfile GO_v3_1removed -bmerge GO_v3set2.bed GO_v3set2.bim GO_v3set2.fam --make-bed --noweb --out mergev3
+plink --bfile GO_Quad_5removed -bmerge GO_Quadset2.bed GO_Quadset2.bim GO_Quadset2.fam --make-bed --noweb --out mergeQuad
+plink --bfile mergeQuad -bmerge mergeOmni.bed mergeOmni.bim mergeOmni.fam --make-bed --noweb --out merge1
+plink --bfile merge1 -bmerge mergev1.bed mergev1.bim mergev1.fam --make-bed --noweb --out merge2
+plink --bfile merge2 -bmerge GO_OMNI12v11.bed GO_OMNI12v11.bim GO_OMNI12v11.fam --make-bed --noweb --out merge3
+plink --bfile merge3 -bmerge GO_OEE.bed GO_OEE.bim GO_OEE.fam --make-bed --noweb --out merge4
+plink --bfile merge4 -bmerge GO_1MDuo.bed GO_1MDuo.bim GO_1MDuo.fam --make-bed --noweb --out merge5
+plink --bfile merge5 -bmerge mergev3.bed mergev3.bim mergev3.fam --make-bed --noweb --out merge6
+
+# this takes care of all Illumina datasets from what I can see... now, to Affymetrix
+plink --bfile GO_Axiom -bmerge GO_Axiom_set2.bed GO_Axiom_set2.bim GO_Axiom_set2.fam --make-bed --noweb --out mergeAxiom
+plink --bfile mergeAxiom -bmerge GO_Affy60.bed GO_Affy60.bim GO_Affy60.fam --make-bed --noweb --out merge7
+plink --bfile merge7 -bmerge GO_AxiomTx.bed GO_AxiomTx.bim GO_AxiomTx.fam --make-bed --noweb --out merge8
+plink --bfile merge7 --flip merge8-merge.missnp --make-bed --noweb --out merge7_flipped
+plink --bfile merge7_flipped -bmerge GO_AxiomTx.bed GO_AxiomTx.bim GO_AxiomTx.fam --make-bed --noweb --out merge8
+
+# the big merge across platforms
+plink --bfile merge8 -bmerge merge6.bed merge6.bim merge6.fam --make-bed --noweb --out merged
+plink --bfile merge8 --flip merged-merge.missnp --make-bed --noweb --out merge8_flipped
+plink --bfile merge8_flipped -bmerge merge6.bed merge6.bim merge6.fam --make-bed --noweb --out merged
+```
+
+The big merge still didn't work... maybe if I do the HM3 part first?
+
+```bash
+cd /data/NCR_SBRB/PNC_genetics
+cp ../ABCD/HM3.??? .
+awk '{print $2}' HM3.bim > HM3.snplist.txt;
+
+export datafileraw=merge6
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb --make-bed --out ${datafileraw}_filtered
+export datafile=${datafileraw}_filtered
+plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out illumina_local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > illumina_local.snplist.txt
+
+export datafileraw=merge8
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb --make-bed --out ${datafileraw}_filtered
+export datafile=${datafileraw}_filtered
+plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out affy_local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > affy_local.snplist.txt
+
+plink --bfile HM3 --extract illumina_local.snplist.txt --make-bed --noweb --out external_illumina
+plink --bfile illumina_local --bmerge external_illumina.bed external_illumina.bim external_illumina.fam --make-bed --noweb --out HM3merge1
+plink --bfile illumina_local --flip HM3merge1-merge.missnp --make-bed --noweb --out illumina_flipped
+plink --bfile illumina_flipped --bmerge external_illumina.bed external_illumina.bim external_illumina.fam --make-bed --noweb --out HM3merge1
+plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplist.txt --noweb --out HM3mds
+```
+
+Having problems here again. I think the best solution would be to impute within
+platform, and then do this. But for now we'll just use Veera's PCs for PNC, and
+I'll recompute ours, doing age restriction.
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics
+cp -v ~/data/prs/geno3/*_1to22.??? .
+[sudregp@cn1741 NCR_genetics]$ ls -1 *_1to22.bed
+CIDR_1to22.bed
+Shaw01_2017_1to22.bed
+Shaw02_2017_1to22.bed
+Shaw03_1to22.bed
+Shaw03_2017_1to22.bed
+Shaw04_1to22.bed
+Shaw04_2017_1to22.bed
+Shaw05_2017_1to22.bed
+Shaw06_2017_1to22.bed
+Shaw07_2017_1to22.bed
+twins_1to22.bed
+```
+
+```bash
+plink --bfile Shaw01_2017_1to22 -bmerge Shaw02_2017_1to22.bed Shaw02_2017_1to22.bim Shaw02_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_1
+plink --bfile mergeShaw2017_1 -bmerge Shaw03_2017_1to22.bed Shaw03_2017_1to22.bim Shaw03_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_2
+plink --bfile mergeShaw2017_2 -bmerge Shaw04_2017_1to22.bed Shaw04_2017_1to22.bim Shaw04_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_3
+plink --bfile mergeShaw2017_3 -bmerge Shaw05_2017_1to22.bed Shaw05_2017_1to22.bim Shaw05_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_4
+plink --bfile mergeShaw2017_4 -bmerge Shaw06_2017_1to22.bed Shaw06_2017_1to22.bim Shaw06_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_5
+plink --bfile mergeShaw2017_5 -bmerge Shaw07_2017_1to22.bed Shaw07_2017_1to22.bim Shaw07_2017_1to22.fam --make-bed --noweb --out mergeShaw2017_6
+plink --bfile Shaw04_1to22 -bmerge Shaw03_1to22.bed Shaw03_1to22.bim Shaw03_1to22.fam --make-bed --noweb --out mergeShaw
+plink --bfile mergeShaw -bmerge mergeShaw2017_6.bed mergeShaw2017_6.bim mergeShaw2017_6.fam --make-bed --noweb --out merge1
+plink --bfile merge1 -bmerge twins_1to22.bed twins_1to22.bim twins_1to22.fam --make-bed --noweb --out merge2
+plink --bfile merge2 -bmerge CIDR_1to22.bed CIDR_1to22.bim CIDR_1to22.fam --make-bed --noweb --out merged
+
+export datafileraw=merged
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb --make-bed --out ${datafileraw}_filtered
+cp ../ABCD/HM3.??? .
+export datafile=${datafileraw}_filtered
+awk '{print $2}' HM3.bim > HM3.snplist.txt
+plink --bfile ${datafile} --extract HM3.snplist.txt --make-bed --noweb --out local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > local.snplist.txt
+plink --bfile HM3 --extract local.snplist.txt --make-bed --noweb --out external
+plink --bfile local --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
+plink --bfile local --flip HM3merge-merge.missnp --make-bed --noweb --out flipped
+plink --bfile flipped --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
+
+# at this stage I have everyone in H3merge. Now it's just a matter of removing any NSBs for people with age above 22
+plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplist.txt --noweb --out HM3mds
 
 ```
