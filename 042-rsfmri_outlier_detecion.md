@@ -1000,55 +1000,53 @@ Then 17 by 17:
 I'm just not sure what to do to keep these results after corrections... maybe
 FDR? Or even Meff?
 
+# 2019-09-23 13:30:26
 
+Phikip suggested I could leave just VAN, DAN, DMN, and cognitive. Maybe limbic
+too, but the first four make up the current model of ADHD, with DMN linking to
+the task-positive networks. Even with that, FDR doesn't survive, and I doubt that
+Meff is going to get below 5...
 
-
-
-
-
-
-
-
-
-
-The last resort is to try the roi2net idea.
+If I increase my sample size, I wonder if I can get better results. Let me see
+if I automatize the elbow function I can get more people. Then, it's just a
+matter of shoing that the chosen result still remain under more strict
+thresholds.
 
 ```r
-idx = scores_lof < 2 & scores_if < .5
-nrois = 100
+demo = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+cat(sprintf('Starting from %d scans\n', nrow(demo)))
 
-fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
-                nrois)
-nets = read.table(fname)
-all_net_names = sapply(as.character(unique(nets[,2])),
-                       function(y) strsplit(x=y, split='_')[[1]][3])
-net_names = unique(all_net_names)
-nnets = length(net_names)
+# keeping it to kids only to make sure everyone has been processed
+demo = demo[a$age_at_scan < 18, ]
+cat(sprintf('Down to %d to keep < 18 only\n', nrow(demo)))
 
-data2 = data[idx, ]
-fc = c()
-for (s in data2$id0) {
-    fname = sprintf('%s/%s/fcon/schaefer%d/%s_schaefer%d.net',
-                        mydir, s, nrois, s, nrois)
-    subj_data = read.table(fname, skip=2)
-    b = matrix(nrow=nrois, ncol=nrois)
-    for (r in 1:nrow(subj_data)) {
-        b[subj_data[r,1], subj_data[r,2]] = subj_data[r,3]
-        b[subj_data[r,2], subj_data[r,1]] = subj_data[r,3]
+# let's grab QC metrics on everyone
+# note that this only works for non-censoring pipelines!
+mydir = '/Volumes/Shaw/rsfmri_36P/xcpengine_output_fc-36p_despike/'
+qc_data = c()
+for (s in demo$Mask.ID) {
+    subj = sprintf('sub-%04d', s)
+    # if it processed all the way
+    std_fname = sprintf('%s/%s/norm/%s_std.nii.gz', mydir, subj, subj)
+    if (file.exists(std_fname)) {
+        subj_data = read.csv(sprintf('%s/%s/%s_quality.csv', mydir, subj, subj))
+        qc_data = rbind(qc_data, subj_data)
     }
-    # at this point we have a nrois by nrois mirror matrix for the
-    # subject. All we need to do is average within each network
-    roi_conn = c()
-    for (n in 1:nnets) {
-        net_idx = all_net_names==net_names[n]
-        roi_conn = c(roi_conn, rowMeans(b[, net_idx], na.rm=T))
-    }
-    fc = rbind(fc, roi_conn)
 }
+
+# have some higly correlated qc variables, so let's remove the worse offenders (anything above abs(.8))
+qc_vars = c('normCoverage', 'meanDV', 'pctSpikesDV',
+            'motionDVCorrInit',
+            'motionDVCorrFinal', "pctSpikesRMS", "relMeanRMSMotion")
+
+library(solitude)
 iso <- isolationForest$new()
-iso$fit(as.data.frame(fc))
+iso$fit(qc_data[, qc_vars])
 scores_if = as.matrix(iso$scores)[,3]
-scores_lof = lof(fc, k = round(.5 * nrow(fc)))
+
+library(dbscan)
+# here I set the number of neighbors to a percentage of the total data
+scores_lof = lof(qc_data[, qc_vars], k = round(.5 * nrow(qc_data)))
 
 par(mfrow=c(2,2))
 sscores = sort(scores_lof)
@@ -1061,41 +1059,144 @@ plot(sscores, 1:length(sscores), ylab='Remaining observations',
      xlab='Score threshold', main='Isolation Forest')
 ```
 
-![](images/2019-09-19-13-28-47.png)
-
-Here I'll go with 1.1 for LOF and .5 for IF. Now we add our qc metrics:
-
-
-
-
-
-Now, time to see how the outlier plots look like:
-
-
-
-![](images/2019-09-17-17-26-09.png)
-
-I think a fair threshold for LOF is 1.25 and for IF is .5. Now, let's see how
-many scans we end up with:
+In the past I chose scores_lof < 1.25 and scores_if < .55. LEt's see where the
+elbow is:
 
 ```r
-idx = scores_lof < 1.25 & scores_if < .5
+# to get distance function
+source('~/research_code/get_elbow.R')
+x = sort(scores_lof)
+y = 1:length(x)
+dists = vector()
+for (i in 1:length(x)) {
+    dists = c(dists, distancePointSegment(x[i], y[i], x[1], y[1], max(x), max(y)))
+}
+pos = which.max(dists)
+print(sprintf('Elbow LOF at %.2f', x[pos]))
+x = sort(scores_if)
+y = 1:length(x)
+dists = vector()
+for (i in 1:length(x)) {
+    dists = c(dists, distancePointSegment(x[i], y[i], x[1], y[1], max(x), max(y)))
+}
+pos = which.max(dists)
+print(sprintf('Elbow LOF at %.2f', x[pos]))
 ```
 
-We are still at 543 scans, coming from initial 793 kiddie scans. So, a 32%
-reduction. What happens when we keep the best two scans of each kid that has 2
-or more scans? And here we'll define as "best" as just the LOF score, which is a
-bit easier to interpret and it doesn't look like a normal distribution.
-
-First, let's add our qc metrics:
+OK, now that I have the elbows, let's define the datasets again. I'll just do
+posOnly, as that's what I got best results with:
 
 ```r
-data3 = cbind(data2, net_data)
-data3 = data3[idx, ]
+idx = scores_lof < 1.99 & scores_if < .48
+nrois = 100
 
-data3$mask.id = as.numeric(gsub(data3$id0, pattern='sub-', replacement=''))
+fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
+                nrois)
+nets = read.table(fname)
+all_net_names = sapply(as.character(unique(nets[,2])),
+                       function(y) strsplit(x=y, split='_')[[1]][3])
+net_names = unique(all_net_names)
+nnets = length(net_names)
 
-df = merge(data3, a, by.x='mask.id', by.y='Mask.ID', all.x=T, all.y=F)
+# figure out which connection goes to which network
+cat('Creating connection map...\n')
+nverts = nrow(nets)
+cnt = 1
+conn_map = c()
+for (i in 1:(nverts-1)) {
+    for (j in (i+1):nverts) {
+        conn = sprintf('conn%d', cnt)
+        conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
+        cnt = cnt + 1
+    }
+}
+
+qc_data_clean = qc_data[idx, ]
+fc = c()
+for (s in qc_data_clean$id0) {
+    fname = sprintf('%s/%s/fcon/schaefer%d/%s_schaefer%d_network.txt',
+                                mydir, s, nrois, s, nrois)
+    subj_data = read.table(fname)[, 1]
+    fc = cbind(fc, subj_data)
+}
+fc = t(fc)
+var_names = sapply(1:ncol(fc), function(x) sprintf('conn%d', x))
+colnames(fc) = var_names
+fcP = fc
+fcP[fc<0] = NA
+
+net_dataP = c()
+header = c()
+for (i in 1:nnets) {
+    for (j in i:nnets) {
+        cat(sprintf('Evaluating connections from %s to %s\n',
+                    net_names[i], net_names[j]))
+        idx = (conn_map[,2]==net_names[i] | conn_map[,2]==net_names[j] |
+            conn_map[,3]==net_names[i] | conn_map[,3]==net_names[j])
+        res = apply(fcP[, var_names[idx]], 1, mean, na.rm=T)
+        net_dataP = cbind(net_dataP, res)
+        header = c(header, sprintf('conn_%sTO%s', net_names[i],
+                                                net_names[j]))
+    }
+}
+colnames(net_dataP) = header
+rownames(net_dataP) = qc_data_clean$id0
+```
+
+And we need to re-measure elbows.
+
+```r
+iso <- isolationForest$new()
+iso$fit(as.data.frame(net_dataP))
+scores_if = as.matrix(iso$scores)[,3]
+scores_lof = lof(net_dataP, k = round(.5 * nrow(net_dataP)))
+
+# to get distance function
+source('~/research_code/get_elbow.R')
+x = sort(scores_lof)
+y = 1:length(x)
+dists = vector()
+for (i in 1:length(x)) {
+    dists = c(dists, distancePointSegment(x[i], y[i], x[1], y[1], max(x), max(y)))
+}
+pos = which.max(dists)
+elbow_lof=x[pos]
+print(sprintf('Elbow LOF at %.2f', elbow_lof))
+x = sort(scores_if)
+y = 1:length(x)
+dists = vector()
+for (i in 1:length(x)) {
+    dists = c(dists, distancePointSegment(x[i], y[i], x[1], y[1], max(x), max(y)))
+}
+pos = which.max(dists)
+elbow_if=x[pos]
+print(sprintf('Elbow IF at %.2f', elbow_if))
+
+par(mfrow=c(2,2))
+sscores = sort(scores_lof)
+hist(sscores, breaks=20, main='Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Local Outlier Factor')
+abline(v=elbow_lof, col='red')
+sscores = sort(scores_if)
+hist(sscores, breaks=20, main='Anomaly score distribution')
+plot(sscores, 1:length(sscores), ylab='Remaining observations',
+     xlab='Score threshold', main='Isolation Forest')
+abline(v=elbow_if, col='red')
+```
+
+![](images/2019-09-23-14-07-15.png)
+
+Hum, I don't think I'll end up with more people... but maybe better data?
+
+```r
+idx = scores_lof < 1.34 & scores_if < .46
+data = cbind(qc_data_clean[, c('id0', qc_vars)], net_dataP)
+data = data[idx, ]
+
+data$mask.id = as.numeric(gsub(data$id0, pattern='sub-', replacement=''))
+
+df = merge(data, demo, by.x='mask.id', by.y='Mask.ID', all.x=T, all.y=F)
 
 num_scans = 2  # number of scans to select
 df$scores = scores_lof[idx]
@@ -1154,18 +1255,7 @@ for (s in unique(df$Medical.Record...MRN)) {
     }
 }
 filtered_data = df[keep_me, ]
-```
 
-So, in the end we still have 394 scans, which is much more than what we had
-before. Let's try using that for heritability and also for association (just to
-simplify the analysis), and let's see what we get.
-
-# 2019-09-18 11:00:25
-
-Time to compute slopes. Let's re-use the code and keep some baseline metrics in
-there as well:
-
-```r
 source('~/research_code/lab_mgmt/merge_on_closest_date.R')
 clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
 df = mergeOnClosestDate(filtered_data, clin,
@@ -1225,36 +1315,42 @@ colnames(res) = c('ID', 'sex', tract_names, qc_vars, c('SX_inatt', 'SX_HI',
                                               'inatt_baseline',
                                               'HI_baseline',
                                               'DX', 'DX2'))
-write.csv(res, file='~/data/heritability_change/rsfmri_7by7from100_OD.csv',
+write.csv(res, file='~/data/heritability_change/rsfmri_7by7from100_OD_posOnly_n178.csv',
+          row.names=F, na='', quote=F)
+
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_OD_posOnly_n178.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+related = names(table(data$FAMID))[table(data$FAMID) >= 2]
+keep_me = data$FAMID %in% related
+data2 = data[keep_me, ]
+write.csv(data2, file='~/data/heritability_change/rsfmri_7by7from100_OD_posOnly_n178_Fam_n75.csv',
           row.names=F, na='', quote=F)
 ```
 
-Let's see how many unrelated subjects SOLAR finds, so we can create a Fam file
-for rsfmri as well.
+And finally we run SOLAR, but only for the interesting connections:
 
+```bash
+# interactive
+cd ~/data/heritability_change
+phen=rsfmri_7by7from100_OD_posOnly_n178;
+for t in "conn_DorsAttnTODorsAttn" \
+    "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+    "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+    "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+    "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+    "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp ${phen} ${t};
+done;
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}
 ```
-    NPairs  Relationship
-  ========  ===========================================
-       197  Self
-        46  Siblings
-         3  1st cousins
-         1  2nd cousins
-```
 
-If we tolerate 2nd cousins, then we should be ok... that does look a bit weird
-though. I'll double check it later when I create familyID for regressions. For
-now, let's check if there is any sort of heritability.
+Wow... that wasn't good at all. Removed all my results... quite weird. 
 
-
-That ran, but the majority of the connection broke solar. That's interesting.
-Let's make a positive-only dataset, and also do a 17x17 version of the
-phenotype.
-
-Note that in all 3 cases we'll need to re-calculate the thresholds to remove
-outliers!
-
-
-
-
-
+Let's go the other way around. Instead of using the elbow, let's determine the
+percentile of the distribution. 
 

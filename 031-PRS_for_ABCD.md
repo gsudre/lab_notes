@@ -695,6 +695,8 @@ plink --bfile local --flip HM3merge-merge.missnp --make-bed --noweb --out flippe
 plink --bfile flipped --bmerge external.bed external.bim external.fam --make-bed --noweb --out HM3merge
 
 # at this stage I have everyone in H3merge. Now it's just a matter of removing any NSBs for people with age above 22
-plink --bfile HM3merge --cluster --mind .05 --mds-plot 10 --extract local.snplist.txt --noweb --out HM3mds
-
+plink --bfile HM3merge --keep keep_younger_22.txt --make-bed --out HM3merge_LT22yo
+plink --bfile HM3merge_LT22yo --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_mds
+plink --bfile HM3merge --keep keep_younger_22_noDups.txt --make-bed --out HM3merge_LT22yo_noDups
+plink --bfile HM3merge_LT22yo_noDups --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_noDups_mds
 ```
