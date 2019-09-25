@@ -1946,4 +1946,5 @@ gets a bit stronger including NVs:
 Now we should plot them to make sure it's not driven by outliers.
 
 # TODO
-* re-run DTI with the automatic thresholds
+ * maybe do it again only using for OD the networks we're actually using in the analysis?
+ * run associations using SOLAR-selected covariates
