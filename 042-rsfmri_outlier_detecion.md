@@ -1945,6 +1945,37 @@ gets a bit stronger including NVs:
 
 Now we should plot them to make sure it's not driven by outliers.
 
+# 2019-09-26 15:19:35
+
+I've been somewhat concerned that we're not using our actual networks for OD.
+Let's see how the esults change if we do that.
+
+```bash
+# interactive
+for OD in 80 85 90 95; do
+    for suf in '' '_Fam' '_QC'; do
+        for m in '_median' '_mean'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_4nets_OD0.${OD}_posOnly${m}${suf};
+            for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault" \
+                "conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+        done;
+        mv ${phen} ~/data/tmp/
+        cd ~/data/tmp/${phen}
+        for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+        python ~/research_code/compile_solar_multivar_results.py ${phen}
+    done;
+done
+```
+
+I'll leave this running for now.
+
+
 # TODO
  * maybe do it again only using for OD the networks we're actually using in the analysis?
  * run associations using SOLAR-selected covariates
