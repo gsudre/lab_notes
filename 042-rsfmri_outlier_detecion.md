@@ -1975,6 +1975,66 @@ done
 
 I'll leave this running for now.
 
+# 2019-09-27 07:18:34
+
+```bash
+cd ~/data/heritability_change
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_4nets.csv;
+for f in `ls polygen_results_*4nets*.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_4nets.csv;
+    done
+done
+```
+
+Results were not great... quite unstable. Let me see what happens if I include
+Limbic, and I won't run Fam and QC so that things go faster.
+
+```bash
+# interactive
+for OD in 80 85 90 95; do
+    for suf in 'median' 'mean'; do
+        for p in '' '_posOnly'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_5nets_OD0.${OD}${p}_${suf};
+            for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
+done
+```
+
+```bash
+cd ~/data/tmp
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_5nets.csv;
+for f in `ls polygen_results_*5nets*.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_5nets.csv;
+    done
+done
+```
+
+If I do that, my best result is with
+polygen_results_rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv, without any
+of the weird results equal to 1. 
+
+![](images/2019-09-27-09-04-27.png)
+
+The first 2 survive at FDR .05. 
+
 
 # TODO
  * maybe do it again only using for OD the networks we're actually using in the analysis?
