@@ -2035,7 +2035,207 @@ of the weird results equal to 1.
 
 The first 2 survive at FDR .05. 
 
+Let's fly with these results then. 
+
+conn_SalVentAttnTODefault
+conn_SalVentAttnTOSalVentAttn
+
+Do they related to ADHD? Let'smake some scatterplots too. And based on the
+previous ideas, let's only covary out the same variables SOLAR did. So,
+accordingto the output:
+
+```
+[sudregp@cn3312 rsfmri_7by7from100_5nets_OD0.90_posOnly_median]$ grep "(Significant)" conn_SalVentAttnTODefault_polygenic.out 
+                         H2r is 0.8162650  p = 0.0064795  (Significant)
+                             normCoverage  p = 0.0596839  (Significant)
+                              pctSpikesDV  p = 0.0017789  (Significant)
+                        motionDVCorrFinal  p = 0.0328457  (Significant)
+                             pctSpikesRMS  p = 0.0259112  (Significant)
+[sudregp@cn3312 rsfmri_7by7from100_5nets_OD0.90_posOnly_median]$ grep "(Significant)" conn_SalVentAttnTOSalVentAttn_polygenic.out 
+                         H2r is 0.6560940  p = 0.0066482  (Significant)
+                              pctSpikesDV  p = 0.0022139  (Significant)
+                             pctSpikesRMS  p = 0.0347372  (Significant)
+```
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+i = 'conn_SalVentAttnTODefault'
+fm_root = '%s ~ %s + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS'
+
+out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+![](images/2019-09-27-10-06-22.png)
+
+Interesting result with SX_HI in dX2... maybe outlier related?
+
+![](images/2019-09-27-10-07-49.png)
+
+Still there even for DX1... and we have 100 subjects in DX2, 75 in DX1.
+
+Let's plot it then.
+
+```r
+source('~/research_code/baseline_prediction/aux_functions.R')
+ggplotRegression(lm('conn_SalVentAttnTODefault ~ SX_HI + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS', data2, na.action=na.omit))
+```
+
+![](images/2019-09-27-10-17-15.png)
+
+![](images/2019-09-27-10-18-06.png)
+
+First picture is DX1, second is DX2 (includes ADHDNOS).
+
+How about the intra-network connectivity?
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+i = 'conn_SalVentAttnTOSalVentAttn'
+fm_root = '%s ~ %s + pctSpikesDV + pctSpikesRMS'
+
+out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+![](images/2019-09-27-10-23-46.png)
+
+Also associated with SX_HI in DX1
+
+![](images/2019-09-27-10-24-44.png)
+
+and DX2. 
+
+![](images/2019-09-27-10-26-15.png)
+
+![](images/2019-09-27-10-27-09.png)
+
+Top figure is DX2 (note that it was significant using LME), and bottom is DX1.
 
 # TODO
- * maybe do it again only using for OD the networks we're actually using in the analysis?
- * run associations using SOLAR-selected covariates

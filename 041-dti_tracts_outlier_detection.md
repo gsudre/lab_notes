@@ -2414,8 +2414,200 @@ rd_16
 ad_10
 ```
 
+# 2019-09-27 10:28:40
 
+Let's run the regressions:
 
+```
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" rd_18_polygenic.out 
+                         H2r is 0.7754500  p = 0.0002123  (Significant)
+                                meanX.rot  p = 0.0540338  (Significant)
+                              goodVolumes  p = 0.0545743  (Significant)
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" rd_5_polygenic.out 
+                         H2r is 0.7033877  p = 0.0002787  (Significant)
+                              meanY.trans  p = 0.0447516  (Significant)
+                              meanZ.trans  p = 0.0746282  (Significant)
+                                meanY.rot  p = 0.0979063  (Significant)
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" rd_2_polygenic.out 
+                         H2r is 0.6636325  p = 0.0005087  (Significant)
+                              meanY.trans  p = 0.0141529  (Significant)
+                                meanY.rot  p = 0.0984348  (Significant)
+                              goodVolumes  p = 0.0643761  (Significant)
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" ad_2_polygenic.out 
+                         H2r is 0.5722444  p = 0.0029371  (Significant)
+                                meanX.rot  p = 0.0636402  (Significant)
+                              goodVolumes  p = 0.0041727  (Significant)
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" rd_16_polygenic.out 
+                         H2r is 0.5021108  p = 0.0038684  (Significant)
+[sudregp@cn3312 dti_JHUtracts_ADRDonly_OD0.95]$ grep "(Significant)" ad_10_polygenic.out 
+                         H2r is 0.5732202  p = 0.0041154  (Significant)
+                                meanX.rot  p = 0.0100211  (Significant)
+                              goodVolumes  p = 0.0118174  (Significant)
+```
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# i = 'rd_18'
+# fm_root = '%s ~ %s + meanX.rot + goodVolumes'
+i = 'rd_5'
+fm_root = '%s ~ %s + meanY.trans + meanZ.trans + meanY.rot'
+i = 'rd_2'
+fm_root = '%s ~ %s + meanY.trans + goodVolumes + meanY.rot'
+i = 'ad_2'
+fm_root = '%s ~ %s + meanX.rot + goodVolumes'
+i = 'rd_16'
+fm_root = '%s ~ %s'
+i = 'ad_10'
+fm_root = '%s ~ %s + meanX.rot + goodVolumes'
+
+out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+rd_18 is associated with SX_HI in the full dataset, SX_HI (and HI baseline) in
+DX1 and SX_HI in DX2. Note that we have 252 subjects in the full dataset, 145 in
+DX2 and 110 for DX1.
+
+rd_5 is associated with SX_HI in the full dataset, in DX1 and DX2. Also with
+inatt_baseline in DX2.
+
+rd_2 is associated with SX_HI in the full dataset, in DX1 and DX2. 
+
+ad_2 is associated with SX_HI in the full dataset, and DX2 (DX1 misses it by a
+tiny bit). 
+
+rd_16 is the first one associated with both SX_HI and SX_inatt in the full
+dataset, but it's SX_HI only in dx1 and dx2 (SX_inatt is very close in DX2).
+
+ad_10 is associated with SX_HI in the full dataset, and DX2 (DX1 misses it by a
+tiny bit).
+
+For reference, this is the key for the JHU tracts:
+
+```
+<label index="0" x="98" y="117" z="75">Anterior thalamic radiation L</label>
+<label index="1" x="83" y="117" z="76">Anterior thalamic radiation R</label>
+<label index="2" x="96" y="99" z="36">Corticospinal tract L</label>
+<label index="3" x="69" y="98" z="130">Corticospinal tract R</label>
+<label index="4" x="99" y="156" z="90">Cingulum (cingulate gyrus) L</label>
+<label index="5" x="80" y="89" z="104">Cingulum (cingulate gyrus) R</label>
+<label index="6" x="115" y="106" z="46">Cingulum (hippocampus) L</label>
+<label index="7" x="65" y="111" z="43">Cingulum (hippocampus) R</label>
+<label index="8" x="62" y="69" z="85">Forceps major</label>
+<label index="9" x="89" y="153" z="79">Forceps minor</label>
+<label index="10" x="118" y="54" z="70">Inferior fronto-occipital fasciculus L</label>
+<label index="11" x="61" y="164" z="75">Inferior fronto-occipital fasciculus R</label>
+<label index="12" x="120" y="57" z="69">Inferior longitudinal fasciculus L</label>
+<label index="13" x="59" y="57" z="69">Inferior longitudinal fasciculus R</label>
+<label index="14" x="129" y="112" z="102">Superior longitudinal fasciculus L</label>
+<label index="15" x="40" y="121" z="99">Superior longitudinal fasciculus R</label>
+<label index="16" x="129" y="125" z="52">Uncinate fasciculus L</label>
+<label index="17" x="63" y="139" z="65">Uncinate fasciculus R</label>
+<label index="18" x="140" y="89" z="61">Superior longitudinal fasciculus (temporal part) L</label>
+<label index="19" x="52" y="116" z="103">Superior longitudinal fasciculus (temporal part) R</label>
+```
+
+But we have to add 1 to the labels. So, our results are:
+
+* rd_18: Uncinate fasciculus R
+* rd_5: Cingulum (cingulate gyrus) L
+* rd_2: Anterior thalamic radiation R
+* ad_2: Anterior thalamic radiation R
+* rd_16: Superior longitudinal fasciculus R
+* ad_10: Forceps minor
+
+Let's make a few figures then. I'll only make DX2 figures so we can have an idea
+of the data. The full dataset gets quite polluted in the 0 line, and DX1 is not
+always significant.
+
+```r
+source('~/research_code/baseline_prediction/aux_functions.R')
+ggplotRegression(lm('rd_18 ~ SX_HI + meanX.rot + goodVolumes', data2, na.action=na.omit))
+ggplotRegression(lm('rd_5 ~ SX_HI + meanY.trans + meanZ.trans + meanY.rot', data2, na.action=na.omit))
+ggplotRegression(lm('rd_2 ~ SX_HI + meanY.trans + goodVolumes + meanY.rot', data2, na.action=na.omit))
+ggplotRegression(lm('ad_2 ~ SX_HI + meanX.rot + goodVolumes', data2, na.action=na.omit))
+ggplotRegression(lm('rd_16 ~ SX_HI', data2, na.action=na.omit))
+ggplotRegression(lm('ad_10 ~ SX_HI + meanX.rot + goodVolumes', data2, na.action=na.omit))
+```
+
+![](images/2019-09-27-11-22-43.png)
+
+Hum... there's someone with a rate of more than 5 SX per year??? Well, there are
+no errors according to the scripts. So, unless the DICA spreadsheet is wrong, he
+is a real outlier. He's also in the DX1 dataset. But it doesn't look like that
+data point is driving all the results, though.
+
+![](images/2019-09-27-11-39-54.png)
+
+![](images/2019-09-27-11-40-45.png)
+
+![](images/2019-09-27-11-42-12.png)
+
+![](images/2019-09-27-11-42-53.png)
+
+![](images/2019-09-27-11-43-34.png)
 
 # TODO
- * run associations using SOLAR-selected covariates
