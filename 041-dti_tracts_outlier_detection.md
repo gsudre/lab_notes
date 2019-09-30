@@ -2610,4 +2610,49 @@ data point is driving all the results, though.
 
 ![](images/2019-09-27-11-43-34.png)
 
+# 2019-09-30 10:27:11
+
+The last step before robustness is the bivariate heritability analysis.
+
+```bash
+phen=dti_JHUtracts_ADRDonly_OD0.95;
+cd ~/data/heritability_change
+for m in ad rd; do
+    for t in {1..20}; do
+        solar dti_tracts_base_slope_correlation $phen ${m}_${t};
+    done;
+done
+mv gencor_$phen ~/data/tmp/
+cd ~/data/tmp/gencor_$phen
+grep -r RhoG */polygenic.out > rhog.txt
+grep zero rhog.txt
+```
+
+And we have some good results...
+
+```
+ad_19_AND_basead_19/polygenic.out:             RhoG different from zero  p = 0.0434073
+ad_3_AND_basead_3/polygenic.out:               RhoG different from zero  p = 0.0365814
+rd_16_AND_baserd_16/polygenic.out:             RhoG different from zero  p = 0.0456463
+rd_7_AND_baserd_7/polygenic.out:               RhoG different from zero  p = 0.0053420
+```
+
+But I doubt they'd survive multiple comparisons. Within our heritable tracts:
+  
+```
+ad_10_AND_basead_10/polygenic.out:             RhoG different from zero  p = 0.1037891
+ad_2_AND_basead_2/polygenic.out:               RhoG different from zero  p = 0.1859708
+rd_16_AND_baserd_16/polygenic.out:             RhoG different from zero  p = 0.0456463
+rd_18_AND_baserd_18/polygenic.out:             RhoG different from zero  p = 0.9400611
+rd_2_AND_baserd_2/polygenic.out:               RhoG different from zero  p = 0.2966024
+rd_5_AND_baserd_5/polygenic.out:               RhoG different from zero  p = 0.7710474
+```
+
+So, rd_16: Superior longitudinal fasciculus R is there, but wouldn't survive...
+interesting nominal result though.
+
+I then changed the make_outlier_detection_slopes.R script to save the
+intermediate script with the two time points, so we can calculate proportion of
+time in the study under medication.
+
 # TODO

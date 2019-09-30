@@ -2238,4 +2238,50 @@ and DX2.
 
 Top figure is DX2 (note that it was significant using LME), and bottom is DX1.
 
+# 2019-09-30 10:48:46
+
+The last step before robustness is the bivariate heritability analysis.
+
+```bash
+phen=rsfmri_7by7from100_5nets_OD0.90_posOnly_median;
+cd ~/data/heritability_change
+for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+        solar rsfmri_xcp_base_slope_correlation $phen ${t};
+done
+mv gencor_$phen ~/data/tmp/
+cd ~/data/tmp/gencor_$phen
+grep -r RhoG */polygenic.out > rhog.txt
+grep zero rhog.txt
+```
+
+Not much there for results:
+
+```
+conn_ContTOCont_AND_baseconn_ContTOCont/polygenic.out:         RhoG different from zero  p = 0.8998388
+conn_ContTODefault_AND_baseconn_ContTODefault/polygenic.out:           RhoG different from zero  p = 0.6183411
+conn_DefaultTODefault_AND_baseconn_DefaultTODefault/polygenic.out:             RhoG different from zero  p = 0.2610504
+conn_DorsAttnTOCont_AND_baseconn_DorsAttnTOCont/polygenic.out:         RhoG different from zero  p = 0.8552726
+conn_DorsAttnTODefault_AND_baseconn_DorsAttnTODefault/polygenic.out:           RhoG different from zero  p = 0.5619146
+conn_DorsAttnTODorsAttn_AND_baseconn_DorsAttnTODorsAttn/polygenic.out:         RhoG different from zero  p = 0.4476371
+conn_DorsAttnTOLimbic_AND_baseconn_DorsAttnTOLimbic/polygenic.out:             RhoG different from zero  p = 0.8138903
+conn_DorsAttnTOSalVentAttn_AND_baseconn_DorsAttnTOSalVentAttn/polygenic.out:           RhoG different from zero  p = 0.4525866
+conn_LimbicTOCont_AND_baseconn_LimbicTOCont/polygenic.out:             RhoG different from zero  p = 0.2817403
+conn_LimbicTODefault_AND_baseconn_LimbicTODefault/polygenic.out:               RhoG different from zero  p = 0.6159044
+conn_LimbicTOLimbic_AND_baseconn_LimbicTOLimbic/polygenic.out:         RhoG different from zero  p = 0.1304851
+conn_SalVentAttnTOCont_AND_baseconn_SalVentAttnTOCont/polygenic.out:           RhoG different from zero  p = 0.5903846
+conn_SalVentAttnTODefault_AND_baseconn_SalVentAttnTODefault/polygenic.out:             RhoG different from zero  p = 0.2381651
+conn_SalVentAttnTOLimbic_AND_baseconn_SalVentAttnTOLimbic/polygenic.out:               RhoG different from zero  p = 0.4374068
+conn_SalVentAttnTOSalVentAttn_AND_baseconn_SalVentAttnTOSalVentAttn/polygenic.out:             RhoG different from zero  p = 0.2591122
+```
+
+I then changed the make_outlier_detection_slopes.R script to save the
+intermediate script with the two time points, so we can calculate proportion of
+time in the study under medication.
+
 # TODO
