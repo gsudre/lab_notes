@@ -159,9 +159,9 @@ First, extract the values:
 
 ```bash
 # desktop
-outdir=~/data/heritability_change/sdc_weighted
+outdir=~/data/heritability_change/szdc_weighted
 mkdir -p $outdir;
-cd /Volumes/Shaw/Functional_derivatives_RS36_despiked/smoothed/sdc_weighted/;
+cd /Volumes/Shaw/Functional_derivatives_RS36_despiked/smoothed/szdc_weighted/;
 for f in `ls *nii`; do
     fout=`basename $f .nii`.txt;
     if [ ! -e $outdir/$fout ]; then
@@ -176,10 +176,135 @@ using the latter. Then, I created fmri/make_outlier_detection_slopes_DC.R to
 deal with that data. Then, when Luke's done processing those scans, the R
 function is ready to go.
 
+# 2019-10-07 09:19:21
+
+Let's see how the phenotypic correlation looks across modalities:
+
+```bash
+#bw
+cd ~/data/heritability_change/
+cd gencor_both_fmri_dti
+grep -r RhoP */polygenic.out > rhop.txt
+sed " s/ is /=/g" rhop.txt | cut -d "=" -f 2 > ests.txt
+paste nets.txt ests.txt > cross_modal_rhop_estimates.txt
+```
+
+But SOLAR didn't compute the p-values, so I'll have to do that manually in R,
+taking into consideration that we have 156 individuals for all pairs.
+
+```r
+n=156
+df = read.table('~/data/heritability_change/gencor_both_fmri_dti/cross_modal_rhop_estimates.txt')
+df$t = df$V2/sqrt((1-df$V2**2)/(n-2))
+df$p = 2*pt(-abs(df$t),df=n-1)
+colnames(df)[1:2] = c('traits', 'rhoP')
+write.csv(df, file='~/data/heritability_change/cross_rhop.csv', row.names=F)
+```
+
+## Medication robustness
+
+Next step is to try to break the heritability results by adding the medication
+data as covariates. I received FINAL_SUBJECTS_EITHER_MODALITY_wide_form from
+Philip, so I just cleaned it up to keep only the columns I needed. He added the
+columns: Prop_on_psychostim, Med_class, Med_exclusion, exclude_due_to_comorbid;
+in a per-subject basis, so that's all I need in order to merge. So, I created
+subj_meds.csv that contain only those. I also removed two subjects that had
+questions marks for prop.
+
+So, let's try to break the results in two different ways:
+
+1) remove comorbid==yes, run each column separately, then all 3 together
+2) run all 4 columns together, then all 4 separately
+
+So, we'll need two different files for fMRI and DTI:
+
+```r
+meds = read.csv('~/data/heritability_change/subj_meds.csv')
+fmri = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv')
+fmri2 = merge(fmri, meds, by.x='ID', by.y='Medical.Record...MRN...Subjects_A', all.x=F, all.y=F)
+write.csv(fmri2, file='~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds.csv', row.names=F, quote=F)
+fmri2 = fmri2[fmri2$exclude_due_to_comorbid=='no',]
+write.csv(fmri2, file='~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid.csv', row.names=F, quote=F)
+dti = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
+dti2 = merge(dti, meds, by.x='ID', by.y='Medical.Record...MRN...Subjects_A', all.x=F, all.y=F)
+write.csv(dti2, file='~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95_meds.csv', row.names=F, quote=F)
+dti2 = dti2[dti2$exclude_due_to_comorbid=='no',]
+write.csv(dti2, file='~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid.csv', row.names=F, quote=F)
+```
+
+Actually, gonna have to redo this. SOLAR cannot handle 3 differnet categories...
+Philip said to combine 2s and 3s. Will do.
+
+```bash
+module load solar
+cd ~/data/heritability_change/;
+for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
+    for c in Prop_on_psychostim Med_class Med_exclusion exclude_due_to_comorbid; do
+        solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds $p $c;
+     done;
+     solar run_phen_var_OD_tracts_meds_comb4 dti_JHUtracts_ADRDonly_OD0.95_meds $p;
+done
+for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
+    for c in Prop_on_psychostim Med_class Med_exclusion; do
+        solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p $c;
+     done;
+     solar run_phen_var_OD_tracts dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid ${p}
+     solar run_phen_var_OD_tracts_meds_comb3 dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p;
+done
+
+for p in conn_SalVentAttnTODefault conn_SalVentAttnTOSalVentAttn; do
+    for c in Prop_on_psychostim Med_class Med_exclusion exclude_due_to_comorbid; do
+        solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds $p $c;
+     done;
+     solar run_phen_var_OD_xcp_meds_comb4 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds $p;
+done
+for p in conn_SalVentAttnTODefault conn_SalVentAttnTOSalVentAttn; do
+    for c in Prop_on_psychostim Med_class Med_exclusion; do
+        solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid $p $c;
+     done;
+     solar run_phen_var_OD_xcp rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid ${p}
+     solar run_phen_var_OD_xcp_meds_comb3 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid $p;
+done
+```
+
+We should now check if our heritability values from before are still there.
+Hand-copied the results to medication_results.xlsx. Note that I had to rename
+the categories in Med_Exclusion because they were breaking SOLAR.
+
+
+
+
+
+
+## Degree centrality
+
+Now that the voxel .csv files are ready, let's givem them a try:
+
+```bash
+cd ~/data/heritability_change/xcp-36p_despike;
+phen_file=rsfmri_szdcweighted_OD0.95;
+jname=sz95;
+swarm_file=swarm.${jname};
+
+rm -f $swarm_file;
+for vlist in `ls $PWD/vlistg*txt`; do  # getting full path to files
+    echo "bash ~/research_code/run_solar_voxel_parallel.sh $phen_file $vlist" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file --module solar -t 32 -g 10 \
+        --logdir=trash_${jname} --job-name ${jname} --time=4:00:00 \
+        --merge-output --partition quick,norm
+```
+
+And of course I ran it for .9, .95, sz and s.
+
+Note that I'm only covarying sex from the voxels. In fact, I'm
+forcing it across all voxels, just because I want to try for an uniform result.
+Depending on what clusters I get, I'll try to break it later by adding the
+covariates.
+
 
 
 
 
 # TODO
  * Run Luke's metrics on degree centrality
- * Cross-modal genetic correlation on slopes
