@@ -2451,8 +2451,8 @@ data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
 tmp = read.csv('~/data/heritability_change/pedigree.csv')
 data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
 
-# i = 'rd_18'
-# fm_root = '%s ~ %s + meanX.rot + goodVolumes'
+i = 'rd_18'
+fm_root = '%s ~ %s + meanX.rot + goodVolumes'
 i = 'rd_5'
 fm_root = '%s ~ %s + meanY.trans + meanZ.trans + meanY.rot'
 i = 'rd_2'

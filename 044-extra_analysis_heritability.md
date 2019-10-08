@@ -274,8 +274,6 @@ the categories in Med_Exclusion because they were breaking SOLAR.
 
 
 
-
-
 ## Degree centrality
 
 Now that the voxel .csv files are ready, let's givem them a try:
@@ -302,9 +300,134 @@ forcing it across all voxels, just because I want to try for an uniform result.
 Depending on what clusters I get, I'll try to break it later by adding the
 covariates.
 
+# 2019-10-08 10:36:47
 
+```bash
+module load afni
 
+cd /lscratch/${SLURM_JOBID}
+phen=rsfmri_szdcweighted_OD0.90;
+mkdir $phen;
+cd $phen;
+cp ~/data/tmp/${phen}/*gz .;
+for f in `/bin/ls *gz`; do tar -zxf $f; done
+cd ..
+python ~/research_code/fmri/compile_solar_voxel_results.py \
+    /lscratch/${SLURM_JOBID}/ $phen \
+    ~/data/heritability_change/xcp-36p_despike/gray_matter_mask.nii;
+rm -rf $phen;
+
+cp polygen_results_${phen}.nii ~/data/heritability_change/xcp-36p_despike/
+
+cd ~/data/heritability_change/xcp-36p_despike/
+3dclust -1Dformat -nosum -1dindex 0 -1tindex 1 -1thresh 0.99 -orient LPI \
+    -savemask ${phen}_NN1_clusters.nii -NN1 40 \
+    polygen_results_${phen}.nii;
+```
+
+I'm gonna leave some permutations running in the background while I try to break
+the results by adding covariates.
+
+```r
+start=1
+nperms=50
+step=5
+
+library(data.table)
+set.seed( as.integer((as.double(Sys.time())*1000+Sys.getpid()) %% 2^31) )
+dread = fread('~/data/heritability_change/rsfmri_szdcweighted_OD0.90.csv',
+              header = T, sep = ',')
+d = as.data.frame(dread)  # just so we can index them a bit easier
+vcols = c(which(grepl("v",colnames(d))), which(grepl("sex",colnames(d))))
+d2 = d
+for (p in seq(start, nperms, step)) {
+    d2[, vcols] = d[sample(nrow(d)), vcols]
+    fname = sprintf('~/data/heritability_change/rsfmri_szdcweighted_OD0.90_p%03d.csv', p)
+    print(fname)
+    fwrite(d2, file=fname, row.names=F, quote=F)
+}
+```
+
+So, there are some clusters that would likely survive after permutations, but
+Philip and I agreed that the intra and inter network analysis makses more sense
+for heritability, so we'll stick with those. I can finish this analysis later if
+someone asks about it. The next steps would be to check if the covariates we
+used for the intra-inter analysis break the average result in the clusters, and
+run permutations.
+
+# 2019-10-08 11:20:25
+
+Philip asked for baseline heritability for the tracts and fmri metrics.
+
+```bash
+# interactive
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/heritability_change
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts $phen ${m}_${t};
+        solar run_phen_var_OD_tracts $phen ${m}_${t}_baseline;
+    done;
+done
+mv $phen ~/data/tmp/${phen}_with_base
+cd ~/data/tmp/${phen}_with_base
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}_with_base
+```
+
+```bash
+# interactive
+phen=rsfmri_7by7from100_5nets_OD0.90_posOnly_median
+cd ~/data/heritability_change
+for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+     solar run_phen_var_OD_xcp $phen ${t};
+     solar run_phen_var_OD_xcp $phen ${t}_baseline;
+done;
+mv $phen ~/data/tmp/${phen}_with_base
+cd ~/data/tmp/${phen}_with_base
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}_with_base
+```
+
+Then, I'll compile rhoP and rhoG within modality in the ame spreadsheet:
+
+```bash
+#bw
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/tmp/gencor_$phen
+grep -r RhoP */polygenic.out > rhop.txt
+sed "s/ is /=/g" rhop.txt | cut -d "=" -f 2 > rhop_ests.txt
+grep -r "RhoG is " */polygenic.out > rhog.txt
+sed "s/ is /=/g" rhog.txt | cut -d "=" -f 2 > rhog_ests.txt
+grep -r "RhoG different from zero  p = " */polygenic.out > rhog.txt
+sed "s/= /=/g" rhog.txt | cut -d "=" -f 2 > rhog_pvals.txt
+cut -d"/" -f 1 rhog.txt > phen.txt
+paste phen.txt rhog_ests.txt rhog_pvals.txt rhop_ests.txt > rhog_rhop_${phen}.txt
+```
+
+But SOLAR didn't compute the p-values, so I'll have to do that manually in R,
+taking into consideration the number of individuals we have in each modality:
+
+```r
+n=188
+phen='rsfmri_7by7from100_5nets_OD0.90_posOnly_median'
+
+n=252
+phen='dti_JHUtracts_ADRDonly_OD0.95'
+
+df = read.table(sprintf('~/data/tmp/gencor_%s/rhog_rhop_%s.txt', phen, phen))
+colnames(df) = c('traits', 'rhoG', 'rhoG_pval', 'rhoP')
+df$t = df$rhoP/sqrt((1-df$rhoP**2)/(n-2))
+df$rhoP_pval = 2*pt(-abs(df$t),df=n-1)
+
+write.csv(df, file=sprintf('~/data/heritability_change/rhos_%s.csv', phen), row.names=F)
+```
 
 
 # TODO
- * Run Luke's metrics on degree centrality
