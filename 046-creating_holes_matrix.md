@@ -42,3 +42,28 @@ for (s in subjs) {
 colnames(df) = header
 write.csv(df, file='~/tmp/holes.csv', row.names=F, quote=F)
 ```
+
+# 2019-10-10 16:39:49
+
+I'll actually start with BTRIS as the main source. First, pull demographics on
+everyone. Then, I created separate reports on everyone, without demographics
+included, from 01/01/2007 to now. And copied only MRN and date.
+
+ * Radiology: filtered to the 3 MRI brain exams
+ * Laboratories: filtered order name by Pregnancy test
+ * Diagnosis and procedures: removed NIAD problem and Rare disease
+ * Clinical documents - discrete: everything (but unique values only)
+ * Clinical document - full: everything (but unique values only)
+
+Then, after binding by rows in all_BTRIS_10102019.xlsx, I removed duplicates on
+MRN and date. Note, to extract the day from a datetime: 
+
+=datevalue(MONTH(A2) & "/" & DAY(A2) & "/" & YEAR(A2))
+
+Then, I sorted on MRN and date to check date differences, and flagged anything
+with date difference under 2 months.
+
+=IF(A2=A1,C2-C1,"NA")
+
+**Philip said I should just stick with the numbers I got from Labmatrix...
+stopping here** 

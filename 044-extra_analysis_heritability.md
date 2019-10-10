@@ -429,5 +429,327 @@ df$rhoP_pval = 2*pt(-abs(df$t),df=n-1)
 write.csv(df, file=sprintf('~/data/heritability_change/rhos_%s.csv', phen), row.names=F)
 ```
 
+# 2019-10-09 11:59:54
+
+Philip also asked for the association analysis for all possible slopes. So,
+let's run that:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ad_10', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_11', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_12', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_13', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_14', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('ad_15', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_16', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_17', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_18', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_19', '%s ~ %s + meanX.trans + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_1', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_20', '%s ~ %s + meanX.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_2', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_3', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_4', '%s ~ %s + meanY.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_5', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_6', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_7', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_8', '%s ~ %s + meanX.trans'))
+formulas = rbind(formulas, c('ad_9', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_10', '%s ~ %s + meanZ.trans'))
+formulas = rbind(formulas, c('rd_11', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_12', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_13', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('rd_14', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('rd_15', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_16', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_17', '%s ~ %s + meanZ.rot'))
+formulas = rbind(formulas, c('rd_18', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_19', '%s ~ %s + meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_1', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_20', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_2', '%s ~ %s + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_3', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_4', '%s ~ %s + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_5', '%s ~ %s + meanY.trans + meanZ.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_6', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_7', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_8', '%s ~ %s + meanX.trans + meanX.rot'))
+formulas = rbind(formulas, c('rd_9', '%s ~ %s + meanX.trans + meanY.rot'))
+
+out_fname = '~/data/heritability_change/assoc_all_dti_JHUtracts.csv'
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And similarly, we work on fMRI:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ %s + normCoverage + meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTODefault', '%s ~ %s + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DefaultTODefault', '%s ~ %s + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont', '%s ~ %s + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault', '%s ~ %s + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn', '%s ~ %s + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_DorsAttnTOLimbic', '%s ~ %s + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn', '%s ~ %s + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_LimbicTOCont', '%s ~ %s + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_LimbicTODefault', '%s ~ %s + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_LimbicTOLimbic', '%s ~ %s + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont', '%s ~ %s + sex + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault', '%s ~ %s + normCoverage + pctSpikesDV + motionDVCorrFinal +  pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOLimbic', '%s ~ %s + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ %s + pctSpikesDV + pctSpikesRMS'))
+
+out_fname = '~/data/heritability_change/assoc_al_rsfmri_7x7_5nets.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+## Proportion of good connections
+
+Let's also check that that are no subjects that have an outlier number of
+positive connections, which could be messing up the results.
+
+```r
+qtile = .9
+
+demo = read.csv('~/data/heritability_change/resting_demo_07032019.csv')
+cat(sprintf('Starting from %d scans\n', nrow(demo)))
+
+# keeping it to kids only to make sure everyone has been processed
+demo = demo[demo$age_at_scan < 18, ]
+cat(sprintf('Down to %d to keep < 18 only\n', nrow(demo)))
+
+# let's grab QC metrics on everyone
+# note that this only works for non-censoring pipelines!
+mydir = '/Volumes/Shaw/rsfmri_36P/xcpengine_output_fc-36p_despike/'
+qc_data = c()
+for (s in demo$Mask.ID) {
+    subj = sprintf('sub-%04d', s)
+    # if it processed all the way
+    std_fname = sprintf('%s/%s/norm/%s_std.nii.gz', mydir, subj, subj)
+    if (file.exists(std_fname)) {
+        subj_data = read.csv(sprintf('%s/%s/%s_quality.csv', mydir, subj, subj))
+        qc_data = rbind(qc_data, subj_data)
+    }
+}
+
+# have some higly correlated qc variables, so let's remove the worse offenders (anything above abs(.8))
+qc_vars = c('normCoverage', 'meanDV', 'pctSpikesDV',
+            'motionDVCorrInit',
+            'motionDVCorrFinal', "pctSpikesRMS", "relMeanRMSMotion")
+
+library(solitude)
+iso <- isolationForest$new()
+iso$fit(qc_data[, qc_vars])
+scores_if = as.matrix(iso$scores)[,3]
+
+library(dbscan)
+# here I set the number of neighbors to a percentage of the total data
+scores_lof = lof(qc_data[, qc_vars], k = round(.5 * nrow(qc_data)))
+
+thresh_lof = quantile(scores_lof, qtile)
+thresh_if = quantile(scores_if, qtile)
+
+idx = scores_lof < thresh_lof & scores_if < thresh_if
+nrois = 100
+
+fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
+                nrois)
+nets = read.table(fname)
+all_net_names = sapply(as.character(unique(nets[,2])),
+                       function(y) strsplit(x=y, split='_')[[1]][3])
+net_names = unique(all_net_names)
+nnets = length(net_names)
+
+# figure out which connection goes to which network
+cat('Creating connection map...\n')
+nverts = nrow(nets)
+cnt = 1
+conn_map = c()
+for (i in 1:(nverts-1)) {
+    for (j in (i+1):nverts) {
+        conn = sprintf('conn%d', cnt)
+        conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
+        cnt = cnt + 1
+    }
+}
+
+qc_data_clean = qc_data[idx, ]
+fc = c()
+for (s in qc_data_clean$id0) {
+    fname = sprintf('%s/%s/fcon/schaefer%d/%s_schaefer%d_network.txt',
+                                mydir, s, nrois, s, nrois)
+    subj_data = read.table(fname)[, 1]
+    fc = cbind(fc, subj_data)
+}
+fc = t(fc)
+var_names = sapply(1:ncol(fc), function(x) sprintf('conn%d', x))
+colnames(fc) = var_names
+fcP = fc
+fcP[fc<0] = NA
+hist(rowSums(is.na(fcP)), breaks=50)
+```
+
+![](images/2019-10-09-13-33-32.png)
+
+Numbers don't look too worrisome. Basically, horizontal axis is out of 4950
+connections. So, the plot looks somewhat Gaussian, and I wouldn't expect that
+it's unevenly distributed, or even correlated, with any of the metrics we're
+studying.
 
 # TODO

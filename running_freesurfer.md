@@ -5,13 +5,28 @@ Freesurfer on new scans we acquire. This is in a nutshell just the highlights of
 the older Evernote note.
 
 We basically single out the best MPRAGE for each scan, and then run Freesurfer
-by swarming it in Biowulf:
+by swarming it in Biowulf.
+
+Figrst, figure out which mask ids we need to run Freesurfer. Our Freesurfer output
+is in /mnt/shaw/$USER/freesurfer5.3_subjects, and all mask ids are in
+/mnt/shaw/$USER/MR_data_by_maskid. So, if you list both directories, you will
+find out which mask ids don't have Freesurfer yet.
+
+Before you start, make sure that all MPRAGEs have been QCed in Labmatrix, as
+sometimes there will be more than one MPRAGE in a maskid, and we only run
+Freesurfer on the best one. MPRAGE QC is stored in Labmatrix, under QC score for
+each MPRAGE entry.
+
+*Note the machine name where you should be running the commands!*
 
 ```bash
+# ncrshell01
+mkdir -p ~/tmp
 rm -rf ~/tmp/missing*
 mkdir ~/tmp/missing
+# for example, say we're processing mask ids 2404 to 2435
 for i in {2404..2435}; do echo $i >> ~/tmp/missing.txt; done
-python ~/research_code/lab_mgmt/copy_mprages.py ~/tmp/missing.txt /Volumes/Shaw/ ~/tmp/missing/
+python3 /usr/local/neuro/research_code/lab_mgmt/copy_mprages.py ~/tmp/missing.txt /mnt/shaw/$USER/ ~/tmp/missing/
 cp -rv ~/tmp/missing/* /Volumes/Shaw/best_mprages/
 scp ~/tmp/missing.txt helix.nih.gov:/scratch/sudregp/mprage/
 scp -r ~/tmp/missing/* helix.nih.gov:/scratch/sudregp/mprage/
