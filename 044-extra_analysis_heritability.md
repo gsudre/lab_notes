@@ -752,4 +752,71 @@ connections. So, the plot looks somewhat Gaussian, and I wouldn't expect that
 it's unevenly distributed, or even correlated, with any of the metrics we're
 studying.
 
+# 2019-10-11 09:17:05
+
+Philip asked me to see if there is any bivariate heritability between the change
+in tracts/rsfMRI and change in symptoms (particularly HI). So, let's create
+special solar function for those.
+
+```bash
+# interactive
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/heritability_change
+for m in ad rd; do
+    for t in {1..20}; do
+        solar dti_tracts_SX_slope_correlation $phen ${m}_${t} SX_inatt;
+        solar dti_tracts_SX_slope_correlation $phen ${m}_${t} SX_HI;
+    done;
+done
+```
+
+```bash
+# interactive
+phen=rsfmri_7by7from100_5nets_OD0.90_posOnly_median
+cd ~/data/heritability_change
+for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+     solar rsfmri_xcp_SX_slope_correlation $phen ${t} SX_inatt;
+     solar rsfmri_xcp_SX_slope_correlation $phen ${t} SX_HI;
+done;
+```
+
+Then, I'll compile rhoG within modality in the same spreadsheet:
+
+```bash
+#bw
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/heritability_change/gencorSX_$phen
+grep -r "RhoG is " */polygenic.out > rhog.txt
+sed "s/ is /=/g" rhog.txt | cut -d "=" -f 2 > rhog_ests.txt
+grep -r "RhoG different from zero  p = " */polygenic.out > rhog.txt
+sed "s/= /=/g" rhog.txt | cut -d "=" -f 2 > rhog_pvals.txt
+cut -d"/" -f 1 rhog.txt > phen.txt
+paste phen.txt rhog_ests.txt rhog_pvals.txt > rhog_SX_${phen}.txt
+```
+
+Some results looked quite extreme, so let me see if keeping it to DX2 only it
+will look a bit nicer:
+
+```r
+phen_fname = '~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv'
+data = read.csv(phen_fname)
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=phen_fname, pattern='.csv', '_dx2.csv')
+write.csv(data2, out_fname, row.names=F, na='', quote=F)
+
+phen_fname = '~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv'
+data = read.csv(phen_fname)
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=phen_fname, pattern='.csv', '_dx2.csv')
+write.csv(data2, out_fname, row.names=F, na='', quote=F)
+```
+
+And re-run the stuff above with these new phenotype files.
+
 # TODO
