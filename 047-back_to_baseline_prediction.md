@@ -25,3 +25,7 @@ fixating on dates that have all 3 modalities. Then we can simply merge the
 closest neuropsych to it.
 
 I'll start with DTI just to get the scripts ready...
+
+```r
+source('~/research_code/baseline_prediction/prep_dti_JHUtracts_data.R')
+```
