@@ -51,11 +51,77 @@ for cfname in cfiles:
     df.to_csv(out_fname)
 ```
 
+# 2019-10-17 11:17:59
 
-```bash
-for line in `cat ~/tmp/cpt.csv`; do
-    name=`echo $line | cut -d"," -f 2`;
-    dt=`echo $line | cut -d"," -f 1`;
-    grep $dt ~/tmp/RESPONSES_10032019.txt;
-done
+Philip received Global Signal files from Andrew to generate GSR-based
+correlation matrices. So, following the math in
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2694109/, I do this for each
+dataset:
+
+```python
+from scipy.io import loadmat
+import numpy as np
+import pandas as pd
+import glob
+import os
+
+
+rois = ['roi%03d' % (i+1) for i in range(160)]
+
+cfiles = np.sort(glob.glob('/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/genR_to_dos160_*.mat'))
+
+for cfname in cfiles:
+    subj = cfname.split('_')[-1].replace('.mat', '')
+    gs_fname = '/Users/sudregp/Downloads/GlobalSignal/genR_GS_%s.mat' % subj
+    if os.path.exists(gs_fname):
+        B = loadmat(cfname)['tc_filt']
+        g = loadmat(gs_fname)['gs']
+
+        beta_g = np.dot(g.T, B)
+        Bp = B - np.dot(g, beta_g)
+
+        cc = np.corrcoef(Bp.T)
+        df = pd.DataFrame(cc, index=rois, columns=rois)
+        out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/crosscorr_gsr/%s.csv' % subj
+        df.to_csv(out_fname)
+    else:
+        print('Could not find GS file for %s' % subj)
+
+```
+
+Then, do the same for the other set of ROIs.
+
+```python
+from scipy.io import loadmat
+import numpy as np
+import pandas as pd
+import glob
+import os
+
+
+fid = open('/Users/sudregp/data/philip/GenR_FCTimeSeries/rois.txt', 'r')
+rois = [line.rstrip() for line in fid]
+fid.close()
+
+cfiles = np.sort(glob.glob('/Users/sudregp/data/philip/GenR_FCTimeSeries/Cortical/genR_to_HOCortical_*.mat'))
+scfiles = np.sort(glob.glob('/Users/sudregp/data/philip/GenR_FCTimeSeries/SubCortical/genR_to_HOSub_*.mat'))
+
+for cfname, scfname in zip(cfiles, scfiles):
+    subj = cfname.split('_')[-1].replace('.mat', '')
+    gs_fname = '/Users/sudregp/Downloads/GlobalSignal/genR_GS_%s.mat' % subj
+    if os.path.exists(gs_fname):
+        xc = loadmat(cfname)['x']
+        xsc = loadmat(scfname)['x']
+        B = np.hstack([xc, xsc])
+        g = loadmat(gs_fname)['gs']
+
+        beta_g = np.dot(g.T, B)
+        Bp = B - np.dot(g, beta_g)
+
+        cc = np.corrcoef(Bp.T)
+        df = pd.DataFrame(cc, index=rois, columns=rois)
+        out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/rsfMRI_desikan_killany/crosscorr_gsr/%s.csv' % subj
+        df.to_csv(out_fname)
+    else:
+        print('Could not find GS file for %s' % subj)
 ```
