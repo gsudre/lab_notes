@@ -7,6 +7,7 @@ from scipy.io import loadmat
 import numpy as np
 import pandas as pd
 import glob
+from sklearn import preprocessing
 
 
 fid = open('/Users/sudregp/data/philip/GenR_FCTimeSeries/rois.txt', 'r')
@@ -21,7 +22,8 @@ for cfname, scfname in zip(cfiles, scfiles):
     xc = loadmat(cfname)['x']
     xsc = loadmat(scfname)['x']
     y = np.hstack([xc, xsc])
-    cc = np.corrcoef(y.T)
+    ys = preprocessing.scale(y)
+    cc = np.corrcoef(ys.T)
     df = pd.DataFrame(cc, index=rois, columns=rois)
     out_fname = '/Users/sudregp/data/philip/GenR_FCTimeSeries/crosscorr/%s.csv' % subj
     df.to_csv(out_fname)
@@ -36,6 +38,7 @@ from scipy.io import loadmat
 import numpy as np
 import pandas as pd
 import glob
+from sklearn import preprocessing
 
 
 rois = ['roi%03d' % (i+1) for i in range(160)]
@@ -45,7 +48,8 @@ cfiles = np.sort(glob.glob('/Volumes/Shaw/GenR_peer_networks_brain_morphology/DO
 for cfname in cfiles:
     subj = cfname.split('_')[-1].replace('.mat', '')
     xc = loadmat(cfname)['tc_filt']
-    cc = np.corrcoef(xc.T)
+    ys = preprocessing.scale(xc)
+    cc = np.corrcoef(ys.T)
     df = pd.DataFrame(cc, index=rois, columns=rois)
     out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/crosscorr/%s.csv' % subj
     df.to_csv(out_fname)
@@ -56,7 +60,7 @@ for cfname in cfiles:
 Philip received Global Signal files from Andrew to generate GSR-based
 correlation matrices. So, following the math in
 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2694109/, I do this for each
-dataset:
+dataset. He also asked me to add the amygdala from DK to the DS data atlas:
 
 ```python
 from scipy.io import loadmat
@@ -66,7 +70,7 @@ import glob
 import os
 
 
-rois = ['roi%03d' % (i+1) for i in range(160)]
+rois = ['roi%03d' % (i+1) for i in range(162)]
 
 cfiles = np.sort(glob.glob('/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/genR_to_dos160_*.mat'))
 
@@ -74,19 +78,27 @@ for cfname in cfiles:
     subj = cfname.split('_')[-1].replace('.mat', '')
     gs_fname = '/Users/sudregp/Downloads/GlobalSignal/genR_GS_%s.mat' % subj
     if os.path.exists(gs_fname):
-        B = loadmat(cfname)['tc_filt']
-        g = loadmat(gs_fname)['gs']
+        xc = loadmat(cfname)['tc_filt']
+        extra_fname = '/Users/sudregp/data/philip/GenR_FCTimeSeries/SubCortical/genR_to_HOSub_%s.mat' % subj
+        ex = loadmat(extra_fname)['x']
+        # left and right amygdala
+        B = np.hstack([xc, ex[:, [12, 13]]])
+        cc = np.corrcoef(B.T)
+        df = pd.DataFrame(cc, index=rois, columns=rois)
+        out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/crosscorr_plusAmygdala/%s.csv' % subj
+        df.to_csv(out_fname)
 
-        beta_g = np.dot(g.T, B)
+        g = loadmat(gs_fname)['gs']
+        gp = np.linalg.pinv(g)
+        beta_g = np.dot(gp, B)
         Bp = B - np.dot(g, beta_g)
 
         cc = np.corrcoef(Bp.T)
         df = pd.DataFrame(cc, index=rois, columns=rois)
-        out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/crosscorr_gsr/%s.csv' % subj
+        out_fname = '/Volumes/Shaw/GenR_peer_networks_brain_morphology/DOS_160/crosscorr_plusAmygdala_GSR/%s.csv' % subj
         df.to_csv(out_fname)
     else:
         print('Could not find GS file for %s' % subj)
-
 ```
 
 Then, do the same for the other set of ROIs.
@@ -115,7 +127,8 @@ for cfname, scfname in zip(cfiles, scfiles):
         B = np.hstack([xc, xsc])
         g = loadmat(gs_fname)['gs']
 
-        beta_g = np.dot(g.T, B)
+        gp = np.linalg.pinv(g)
+        beta_g = np.dot(gp, B)
         Bp = B - np.dot(g, beta_g)
 
         cc = np.corrcoef(Bp.T)
