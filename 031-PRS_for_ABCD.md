@@ -700,3 +700,18 @@ plink --bfile HM3merge_LT22yo --cluster --mind .05 --mds-plot 20 --extract local
 plink --bfile HM3merge --keep keep_younger_22_noDups.txt --make-bed --out HM3merge_LT22yo_noDups
 plink --bfile HM3merge_LT22yo_noDups --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_noDups_mds
 ```
+
+# 2019-10-17 15:17:53
+
+Generating similar file for Kathryn's analysis, but here we can just pick up
+from where we left off in Sam's analysis:
+
+```bash
+module load plink
+cd /data/NCR_SBRB/NCR_genetics
+
+plink --bfile HM3merge --keep keep_younger_22.txt --make-bed --out HM3merge_LT22yo
+plink --bfile HM3merge_LT22yo --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_mds
+plink --bfile HM3merge --keep keep_younger_22_noDups.txt --make-bed --out HM3merge_LT22yo_noDups
+plink --bfile HM3merge_LT22yo_noDups --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_noDups_mds
+```
