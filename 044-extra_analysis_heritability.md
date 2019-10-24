@@ -232,44 +232,46 @@ dti2 = dti2[dti2$exclude_due_to_comorbid=='no',]
 write.csv(dti2, file='~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid.csv', row.names=F, quote=F)
 ```
 
-Actually, gonna have to redo this. SOLAR cannot handle 3 differnet categories...
+Actually, gonna have to redo this. SOLAR cannot handle 3 different categories...
 Philip said to combine 2s and 3s. Will do.
+
 
 ```bash
 module load solar
 cd ~/data/heritability_change/;
 for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
-    for c in Prop_on_psychostim Med_class Med_exclusion exclude_due_to_comorbid; do
+    for c in Prop_on_psychostim Med_binary comorbid_binary; do
         solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds $p $c;
      done;
-     solar run_phen_var_OD_tracts_meds_comb4 dti_JHUtracts_ADRDonly_OD0.95_meds $p;
+     solar run_phen_var_OD_tracts_meds_comb3 dti_JHUtracts_ADRDonly_OD0.95_meds $p;
 done
 for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
-    for c in Prop_on_psychostim Med_class Med_exclusion; do
+    for c in Prop_on_psychostim Med_binary; do
         solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p $c;
      done;
      solar run_phen_var_OD_tracts dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid ${p}
-     solar run_phen_var_OD_tracts_meds_comb3 dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p;
+     solar run_phen_var_OD_tracts_meds_comb2 dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p;
 done
 
 for p in conn_SalVentAttnTODefault conn_SalVentAttnTOSalVentAttn; do
-    for c in Prop_on_psychostim Med_class Med_exclusion exclude_due_to_comorbid; do
+    for c in Prop_on_psychostim Med_binary comorbid_binary; do
         solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds $p $c;
      done;
-     solar run_phen_var_OD_xcp_meds_comb4 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds $p;
+     solar run_phen_var_OD_xcp_meds_comb3 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds $p;
 done
 for p in conn_SalVentAttnTODefault conn_SalVentAttnTOSalVentAttn; do
-    for c in Prop_on_psychostim Med_class Med_exclusion; do
+    for c in Prop_on_psychostim Med_binary; do
         solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid $p $c;
      done;
      solar run_phen_var_OD_xcp rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid ${p}
-     solar run_phen_var_OD_xcp_meds_comb3 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid $p;
+     solar run_phen_var_OD_xcp_meds_comb2 rsfmri_7by7from100_5nets_OD0.90_posOnly_median_meds_nocomorbid $p;
 done
 ```
 
 We should now check if our heritability values from before are still there.
-Hand-copied the results to medication_results.xlsx. Note that I had to rename
-the categories in Med_Exclusion because they were breaking SOLAR.
+Hand-copied the results to medication_results.xlsx.
+
+
 
 
 
