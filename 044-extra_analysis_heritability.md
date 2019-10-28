@@ -819,4 +819,301 @@ write.csv(data2, out_fname, row.names=F, na='', quote=F)
 
 And re-run the stuff above with these new phenotype files.
 
+# 2019-10-28 14:38:27
+
+Philip asked to run the results with baseline age as a covariate, to check for
+developmental effects. The issue is that I didn't save age of baseline in the
+phenotype file. But I do have it in the _twoTimePoints.csv files, so let's merge
+them:
+
+```r
+df = read.csv('dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+mrns=c();
+age_baseline = c();
+for (i in seq(1,nrow(df),2)) { 
+    mrns=c(mrns, df$Medical.Record...MRN...Subjects[i]);
+    age_baseline=c(age_baseline, min(df[i:(i+1),]$age_at_scan...Scan...Subjects))
+}
+ages = data.frame(ID=mrns, base_age=age_baseline)
+data = read.csv('dti_JHUtracts_ADRDonly_OD0.95.csv')
+m = merge(data, ages, by='ID')
+write.csv(m, 'dti_JHUtracts_ADRDonly_OD0.95_withBaseAge.csv', row.names=F, na='', quote=F)
+
+df = read.csv('rsfmri_7by7from100_5nets_OD0.90_posOnly_median_twoTimePoints_noOtherDX.csv')
+mrns=c();
+age_baseline = c();
+for (i in seq(1,nrow(df),2)) { 
+    mrns=c(mrns, df$Medical.Record...MRN[i]);
+    age_baseline=c(age_baseline, min(df[i:(i+1),]$age_at_scan))
+}
+ages = data.frame(ID=mrns, base_age=age_baseline)
+data = read.csv('rsfmri_7by7from100_5nets_OD0.90_posOnly_median.csv')
+m = merge(data, ages, by='ID')
+write.csv(m, 'rsfmri_7by7from100_5nets_OD0.90_posOnly_median_withBaseAge.csv', row.names=F, na='', quote=F)
+```
+
+```bash
+# interactive
+phen=dti_JHUtracts_ADRDonly_OD0.95_withBaseAge
+cd ~/data/heritability_change
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_baseAgeCov_tracts $phen ${m}_${t};
+    done;
+done
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}
+```
+
+```bash
+# interactive
+phen=rsfmri_7by7from100_5nets_OD0.90_posOnly_median_withBaseAge
+cd ~/data/heritability_change
+for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+     solar run_phen_var_OD_baseAgeCov_xcp $phen ${t};
+done;
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}
+```
+
+How about the regressions? I'll just repeat the results from above, and hardcode
+the age in the formulas:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95_withBaseAge.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ad_10', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_11', '%s ~ %s + base_age + goodVolumes'))
+formulas = rbind(formulas, c('ad_12', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_13', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_14', '%s ~ %s + base_age + meanX.rot'))
+formulas = rbind(formulas, c('ad_15', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('ad_16', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('ad_17', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_18', '%s ~ %s + base_age + goodVolumes'))
+formulas = rbind(formulas, c('ad_19', '%s ~ %s + base_age + meanX.trans + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_1', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_20', '%s ~ %s + base_age + meanX.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_2', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_3', '%s ~ %s + base_age + goodVolumes'))
+formulas = rbind(formulas, c('ad_4', '%s ~ %s + base_age + meanY.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_5', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('ad_6', '%s ~ %s + base_age + goodVolumes'))
+formulas = rbind(formulas, c('ad_7', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_8', '%s ~ %s + base_age + meanX.trans'))
+formulas = rbind(formulas, c('ad_9', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_10', '%s ~ %s + base_age + meanZ.trans'))
+formulas = rbind(formulas, c('rd_11', '%s ~ %s + base_age + meanY.trans'))
+formulas = rbind(formulas, c('rd_12', '%s ~ %s + base_age + meanY.trans'))
+formulas = rbind(formulas, c('rd_13', '%s ~ %s + base_age + meanX.rot'))
+formulas = rbind(formulas, c('rd_14', '%s ~ %s + base_age + meanX.rot'))
+formulas = rbind(formulas, c('rd_15', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_16', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_17', '%s ~ %s + base_age + meanZ.rot'))
+formulas = rbind(formulas, c('rd_18', '%s ~ %s + base_age + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_19', '%s ~ %s + base_age + meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_1', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_20', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_2', '%s ~ %s + base_age + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_3', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_4', '%s ~ %s + base_age + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_5', '%s ~ %s + base_age + meanY.trans + meanZ.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_6', '%s ~ %s + base_age + meanY.trans'))
+formulas = rbind(formulas, c('rd_7', '%s ~ %s + base_age'))
+formulas = rbind(formulas, c('rd_8', '%s ~ %s + base_age + meanX.trans + meanX.rot'))
+formulas = rbind(formulas, c('rd_9', '%s ~ %s + base_age + meanX.trans + meanY.rot'))
+
+out_fname = '~/data/heritability_change/assoc_all_baseAgeCov_dti_JHUtracts.csv'
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And similarly, we work on fMRI:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_posOnly_median_withBaseAge.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ %s + base_age + normCoverage + meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTODefault', '%s ~ %s + base_age + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DefaultTODefault', '%s ~ %s + base_age + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont', '%s ~ %s + base_age + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault', '%s ~ %s + base_age + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn', '%s ~ %s + base_age + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_DorsAttnTOLimbic', '%s ~ %s + base_age + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn', '%s ~ %s + base_age + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_LimbicTOCont', '%s ~ %s + base_age + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_LimbicTODefault', '%s ~ %s + base_age + normCoverage + pctSpikesDV + motionDVCorrFinal + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_LimbicTOLimbic', '%s ~ %s + base_age + normCoverage + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont', '%s ~ %s + base_age + sex + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault', '%s ~ %s + base_age + normCoverage + pctSpikesDV + motionDVCorrFinal +  pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOLimbic', '%s ~ %s + base_age + normCoverage + pctSpikesDV + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ %s + base_age + pctSpikesDV + pctSpikesRMS'))
+
+out_fname = '~/data/heritability_change/assoc_all_baseAgeCov_rsfmri_7x7_5nets.csv'
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+
+
 # TODO
