@@ -29,3 +29,39 @@ I'll start with DTI just to get the scripts ready...
 ```r
 source('~/research_code/baseline_prediction/prep_dti_JHUtracts_data.R')
 ```
+
+# 2019-10-29 12:33:51
+
+I should try the classification with and without adding age and sex to the
+features, and then just checking how good our age and sex predictions can get by
+themselves. For now, I'll play a bit with TPOT just to see how good this can
+get.
+
+Of course, by following the examples on the website, we should have multiple
+validation sets, so that we can have a distribution. But maybe we can just set
+the seeds, and go from there? Like, a list of seeds (starting with 42)?
+
+For now, let's make sure a minimal example using TPOT is working. Then we can
+start tweaking it a bit and running different seeds.
+
+```python
+from tpot import TPOTClassifier
+from sklearn.model_selection import train_test_split
+import pandas as pd
+import numpy as np
+
+data = pd.read_csv('~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv')
+data.rename(columns={'SX_HI_groupStudy': 'class'}, inplace=True)
+data['class'] = data['class'].map({'improvers': 1, 'nonimprovers': -1})
+print(data['class'].value_counts())
+
+feature_names = [fname for fname in data.columns if fname[:2] in ['ad', 'rd']]
+target_class = data['class'].values
+training_indices, validation_indices = train_test_split(data.index,
+                                                        stratify = target_class, train_size=0.75,
+                                                        test_size=0.25)
+
+tpot = TPOTClassifier(verbosity=2, max_time_mins=2, max_eval_time_mins=0.04, population_size=40)
+X = data[feature_names].values
+tpot.fit(X[training_indices], target_class[training_indices])
+```
