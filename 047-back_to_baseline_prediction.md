@@ -49,6 +49,8 @@ from tpot import TPOTClassifier
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
+from dask.distributed import Client
+client = Client(n_workers=4, threads_per_worker=1)
 
 data = pd.read_csv('~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv')
 data.rename(columns={'SX_HI_groupStudy': 'class'}, inplace=True)
@@ -61,7 +63,17 @@ training_indices, validation_indices = train_test_split(data.index,
                                                         stratify = target_class, train_size=0.75,
                                                         test_size=0.25)
 
-tpot = TPOTClassifier(verbosity=2, max_time_mins=2, max_eval_time_mins=0.04, population_size=40)
+# tpot = TPOTClassifier(verbosity=2, max_time_mins=2, max_eval_time_mins=0.04, population_size=40)
+tpot = TPOTClassifier(
+    generations=2,
+    population_size=10,
+    cv=2,
+    n_jobs=-1,
+    random_state=42,
+    verbosity=2,
+    config_dict=None,#'TPOT light',
+    use_dask=True,
+)
 X = data[feature_names].values
 tpot.fit(X[training_indices], target_class[training_indices])
 ```
