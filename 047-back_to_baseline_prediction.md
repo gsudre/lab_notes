@@ -63,8 +63,7 @@ target_class = data['class'].values
 training_indices, validation_indices = train_test_split(data.index,
 														stratify = target_class, train_size=0.75,
 														test_size=0.25,
-														random_state=myseed,
-														scoring='roc_auc')
+														random_state=myseed)
 
 # removing some warnings by hard coding parameters in the dictionary
 my_config = config.classifier_config_dict
@@ -74,7 +73,7 @@ for p in preproc:
 	my_config[p]['validate'] = [False]
 
 tpot = TPOTClassifier(n_jobs=-1, random_state=myseed, verbosity=2,
-						config_dict=my_config, use_dask=True)
+						config_dict=my_config, use_dask=True, scoring='roc_auc')
 
 X = data[feature_names].values
 tpot.fit(X[training_indices], target_class[training_indices])
@@ -98,9 +97,29 @@ conda activate tpot
 I removed xgboost package from conda to check whether it was repsonsible for
 some of the pipelines breaking. There were some inconsistencies in DASK about
 output parameters it received from CV results, so I'm checking whether that can
-be originating from xgb.
+be originating from xgb... it turns out that I got the error even without XGB,
+so I can put it back if I think it works, and the time doesn't increase too
+much. But I still don't know what's causing the error. It's only happening once
+in a while, so it could be a DASK thing.
 
+So, the code above finished. Now it's just a matter of scripting it. First, set
+up a file with the phenotype variables:
 
+```bash
+cd ~/data/baseline_prediction
+for m in ad rd; do
+ for t in {1..20}; do
+		echo "${m}_${t}" >> ad_rd_vars.txt;
+	done
+done
+```
+
+```bash
+#bw
+%run ~/research_code/baseline_prediction/tpot_classify.py ~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv SX_HI_groupStudy ~/data/baseline_prediction/ad_rd_vars.txt ~/data/tmp/ 42
+```
+
+THAT'S NOT WORKING YET... NEED TO DO A BETTER JOB SETTING UP DASK-ML AND JOBLIB
 
 
 # TODO
