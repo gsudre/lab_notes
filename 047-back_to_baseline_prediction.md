@@ -239,12 +239,149 @@ For plotting, I'm thinking of one row for inatt and one for HI, and the columns
 being the different study targets. We can do three boxplots per cell, with real
 results and random side by side.
 
+```r
+data = read.csv('classification_p75_dti_JHUtracts_ADRDonly_OD0.95.csv', header=0)
+dummy = read.csv('classification_dummy_results.csv', header=0)
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_group%s', j, i)
+        res_rows = which(grepl(data$V1, pattern=target))
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        roc = data.frame(group='real', val=data[res_rows, 'V3'])
+        roc = rbind(roc, data.frame(group='dummy', val=dummy[dumb_rows, 'V3']))
+        mytitle = sprintf('%s (n=%d)', target, length(res_rows))
+        boxplot(as.formula('val ~ group'), data=roc, main=mytitle, ylim=c(0,1), ylab='ROC')
+    }
+}
+```
 
+![](images/2019-10-30-14-48-41.png)
+
+Not looking very promising... but at least the framework is working. Maybe the
+idea is to go back to the features that worked before, and start from there. I
+don't expect to repeat the results, because datasets and targets will be
+different. Still, it's a good place to start.
+
+Before we do that, let's plot the regression results as well.
+
+```r
+data = read.csv('regression_p75_dti_JHUtracts_ADRDonly_OD0.95.csv', header=0)
+dummy = read.csv('regression_dummy_results.csv', header=0)
+data$V3 = -data$V3
+dummy$V3 = -dummy$V3
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_slope%s', j, i)
+        res_rows = which(grepl(data$V1, pattern=target))
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        tmp = data.frame(group='real', val=data[res_rows, 'V3'])
+        tmp = rbind(tmp, data.frame(group='dummy', val=dummy[dumb_rows, 'V3']))
+        ul = max(tmp$val) + sd(tmp$val)
+        ll = min(tmp$val) - sd(tmp$val)
+        mytitle = sprintf('%s (n=%d)', target, length(res_rows))
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(ll,ul), ylab='MAE')
+    }
+}
+```
+
+![](images/2019-10-30-14-59-13.png)
+
+Also not great, as we want MAE to be smaller in the real data than dummy,
+differently than for ROC. But at least scripts are ready.
+
+Let me just go ahead and run .8 split to see if it makes any difference.
+
+While that's running, I'll play a bit with other modalities. First, make sure we
+have all the possible DTI data we'll need:
+
+```bash
+dti_dir=/Volumes/Shaw/dti_robust_tsa/analysis_may2017/
+cd ~/data/baseline_prediction/;
+for m in `tail -n +2 ~/data/heritability_change/ready_1020.csv | cut -d"," -f 1 -`; do
+    # just using some random mask from before
+    if [ ! -e dti_voxels/${m}_fa.txt ]; then
+        if [ ! -e ${dti_dir}/${m}_tensor_diffeo_fa.nii.gz ]; then
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${dti_dir}/${m}_tensor_diffeo.nii.gz -fa;
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${dti_dir}/${m}_tensor_diffeo.nii.gz -ad;
+            /Applications/dtitk-2.3.3-Darwin-x86_64/bin/TVtool -in ${dti_dir}/${m}_tensor_diffeo.nii.gz -rd;
+        fi;
+        3dmaskdump -mask mean_272_fa_skeleton_mask.nii.gz -o dti_voxels/${m}_fa.txt ${dti_dir}/${m}_tensor_diffeo_fa.nii.gz;
+        3dmaskdump -mask mean_272_fa_skeleton_mask.nii.gz -o dti_voxels/${m}_ad.txt ${dti_dir}/${m}_tensor_diffeo_ad.nii.gz;
+        3dmaskdump -mask mean_272_fa_skeleton_mask.nii.gz -o dti_voxels/${m}_rd.txt ${dti_dir}/${m}_tensor_diffeo_rd.nii.gz;
+    fi;
+done
+
+# changing between fa, ad, and rd in the script
+Rscript ~/research_code/baseline_prediction/prep_dti_voxel_PCA_data.R
+```
+
+<!-- And let's leave some of the DTI voxelwise processing running overnight:
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+swarm_file=swarm.classifyDTIvox;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+for p in fa ad rd; do
+    phen=~/data/baseline_prediction/dti_${p}_PCA_OD0.95.csv;
+    vars=~/data/baseline_prediction/dti_${p}_PCA_vars.txt;
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            for s in `cat ../random25.txt`; do
+                echo "python $code $phen ${j}_group${i} $vars $res $s" >> $swarm_file;
+            done;
+        done;
+    done;
+done;
+jname=class25;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+While I wait for that to run, I can make a quite similar script for regression.
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+swarm_file=swarm.regress;
+code=~/research_code/baseline_prediction/tpot_regress.py;
+phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
+vars=~/data/baseline_prediction/ad_rd_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat ../random25.txt`; do
+            echo "python $code $phen ${j}_slope${i} $vars $res $s" >> $swarm_file;
+        done;
+    done;
+done;
+
+jname=reg25;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+``` -->
 
 # TODO
 * play with OD threshold
-* compile and plot results
-* would it help if we made our regression targets more normal? log()?
+* Philip would like to see the NV vs ADHD classification as well. Also, the 3
+  way for persistent and remitted
+* Try another task within ADHD group for very strict ADHD DSM thresholds
+* Try restricting only first scan to under 13, and not the rest.
+* Try restricting only the first scan under 16, not the rest.
+* would .8 .2 split do better? (more data for training)
+* would it help if we made our regression targets more normal? log()? try on
+  best, medium, and worst regression results
 * try other domains individually
 * find new subjects to re-interview
 * try the classification with and without adding age and sex to the
