@@ -92,6 +92,7 @@ so make sure all packages were setup properly.
 ```bash
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate tpot
+export OMP_NUM_THREADS=1
 ```
 
 I removed xgboost package from conda to check whether it was repsonsible for
@@ -116,16 +117,83 @@ done
 
 ```bash
 #bw
-%run ~/research_code/baseline_prediction/tpot_classify.py ~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv SX_HI_groupStudy ~/data/baseline_prediction/ad_rd_vars.txt ~/data/tmp/ 42
+python ~/research_code/baseline_prediction/tpot_classify.py ~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv SX_HI_groupStudy ~/data/baseline_prediction/ad_rd_vars.txt ~/data/tmp/ 42
 ```
 
-THAT'S NOT WORKING YET... NEED TO DO A BETTER JOB SETTING UP DASK-ML AND JOBLIB
+# 2019-10-30 10:56:48
+
+I was having lots of problems with DASK yesterday and today, especially with
+putting it into a script (instead of running in jupyter notebooks), and also
+struggling with using dask-ml implementation of joblib. So, I reverted to the
+normal joblib backend and not using DASK at all in TPOT. Let's see if this
+works...
+
+The function seems to be working. So, now we just need to make sure we load the
+environment correctly before we swarm it, so that all variables can be sent with
+the swarm. First, let's create a set of random seeds:
+
+```bash
+cd ~/data/baseline_prediction
+echo 42 > random25.txt;
+echo 1234 >> random25.txt;
+for i in {1..23}; do echo $RANDOM >> random25.txt; done
+```
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+swarm_file=swarm.classify;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
+vars=~/data/baseline_prediction/ad_rd_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat ../random25.txt`; do
+            echo "python $code $phen ${j}_group${i} $vars $res $s" >> $swarm_file;
+        done;
+    done;
+done;
+
+jname=class25;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+While I wait for that to run, I can make a quite similar script for regression.
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+swarm_file=swarm.regress;
+code=~/research_code/baseline_prediction/tpot_regress.py;
+phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
+vars=~/data/baseline_prediction/ad_rd_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat ../random25.txt`; do
+            echo "python $code $phen ${j}_slope${i} $vars $res $s" >> $swarm_file;
+        done;
+    done;
+done;
+
+jname=reg25;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
 
 
 # TODO
 * determine random chance classifiers / regressors
-* remove warnings?
 * play with OD threshold
-* construct distributions in the validation set
-* run for all 6 classification and 6 regression tasks
-* 
+* would it help if we made our regression targets more normal? log()?
+* try other domains individually
