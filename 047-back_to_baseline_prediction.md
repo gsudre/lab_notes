@@ -191,9 +191,62 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
 
+The random distribution runs quite fast, so we don't need to swarm it:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_results
+
+code=~/research_code/baseline_prediction/dummy_classifier.py;
+phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
+vars=~/data/baseline_prediction/ad_rd_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat ../random25.txt`; do
+            python $code $phen ${j}_group${i} $vars $res $s;
+        done;
+    done;
+done;
+```
+
+And do the same thing for regression:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_results
+
+code=~/research_code/baseline_prediction/dummy_regressor.py;
+phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
+vars=~/data/baseline_prediction/ad_rd_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat ../random25.txt`; do
+            python $code $phen ${j}_slope${i} $vars $res $s;
+        done;
+    done;
+done;
+```
+
+For plotting, I'm thinking of one row for inatt and one for HI, and the columns
+being the different study targets. We can do three boxplots per cell, with real
+results and random side by side.
+
+
 
 # TODO
-* determine random chance classifiers / regressors
 * play with OD threshold
+* compile and plot results
 * would it help if we made our regression targets more normal? log()?
 * try other domains individually
+* find new subjects to re-interview
+* try the classification with and without adding age and sex to the
+features, and then just checking how good our age and sex predictions can get by
+themselves. Same thing by adding QC_variables.
