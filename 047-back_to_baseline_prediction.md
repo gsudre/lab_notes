@@ -45,12 +45,13 @@ For now, let's make sure a minimal example using TPOT is working. Then we can
 start tweaking it a bit and running different seeds.
 
 ```python
-from tpot import TPOTClassifier
+from tpot import TPOTClassifier, config
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 from dask.distributed import Client
-client = Client(n_workers=4, threads_per_worker=1)
+client = Client(n_workers=32, threads_per_worker=1)
+myseed=1234
 
 data = pd.read_csv('~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv')
 data.rename(columns={'SX_HI_groupStudy': 'class'}, inplace=True)
@@ -60,20 +61,52 @@ print(data['class'].value_counts())
 feature_names = [fname for fname in data.columns if fname[:2] in ['ad', 'rd']]
 target_class = data['class'].values
 training_indices, validation_indices = train_test_split(data.index,
-                                                        stratify = target_class, train_size=0.75,
-                                                        test_size=0.25)
+														stratify = target_class, train_size=0.75,
+														test_size=0.25,
+														random_state=myseed,
+														scoring='roc_auc')
 
-# tpot = TPOTClassifier(verbosity=2, max_time_mins=2, max_eval_time_mins=0.04, population_size=40)
-tpot = TPOTClassifier(
-    generations=2,
-    population_size=10,
-    cv=2,
-    n_jobs=-1,
-    random_state=42,
-    verbosity=2,
-    config_dict=None,#'TPOT light',
-    use_dask=True,
-)
+# removing some warnings by hard coding parameters in the dictionary
+my_config = config.classifier_config_dict
+my_config['sklearn.linear_model.LogisticRegression']['solver'] = 'lbfgs'
+preproc = [v for v in my_config.keys() if v.find('preprocessing') > 0]
+for p in preproc:
+	my_config[p]['validate'] = [False]
+
+tpot = TPOTClassifier(n_jobs=-1, random_state=myseed, verbosity=2,
+						config_dict=my_config, use_dask=True)
+
 X = data[feature_names].values
 tpot.fit(X[training_indices], target_class[training_indices])
+
+### after
+tpot.export('tpot_adrd_pipeline.py')
+tpot.score(X[validation_indices], data.loc[validation_indices, 'class'].values)
 ```
+
+I'm not going to worry too much about the warnings for now. Let's just make sure
+we can save our best models for testing and go from there.
+
+Now let's see if we can run this in Biowulf. I had to create a tpot environment
+so make sure all packages were setup properly.
+
+```bash
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+```
+
+I removed xgboost package from conda to check whether it was repsonsible for
+some of the pipelines breaking. There were some inconsistencies in DASK about
+output parameters it received from CV results, so I'm checking whether that can
+be originating from xgb.
+
+
+
+
+# TODO
+* determine random chance classifiers / regressors
+* remove warnings?
+* play with OD threshold
+* construct distributions in the validation set
+* run for all 6 classification and 6 regression tasks
+* 
