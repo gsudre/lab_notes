@@ -146,7 +146,8 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-swarm_file=swarm.classify;
+jname=cDTIjhu;
+swarm_file=swarm.${jname};
 code=~/research_code/baseline_prediction/tpot_classify.py;
 phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
 vars=~/data/baseline_prediction/ad_rd_vars.txt
@@ -159,7 +160,6 @@ for i in Next Last Study; do
     done;
 done;
 
-jname=class25;
 swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
@@ -173,7 +173,8 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-swarm_file=swarm.regress;
+jname=rDTIjhu;
+swarm_file=swarm.${jname};
 code=~/research_code/baseline_prediction/tpot_regress.py;
 phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
 vars=~/data/baseline_prediction/ad_rd_vars.txt
@@ -186,7 +187,6 @@ for i in Next Last Study; do
     done;
 done;
 
-jname=reg25;
 swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
@@ -317,7 +317,23 @@ done
 Rscript ~/research_code/baseline_prediction/prep_dti_voxel_PCA_data.R
 ```
 
-<!-- And let's leave some of the DTI voxelwise processing running overnight:
+# 2019-10-31 10:17:47
+
+Let's see if there is any difference with the 80/20 split:
+
+![](images/2019-10-31-10-18-59.png)
+
+![](images/2019-10-31-10-19-38.png)
+
+Not really... I'll just leave it that way though.
+
+And let's do some voxelwise decoding:
+
+```bash
+for i in {1..53}; do echo PC${i} >> dti_fa_PCA_vars.txt; done
+for i in {1..50}; do echo PC${i} >> dti_ad_PCA_vars.txt; done
+for i in {1..43}; do echo PC${i} >> dti_rd_PCA_vars.txt; done
+```
 
 ```bash
 # bw
@@ -326,7 +342,9 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-swarm_file=swarm.classifyDTIvox;
+jname=cDTIvox;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
 code=~/research_code/baseline_prediction/tpot_classify.py;
 res=~/data/baseline_prediction/tpot_results;
 for p in fa ad rd; do
@@ -340,7 +358,6 @@ for p in fa ad rd; do
         done;
     done;
 done;
-jname=class25;
 swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
@@ -354,23 +371,38 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-swarm_file=swarm.regress;
+jname=rDTIvox;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
 code=~/research_code/baseline_prediction/tpot_regress.py;
-phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
-vars=~/data/baseline_prediction/ad_rd_vars.txt
-res=~/data/baseline_prediction/tpot_results
-for i in Next Last Study; do
-    for j in SX_inatt SX_HI; do
-        for s in `cat ../random25.txt`; do
-            echo "python $code $phen ${j}_slope${i} $vars $res $s" >> $swarm_file;
+res=~/data/baseline_prediction/tpot_results;
+for p in fa ad rd; do
+    phen=~/data/baseline_prediction/dti_${p}_PCA_OD0.95.csv;
+    vars=~/data/baseline_prediction/dti_${p}_PCA_vars.txt;
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            for s in `cat ../random25.txt`; do
+                echo "python $code $phen ${j}_slope${i} $vars $res $s" >> $swarm_file;
+            done;
         done;
     done;
 done;
-
-jname=reg25;
 swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
-``` -->
+```
+
+In the past we had some success using structural voxelwise data. Let's see if we
+can do as well now.
+
+I'm not going to run Freesurfer for this, but I need to make sure I have all QC
+variables for that, and I'll need their ages.
+
+```bash
+cd ~/data/baseline_prediction
+/bin/ls -1 /Volumes/Shaw/freesurfer5.3_subjects/ > struct_ids.txt
+# added some demographics from Labmatrix
+
+```
 
 # TODO
 * play with OD threshold
@@ -381,7 +413,7 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
 * Try restricting only the first scan under 16, not the rest.
 * would .8 .2 split do better? (more data for training)
 * would it help if we made our regression targets more normal? log()? try on
-  best, medium, and worst regression results
+  best, medium, and worst regression results... they're already quite normal!!!
 * try other domains individually
 * find new subjects to re-interview
 * try the classification with and without adding age and sex to the
