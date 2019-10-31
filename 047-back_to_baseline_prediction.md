@@ -148,6 +148,7 @@ cd ~/data/baseline_prediction/tpot_swarms
 
 jname=cDTIjhu;
 swarm_file=swarm.${jname};
+rm -f $swarm_file;
 code=~/research_code/baseline_prediction/tpot_classify.py;
 phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
 vars=~/data/baseline_prediction/ad_rd_vars.txt
@@ -175,6 +176,7 @@ cd ~/data/baseline_prediction/tpot_swarms
 
 jname=rDTIjhu;
 swarm_file=swarm.${jname};
+rm -f $swarm_file;
 code=~/research_code/baseline_prediction/tpot_regress.py;
 phen=~/data/baseline_prediction/dti_JHUtracts_ADRDonly_OD0.95.csv;
 vars=~/data/baseline_prediction/ad_rd_vars.txt
@@ -330,9 +332,9 @@ Not really... I'll just leave it that way though.
 And let's do some voxelwise decoding:
 
 ```bash
-for i in {1..53}; do echo PC${i} >> dti_fa_PCA_vars.txt; done
-for i in {1..50}; do echo PC${i} >> dti_ad_PCA_vars.txt; done
-for i in {1..43}; do echo PC${i} >> dti_rd_PCA_vars.txt; done
+for i in {1..48}; do echo PC${i} >> dti_fa_PCA_vars.txt; done
+for i in {1..49}; do echo PC${i} >> dti_ad_PCA_vars.txt; done
+for i in {1..39}; do echo PC${i} >> dti_rd_PCA_vars.txt; done
 ```
 
 ```bash
@@ -401,7 +403,32 @@ variables for that, and I'll need their ages.
 cd ~/data/baseline_prediction
 /bin/ls -1 /Volumes/Shaw/freesurfer5.3_subjects/ > struct_ids.txt
 # added some demographics from Labmatrix
+# and for Euler
+res_file=~/data/baseline_prediction/euler_numbers.csv
+echo subjid,euler_LH,euler_RH,mean_euler > $res_file;
+for s in `cat ~/data/baseline_prediction/struct_ids.txt`; do
+    euler_lh=`grep -A 1 "Computing euler" /Volumes/Shaw/freesurfer5.3_subjects/${s}/scripts/recon-all.log | tail -1 | awk '{ print $4 }' | sed "s/,//"`;
+    euler_rh=`grep -A 1 "Computing euler" /Volumes/Shaw/freesurfer5.3_subjects/${s}/scripts/recon-all.log | tail -1 | awk '{ print $7 }' | sed "s/,//"`;
+    mean_euler=`echo "( $euler_lh + $euler_rh ) / 2" | bc`;
+    echo $s,$euler_lh,$euler_rh,$mean_euler >> $res_file;
+done
+```
 
+```r
+demo = read.csv('~/data/baseline_prediction/struct_demo.csv')
+mriqc = read.table('~/data/baseline_prediction/group_T1w.txt', header=1)
+mriqc$maskid = sapply(gsub(pattern='sub-', x=mriqc$bids_name, replacement=''),
+                      function(x) substr(x, 1, 4))
+m = merge(demo, mriqc, by='maskid', all.x=F, all.y=F)
+eu = read.csv('~/data/baseline_prediction/euler_numbers.csv')
+m = merge(m, eu, by.x='maskid', by.y='subjid', all.x=F, all.y=F)
+write.csv(m, file='~/data/baseline_prediction/struct_demo_withQC.csv', row.names=F)
+```
+
+Then it's just a matter of running the usual prep script:
+
+```r
+source('~/research_code/baseline_prediction/prep_struct_voxel_PCA_data.R')
 ```
 
 # TODO
@@ -411,9 +438,6 @@ cd ~/data/baseline_prediction
 * Try another task within ADHD group for very strict ADHD DSM thresholds
 * Try restricting only first scan to under 13, and not the rest.
 * Try restricting only the first scan under 16, not the rest.
-* would .8 .2 split do better? (more data for training)
-* would it help if we made our regression targets more normal? log()? try on
-  best, medium, and worst regression results... they're already quite normal!!!
 * try other domains individually
 * find new subjects to re-interview
 * try the classification with and without adding age and sex to the

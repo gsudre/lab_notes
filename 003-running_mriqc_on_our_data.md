@@ -180,6 +180,18 @@ and fire it up for everybody!
 That seems to have worked... I just need to carefully check it later for any
 errors, but the results have been copied to shaw/mriqc_output.
 
+# 2019-10-31 15:54:55
+
+Quick note that if I want to generate a table with all QC metrics I need to do
+something like this after all mriqc results have been downloaded from Biowulf:
+
+```bash
+# desktop
+docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
+    -v /Volumes/Shaw/mriqc_output/:/out poldracklab/mriqc:latest /data /out \
+    group --no-sub
+```
+
 # TODO
 * Run MRIQC on all our data (collect it)
 * Run Tonya's script on all our data
