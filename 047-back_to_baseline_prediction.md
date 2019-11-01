@@ -715,6 +715,172 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
 
+Now that the results are starting to come in, let's do some plotting. Before
+thatm we need another dummy set:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+
+code=~/research_code/baseline_prediction/dummy_classifier.py;
+phen=~/data/baseline_prediction/struct_volume_PCA_OD0.95.csv;
+vars=~/data/baseline_prediction/struct_volume_PCA_vars.txt;
+res=~/data/baseline_prediction/tpot_results;
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat random25.txt`; do
+            python $code $phen ${j}_group${i} $vars $res $s;
+        done;
+    done;
+done
+
+code=~/research_code/baseline_prediction/dummy_regressor.py;
+phen=~/data/baseline_prediction/struct_volume_PCA_OD0.95.csv;
+vars=~/data/baseline_prediction/struct_volume_PCA_vars.txt;
+res=~/data/baseline_prediction/tpot_results;
+for i in Next Last Study; do
+    for j in SX_inatt SX_HI; do
+        for s in `cat random25.txt`; do
+            python $code $phen ${j}_slope${i} $vars $res $s;
+        done;
+    done;
+done
+```
+
+And we plot the results for structural data:
+
+```r
+dummy = read.csv('classification_dummy_results_struct_volume_PCA_OD0.95.csv', header=0)
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_group%s', j, i)
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+        for (phen in c('area', 'volume', 'thickness')) {
+            data = read.csv(sprintf('classification_results_struct_%s_PCA_OD0.95.csv', phen), header=0)
+            res_rows = which(grepl(data$V1, pattern=target))
+            tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+        }
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1), ylab='ROC', las=2, xlab='')
+    }
+}
+```
+
+![](images/2019-11-01-15-34-37.png)
+
+A potentially interesting result for thickness, predicting HI group in the next
+visit.
+
+```r
+dummy = read.csv('regression_dummy_results_struct_volume_PCA_OD0.95.csv', header=0)
+dummy$V3 = -dummy$V3
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_slope%s', j, i)
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+        for (phen in c('area', 'volume', 'thickness')) {
+            data = read.csv(sprintf('regression_results_struct_%s_PCA_OD0.95.csv', phen), header=0)
+            data$V3 = -data$V3
+            res_rows = which(grepl(data$V1, pattern=target))
+            tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+        }
+        ul = max(tmp$val) + sd(tmp$val)
+        ll = min(tmp$val) - sd(tmp$val)
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(ll,ul), ylab='MAE', las=2, xlab='')
+    }
+}
+```
+
+Now we look at the baseDX results. Again, we need another dummy set:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+
+code=~/research_code/baseline_prediction/dummy_classifier.py;
+phen=~/data/baseline_prediction/dti_fa_PCA_OD0.95_baseDX.csv;
+vars=~/data/baseline_prediction/dti_fa_PCA_baseDX_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for s in `cat random25.txt`; do
+    python $code $phen adhdDX $vars $res $s;
+done;
+```
+
+```r
+dummy = read.csv('classification_dummy_results_dti_fa_PCA_OD0.95_baseDX.csv', header=0)
+target = 'adhdDX'
+dumb_rows = which(grepl(dummy$V1, pattern=target))
+tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+for (phen in c('fa', 'ad', 'rd')) {
+    data = read.csv(sprintf('classification_results_dti_%s_PCA_OD0.95_baseDX.csv', phen), header=0)
+    res_rows = which(grepl(data$V1, pattern=target))
+    tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1), ylab='ROC', las=2, xlab='')
+```
+
+![](images/2019-11-01-15-38-18.png)
+
+So, there's definitely something wrong here. The results from before were easily
+around .65.
+
+Finally, we look at the outcome results, with its appropriate dummy set:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+
+code=~/research_code/baseline_prediction/dummy_classifier.py;
+phen=~/data/baseline_prediction/dti_fa_PCA_OD0.95_DSM5Outcome.csv;
+vars=~/data/baseline_prediction/dti_fa_PCA_DSM5Outcome_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for s in `cat random25.txt`; do
+    python $code $phen lastPersistent $vars $res $s;
+done;
+```
+
+```r
+dummy = read.csv('classification_dummy_results_dti_fa_PCA_OD0.95_DSM5Outcome.csv', header=0)
+target = 'lastPersistent'
+dumb_rows = which(grepl(dummy$V1, pattern=target))
+tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+for (phen in c('fa', 'ad', 'rd')) {
+    data = read.csv(sprintf('classification_results_dti_%s_PCA_OD0.95_DSM5Outcome.csv', phen), header=0)
+    res_rows = which(grepl(data$V1, pattern=target))
+    tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1), ylab='ROC', las=2, xlab='')
+```
+
+Just for kicks, let's plot clinBin as well:
+
+```bash
+# interactive
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+
+code=~/research_code/baseline_prediction/dummy_classifier.py;
+phen=~/data/baseline_prediction/clinics_binary_baseDX.csv;
+vars=~/data/baseline_prediction/clinics_binary_vars.txt
+res=~/data/baseline_prediction/tpot_results
+for s in `cat random25.txt`; do
+    python $code $phen adhdDX $vars $res $s;
+done;
+```
 
 # TODO
 * play with OD threshold
