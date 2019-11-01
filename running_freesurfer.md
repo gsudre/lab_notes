@@ -110,7 +110,7 @@ Finally, let's put it into a format we can read. Bring it back form Biowulf, and
 ```python
 nsubjs = 260
 from rpy2.robjects import r
-from rpy2.robjects.numpy2ri import numpy2ri
+from rpy2.robjects import numpy2ri
 import surfer
 import numpy as np
 for meas in ['area', 'volume', 'thickness']:
@@ -121,7 +121,7 @@ for meas in ['area', 'volume', 'thickness']:
         print('%s, nvox = %.2f' % (fname, nvox))
         data = data.reshape([nsubjs, int(nvox)])
         array = np.array(data, dtype="float64")
-        ro = numpy2ri(array)
+        ro = numpy2ri.numpy2rpy(array)
         r.assign('data', ro)
         r("save(data, file='%s.gzip', compress=TRUE)" % fname)
 ```

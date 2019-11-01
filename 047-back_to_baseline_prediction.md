@@ -431,6 +431,202 @@ Then it's just a matter of running the usual prep script:
 source('~/research_code/baseline_prediction/prep_struct_voxel_PCA_data.R')
 ```
 
+# 2019-11-01 10:13:23
+
+Just finished that script, so now it's time to leave it running while I compile
+the results for DTI:
+
+```bash
+for i in {1..48}; do echo PC${i} >> struct_area_PCA_vars.txt; done
+for i in {1..55}; do echo PC${i} >> struct_thickness_PCA_vars.txt; done
+for i in {1..57}; do echo PC${i} >> struct_volume_PCA_vars.txt; done
+```
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=cStructVox;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+for p in area thickness volume; do
+    phen=~/data/baseline_prediction/struct_${p}_PCA_OD0.95.csv;
+    vars=~/data/baseline_prediction/struct_${p}_PCA_vars.txt;
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            for s in `cat ../random25.txt`; do
+                echo "python $code $phen ${j}_group${i} $vars $res $s" >> $swarm_file;
+            done;
+        done;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+While I wait for that to run, I can make a quite similar script for regression.
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=rStructVox;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_regress.py;
+res=~/data/baseline_prediction/tpot_results;
+for p in area thickness volume; do
+    phen=~/data/baseline_prediction/struct_${p}_PCA_OD0.95.csv;
+    vars=~/data/baseline_prediction/struct_${p}_PCA_vars.txt;
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            for s in `cat ../random25.txt`; do
+                echo "python $code $phen ${j}_slope${i} $vars $res $s" >> $swarm_file;
+            done;
+        done;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+And these are the latest DTI results, using the improved file naming and 80/20
+splits:
+
+```r
+dummy = read.csv('classification_dummy_results_dti_JHUtracts_ADRDonly_OD0.95.csv', header=0)
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_group%s', j, i)
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+        for (phen in c('fa_PCA', 'ad_PCA', 'rd_PCA', 'JHUtracts_ADRDonly')) {
+            data = read.csv(sprintf('classification_results_dti_%s_OD0.95.csv', phen), header=0)
+            res_rows = which(grepl(data$V1, pattern=target))
+            tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+        }
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1), ylab='ROC', las=2, xlab='')
+    }
+}
+```
+
+![](images/2019-11-01-10-37-07.png)
+
+There might be something there for fa_PCA. 
+
+```r
+dummy = read.csv('regression_dummy_results_dti_JHUtracts_ADRDonly_OD0.95.csv', header=0)
+dummy$V3 = -dummy$V3
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_slope%s', j, i)
+        dumb_rows = which(grepl(dummy$V1, pattern=target))
+        tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+        for (phen in c('fa_PCA', 'ad_PCA', 'rd_PCA', 'JHUtracts_ADRDonly')) {
+            data = read.csv(sprintf('regression_results_dti_%s_OD0.95.csv', phen), header=0)
+            data$V3 = -data$V3
+            res_rows = which(grepl(data$V1, pattern=target))
+            tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+        }
+        ul = max(tmp$val) + sd(tmp$val)
+        ll = min(tmp$val) - sd(tmp$val)
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(ll,ul), ylab='MAE', las=2, xlab='')
+    }
+}
+```
+
+![](images/2019-11-01-10-42-15.png)
+
+Regression is clearly not looking good. Maybe I should just abandon that for now
+to save time. Let's see if we can go back to the old results, using strictly
+DSM5 labels and doing ADHD vs NV as well. 
+
+```r
+source('~/research_code/baseline_prediction/prep_dti_voxel_PCA_data_baseDX.R')
+source('~/research_code/baseline_prediction/prep_struct_voxel_PCA_data_baseDX.R')
+```
+
+And to run the DX it should be simple:
+
+```bash
+for i in {1..76}; do echo PC${i} >> dti_fa_PCA_baseDX_vars.txt; done
+for i in {1..78}; do echo PC${i} >> dti_ad_PCA_baseDX_vars.txt; done
+for i in {1..61}; do echo PC${i} >> dti_rd_PCA_baseDX_vars.txt; done
+```
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=DTIvoxDX;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+for p in fa ad rd; do
+    phen=~/data/baseline_prediction/dti_${p}_PCA_OD0.95_baseDX.csv;
+    vars=~/data/baseline_prediction/dti_${p}_PCA_baseDX_vars.txt;
+    for s in `cat ../random25.txt`; do
+        echo "python $code $phen adhdDX $vars $res $s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+I'm now waiting for Freesurfer decimation to finish running, and my queue is
+quite long in the cluster. So, it makes sense to run a binaryClinical dataset
+just to work as a benchmark for the algorithms. Based on definition, and on the
+previous results, we should be almost perfect using that.
+
+I'll go ahead and use the same binary file I was using in the past
+(clinics_binary_sx_baseline_10022018.RData.gz), as it took a while to construct
+and I'm only using baseline data anyways here. I'll probably massage it a bit
+and transform it to CSV.
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=clinBinDX;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+phen=~/data/baseline_prediction/clinics_binary_baseDX.csv;
+vars=~/data/baseline_prediction/clinics_binary_vars.txt;
+for s in `cat ../random25.txt`; do
+    echo "python $code $phen adhdDX $vars $res $s" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+Next step is to do the DSM-5 perVSrem comparison as well.
+
+```r
+source('~/research_code/baseline_prediction/prep_dti_voxel_PCA_data_DSM5Outcome.R')
+source('~/research_code/baseline_prediction/prep_struct_voxel_PCA_data_DSM5Outcome.R')
+```
+
 # TODO
 * play with OD threshold
 * Philip would like to see the NV vs ADHD classification as well. Also, the 3
