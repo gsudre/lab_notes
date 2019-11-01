@@ -109,8 +109,7 @@ Finally, let's put it into a format we can read. Bring it back form Biowulf, and
 
 ```python
 nsubjs = 260
-from rpy2.robjects import r
-from rpy2.robjects import numpy2ri
+from rpy2.robjects import r, numpy2ri
 import surfer
 import numpy as np
 for meas in ['area', 'volume', 'thickness']:

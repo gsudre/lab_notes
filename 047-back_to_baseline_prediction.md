@@ -589,6 +589,37 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
     --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
 ```
 
+```bash
+for i in {1..97}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
+for i in {1..44}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
+for i in {1..32}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
+```
+
+I did this a bit differently because it was taking forever to compute the
+decimated version of the structural data with all subjects.
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+p=volume;
+jname=DX${p};
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+phen=~/data/baseline_prediction/struct_${p}_PCA_OD0.95_baseDX.csv;
+vars=~/data/baseline_prediction/struct_${p}_PCA_baseDX_vars.txt;
+for s in `cat ../random25.txt`; do
+    echo "python $code $phen adhdDX $vars $res $s" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
 I'm now waiting for Freesurfer decimation to finish running, and my queue is
 quite long in the cluster. So, it makes sense to run a binaryClinical dataset
 just to work as a benchmark for the algorithms. Based on definition, and on the
@@ -626,6 +657,64 @@ Next step is to do the DSM-5 perVSrem comparison as well.
 source('~/research_code/baseline_prediction/prep_dti_voxel_PCA_data_DSM5Outcome.R')
 source('~/research_code/baseline_prediction/prep_struct_voxel_PCA_data_DSM5Outcome.R')
 ```
+
+```bash
+for i in {1..40}; do echo PC${i} >> dti_fa_PCA_DSM5Outcome_vars.txt; done
+for i in {1..40}; do echo PC${i} >> dti_ad_PCA_DSM5Outcome_vars.txt; done
+for i in {1..32}; do echo PC${i} >> dti_rd_PCA_DSM5Outcome_vars.txt; done
+```
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=DTIvoxOutcome;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+for p in fa ad rd; do
+    phen=~/data/baseline_prediction/dti_${p}_PCA_OD0.95_DSM5Outcome.csv;
+    vars=~/data/baseline_prediction/dti_${p}_PCA_DSM5Outcome_vars.txt;
+    for s in `cat ../random25.txt`; do
+        echo "python $code $phen lastPersistent $vars $res $s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
+```bash
+for i in {1..46}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
+for i in {1..40}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
+for i in {1..32}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
+```
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+p=volume;
+jname=OUT${p};
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results;
+phen=~/data/baseline_prediction/struct_${p}_PCA_OD0.95_DSM5Outcome.csv;
+vars=~/data/baseline_prediction/struct_${p}_PCA_DSM5Outcome_vars.txt;
+for s in `cat ../random25.txt`; do
+    echo "python $code $phen lastPersistent $vars $res $s" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4:00:00 --merge-output --partition quick,norm
+```
+
 
 # TODO
 * play with OD threshold
