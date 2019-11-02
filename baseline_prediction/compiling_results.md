@@ -452,6 +452,8 @@ through the leaderboard approach, just to we have some backup results.
 What I might do is specify the validation myself, so I have more control of how
 much data goes into it, and also compute univariate filter only in training data.
 
+# this is incorrect according to the version I'm looking at now. Not sure if it was different in other versions, but the CV is done in the entire training data, not just part of it. I followed through one of their examples, and the CV output is in the entire training data.
+
 Of course, we should also start plotting in the brain where all these good
 variables are.
 

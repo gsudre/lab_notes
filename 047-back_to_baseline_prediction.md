@@ -591,7 +591,7 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
 
 ```bash
 for i in {1..97}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
-for i in {1..44}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
+for i in {1..78}; do echo PC${i} >> struct_area_PCA_baseDX_vars.txt; done
 for i in {1..32}; do echo PC${i} >> struct_volume_PCA_baseDX_vars.txt; done
 ```
 
@@ -605,7 +605,7 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-p=volume;
+p=area;
 jname=DX${p};
 swarm_file=swarm.${jname};
 rm -f $swarm_file;
@@ -689,7 +689,7 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
 
 ```bash
 for i in {1..46}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
-for i in {1..40}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
+for i in {1..39}; do echo PC${i} >> struct_area_PCA_DSM5Outcome_vars.txt; done
 for i in {1..32}; do echo PC${i} >> struct_volume_PCA_DSM5Outcome_vars.txt; done
 ```
 
@@ -700,7 +700,7 @@ conda activate tpot
 export OMP_NUM_THREADS=1
 cd ~/data/baseline_prediction/tpot_swarms
 
-p=volume;
+p=area;
 jname=OUT${p};
 swarm_file=swarm.${jname};
 rm -f $swarm_file;
@@ -882,6 +882,31 @@ for s in `cat random25.txt`; do
 done;
 ```
 
+```r
+dummy = read.csv('classification_dummy_results_clinics_binary_baseDX.csv', header=0)
+target = 'adhdDX'
+dumb_rows = which(grepl(dummy$V1, pattern=target))
+tmp = data.frame(group='dummy', val=dummy[dumb_rows, 'V3'])
+for (phen in c('clinics_binary')) {
+    data = read.csv(sprintf('classification_results_%s_baseDX.csv', phen), header=0)
+    res_rows = which(grepl(data$V1, pattern=target))
+    tmp = rbind(tmp, data.frame(group=phen, val=data[res_rows, 'V3']))
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1), ylab='ROC', las=2, xlab='')
+```
+
+![](images/2019-11-01-16-13-25.png)
+
+So, the code is working fine. We are just not able to capture anything in the
+data that's not obvious, like clinics_binary.
+
+ALSO, IT DOESN'T LOOK LIKE IT FINISHED RUNNING THE DOWNSAMPLING FOR THICKNESS,
+BECAUSE NCRSHELL01 WAS REBOOTED. NEED TO REDO IT LATER
+
+What I think might be happening is that we don't have much data, so we can't get
+too fancy. Let's try the pseudo neuroscience idea and see what we get.
+
 # TODO
 * play with OD threshold
 * Philip would like to see the NV vs ADHD classification as well. Also, the 3
@@ -894,3 +919,10 @@ done;
 * try the classification with and without adding age and sex to the
 features, and then just checking how good our age and sex predictions can get by
 themselves. Same thing by adding QC_variables.
+* try a pseudo-neuroscience analysis method inside a cross validation framework.
+  How about separate train and test. Then, within train, do a 5-fold CV. With 4
+  folds, do bootstraps to rank the features that do best univariately. Get a
+  score for each feature. Train LinearSVM with a combination of paramters and
+  features. Do this to select the model, then finally test it in testing set. Do
+  multiple seeds to evaluate variablity of test set. We could try KNN, SVC, or
+  Ensembles as well, instead of LinearSVM. We will see. 
