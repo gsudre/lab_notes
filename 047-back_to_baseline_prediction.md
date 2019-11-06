@@ -417,8 +417,8 @@ done
 ```r
 demo = read.csv('~/data/baseline_prediction/struct_demo.csv')
 mriqc = read.table('~/data/baseline_prediction/group_T1w.txt', header=1)
-mriqc$maskid = sapply(gsub(pattern='sub-', x=mriqc$bids_name, replacement=''),
-                      function(x) substr(x, 1, 4))
+mriqc$maskid = as.numeric(sapply(gsub(pattern='sub-', x=mriqc$bids_name, replacement=''),
+                      function(x) substr(x, 1, 4)))
 m = merge(demo, mriqc, by='maskid', all.x=F, all.y=F)
 eu = read.csv('~/data/baseline_prediction/euler_numbers.csv')
 m = merge(m, eu, by.x='maskid', by.y='subjid', all.x=F, all.y=F)
