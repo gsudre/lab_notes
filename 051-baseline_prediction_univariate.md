@@ -429,9 +429,66 @@ done;
 #     --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
 ```
 
+Let's also run just 25 seeds to see if adding the QC variables helps the
+results:
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=qcRFE;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/rfe_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+    phen=~/data/baseline_prediction/${p}_OD0.95_withQC_11062019.csv;
+    for s in `cat ../random25.txt`; do
+        for i in Next Last Study; do
+            for j in SX_inatt SX_HI; do
+                echo "python3 $code $phen ${j}_group${i} $res $s" >> $swarm_file;
+            done;
+        done;
+        phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_withQC_11062019.csv;
+        echo "python3 $code $phen2 lastPersistent $res $s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=qcFPR;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/univariate_fpr_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+    phen=~/data/baseline_prediction/${p}_OD0.95_withQC_11062019.csv;
+    for s in `cat ../random25.txt`; do
+        for i in Next Last Study; do
+            for j in SX_inatt SX_HI; do
+                echo "python3 $code $phen ${j}_group${i} $res $s" >> $swarm_file;
+            done;
+        done;
+        phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_withQC_11062019.csv;
+        echo "python3 $code $phen2 lastPersistent $res $s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
 
 # TODO
 * plot results (RFE, FPR, percentile) with more seeds
-* see how sex and age and qc variables might help results
+* plot results using sex, age and qc variables
 * do NV vs ADHD
 * do 3 group comparison
+* try other domains
+* combine domains: first, just by voting. Then, potentially using a classifier
+  across domains.
