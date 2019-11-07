@@ -484,11 +484,200 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname
     --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
 ```
 
+# 2019-11-07 08:49:41
+
+Let's see if our current idea of the situation changes now that we should have
+close to 150 seeds run:
+
+```r
+mydir='~/tmp/baseline_results'
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_group%s', j, i)
+        tmp = c()
+        for (phen in c('dti_fa', 'dti_ad', 'dti_rd', 'struct_area',
+                       'struct_volume', 'struct_thickness')) {
+            data = read.csv(sprintf('%s/classification_results_RFE_%s_OD0.95_11052019.csv',
+                                    mydir, phen), header=0)
+            res_rows = which(grepl(data$V1, pattern=target))
+            tmp = rbind(tmp, data.frame(group=sprintf('%s (%d)', phen, length(res_rows)),
+                                        val=data[res_rows, 'V3']))
+            tmp = rbind(tmp, data.frame(group=sprintf('%s_dumb', phen),
+                                        val=data[res_rows, 'V5']))
+        }
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1),
+                ylab='ROC', las=2, xlab='')
+    }
+}
+```
+
+First is FPR, then RFE:
+
+![](images/2019-11-07-09-19-00.png)
+
+![](images/2019-11-07-09-20-54.png)
+
+Now we have more like a distribution going on for RFE, which is nice. But the
+overall flavors of the results from before hold. I'm still a bit concerned with
+the random results for RFE, which I'm still waiting to finish running. But maybe
+I should run those for FPR as well?
+
+First, let's check the outcome results:
+
+```r
+mydir='~/tmp/baseline_results'
+target = 'lastPersistent'
+tmp = c()
+for (phen in c('dti_fa', 'dti_ad', 'dti_rd', 'struct_area',
+                'struct_volume', 'struct_thickness')) {
+    for (pipe in c('_RFE', '_FPR')) {
+        data = read.csv(sprintf('%s/classification_results%s_%s_OD0.95_DSM5Outcome_11052019.csv',
+                        mydir, pipe, phen), header=0)
+        res_rows = which(grepl(data$V1, pattern=target))
+        tmp = rbind(tmp, data.frame(group=sprintf('%s_%s (%d)', phen, pipe, length(res_rows)),
+                                    val=data[res_rows, 'V3']))
+    }
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0.2,.9),
+        ylab='ROC', las=2, xlab='')
+```
+
+![](images/2019-11-07-09-26-17.png)
+
+Again, RFE does better, but the distribution is funky.
+
+Then, the idea is to see if the qc variables helped results at all:
+
+```r
+mydir='~/tmp/baseline_results'
+par(mfrow=c(2, 3))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Next', 'Last', 'Study')) {
+        target = sprintf('%s_group%s', j, i)
+        tmp = c()
+        for (phen in c('dti_fa', 'dti_ad', 'dti_rd')) {
+            for (pipe in c('_RFE', '_FPR')) {
+                data = read.csv(sprintf('%s/classification_results%s_%s_OD0.95_11052019.csv',
+                                mydir, pipe, phen), header=0)
+                res_rows = which(grepl(data$V1, pattern=target))
+                tmp = rbind(tmp, data.frame(group=sprintf('%s_%s (%d)', phen, pipe, length(res_rows)),
+                                            val=data[res_rows, 'V3']))
+                data = read.csv(sprintf('%s/classification_results%s_%s_OD0.95_withQC_11062019.csv',
+                                mydir, pipe, phen), header=0)
+                res_rows = which(grepl(data$V1, pattern=target))
+                tmp = rbind(tmp, data.frame(group=sprintf('%s_%s_QC (%d)', phen, pipe, length(res_rows)),
+                                            val=data[res_rows, 'V3']))
+            }
+        }
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0.2,.9),
+                ylab='ROC', las=2, xlab='')
+    }
+}
+```
+
+![](images/2019-11-07-09-36-13.png)
+
+For some reason the structural results didn't run. But at least for DTI the QC
+variables didn't seem to help the decoding, which is nice. They didn't run
+because of NAs, which are now being removed. So, not a real conern, as they were
+introduced by the standardization. I won't re-run it, maybe in the future.
+
+And let's try the random data again:
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=rndRFE;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/rfe_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+    phen=~/data/baseline_prediction/${p}_OD0.95_11052019.csv;
+    for s in `cat ../random25.txt ../random125.txt`; do
+        i=Study;
+        for j in SX_inatt SX_HI; do
+            echo "python3 $code $phen ${j}_group${i} $res -$s" >> $swarm_file;
+        done;
+        phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_11052019.csv;
+        echo "python3 $code $phen2 lastPersistent $res -$s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=rndFPR;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/univariate_fpr_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+    phen=~/data/baseline_prediction/${p}_OD0.95_11052019.csv;
+    for s in `cat ../random25.txt ../random125.txt`; do
+        i=Study;
+        for j in SX_inatt SX_HI; do
+            echo "python3 $code $phen ${j}_group${i} $res -$s" >> $swarm_file;
+        done;
+        phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_11052019.csv;
+        echo "python3 $code $phen2 lastPersistent $res -$s" >> $swarm_file;
+    done;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
+
+```r
+mydir='~/tmp/baseline_results'
+par(mfrow=c(2, 1))
+for (j in c('SX_inatt', 'SX_HI')) {
+    for (i in c('Study')) {
+        target = sprintf('%s_group%s', j, i)
+        tmp = c()
+        for (phen in c('dti_fa', 'dti_ad', 'dti_rd')) {
+            for (pipe in c('_RFE', '_FPR')) {
+                data = read.csv(sprintf('%s/classification_results%s_%s_OD0.95_11052019.csv',
+                                mydir, pipe, phen), header=0)
+                res_rows = which(grepl(data$V1, pattern=target))
+                tmp = rbind(tmp, data.frame(group=sprintf('%s_%s (%d)', phen, pipe, length(res_rows)),
+                                            val=data[res_rows, 'V3']))
+                data = read.csv(sprintf('%s/classification_results_RND%s_%s_OD0.95_11052019.csv',
+                                mydir, pipe, phen), header=0)
+                res_rows = which(grepl(data$V1, pattern=target))
+                tmp = rbind(tmp, data.frame(group=sprintf('%s_%s_RND (%d)', phen, pipe, length(res_rows)),
+                                            val=data[res_rows, 'V3']))
+            }
+        }
+        mytitle = sprintf('%s', target)
+        boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0.2,.9),
+                ylab='ROC', las=2, xlab='')
+    }
+}
+```
+![](images/2019-11-07-12-55-30.png)
+
+OK, so there's clearly something going on with RFE. Results are the same for
+random data and brain data, so I'm not sure how to explain that... let's stick
+with FPR for now just to be safe.
+
+# Binary and 3 group
+
+
 # TODO
-* plot results (RFE, FPR, percentile) with more seeds
-* plot results using sex, age and qc variables
+* run random results for FPR as well
 * do NV vs ADHD
 * do 3 group comparison
-* try other domains
+* try other domains: PRS, cognitive, binary, rsfmri
 * combine domains: first, just by voting. Then, potentially using a classifier
-  across domains.
+  across domains. https://towardsdatascience.com/automate-stacking-in-python-fc3e7834772e
