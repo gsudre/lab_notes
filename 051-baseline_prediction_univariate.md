@@ -671,13 +671,75 @@ OK, so there's clearly something going on with RFE. Results are the same for
 random data and brain data, so I'm not sure how to explain that... let's stick
 with FPR for now just to be safe.
 
-# Binary and 3 group
+## baseDX and 3 group
+
+Just because we'll be asked about it, let's run baseline DX and also a 3-group
+classification. I'll focus only on the FPR pipeline, and then maybe in the
+future I'll run ensembles to compare.
+
+I also just created clinics binary with today's date, renaming the variables.
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=baseDX;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/univariate_fpr_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for s in `cat ../random25.txt ../random125.txt`; do
+    for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+        phen=~/data/baseline_prediction/${p}_OD0.95_baseDX_11072019.csv;
+        echo "python3 $code $phen adhdDX $res $s" >> $swarm_file;
+    done;
+    phen2=~/data/baseline_prediction/clinics_binary_baseDX_11072019.csv;
+    echo "python3 $code $phen2 adhdDX $res $s" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 48 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
+
+And I can use the exact same files for the 3-way comparison, because I made a
+few changes to the script. I'll just make sure I have enough time to run them...
+5 min might not be enough, so I'll reduce the bundle.
+
+```bash
+# bw
+export OMP_NUM_THREADS=4
+cd ~/data/baseline_prediction/manual_swarms
+
+jname=threeway;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/univariate_fpr_classifier.py;
+res=~/data/baseline_prediction/manual_results;
+for s in `cat ../random25.txt ../random125.txt`; do
+    for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+        phen=~/data/baseline_prediction/${p}_OD0.95_baseDX_11072019.csv;
+        echo "python3 $code $phen threeWay $res $s" >> $swarm_file;
+    done;
+    phen2=~/data/baseline_prediction/clinics_binary_baseDX_11072019.csv;
+    echo "python3 $code $phen2 threeWay $res $s" >> $swarm_file;
+done;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 24 --logdir=trash_${jname} \
+    --job-name ${jname} --time=5:00 --merge-output --partition quick,norm
+```
+
+Note that 3way on the clinics binary file won't work for now, but I'll work on
+it later. I just didn't add the variable in that file.
+
 
 
 # TODO
-* run random results for FPR as well
 * do NV vs ADHD
 * do 3 group comparison
 * try other domains: PRS, cognitive, binary, rsfmri
+* how do ensembe methods compare to our current FPR results?
 * combine domains: first, just by voting. Then, potentially using a classifier
-  across domains. https://towardsdatascience.com/automate-stacking-in-python-fc3e7834772e
+  across domains.
+  https://towardsdatascience.com/automate-stacking-in-python-fc3e7834772e.
+  Scikit also has a voting classifier!
+  * can we use something that can handle missing values? I think RF, Adaboost,
+    and GradientBoosting would help, but gotta try them. 
