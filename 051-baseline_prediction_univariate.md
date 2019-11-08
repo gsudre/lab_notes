@@ -730,11 +730,81 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 24 --logdir=trash_${jname
 Note that 3way on the clinics binary file won't work for now, but I'll work on
 it later. I just didn't add the variable in that file.
 
+# 2019-11-08 16:59:10
+
+Results are ready, so let's plot everything:
+
+```r
+mydir='~/data/baseline_prediction/manual_results'
+target = 'adhdDX'
+tmp = c()
+for (phen in c('dti_fa_OD0.95', 'dti_ad_OD0.95', 'dti_rd_OD0.95',
+               'struct_area_OD0.95', 'struct_volume_OD0.95', 'struct_thickness_OD0.95',
+               'clinics_binary')) {
+    data = read.csv(sprintf('%s/classification_results_FPR_%s_baseDX_11072019.csv',
+                            mydir, phen), header=0)
+    res_rows = which(grepl(data$V1, pattern=target))
+    phen2 = strsplit(phen, '_')[[1]][2]
+    tmp = rbind(tmp, data.frame(group=sprintf('%s (%d)', phen2, length(res_rows)),
+                                val=data[res_rows, 'V3']))
+    tmp = rbind(tmp, data.frame(group=sprintf('%s_dumb', phen2),
+                                val=data[res_rows, 'V5']))
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1),
+        ylab='ROC', las=2, xlab='')
+```
+
+![](images/2019-11-08-17-08-48.png)
+
+So, not much there. RD does best, but not impressive. Better than dumb
+classifier, but still useless. Do 3-way result look any better? And the
+algorithm seems to be working (see clinic_binary phenotype).
+
+```r
+mydir='~/data/baseline_prediction/manual_results'
+target = 'threeWay'
+tmp = c()
+for (phen in c('dti_fa_OD0.95', 'dti_ad_OD0.95', 'dti_rd_OD0.95',
+               'struct_area_OD0.95', 'struct_volume_OD0.95', 'struct_thickness_OD0.95')) {
+    data = read.csv(sprintf('%s/classification_results_FPR_%s_baseDX_11072019.csv',
+                            mydir, phen), header=0)
+    res_rows = which(grepl(data$V1, pattern=target))
+    phen2 = strsplit(phen, '_')[[1]][2]
+    tmp = rbind(tmp, data.frame(group=sprintf('%s (%d)', phen2, length(res_rows)),
+                                val=data[res_rows, 'V3']))
+    tmp = rbind(tmp, data.frame(group=sprintf('%s_dumb', phen2),
+                                val=data[res_rows, 'V5']))
+}
+mytitle = sprintf('%s', target)
+boxplot(as.formula('val ~ group'), data=tmp, main=mytitle, ylim=c(0,1),
+        ylab='Weighted F1', las=2, xlab='')
+```
+
+![](images/2019-11-08-17-20-48.png)
+
+Also not doing so hot. It's F1, so not as easy to interpret, but not clinically
+relevant.
+
+## C2J moment
+
+These results are not great. As usual, significantly better than chance, but not
+clinically relevant. How to improve them?
+
+* finish the other domains (PRS, cognitive, rsfmri), but I don't think our
+  results will be much better, especially based on everything we have seen so far.
+* maybe ensemble methods can pull out more signal from all this noise... I
+  wanted to stay away from these more complex models, but looks like I'll need
+  to pull out all guns now.
+* combining domains might help. Even if the bump is small, that could be the
+  point of the paper: single domain data is useless, but combining across
+  domains helps (yay for deep phenotyping)
+* maybe we could fold in slopes into this paper and hopefully show that
+  prediction is better if using second dataset as well?
+
 
 
 # TODO
-* do NV vs ADHD
-* do 3 group comparison
 * try other domains: PRS, cognitive, binary, rsfmri
 * how do ensembe methods compare to our current FPR results?
 * combine domains: first, just by voting. Then, potentially using a classifier
