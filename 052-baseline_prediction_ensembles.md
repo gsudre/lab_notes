@@ -90,7 +90,7 @@ How about using this for confidence interval of validation set?
 https://stackoverflow.com/questions/19124239/scikit-learn-roc-curve-with-confidence-intervals
 
 If we use Uher's paper as an acceptable way to do this
-(https://ajp.psychiatryonline.org/doi/full/10.1176/appi.ajp.2014.14010094?url_ver=Z39.88-2003&rfr_id=ori%3Arid%3Acrossref.org&rfr_dat=cr_pub%3Dpubmed&),
+(https://www.nature.com/articles/s41598-018-23584-z),
 they only showed a confidence interval on the validation set. And they were
 explicit that they only did the separation once... maybe we should do that? Then
 the only question is how to pick the seed.
