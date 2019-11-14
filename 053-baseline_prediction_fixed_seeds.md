@@ -314,7 +314,7 @@ estimators = [('some_variace', VarianceThreshold(threshold=0)),
                                              class_weight='balanced'))]
 pipe = Pipeline(estimators)
 params = {
-    "clf__l1_ratio": uniform(0.1, .99),
+    "clf__l1_ratio": uniform(loc=0.1, scale=.89),
     "clf__C": uniform(0.0001, 10000),
 }
 my_search = RandomizedSearchCV(pipe, param_distributions=params, random_state=myseed, n_iter=200, cv=3, verbose=1, n_jobs=1, return_train_score=True, iid=False)
