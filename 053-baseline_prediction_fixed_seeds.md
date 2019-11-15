@@ -581,8 +581,15 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 -b 8 --logdir=trash_${jname}
 
 Not sure if these computations will finish in time, but here are the results:
 
-Now I need to derive 95% CI for each result...
+Now I need to derive 95% CI for each result... so, we'll need to save the models
+and the predictions. Something like:
 
+```python
+from sklearn.externals import joblib
+joblib.dump(regressor, 'reg_1.sav')
+##
+joblib_model= joblib.load('reg_1.sav')
+```
 
 # TODO
 *  Keep on playing with logistic regression with elastic net penalizer, similar
