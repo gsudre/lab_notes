@@ -86,6 +86,37 @@ without it, and then sprinkle some PCA on those as well. Let's see what we get.
 And then continue the stuff I'm doing to include cognitive, rsfmri and PRS
 below. Should probably do ADHD-200 at one point as well. 
 
+# 2019-11-20 09:28:26
+
+OK, so I'll run a few experiment, first with AD and RD, to see what variation of
+FPR works best. We'll sprinkle in PCA before or after, along with no PCA. Note
+that I had to remove the univariate selector from the pipeline when doing PCA
+first because more often than not PCA components were not associated with the
+outcome, even at .1.
+
+target (AD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
+--- | --- | --- | --- | --- | --- | --- |
+SX_inatt_groupStudy | 0.61 (0.11) | 0.49 (0.32, 0.66) |  0.60 (0.11) | 0.46 (0.30, 0.63) | 0.61 (0.11) | 0.49 (0.32, 0.65) |
+SX_HI_groupStudy |0.58 (0.14)|0.41 (0.24, 0.58)|0.47 (0.14)|0.68 (0.51, 0.86)|0.57 (0.14)|0.41 (0.24, 0.58)
+
+target (RD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
+--- | --- | --- | --- | --- | --- | --- |
+SX_inatt_groupStudy | 0.63 (0.12) | 0.71 (0.57, 0.86) |  0.58 (0.12) | 0.77 (0.64, 0.90) | 0.63 (0.12) | 0.71 (0.56, 0.86)
+SX_HI_groupStudy |0.52 (0.12)|0.36 (0.15, 0.57)!!WRONG LABELS|0.47 (0.12)|0.38 (0.17, 0.58)|0.51 (0.12)|0.65 (0.45, 0.85)|
+
+Results not looking great. Slight preference for PCA first result.
+
+I'll run similar tests using LR, while I play again with TPOT:
+
+target (AD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
+--- | --- | --- | --- | --- | --- | --- |
+SX_inatt_groupStudy | 
+
+target (RD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
+--- | --- | --- | --- | --- | --- | --- |
+SX_inatt_groupStudy | 
+
+While those are running, start descriptive results!!!
 
 
 ## Cognitive
@@ -213,25 +244,8 @@ for (s in c('Next', 'Last', 'Study')) {
         data_base[!idx, sprintf('%s_group%s', t, s)] = 'nonimprovers'
     }
 }
-if (with_qc) {
-    # change the names of QC variables, sex, and age to be included in
-    # prediction
-    for (v in c(qc_vars, 'age_at_scan')) {
-        cidx = which(colnames(data_base) == v)
-        colnames(data_base)[cidx] = sprintf('v_%s', v)
-    }
-    # make sure all non-binary variables are in the same scale
-    my_vars = grepl(colnames(data_base), pattern='^v_')
-    data_base[my_vars] = scale(data_base[my_vars])
-    data_base$v_isMale = 0
-    data_base[data_base$Sex == 'Male',]$v_isMale = 1 
-    suffix = 'withQC_'
-} else {
-    suffix = ''
-}
 today = format(Sys.time(), "%m%d%Y")
-out_fname = sprintf('~/data/baseline_prediction/struct_%s_OD%.2f_%s%s', prop,
-                    qtile, suffix, today)
+out_fname = sprintf('~/data/baseline_prediction/cog_%s_%s', prop, today)
 write.csv(data_base, file=sprintf('%s.csv', out_fname), row.names=F, na='', 
           quote=F)
 
@@ -241,4 +255,5 @@ write.csv(data_base, file=sprintf('%s.csv', out_fname), row.names=F, na='',
 
 # TODO:
 * compute 95% CI using saved models and results
+* maybe try TPOT again?
 * try age prediction again, based on models established in the literature?
