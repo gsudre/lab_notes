@@ -106,15 +106,16 @@ SX_HI_groupStudy |0.52 (0.12)|0.36 (0.15, 0.57)!!WRONG LABELS|0.47 (0.12)|0.38 (
 
 Results not looking great. Slight preference for PCA first result.
 
-I'll run similar tests using LR, while I play again with TPOT:
+I'll run similar tests using LR, while I play again with TPOT. again, removing
+FPR selector in PCAfirst case:
 
 target (AD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
 --- | --- | --- | --- | --- | --- | --- |
-SX_inatt_groupStudy | 
+SX_inatt_groupStudy|0.59 (0.11)|0.61 (0.45, 0.77)|0.61 (0.10)|0.54 (0.37, 0.70)|0.62 (0.11)|0.57 (0.41, 0.73)
 
 target (RD)| raw_train | raw_test | PCAfirst_train | PCAfirst_test | PCA_last train| PCA_last test
 --- | --- | --- | --- | --- | --- | --- |
-SX_inatt_groupStudy | 
+SX_inatt_groupStudy | ||0.59 (0.11)|0.76 (0.63, 0.89)|0.64 (0.12)|0.69 (0.54, 0.84)
 
 While those are running, start descriptive results!!!
 
@@ -197,7 +198,7 @@ for (v in colnames(df)) {
 }
 colnames(df) = new_names
 data_base = df
-
+min_time = 30*9
 data_base[, c('SX_HI_slopeNext', 'SX_inatt_slopeNext',
               'SX_HI_slopeLast', 'SX_inatt_slopeLast',
               'SX_HI_slopeStudy', 'SX_inatt_slopeStudy')] = NA
@@ -236,6 +237,7 @@ for (r in 1:nrow(data_base)) {
         data_base[r, sprintf('%s_slopeLast', t)] = slope
     }
 }
+data_base = data_base[!is.na(data_base[,'SX_HI_slopeNext']), ]
 for (s in c('Next', 'Last', 'Study')) {
     for (t in c('SX_inatt', 'SX_HI')) {
         data_base[, sprintf('%s_group%s', t, s)] = NA
@@ -245,11 +247,146 @@ for (s in c('Next', 'Last', 'Study')) {
     }
 }
 today = format(Sys.time(), "%m%d%Y")
-out_fname = sprintf('~/data/baseline_prediction/cog_%s_%s', prop, today)
+out_fname = sprintf('~/data/baseline_prediction/cog_%s', today)
 write.csv(data_base, file=sprintf('%s.csv', out_fname), row.names=F, na='', 
           quote=F)
-
 ```
+
+Then, for adhdDX and lastPersistent, we do it very similarly to above, except
+that we do this instead:
+
+```r
+adhd_clin = clin[clin$source != 'DICA_on', ]
+# redo everything else, but the ending is
+data_base[, 'adhdDX'] = NA
+data_base[, 'threeWay'] = NA
+for (r in 1:nrow(data_base)) {
+    subj = data_base[r,]$MRN
+    subj_clin = adhd_clin[which(adhd_clin$MRN==subj), ]
+    clin_dates = as.Date(as.character(subj_clin$DOA), format="%m/%d/%y")
+    dob = as.Date(as.character(data_base[r, 'DOB']),
+                  format="%m/%d/%Y")
+    age_clinical = as.numeric((clin_dates - dob)/365.25)
+
+    ordered_ages = sort(age_clinical, index.return=T)
+    subj_clin = subj_clin[ordered_ages$ix, ]
+    cur_age_clin = as.numeric((as.Date(as.character(data_base[r,]$DOA),
+                                       format="%m/%d/%Y") - dob)/365.25)
+    # in case there are duplicates, take the last one
+    date_idx = max(which(ordered_ages$x==cur_age_clin))
+    # strictly DSM5 categorization at the time of scan
+    if ((subj_clin[date_idx, 'SX_inatt'] >= 6) ||
+        (subj_clin[date_idx, 'SX_HI'] >= 6)) {
+        data_base[r, 'adhdDX'] = 'improvers'  # just for back-compatibility
+        if ((subj_clin[nrow(subj_clin), 'SX_inatt'] >= 6) ||
+            (subj_clin[nrow(subj_clin), 'SX_HI'] >= 6)) {
+            data_base[r, 'threeWay'] = 'per'
+        } else {
+            data_base[r, 'threeWay'] = 'rem'
+        }
+    } else {
+        data_base[r, 'adhdDX'] = 'nonimprovers'
+        data_base[r, 'threeWay'] = 'NV'
+    }
+}
+today = format(Sys.time(), "%m%d%Y")
+out_fname = sprintf('~/data/baseline_prediction/cog_baseDX_%s', today)
+write.csv(data_base, file=sprintf('%s.csv', out_fname), row.names=F, na='', 
+          quote=F)
+```
+
+And for DSM5Outcome:
+
+```r
+keep_me = c()
+for (s in unique(clin$MRN)) {
+    subj_idx = which(clin$MRN==s & !is.na(clin$SX_inatt) & !is.na(clin$SX_HI))
+        if (length(subj_idx) > 0) {
+        subj_data = clin[subj_idx, ]
+        dates = as.Date(as.character(subj_data$DOA), format="%m/%d/%y")
+        base_DOA = which.min(dates)
+        if (subj_data[base_DOA,]$SX_HI >= 6 || subj_data[base_DOA,]$SX_inat >= 6) {
+            keep_me = c(keep_me, subj_idx)
+        }
+    }
+}
+adhd_clin = clin[keep_me, ]
+# everything the same until
+data_base[, c('lastPersistent')] = NA
+for (r in 1:nrow(data_base)) {
+    subj = data_base[r,]$MRN
+    subj_clin = adhd_clin[which(adhd_clin$MRN==subj), ]
+    clin_dates = as.Date(as.character(subj_clin$DOA), format="%m/%d/%y")
+    dob = as.Date(as.character(data_base[r, 'DOB']),
+                  format="%m/%d/%Y")
+    age_clinical = as.numeric((clin_dates - dob)/365.25)
+
+    ordered_ages = sort(age_clinical, index.return=T)
+    subj_clin = subj_clin[ordered_ages$ix, ]
+    cur_age_clin = as.numeric((as.Date(as.character(data_base[r,]$DOA),
+                                       format="%m/%d/%Y") - dob)/365.25)
+    # in case there are duplicates, take the last one
+    date_idx = max(which(ordered_ages$x==cur_age_clin))
+    
+    if ((subj_clin[nrow(subj_clin), 'SX_inatt'] >= 6) ||
+        (subj_clin[nrow(subj_clin), 'SX_HI'] >= 6)) {
+        data_base[r, 'lastPersistent'] = 'improvers'  # just for back-compatibility
+    } else {
+        data_base[r, 'lastPersistent'] = 'nonimprovers'
+    }
+}
+today = format(Sys.time(), "%m%d%Y")
+out_fname = sprintf('~/data/baseline_prediction/cog_DSM5Outcome_%s', today)
+write.csv(data_base, file=sprintf('%s.csv', out_fname), row.names=F, na='', 
+          quote=F)
+```
+
+# 2019-11-21 09:29:00
+
+The TPOT results are taking a long time to run, but at least the training CV is
+looking promising, at .81 so far, with AD HI_groupStudy. Not sure if it's just overfitting everything,
+but I wonder if I can make it go faster by playing with OMP thread. FYI, the MDS
+pipeline is not working at all, so that's using the regular classify pipeline.
+
+But it's taking a veeery long time. So, I'll swarm it and keep track offline:
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=vox42;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify.py;
+res=~/data/baseline_prediction/tpot_results_42;
+s=42;
+for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+    phen=~/data/baseline_prediction/${p}_OD0.95_11052019.csv;
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            target=${j}_group${i};
+            echo "python $code $phen $target $res $s | tee -a ${res}/${p}_${target}.txt" >> $swarm_file;
+        done;
+    done;
+    target=lastPersistent;
+    phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_11052019.csv;
+    echo "python $code $phen2 $target $res $s | tee -a ${res}/${p}_${target}.txt" >> $swarm_file;
+    target=adhdDX;
+    phen2=~/data/baseline_prediction/${p}_OD0.95_baseDX_11072019.csv;
+    echo "python $code $phen2 $target $res $s | tee -a ${res}/${p}_${target}.txt" >> $swarm_file;
+done;
+phen2=~/data/baseline_prediction/clinics_binary_baseDX_11072019.csv;
+echo "python $code $phen2 $target $res $s | tee -a ${res}/clinics_binary_${target}.txt" >> $swarm_file;
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=4-00:00:00 --merge-output --partition norm
+```
+
+So, let's see how long this takes to run. I'm also running some option locally
+and interactively just in case.
+
 
 
 

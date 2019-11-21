@@ -133,6 +133,7 @@ for (j in c('SX_inatt', 'SX_HI')) {
                 data = read.csv(sprintf('%s/classification_results_%s_%s_OD0.95_11052019.csv',
                                             mydir, pipe, phen), header=0)
                 target_idx = grepl(data$V1, pattern=target)
+
                 seed_idx = grepl(data$V1, pattern=sprintf('_%s$', s))
                 res_rows = which(target_idx & seed_idx)
                 tmp = rbind(tmp, data.frame(group=s, val=data[res_rows, 'V3'], phen=phen))
@@ -616,3 +617,34 @@ joblib_model= joblib.load('reg_1.sav')
     Or maybe use something like FeatureTools
     (https://www.analyticsvidhya.com/blog/2018/08/guide-automated-feature-engineering-featuretools-python/)
 * Need to re-run age, QC, sex decoding again to make sure it's not drivign the results!
+
+
+Generation 44 - Current best internal CV score: 0.8116190476190475
+Optimization Progress:  45%|███████████████████████████████████████████████████████████████████████▍                                                                                        | 4513/10100 [23:26:27<199:54:33, 128.81s/pipeline]^C
+Optimization Progress:  45%|███████████████████████████████████████████████████████████████████████▌                                                                                        | 4515/10100 [23:52:13<499:29:43, 321.97s/pipeline] 
+
+TPOT closed during evaluation in one generation.
+WARNING: TPOT may not provide a good pipeline if TPOT is stopped/interrupted in a early generation.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              TPOT closed prematurely. Will use the current best pipeline.
+
+Best pipeline: GradientBoostingClassifier(RFE(input_matrix, criterion=gini, max_features=0.7000000000000001, n_estimators=100, step=0.9000000000000001), learning_rate=0.1, max_depth=7, max_features=0.6500000000000001, min_samples_leaf=4, min_samples_split=14, n_estimators=100, subsample=0.8)
+Out[14]: 
+TPOTClassifier(config_dict={'sklearn.cluster.FeatureAgglomeration': {'affinity': ['euclidean',
+                                                                                  'l1',
+                                                                                  'l2',
+                                                                                  'manhattan',
+                                                                                  'cosine'],
+                                                                     'linkage': ['ward',
+                                                                                 'complete',
+                                                                                 'average']},
+                            'sklearn.decomposition.FastICA': {'tol': array([0.  , 0.05, 0.1 , 0.15, 0.2 , 0.25, 0.3 , 0.35, 0.4 , 0.45, 0.5 ,
+       0.55, 0.6 , 0.65, 0.7 , 0.75, 0.8 , 0.85, 0.9 , 0.95, 1.  ])},
+                            'sklearn.decomposition.PCA': {'iterated_power...
+       0.6 , 0.65, 0.7 , 0.75, 0.8 , 0.85, 0.9 , 0.95, 1.  ])}},
+               crossover_rate=0.1, cv=5, disable_update_check=False,
+               early_stop=None, generations=100, max_eval_time_mins=5,
+               max_time_mins=None, memory=None, mutation_rate=0.9, n_jobs=32,
+               offspring_size=None, periodic_checkpoint_folder=None,
+               population_size=100, random_state=42, scoring='roc_auc',
+               subsample=1.0, template=None, use_dask=False, verbosity=2,
+               warm_start=False)
