@@ -715,3 +715,54 @@ plink --bfile HM3merge_LT22yo --cluster --mind .05 --mds-plot 20 --extract local
 plink --bfile HM3merge --keep keep_younger_22_noDups.txt --make-bed --out HM3merge_LT22yo_noDups
 plink --bfile HM3merge_LT22yo_noDups --cluster --mind .05 --mds-plot 20 --extract local.snplist.txt --noweb --out HM3_LT22yo_noDups_mds
 ```
+
+# 2019-11-27 20:09:30
+
+Going back to this issue with PNC, I'll clearly have to understand a bit more
+about how Illumina and Affymetrix data are coding their alleles, before solving
+this. For example, here I continued the analysis from above, but tried matching
+only the SNPs that were common to both platforms:
+
+```bash
+# interactive
+cd /data/NCR_SBRB/PNC_genetics
+plink --bfile merge6 --write-snplist
+plink --bfile merge8 --extract plink.snplist --make-bed --out merge8_filtered
+plink --bfile merge8 --write-snplist
+plink --bfile merge6 --extract plink.snplist --make-bed --out merge6_filtered
+plink --bfile merge8_filtered -bmerge merge6_filtered.bed merge6_filtered.bim merge6_filtered.fam --make-bed --noweb --out merged
+```
+
+Doing the --flip version didn't help either, so that's not it. For example,
+here's the output:
+
+```
+596900 markers loaded from merge8_filtered.bim.
+596900 markers to be merged from merge6_filtered.bim.
+Of these, 0 are new, while 596900 are present in the base dataset.
+102929 more multiple-position warnings: see log file.
+Error: 595116 variants with 3+ alleles present.
+```
+
+So, almost all SNPs are coded wrong. For example:
+
+```
+[sudregp@cn1864 PNC_genetics]$ head merged-merge.missnp 
+rs1000002
+rs1000003
+rs10000037
+rs10000041
+rs10000042
+rs10000073
+rs10000081
+rs10000085
+rs10000091
+rs10000092
+[sudregp@cn1864 PNC_genetics]$ grep rs10000037 merge6_filtered.bim
+4       rs10000037      0       38600725        1       2
+[sudregp@cn1864 PNC_genetics]$ grep rs10000037 merge8_filtered.bim
+4       rs10000037      0       38600725        A       G
+```
+
+But it's not just an issue of numbers vs letters, because if I try converting it
+using --aleleACGT they don't match either. Need to read more about it.
