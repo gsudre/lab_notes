@@ -387,10 +387,126 @@ swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
 So, let's see how long this takes to run. I'm also running some option locally
 and interactively just in case.
 
+# 2019-11-22 11:28:20
 
+While I'm waiting for all that stuff above finish, I'm running the cog domain
+locally, and generating the degree centrality files. I decided to go with that
+for fMRI because it will be easier to clusterize later for the descriptives
+analysis. Let's hope there's something there, though. Otherwise I'll have to go
+with the connectivity metric I used for the slope heritability paper.
 
+In the meanwhile, I'm trying a more conservative version of TPOT that only has
+LinearSVC and LR in its pipeline. Not even any selection or transformation.
+Shouldn't take very long to run. I'm running that interactively because even
+though the CV results for TPOT were looking good, test results weren't,
+indicating overfitting. I might add some transformations or selection later,
+depending on the simpler results. I'm basically just trimming down the default
+classification setup I found in
+https://github.com/EpistasisLab/tpot/blob/master/tpot/config/classifier.py
+
+I can actually swarm that to make things run faster:
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=TPOTcon;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify_conservative.py;
+res=~/data/baseline_prediction/tpot_results_con;
+s=42;
+for tpt in "Selector-Transformer-Classifier" "Transformer-Selector-Classifier" "Classifier"; do
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            target=${j}_group${i};
+            for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+                phen=~/data/baseline_prediction/${p}_OD0.95_11052019.csv;
+                echo "python $code $phen $target $res $s $tpt | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+            done;
+            phen=~/data/baseline_prediction/cog_11202019.csv;
+            echo "python $code $phen $target $res $s $tpt | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        done;
+        target=lastPersistent;
+        for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+            phen2=~/data/baseline_prediction/${p}_OD0.95_DSM5Outcome_11052019.csv;
+            echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        done
+        phen2=~/data/baseline_prediction/cog_DSM5Outcome_11202019.csv;
+        echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        target=adhdDX;
+        for p in dti_fa dti_ad dti_rd struct_area struct_volume struct_thickness; do
+            phen2=~/data/baseline_prediction/${p}_OD0.95_baseDX_11072019.csv;
+            echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        done
+        phen2=~/data/baseline_prediction/cog_baseDX_11202019.csv;
+        echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+    done;
+    phen2=~/data/baseline_prediction/clinics_binary_baseDX_11072019.csv;
+    echo "python $code $phen2 $target $res $s $tpt | tee -a ${res}/clinics_binary_${target}_${tpt}.txt" >> $swarm_file;
+done
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=2-00:00:00 --merge-output --partition norm
+```
+
+How about using generalized estimator (LOOCV optimized), within training set?
+
+For now, I'll run the rsfmri results as well to see what version of TPOT works
+best, and what are our best results within that modality:
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate tpot
+export OMP_NUM_THREADS=1
+cd ~/data/baseline_prediction/tpot_swarms
+
+jname=fmriCon;
+swarm_file=swarm.${jname};
+rm -f $swarm_file;
+code=~/research_code/baseline_prediction/tpot_classify_conservative.py;
+res=~/data/baseline_prediction/tpot_results_con;
+s=42;
+for tpt in "Selector-Transformer-Classifier" "Transformer-Selector-Classifier" "Classifier"; do
+    for i in Next Last Study; do
+        for j in SX_inatt SX_HI; do
+            target=${j}_group${i};
+            for p in s sz; do
+                phen=~/data/baseline_prediction/rsfmri_${p}DC_OD0.95_11222019.csv;
+                echo "python $code $phen $target $res $s $tpt | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+            done;
+        done;
+        target=lastPersistent;
+        for p in s sz; do
+            phen2=~/data/baseline_prediction/rsfmri_${p}DC_OD0.95_DSM5Outcome_11222019.csv;
+            echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        done
+        target=adhdDX;
+        for p in s sz; do
+            phen2=~/data/baseline_prediction/rsfmri_${p}DC_OD0.95_baseDX_11222019.csv;
+            echo "python $code $phen2 $target $res $s $tpt  | tee -a ${res}/${p}_${target}_${tpt}.txt" >> $swarm_file;
+        done
+    done;
+done
+swarm --gres=lscratch:10 -f $swarm_file -t 32 -g 20 --logdir=trash_${jname} \
+    --job-name ${jname} --time=2-00:00:00 --merge-output --partition norm
+```
+
+In the meanwhile I'm also trying 2vs2 ideas. I'm running a couple using XGB in
+interactive sessions, but that takes a while to run, so let me see if I can have
+a few linear solutions with a smaller search grid.
+
+Nothing there... I'm doing about 56% with LR in RD, SX_HI_study... Not much
+better using XGB. DSM5Outcome didn't work either, nor did adhdDX.
 
 # TODO:
-* compute 95% CI using saved models and results
-* maybe try TPOT again?
+* check if there's anything good in conservative TPOT results. at least we
+  should be able to decide what targets to use for descriptive work?
+* 2vs2 idea XGB results?
+* combine spaces through voting to see if there is any sort of improvement.
+* what if my semantic space is the symptom counts? We'd have 18 different
+  features we're predicting, pottentially binary (but not necessarily).
 * try age prediction again, based on models established in the literature?
