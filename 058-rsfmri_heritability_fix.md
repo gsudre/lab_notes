@@ -609,10 +609,28 @@ for (j in predictors) {
 write.csv(hold, out_fname, row.names=F)
 ```
 
+conn_SalVentAttnTOSalVentAttn is significant for DX2 SX_HI, and so is
+conn_DorsAttnTOSalVentAttn, but that's it (only looked at DX2, though).
+
+## looking back at net4
+
+Let's take a second look at net4. There, our best result would be with
+polygen_results_rsfmri_7by7from100_4nets_OD0.85_mean_12022019.csv, which has 3
+connections below .05. The universe looks like:
+
+![](images/2019-12-02-16-49-19.png)
+
+```
+> df = read.csv('~/data/heritability_change/polygen_results_rsfmri_7by7from100_3nets_OD0.90_median_12022019.csv')
+> p2 = p.adjust(df$h_pval, method='fdr')
+```
+
+Nothing... not even at q=.1. Is there at least some association? Things might
+look good if we just go nominal on this one.
+
 
 # TODO
 * try all networks
-* finish looking at associations for 3nets
 * check results with 4nets again
 * try removing ventral but not cognitive
 * review all numbers in the paper (and figures!)
