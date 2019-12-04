@@ -628,6 +628,78 @@ connections below .05. The universe looks like:
 Nothing... not even at q=.1. Is there at least some association? Things might
 look good if we just go nominal on this one.
 
+# 2019-12-03 21:01:38
+
+Let's play with the idea of all networks, and then trimming the 100by100 matrix
+either by positive only or by within networks. We can then try other groups of
+collapsed networks.
+
+```bash
+#locally
+Rscript ~/research_code/fmri/make_outlier_detection_slopes_raw.R .8
+# and the other thresholds
+```
+
+The issue is that isolation forest doesn't run with NAs, so let's skip posOnly
+for now. We'll just run all connections, and then we could trim it by network if
+needed, instead of creating network-dependent SOLAR runs.
+
+Then, it takes a while to run solar, but we do it like this:
+
+```bash
+# locally
+for OD in 80 85 90 95; do
+    cd ~/data/heritability_change
+    phen=rsfmri_100x100_OD0.${OD}_12032019;
+    for t in {1..4950}; do
+        solar run_phen_var_fixed_OD_xcp ${phen} conn${t};
+    done;
+    mv ${phen} ~/data/tmp/
+    cd ~/data/tmp/${phen}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
+done
+```
+
+But that will take all night to run. So, let's explore the 7 network model
+again, but now with the fixed code. And this SOLAR run shouldn't take as long:
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_7nets_OD0.${OD}_${suf}${p}_12032019;
+            for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
+done
+```
+
+```bash
+cd ~/data/tmp
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_3nets.csv;
+for f in `ls polygen_results_*7nets*.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_3nets.csv;
+    done
+done
+```
+
+
 
 # TODO
 * try all networks
