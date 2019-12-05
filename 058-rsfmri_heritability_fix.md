@@ -12,23 +12,23 @@ I ran that for the different thresholds, but only median and positive for now.
 ```bash
 # locally
 for OD in 80 85 90 95; do
-	suf='median';
-	p='';
-	cd ~/data/heritability_change
-	phen=rsfmri_7by7from100_5nets_OD0.${OD}${p}_${suf}_12022019;
-	for t in "conn_DorsAttnTODorsAttn" \
-		"conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-		"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-		"conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-		"conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-		"conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-		"conn_DefaultTODefault"; do
-			solar run_phen_var_OD_xcp ${phen} ${t};
-	done;
-	mv ${phen} ~/data/tmp/
-	cd ~/data/tmp/${phen}
-	for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-	python ~/research_code/compile_solar_multivar_results.py ${phen}
+    suf='median';
+    p='';
+    cd ~/data/heritability_change
+    phen=rsfmri_7by7from100_5nets_OD0.${OD}${p}_${suf}_12022019;
+    for t in "conn_DorsAttnTODorsAttn" \
+        "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+        "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+        "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+        "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+        "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+        "conn_DefaultTODefault"; do
+            solar run_phen_var_OD_xcp ${phen} ${t};
+    done;
+    mv ${phen} ~/data/tmp/
+    cd ~/data/tmp/${phen}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
 done
 ```
 
@@ -38,10 +38,10 @@ Let's glue everything together to see if there is a pattern
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_5nets.csv;
 for f in `ls polygen_results_*5nets*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_5nets.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_5nets.csv;
+    done
 done
 ```
 
@@ -51,25 +51,25 @@ comes up.
 ```bash
 # locally
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_5nets_OD0.${OD}_${suf}${p}_12022019;
-			for t in "conn_DorsAttnTODorsAttn" \
-				"conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				"conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-				"conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-				"conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-				"conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_5nets_OD0.${OD}_${suf}${p}_12022019;
+            for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -77,10 +77,10 @@ done
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_5nets.csv;
 for f in `ls polygen_results_*5nets*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_5nets.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_5nets.csv;
+    done
 done
 ```
 
@@ -98,23 +98,23 @@ work and I'm still waiting for SOLAR to run above as well.
 ```bash
 # locally
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_4nets_OD0.${OD}_${suf}${p}_12022019;
-			for t in "conn_DorsAttnTODorsAttn" \
-				"conn_DorsAttnTOSalVentAttn"  "conn_DorsAttnTOCont" \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				 "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault"  \
-				"conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_4nets_OD0.${OD}_${suf}${p}_12022019;
+            for t in "conn_DorsAttnTODorsAttn" \
+                "conn_DorsAttnTOSalVentAttn"  "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                    "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault"  \
+                "conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -122,10 +122,10 @@ done
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_4nets.csv;
 for f in `ls polygen_results_*4nets*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_4nets.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_4nets.csv;
+    done
 done
 ```
 
@@ -144,9 +144,9 @@ also associated with SX.
 
 ```
 HG-02113362-DM4:rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019 sudregp$ grep "(Significant)" conn_DorsAttnTOSalVentAttn_polygenic.out
-						 H2r is 0.8070358  p = 0.0007376  (Significant)
-							  pctSpikesDV  p = 0.0070319  (Significant)
-						 motionDVCorrInit  p = 0.0626968  (Significant)
+                            H2r is 0.8070358  p = 0.0007376  (Significant)
+                                    pctSpikesDV  p = 0.0070319  (Significant)
+                            motionDVCorrInit  p = 0.0626968  (Significant)
 ```
 
 ```r
@@ -170,19 +170,19 @@ out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 
@@ -191,19 +191,19 @@ out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 
@@ -212,19 +212,19 @@ out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 ```
@@ -235,23 +235,23 @@ nominally heritable?
 
 ```
 HG-02113362-DM4:rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019 sudregp$ grep "(Significant)" conn_DorsAttnTODefault_polygenic.out
-						 H2r is 0.5520737  p = 0.0149298  (Significant)
-							  pctSpikesDV  p = 0.0349292  (Significant)
+                            H2r is 0.5520737  p = 0.0149298  (Significant)
+                                    pctSpikesDV  p = 0.0349292  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019 sudregp$ grep "(Significant)" conn_SalVentAttnTOLimbic_polygenic.out 
-						 H2r is 0.5319386  p = 0.0163941  (Significant)
-							  pctSpikesDV  p = 0.0031629  (Significant)
+                            H2r is 0.5319386  p = 0.0163941  (Significant)
+                                    pctSpikesDV  p = 0.0031629  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019 sudregp$ grep "(Significant)" conn_DorsAttnTODorsAttn_polygenic.out 
-						 H2r is 0.5761180  p = 0.0214219  (Significant)
-							 normCoverage  p = 0.0006030  (Significant)
-							  pctSpikesDV  p = 0.0000139  (Significant)
-						 relMeanRMSMotion  p = 0.0492652  (Significant)
+                            H2r is 0.5761180  p = 0.0214219  (Significant)
+                                normCoverage  p = 0.0006030  (Significant)
+                                    pctSpikesDV  p = 0.0000139  (Significant)
+                            relMeanRMSMotion  p = 0.0492652  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019 sudregp$ grep "(Significant)" conn_SalVentAttnTOSalVentAttn_polygenic.out 
-						 H2r is 0.5336712  p = 0.0343229  (Significant)
-							 normCoverage  p = 0.0845580  (Significant)
-							  pctSpikesDV  p = 0.0951218  (Significant)
-						 motionDVCorrInit  p = 0.0001882  (Significant)
-						motionDVCorrFinal  p = 0.0420654  (Significant)
-							 pctSpikesRMS  p = 0.0098802  (Significant)
+                            H2r is 0.5336712  p = 0.0343229  (Significant)
+                                normCoverage  p = 0.0845580  (Significant)
+                                    pctSpikesDV  p = 0.0951218  (Significant)
+                            motionDVCorrInit  p = 0.0001882  (Significant)
+                        motionDVCorrFinal  p = 0.0420654  (Significant)
+                                pctSpikesRMS  p = 0.0098802  (Significant)
 ```
 
 The only one is conn_SalVentAttnTOSalVentAttn, which is associated with SX_HI at
@@ -271,13 +271,13 @@ The last step before robustness is the bivariate heritability analysis.
 phen=rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019;
 cd ~/data/heritability_change
 for t in "conn_DorsAttnTODorsAttn" \
-				"conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				"conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-				"conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-				"conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-				"conn_DefaultTODefault"; do
-		solar rsfmri_xcp_base_slope_correlation $phen ${t};
+                "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+        solar rsfmri_xcp_base_slope_correlation $phen ${t};
 done
 cd gencor_$phen
 grep -r RhoG */polygenic.out > rhog.txt
@@ -395,10 +395,10 @@ to find this bug:
 [1] 69  7
 > table(b[,1])
 
-	   Cont     Default    DorsAttn      Limbic SalVentAttn      SomMot 
-		 13          24          15           5          12           0 
-		Vis 
-		  0 
+                Cont     Default    DorsAttn      Limbic SalVentAttn      SomMot 
+            13          24          15           5          12           0 
+        Vis 
+                0 
 ```
 
 And I checked it now, and the code does what's supposed to do:
@@ -433,11 +433,11 @@ Let's calculate Meff to see if it's a bit more forgiving then fMRI:
 fname = '~/data/heritability_change/rsfmri_7by7from100_5nets_OD0.90_medianAll_12022019.csv'
 data = read.csv(fname)
 var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
-			  "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
-			  "conn_SalVentAttnTODefault", "conn_ContTOCont",
-			  "conn_ContTODefault", "conn_DefaultTODefault",
-			  "conn_DorsAttnTOLimbic", "conn_SalVentAttnTOLimbic",
-			  "conn_LimbicTOLimbic", "conn_LimbicTOCont", "conn_LimbicTODefault")
+                    "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                    "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                    "conn_ContTODefault", "conn_DefaultTODefault",
+                    "conn_DorsAttnTOLimbic", "conn_SalVentAttnTOLimbic",
+                    "conn_LimbicTOLimbic", "conn_LimbicTOCont", "conn_LimbicTODefault")
 cc = cor(data[, var_names])
 svd = eigen(cc)
 absev = abs(svd$values)
@@ -455,21 +455,21 @@ What if I just look at the interplay between the attention networks and DMN?
 ```bash
 # locally
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_3nets_OD0.${OD}_${suf}${p}_12022019;
-			for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn"  \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				"conn_SalVentAttnTODefault" "conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_3nets_OD0.${OD}_${suf}${p}_12022019;
+            for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn"  \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTODefault" "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -477,10 +477,10 @@ done
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_3nets.csv;
 for f in `ls polygen_results_*3nets*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_3nets.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_3nets.csv;
+    done
 done
 ```
 
@@ -509,26 +509,26 @@ Now we can check just for association:
 
 ```
 HG-02113362-DM4:rsfmri_7by7from100_3nets_OD0.90_median_12022019 sudregp$ grep "(Significant)" conn_DefaultTODefault_polygenic.out 
-						 H2r is 0.6659067  p = 0.0120018  (Significant)
-									  sex  p = 0.0861024  (Significant)
-							  pctSpikesDV  p = 0.0024897  (Significant)
-						 motionDVCorrInit  p = 0.0033996  (Significant)
+                            H2r is 0.6659067  p = 0.0120018  (Significant)
+                                            sex  p = 0.0861024  (Significant)
+                                    pctSpikesDV  p = 0.0024897  (Significant)
+                            motionDVCorrInit  p = 0.0033996  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_3nets_OD0.90_median_12022019 sudregp$ grep "(Significant)" conn_DorsAttnTOSalVentAttn_polygenic.out 
-						 H2r is 0.4900904  p = 0.0330507  (Significant)
-							  pctSpikesDV  p = 0.0994364  (Significant)
-						motionDVCorrFinal  p = 0.0500346  (Significant)
+                            H2r is 0.4900904  p = 0.0330507  (Significant)
+                                    pctSpikesDV  p = 0.0994364  (Significant)
+                        motionDVCorrFinal  p = 0.0500346  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_3nets_OD0.90_median_12022019 sudregp$ grep "(Significant)" conn_SalVentAttnTODefault_polygenic.out 
-						 H2r is 0.7058733  p = 0.0090638  (Significant)
-									  sex  p = 0.0566155  (Significant)
-							  pctSpikesDV  p = 0.0104104  (Significant)
-						 motionDVCorrInit  p = 0.0002635  (Significant)
+                            H2r is 0.7058733  p = 0.0090638  (Significant)
+                                            sex  p = 0.0566155  (Significant)
+                                    pctSpikesDV  p = 0.0104104  (Significant)
+                            motionDVCorrInit  p = 0.0002635  (Significant)
 HG-02113362-DM4:rsfmri_7by7from100_3nets_OD0.90_median_12022019 sudregp$ grep "(Significant)" conn_SalVentAttnTOSalVentAttn_polygenic.out 
-						 H2r is 0.4515570  p = 0.0282135  (Significant)
-									  sex  p = 0.0358756  (Significant)
-							 normCoverage  p = 0.0681788  (Significant)
-							  pctSpikesDV  p = 0.0100749  (Significant)
-							 pctSpikesRMS  p = 0.0915601  (Significant)
-						 relMeanRMSMotion  p = 0.0260734  (Significant)
+                            H2r is 0.4515570  p = 0.0282135  (Significant)
+                                            sex  p = 0.0358756  (Significant)
+                                normCoverage  p = 0.0681788  (Significant)
+                                    pctSpikesDV  p = 0.0100749  (Significant)
+                                pctSpikesRMS  p = 0.0915601  (Significant)
+                            relMeanRMSMotion  p = 0.0260734  (Significant)
 ```
 
 ```r
@@ -550,19 +550,19 @@ out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 
@@ -571,19 +571,19 @@ out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 
@@ -592,19 +592,19 @@ out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
 predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
 hold=NULL
 for (j in predictors) {
-	fm_str = sprintf(fm_root, i, j)
-	model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
-	if (length(model1) > 1) {
-		temp<-summary(model1)$tTable
-		a<-as.data.frame(temp)
-		a$formula<-fm_str
-		a$target = i
-		a$predictor = j
-		a$term = rownames(temp)
-		hold=rbind(hold,a)
-	} else {
-		hold=rbind(hold, NA)
-	}
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
 }
 write.csv(hold, out_fname, row.names=F)
 ```
@@ -649,15 +649,15 @@ Then, it takes a while to run solar, but we do it like this:
 ```bash
 # locally
 for OD in 80 85 90 95; do
-	cd ~/data/heritability_change
-	phen=rsfmri_100x100_OD0.${OD}_12032019;
-	for t in {1..4950}; do
-		solar run_phen_var_fixed_OD_xcp ${phen} conn${t};
-	done;
-	mv ${phen} ~/data/tmp/
-	cd ~/data/tmp/${phen}
-	for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-	python ~/research_code/compile_solar_multivar_results.py ${phen}
+    cd ~/data/heritability_change
+    phen=rsfmri_100x100_OD0.${OD}_12032019;
+    for t in {1..4950}; do
+        solar run_phen_var_fixed_OD_xcp ${phen} conn${t};
+    done;
+    mv ${phen} ~/data/tmp/
+    cd ~/data/tmp/${phen}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
 done
 ```
 
@@ -667,24 +667,24 @@ again, but now with the fixed code. And this SOLAR run shouldn't take as long:
 ```bash
 # sinteractive so we don't screwp up the runs above
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_7nets_OD0.${OD}_${suf}${p}_12032019;
-			for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				"conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-				"conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-				"conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-				"conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_7nets_OD0.${OD}_${suf}${p}_12032019;
+            for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -696,10 +696,10 @@ Let's start analyzing the 7nets results, because they're easier to parse out:
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_7nets.csv;
 for f in `ls polygen_results_*7nets*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_7nets.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_7nets.csv;
+    done
 done
 ```
 
@@ -717,10 +717,10 @@ phen = 'rsfmri_100x100_OD0.80_12032019'
 df = read.csv(sprintf('~/data/tmp/polygen_results_%s.csv', phen))
 nrois=100
 fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
-				nrois)
+                nrois)
 nets = read.table(fname)
 all_net_names = sapply(as.character(unique(nets[,2])),
-					   function(y) strsplit(x=y, split='_')[[1]][3])
+                                function(y) strsplit(x=y, split='_')[[1]][3])
 net_names = unique(all_net_names)
 nnets = length(net_names)
 cat('Creating connection map...\n')
@@ -728,11 +728,11 @@ nverts = nrow(nets)
 cnt = 1
 conn_map = c()
 for (i in 1:(nverts-1)) {
-	for (j in (i+1):nverts) {
-		conn = sprintf('conn%d', cnt)
-		conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
-		cnt = cnt + 1
-	}
+    for (j in (i+1):nverts) {
+        conn = sprintf('conn%d', cnt)
+        conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
+        cnt = cnt + 1
+    }
 }
 
 # use_only = c('Vis', 'SomMot', 'DorsAttn', 'SalVentAttn', 'Limbic', 'Cont', 'Default')
@@ -741,11 +741,11 @@ use_only = c('DorsAttn', 'SalVentAttn', 'Cont', 'Default', 'Limbic')
 
 keep_me = c()
 for (i in 1:length(use_only)) {
-	for (j in i:length(use_only)) {
-		idx = (conn_map[,2]==use_only[i] & conn_map[,3]==use_only[j]) |
-			(conn_map[,3]==use_only[i] & conn_map[,2]==use_only[j])
-		keep_me = c(keep_me, conn_map[idx, 1])
-	}
+    for (j in i:length(use_only)) {
+        idx = (conn_map[,2]==use_only[i] & conn_map[,3]==use_only[j]) |
+            (conn_map[,3]==use_only[i] & conn_map[,2]==use_only[j])
+        keep_me = c(keep_me, conn_map[idx, 1])
+    }
 }
 
 df2 = df[df$phen %in% keep_me, ]
@@ -786,7 +786,7 @@ cp ~/data/heritability_change/pedigree.csv .
 cp ~/data/heritability_change/procs.tcl .
 cp ~/data/heritability_change/${phen}.csv .
 for t in {1..4950}; do
-	solar run_phen_var_OD_xcp ${phen} conn${t};
+    solar run_phen_var_OD_xcp ${phen} conn${t};
 done;
 mv ${phen} ~/data/tmp/
 cd ~/data/tmp/${phen}
@@ -804,7 +804,7 @@ cp ~/data/heritability_change/pedigree.csv .
 cp ~/data/heritability_change/procs.tcl .
 cp ~/data/heritability_change/${phen}.csv .
 for t in {1..4950}; do
-	solar run_phen_var_OD_xcp ${phen} conn${t};
+    solar run_phen_var_OD_xcp ${phen} conn${t};
 done;
 mv ${phen} ~/data/tmp/
 cd ~/data/tmp/${phen}
@@ -825,21 +825,21 @@ just for robustness. Well, let's see if these results are good to begin with:
 ```bash
 # sinteractive so we don't screwp up the runs above
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_3netsCog_OD0.${OD}_${suf}${p}_12042019;
-			for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOCont" \
-					 "conn_DorsAttnTODefault" "conn_ContTOCont" \
-					 "conn_ContTODefault" "conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_3netsCog_OD0.${OD}_${suf}${p}_12042019;
+            for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOCont" \
+                        "conn_DorsAttnTODefault" "conn_ContTOCont" \
+                        "conn_ContTODefault" "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -847,10 +847,10 @@ done
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_3netsCog.csv;
 for f in `ls polygen_results_*3netsCog*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_3netsCog.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_3netsCog.csv;
+    done
 done
 ```
 
@@ -870,7 +870,7 @@ So, our initial 3 net result is still better...
 ## QC on 100x100
 
 How about doing QC on the 100x100 matrix, running 7x7 matrices, and selecting
-  which ones to look at later?
+        which ones to look at later?
 
 ```bash
 Rscript ~/research_code/fmri/make_outlier_detection_slopes_rawQC.R .9
@@ -879,24 +879,24 @@ Rscript ~/research_code/fmri/make_outlier_detection_slopes_rawQC.R .9
 ```bash
 # sinteractive so we don't screwp up the runs above
 for OD in 80 85 90 95; do
-	for suf in 'median' 'mean'; do
-		for p in '' 'All'; do
-			cd ~/data/heritability_change
-			phen=rsfmri_7by7from100_rawQC_OD0.${OD}_${suf}${p}_12042019;
-			for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-				"conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-				"conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-				"conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-				"conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-				"conn_DefaultTODefault"; do
-					solar run_phen_var_OD_xcp ${phen} ${t};
-			done;
-			mv ${phen} ~/data/tmp/
-			cd ~/data/tmp/${phen}
-			for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-			python ~/research_code/compile_solar_multivar_results.py ${phen}
-		done;
-	done;
+    for suf in 'median' 'mean'; do
+        for p in '' 'All'; do
+            cd ~/data/heritability_change
+            phen=rsfmri_7by7from100_rawQC_OD0.${OD}_${suf}${p}_12042019;
+            for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                "conn_DefaultTODefault"; do
+                    solar run_phen_var_OD_xcp ${phen} ${t};
+            done;
+            mv ${phen} ~/data/tmp/
+            cd ~/data/tmp/${phen}
+            for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+            python ~/research_code/compile_solar_multivar_results.py ${phen}
+        done;
+    done;
 done
 ```
 
@@ -904,10 +904,10 @@ done
 cd ~/data/tmp
 echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_rawQC.csv;
 for f in `ls polygen_results_*rawQC*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_rawQC.csv;
-	done
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_rawQC.csv;
+    done
 done
 ```
 
@@ -922,10 +922,10 @@ phen = 'rsfmri_100x100_posOnly_OD0.80_12042019'
 df = read.csv(sprintf('~/data/tmp/polygen_results_%s.csv', phen))
 nrois=100
 fname = sprintf('~/research_code/fmri/Schaefer2018_%dParcels_7Networks_order.txt',
-				nrois)
+                nrois)
 nets = read.table(fname)
 all_net_names = sapply(as.character(unique(nets[,2])),
-					   function(y) strsplit(x=y, split='_')[[1]][3])
+                                function(y) strsplit(x=y, split='_')[[1]][3])
 net_names = unique(all_net_names)
 nnets = length(net_names)
 cat('Creating connection map...\n')
@@ -933,11 +933,11 @@ nverts = nrow(nets)
 cnt = 1
 conn_map = c()
 for (i in 1:(nverts-1)) {
-	for (j in (i+1):nverts) {
-		conn = sprintf('conn%d', cnt)
-		conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
-		cnt = cnt + 1
-	}
+    for (j in (i+1):nverts) {
+        conn = sprintf('conn%d', cnt)
+        conn_map = rbind(conn_map, c(conn, all_net_names[i], all_net_names[j]))
+        cnt = cnt + 1
+    }
 }
 
 fname = sprintf('~/data/heritability_change/%s.csv', phen)
@@ -949,11 +949,11 @@ use_only = c('DorsAttn', 'SalVentAttn', 'Cont', 'Default', 'Limbic')
 
 keep_me = c()
 for (i in 1:length(use_only)) {
-	for (j in i:length(use_only)) {
-		idx = (conn_map[,2]==use_only[i] & conn_map[,3]==use_only[j]) |
-			(conn_map[,3]==use_only[i] & conn_map[,2]==use_only[j])
-		keep_me = c(keep_me, conn_map[idx, 1])
-	}
+    for (j in i:length(use_only)) {
+        idx = (conn_map[,2]==use_only[i] & conn_map[,3]==use_only[j]) |
+            (conn_map[,3]==use_only[i] & conn_map[,2]==use_only[j])
+        keep_me = c(keep_me, conn_map[idx, 1])
+    }
 }
 
 df2 = df[df$phen %in% keep_me, ]
@@ -975,51 +975,456 @@ that doesn't look good. Maybe I should go back to degree-centrality analysis?
 But that's also based on Pearson correlation, I'd think. Maybe we could try ALF
 and reho again?
 
+# 2019-12-05 10:01:35
+
 Or how about number of significant absolute connections?
 
 ```bash
-Rscript ~/research_code/fmri/make_outlier_detection_slopes_rawSigQC.R .9
+Rscript ~/research_code/fmri/make_outlier_detection_slopes_sig.R .95
 ```
+
+Philip asked me to check the distribution of baseline and FU values, just to
+make sure they each look somewhat normal. I'm doing 5 networks, so 15
+connections (5*4/2 + 5). We'll need 15 plots for each time point, then another
+one for slopes, just in case. 
+
+```r
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_p05SigSum_OD0.80_12052019.csv')
+dev.new()
+var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+                    "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                    "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                    "conn_ContTODefault", "conn_DefaultTODefault",
+                    "conn_DorsAttnTOLimbic", "conn_SalVentAttnTOLimbic",
+                    "conn_LimbicTOLimbic", "conn_LimbicTOCont", "conn_LimbicTODefault")
+par(mfrow=c(3, 5))
+for (v in var_names) {
+    hist(data[, v], breaks=25, main=v)
+}
+```
+
+![](images/2019-12-05-11-26-09.png)
+
+That's what we get when looking at the slopes. A few outliers, but relatively
+normal. I might try replacing those outliers by NA, we'll see. And here's the
+same plot, but using OD.95 for comparison:
+
+![](images/2019-12-05-11-30-36.png)
+
+Same story. Now let's look at the two time points individually (OD.95):
+
+```r
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_5nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+bi = c()
+for (i in seq(1,nrow(data),2)) {
+    if (data$age_at_scan[i] > data$age_at_scan[i+1]) {
+        bi=c(bi, i+1)
+    }
+    else {
+        bi = c(bi, i)
+    }
+}
+fu = setdiff(1:nrow(data), bi)
+var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+                    "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                    "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                    "conn_ContTODefault", "conn_DefaultTODefault",
+                    "conn_DorsAttnTOLimbic", "conn_SalVentAttnTOLimbic",
+                    "conn_LimbicTOLimbic", "conn_LimbicTOCont", "conn_LimbicTODefault")
+dev.new()
+par(mfrow=c(3, 5))
+for (v in var_names) {
+    hist(data[fu, v], breaks=25, main=v)
+}
+```
+
+![](images/2019-12-05-12-15-11.png)
+
+![](images/2019-12-05-12-16-24.png)
+
+Top is baseline, bottom is follow-up. They all look quite normal. IT's
+noticeable that limbic-to-limbic has way fewer significant connections than the
+other networks. Might be an argument to remove the network altogether later.
+We'll see. For now, let's run heritability on the 5 nets.
 
 ```bash
 # sinteractive so we don't screwp up the runs above
 for OD in 80 85 90 95; do
-	cd ~/data/heritability_change
-	phen=rsfmri_7by7from100_rawQC_OD0.${OD}_${suf}${p}_12042019;
-	for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
-  "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
-  "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
-  "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
-  "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
-  "conn_DefaultTODefault"; do
-		solar run_phen_var_OD_xcp ${phen} ${t};
-	done;
+    cd ~/data/heritability_change
+    phen=rsfmri_7by7from100_5nets_p05SigSum_OD0.${OD}_12052019;
+    for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+             "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+             "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+             "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+             "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" \
+             "conn_LimbicTOCont" "conn_LimbicTODefault" \
+             "conn_ContTOCont" "conn_ContTODefault" \
+        "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp ${phen} ${t};
+    done;
 mv ${phen} ~/data/tmp/
 cd ~/data/tmp/${phen}
 for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
-python ~/research_code/compile_solar_multivar_results.py ${phen}
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
 done;
 ```
 
 ```bash
 cd ~/data/tmp
-echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_rawQC.csv;
-for f in `ls polygen_results_*rawQC*.csv`; do
-	# skip header
-	for line in `tail -n +2 $f`; do
-		echo $f,$line >> output_rawQC.csv;
-	done
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_p05SigSum.csv;
+for f in `ls polygen_results_*p05SigSum*.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_p05SigSum.csv;
+    done
 done
 ```
 
+![](images/2019-12-05-15-09-12.png)
+
+Results are not great, but there might be something there. Maybe if we remove
+some of the outliers, and/or do a 4 network analysis? Or even reduce the p
+threshold?
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    cd ~/data/heritability_change
+    phen=rsfmri_7by7from100_4nets_p05SigSum_OD0.${OD}_12052019;
+    for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+             "conn_DorsAttnTOCont" "conn_DorsAttnTODefault" \
+             "conn_SalVentAttnTOSalVentAttn" "conn_SalVentAttnTOCont" \
+             "conn_SalVentAttnTODefault" "conn_ContTOCont" \
+             "conn_ContTODefault" "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp ${phen} ${t};
+    done;
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
+done;
+```
+
+```bash
+cd ~/data/tmp
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_4nets_p05SigSum.csv;
+for f in `ls polygen_results_*4nets_*p05SigSum*.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_4nets_p05SigSum.csv;
+    done
+done
+```
+
+![](images/2019-12-05-15-20-47.png)
+
+Good that the results work across OD thresholds, but that's the only thing
+working. 
+
+Let's check if removing the outliers has any significant impact:
+
+```r
+for (OD in c(80, 85, 90, 95)) {
+    phen = sprintf('rsfmri_7by7from100_5nets_p01SigSum_OD0.%d_12052019', OD)
+    data = read.csv(sprintf('~/data/heritability_change/%s.csv', phen))
+    var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+                "conn_DorsAttnTOCont", "conn_DorsAttnTODefault",
+                "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                "conn_ContTODefault", "conn_DefaultTODefault",
+                "conn_DorsAttnTOLimbic", "conn_SalVentAttnTOLimbic",
+                "conn_LimbicTOLimbic", "conn_LimbicTOCont",
+                "conn_LimbicTODefault")
+    # var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+    #             "conn_DorsAttnTOCont", "conn_DorsAttnTODefault",
+    #             "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+    #             "conn_SalVentAttnTODefault", "conn_ContTOCont",
+    #             "conn_ContTODefault", "conn_DefaultTODefault")
+    for (tract in var_names) {
+        tract_data = data[, tract]
+        ul = mean(tract_data) + 3 * sd(tract_data)
+        ll = mean(tract_data) - 3 * sd(tract_data)
+        bad_subjs = c(which(tract_data<ll),which(tract_data>ul))
+        if (length(bad_subjs) > 0) {
+            data[bad_subjs, tract] = NA
+        }
+    }
+    write.csv(data, file=sprintf('~/data/heritability_change/%s_clean.csv', phen),
+            row.names=F, na='', quote=F)
+}
+```
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    cd ~/data/heritability_change
+    phen=rsfmri_7by7from100_4nets_p05SigSum_OD0.${OD}_12052019_clean;
+    # for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+    #          "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+    #          "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    #          "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+    #          "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" \
+    #          "conn_LimbicTOCont" "conn_LimbicTODefault" \
+    #          "conn_ContTOCont" "conn_ContTODefault" \
+    #          "conn_DefaultTODefault"; do
+    for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+             "conn_DorsAttnTOCont" "conn_DorsAttnTODefault" \
+             "conn_SalVentAttnTOSalVentAttn" "conn_SalVentAttnTOCont" \
+             "conn_SalVentAttnTODefault" "conn_ContTOCont" \
+             "conn_ContTODefault" "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp ${phen} ${t};
+    done;
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}
+done;
+```
+
+```bash
+cd ~/data/tmp
+echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_4nets_p05SigSum_clean.csv;
+for f in `ls polygen_results_*4nets_*p05SigSum*clean.csv`; do
+    # skip header
+    for line in `tail -n +2 $f`; do
+        echo $f,$line >> output_4nets_p05SigSum_clean.csv;
+    done
+done
+```
+
+![](images/2019-12-05-15-39-52.png)
+
+The DANtoVAN result in 4nets is very stable across ODs, but it won't survive
+comparisons... hum... maybe. Because VAN to Cont is also .95 (Ns are different
+now!!!). Yes, they do survive at q<.1 (adjusted p=.074).
+
+![](images/2019-12-05-15-43-44.png)
+
+The 5net results are not as stable...
+
+what if I go for connection threshold at p<.01? 
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    for suf in '' '_clean'; do
+        cd ~/data/heritability_change
+        phen=rsfmri_7by7from100_5nets_p01SigSum_OD0.${OD}_12052019${suf};
+              for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+                       "conn_DorsAttnTOLimbic" "conn_DorsAttnTOCont" \
+                       "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+                       "conn_SalVentAttnTOLimbic" "conn_SalVentAttnTOCont" \
+                       "conn_SalVentAttnTODefault" "conn_LimbicTOLimbic" \
+                       "conn_LimbicTOCont" "conn_LimbicTODefault" \
+                       "conn_ContTOCont" "conn_ContTODefault" \
+                       "conn_DefaultTODefault"; do
+        # for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+        #          "conn_DorsAttnTOCont" "conn_DorsAttnTODefault" \
+        #          "conn_SalVentAttnTOSalVentAttn" "conn_SalVentAttnTOCont" \
+        #          "conn_SalVentAttnTODefault" "conn_ContTOCont" \
+        #          "conn_ContTODefault" "conn_DefaultTODefault"; do
+            solar run_phen_var_OD_xcp ${phen} ${t};
+        done;
+        mv ${phen} ~/data/tmp/;
+        cd ~/data/tmp/${phen};
+        for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+        python ~/research_code/compile_solar_multivar_results.py ${phen}
+    done;
+done
+```
+
+```bash
+cd ~/data/tmp
+for suf in '9' '_clean'; do
+    echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_5nets_p01SigSum${suf}.csv;
+    for f in `ls polygen_results_*5nets_*p01SigSum*${suf}.csv`; do
+        # skip header
+        for line in `tail -n +2 $f`; do
+            echo $f,$line >> output_5nets_p01SigSum${suf}.csv;
+        done;
+    done;
+done
+```
+
+For dirty 4nets, DAN to VAN is still there:
+
+![](images/2019-12-05-16-01-11.png)
+
+Things are not as clear in the clean dataset:
+
+![](images/2019-12-05-16-02-29.png)
+
+With 5nets dirty we also see the same DANtoVan result:
+
+![](images/2019-12-05-16-06-13.png)
+
+Just not there in the clean version:
+
+![](images/2019-12-05-16-07-03.png)
+
+OK, so out of these, what makes most sense?
+
+I think going with the 4 nets clean (OD.95, p05) set does. Let's check on association then.
+Also, should I try to clean the dti set as well? Just for consistency?
+
+First, let's just plot the baseline, follow-up and slopes for these data just to
+make sure it's all kosher:
+
+```r
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+dev.new()
+var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+                    "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                    "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                    "conn_ContTODefault", "conn_DefaultTODefault")
+par(mfrow=c(2, 5))
+for (v in var_names) {
+    hist(data[, v], breaks=25, main=v)
+}
+```
+
+![](images/2019-12-05-16-32-04.png)
+
+Yep, quite well-behaved slopes in the clean data.
+
+```r
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+bi = c()
+for (i in seq(1,nrow(data),2)) {
+    if (data$age_at_scan[i] > data$age_at_scan[i+1]) {
+        bi=c(bi, i+1)
+    }
+    else {
+        bi = c(bi, i)
+    }
+}
+fu = setdiff(1:nrow(data), bi)
+var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+                    "conn_DorsAttnTOCont", "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn", "conn_SalVentAttnTOCont",
+                    "conn_SalVentAttnTODefault", "conn_ContTOCont",
+                    "conn_ContTODefault", "conn_DefaultTODefault")
+dev.new()
+par(mfrow=c(2, 5))
+for (v in var_names) {
+    hist(data[fu, v], breaks=25, main=v)
+}
+```
+
+Baseline:
+![](images/2019-12-05-16-36-02.png)
+
+FU:
+![](images/2019-12-05-16-36-28.png)
+
+Nothing worrisome. 
+
+## associations
+
+```
+HG-02113362-DM4:rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean sudregp$ grep "(Significant)" conn_SalVentAttnTOCont_polygenic.out 
+                         H2r is 0.5165866  p = 0.0138674  (Significant)
+                                      sex  p = 0.0826060  (Significant)
+                              pctSpikesDV  p = 0.0011250  (Significant)
+                         motionDVCorrInit  p = 0.0829430  (Significant)
+                         relMeanRMSMotion  p = 0.0741256  (Significant)
+HG-02113362-DM4:rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean sudregp$ grep "(Significant)" conn_DorsAttnTOSalVentAttn_polygenic.out 
+                         H2r is 0.5506614  p = 0.0147114  (Significant)
+                             normCoverage  p = 0.0618216  (Significant)
+                        motionDVCorrFinal  p = 0.0486963  (Significant)
+                         relMeanRMSMotion  p = 0.0718720  (Significant)
+```
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+i = 'conn_SalVentAttnTOCont'
+fm_root = '%s ~ %s + sex + pctSpikesDV + motionDVCorrInit + relMeanRMSMotion'
+# i = 'conn_DorsAttnTOSalVentAttn'
+# fm_root = '%s ~ %s + normCoverage + motionDVCorrFinal + relMeanRMSMotion'
+
+out_fname = sprintf('~/data/heritability_change/assoc_%s.csv', i)
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline', 'DX', 'DX2')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx1.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='dx1', 'dx2')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (j in predictors) {
+    fm_str = sprintf(fm_root, i, j)
+    model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+    if (length(model1) > 1) {
+        temp<-summary(model1)$tTable
+        a<-as.data.frame(temp)
+        a$formula<-fm_str
+        a$target = i
+        a$predictor = j
+        a$term = rownames(temp)
+        hold=rbind(hold,a)
+    } else {
+        hold=rbind(hold, NA)
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+![](images/2019-12-05-16-47-24.png)
+
+The VANtoCont connection is associated with HI! DANtoVAN isn't, but hey-hoo.
+
+```r
+source('~/research_code/baseline_prediction/aux_functions.R')
+ggplotRegression(lm('conn_SalVentAttnTOCont ~ SX_HI + sex + pctSpikesDV + motionDVCorrInit + relMeanRMSMotion', data2, na.action=na.omit))
+```
+
+![](images/2019-12-05-16-53-34.png)
+
+It's not pretty, and I'll need to trim the lower end of HI a bit, but it might
+fly...
 
 
 # TODO
-* try removing ventral but not cognitive and then just add the other networks
-  without changing subjects for robustness
-* how about doing QC on the 100x100 matrix, running 7x7 matrices, and selecting
-  which ones to look at later?
 * review all numbers in the paper (and figures!)
 * robustness analysis (and everything else in note 044)
-* remember that fmri is .9 and dti is potentially some different OD threshold!
+* remember that OD thresholds might be different across modalities!
 * recompute table that has everyone
