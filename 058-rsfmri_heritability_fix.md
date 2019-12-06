@@ -1558,13 +1558,38 @@ nominal result.
 
 Let's check for multiple comparisons:
 
+```r
+phen = 'rsfmri_7by7from100_DANContDMN_p05SigSum_OD0.95_12062019'
 
+df = read.csv(sprintf('~/data/tmp/polygen_results_%s.csv', phen))
 
+# var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOSalVentAttn",
+#              "conn_DorsAttnTODefault", "conn_SalVentAttnTOSalVentAttn",
+#              "conn_SalVentAttnTODefault", "conn_DefaultTODefault")
+var_names = c("conn_DorsAttnTODorsAttn", "conn_DorsAttnTOCont",
+              "conn_DorsAttnTODefault", "conn_ContTOCont",
+              "conn_ContTODefault", "conn_DefaultTODefault")
 
+p2 = p.adjust(df$h_pval, method='fdr')
+
+fname = sprintf('~/data/heritability_change/%s.csv', phen)
+data = read.csv(fname)
+cc = cor(data[, var_names], use='na.or.complete')
+svd = eigen(cc)
+absev = abs(svd$values)
+meff = (sum(sqrt(absev))^2)/sum(absev)
+
+print(sprintf('Surviving at FDR at .05 = %d', length(which(p2<.05))))
+print(sprintf('Surviving at FDR at .1 = %d', length(which(p2<.1))))
+cat(sprintf('Galwey Meff = %.2f\n', meff))
+print(sprintf('Surviving at Meff = %d', length(which(df2$h_pval<(.05/meff)))))
+```
+
+The DANVANDMN result only survives at q < .1, and so did the result at
+DANContDMN, but none survived Meff.
 
 
 # TODO
-* try 3 network combinations... what was the result with 7 nets?
 * review all numbers in the paper (and figures!)
 * robustness analysis (and everything else in note 044)
 * remember that OD thresholds might be different across modalities!

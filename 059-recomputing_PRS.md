@@ -68,237 +68,251 @@ merge_intersection merge2_inter twins merge3_inter
 merge_intersection merge3_inter CIDR merged_inter
 ```
 
+# 2019-12-06 13:40:56
 
+Time to update the sex variable to be checked later in PLINK. Since the FAMID in
+the current file is meaningless, let's use the same file to retrieve M or F from
+Labmatrix (i.e. use merged_inter.fam as the basis).
 
+For future sakes, here's how I extracted the NSB from the long form in Excel:
 
+```
+=NUMBERVALUE(MID(LEFT(B807,FIND("@",B807)-1),FIND("-",B807,12)+1,LEN(B807)))
+```
 
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2
+# remove CIDR control IDs and the one NSB we don't have records in Labmatrix
+cat CIDR_ctrl.txt > remove_ids.txt; echo "33 3239" >> remove_ids.txt;
+plink --bfile merged_inter --remove remove_ids.txt --make-bed \
+  --out merged_inter_noCtrl;
+# update sex based on Labmatrix records
+plink --bfile merged_inter_noCtrl --update-sex update_sex.txt --make-bed \
+  --out merged_inter_noCtrl_sex;
+plink --bfile merged_inter_noCtrl_sex --check-sex;
+```
 
+PLINK found problems determining the sex of 16 samples. Either determining it,
+or it's different than what we currently have in Labmatrix. 
 
+```
+[sudregp@cn1745 v2]$ grep PROBLEM plink.sexcheck 
+   4                              10920            1            0      PROBLEM       0.3771
+   5                              10579            2            0      PROBLEM       0.5444
+  11                               8569            2            0      PROBLEM       0.2486
+  13                              14043            1            2      PROBLEM        -0.16
+  20                              10906            2            1      PROBLEM       0.8349
+  21                              10443            2            0      PROBLEM       0.2894
+  23                              13548            2            0      PROBLEM       0.2036
+  27                              10855            2            0      PROBLEM       0.3515
+  35                              11776            1            0      PROBLEM       0.4289
+  38                              13548            2            0      PROBLEM       0.2382
+  46                               8647            2            0      PROBLEM       0.4006
+  47                              14304            1            2      PROBLEM      0.02998
+  60                              10551            2            0      PROBLEM       0.5104
+  64                               8515            2            1      PROBLEM       0.9922
+ 195   WG1023565-DNAA12-6031@0175460825            1            2      PROBLEM      0.02925
+ 271   WG1023565-DNAH05-7011@0175548883            2            1      PROBLEM       0.9969
+```
 
+In all cases where PLINK as able to make a reasonable determination (but 1), the
+Sex in Labmatrix matches the one in CRIS, so I'm going to guess it's a coding
+error. I'll update the sex file above, and re-run it. Then, I'll remove the
+sample with errors or that PLINK couldn't determine sex (likely because of poor
+quality). Maybe they will get better later with better GenomeStudio tuning...
+who knows.
 
+```bash
+grep "PROBLEM" plink.sexcheck | awk '{print $1, $2}' >> failed_sex_check.txt;
+plink --bfile merged_inter_noCtrl_sex --remove failed_sex_check.txt --make-bed \
+  --out merged_inter_noCtrl_sexClean;
+```
 
+Time to check for identical samples. This time I'll keep the twins there, as we
+might need one but not the other in some analysis based on other selection
+criteria.
 
+```bash
+plink --bfile merged_inter_noCtrl_sexClean --genome
+awk '{if ($10 > .95) print $1, $2, $3, $4}' plink.genome 
+```
 
+And then I'll keep putting the threshold lower and lower until I'm done
+capturing the same samples and I'm only getting twins. When same sample, I'll
+keep first blood entries, then newer entries. Sometimes the same NSB appears
+twice, so I'm keeping the re-submission (newer) box or, when both old, I'm
+removing CIDR.
 
+I also grabbed the file and checked for duplicate NSBs, because some were
+popping up even at .8 IBD, which makes sense since they were re-genotyped due to
+poor sample quality.
 
+Based on that criteria, I'll remove the following for already having a better
+sample in the file:
 
-I decided to re-run everything in geno3:
+```
+385 WG1023567-DNAB01-5074@0175460769
+35 10313
+33 11023
+34 12121
+3 13232
+36 11978
+5 223
+39 11360
+37 10934
+7 332
+40 10990
+57 13553
+215 WG1023565-DNAC09-580@0175460893
+329 WG1023566-DNAE04-623@0175460842
+36 10585
+103 WG1023564-DNAA09-678@0175548933
+16 1116
+17 1253
+39 13580
+247 WG1023565-DNAF05-1254@0175460144
+37 10466
+58 11268
+33 WG1023563-DNAC09-2220@0175460566
+99 WG1023564-DNAA05-5020@0175460785
+48 WG1023563-DNAD12-2332@0175460578
+397 WG1023567-DNAC01-10094@0175461097
+398 WG1023567-DNAC02-2635@0175460548
+51 10924
+12 10912
+```
 
-awk '{print $2}' ~/pgc2017/adhd_jun2017 > pgc_snps.txt
-module load plink
-plink --file ~/data/prs/PLINK_160517_0102/Shaw03_2017 --out Shaw03_2017
-plink --file ~/data/prs/PLINK_160517_0102/Shaw03_2017 --make-bed --out Shaw03_2017
-plink --file ~/data/prs/PLINK_160517_0143/Shaw04_2017 --make-bed --out Shaw04_2017
-plink --file ~/data/prs/PLINK_160517_0338/Shaw07_2017 --make-bed --out Shaw07_2017
-plink --file ~/data/prs/PLINK_160517_0412/Shaw06_2017 --make-bed --out Shaw06_2017
-plink --file ~/data/prs/PLINK_160517_0533/Shaw05_2017 --make-bed --out Shaw05_2017
-plink --file ~/data/prs/PLINK_160517_0711/twins --make-bed --out twins
-plink --file ~/data/prs/PLINK_160517_0852/Shaw03 --make-bed --out Shaw03
-plink --file ~/data/prs/PLINK_160517_0953/Shaw04 --make-bed --out Shaw04
-plink --file ~/data/prs/PLINK_160517_1052/Shaw01_2017 --make-bed --out Shaw01_2017
-plink --file ~/data/prs/PLINK_160517_1143/Shaw02_2017 --make-bed --out Shaw02_2017
-plink --file ~/data/prs/PLINK_220517_0838/Shaw_Final_Release_05112015 --make-bed --out CIDR
+```bash
+plink --bfile merged_inter_noCtrl_sexClean --remove duplicate_samples.txt --make-bed \
+  --out merged_inter_noCtrl_sexClean_noDups;
+```
 
-ls -1 *bim | sed -e 's/\.bim//g' > boxes.txt
-rm failed_sexcheck_ids;
+Now the number of pairs is constant from IBD thresholds from .7 all the way to
+.95, which is good because it means we only have the twin left (as checked in
+Labmatrix based on NSBs).
 
-# make family and sex update regardless of family
-n=`cat update_sex.txt | wc -l`;
-rm inds_ids.txt
-for i in `seq 1 $n`; do echo 1 >> inds_ids.txt; done;
-cut -f 2,3 update_sex.txt > tmp.txt;
-paste inds_ids.txt tmp.txt > noid_update_sex.txt
-n=`cat update_ids.txt | wc -l`;
-rm inds_ids.txt
-for i in `seq 1 $n`; do echo 1 >> inds_ids.txt; done;
-cut -f 2,3,4 update_ids.txt > tmp.txt;
-paste inds_ids.txt tmp.txt > noid_update_ids.txt
+From now on, let's follow the ENIGMA protocol. Note that it's an updated version
+I received from Rachel Brouwer, using the Moichigan Imputation Server. I'll copy
+it to my Documents and also to the the folder in Biowulf. But, the only
+difference from the protocol in:
 
-while read box; do
-     # remove family info
-     n=`cat ${box}.fam | wc -l`;
-     rm inds_ids.txt;
-     for i in `seq 1 $n`; do echo 1 >> inds_ids.txt; done;
-     cut -d' ' -f 2-6 ${box}.fam > fam_no_famids.txt;
-     cp ${box}.fam ${box}.old_fam;
-     paste -d ' ' inds_ids.txt fam_no_famids.txt > ${box}.fam
+http://enigma.ini.usc.edu/wp-content/uploads/2012/07/ENIGMA2_1KGP_cookbook_v3.pdf
 
-     plink --bfile ${box} --update-sex noid_update_sex.txt --make-bed --out $box;
-     plink --bfile ${box} --update-ids noid_update_ids.txt --make-bed --out $box;
-     plink --bfile ${box} --check-sex --out ${box};   
-     grep "PROBLEM" ${box}.sexcheck | awk '{print $1, $2}' >> failed_sexcheck_ids;
-     plink --bfile ${box} -chr 1-22 --extract intersect_snps.txt --make-bed --out ${box}_1to22;
-     plink --bfile ${box}_1to22 --extract pgc_snps.txt --make-bed --out ${box}_1to22_PGC;
-done < boxes.txt
+is the imputation part, which we'll do before computing PRS. It also uses a
+different HM3 file, for b37. Her e-mail is from 01/05/2018.
 
-plink --bfile twins_1to22_PGC --merge-list merge_list.txt --make-bed --out merged
+```bash
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bed.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bim.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.fam.gz"
+# Filter SNPs out from your dataset which do not meet Quality Control criteria
+# (Minor Allele Frequency < 0.01; Genotype Call Rate < 95%; Hardy­Weinberg
+# Equilibrium < 1x10­6)
+export datafileraw=merged_inter_noCtrl_sexClean_noDups
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+      --make-bed --out ${datafileraw}_filtered
+# Unzip the HM3 genotypes. Prepare the HM3 and the raw genotype data by
+# extracting only snps that are in common between the two genotype data sets
+# this avoids exhausting the system memory. We are also removing the strand
+# ambiguous snps from the genotyped data set to avoid strand mismatch among
+# these snps. Your genotype files should be filtered to remove markers which
+# do not satisfy the quality control criteria above.
+gunzip HM3_b37*.gz
+export datafile=${datafileraw}_filtered
+awk '{print $2}' HM3_b37.bim > HM3_b37.snplist.txt
+plink --bfile ${datafile} --extract HM3_b37.snplist.txt --make-bed --noweb --out local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > local.snplist.txt
+plink --bfile HM3_b37 --extract local.snplist.txt --make-bed --noweb --out external
+# Merge the two sets of plink files. In merging the two files plink will check
+# for strand differences. If any strand differences are found plink will crash
+# with the following error (ERROR: Stopping due to mis­matching SNPs - check +/­
+# strand?). Ignore warnings regarding different physical positions
+plink --bfile local --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# got the error
+plink --bfile local --flip HM3_b37merge-merge.missnp --make-bed --noweb \
+  --out flipped
+plink --bfile flipped --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# running MDS analysis... switching to 10 dimensions to conform to old analysis
+plink --bfile HM3_b37merge --cluster --mind .05 --mds-plot 10 \
+  --extract local.snplist.txt --noweb --out HM3_b37mds
+# making the MDS plot
+awk 'BEGIN{OFS=","};{print $1, $2, $3, $4, $5, $6, $7}' HM3_b37mds.mds >> HM3_b37mds2R.mds.csv
+```
 
-Then added the following to failed_sex_ids to be removed as well, due to double sampling or twins:
+Then, I made the plot locally:
 
-10278 10230
-871 223
-871 332
-8 1116
-813 1253
-10489 10202
-10490 10248
-10296 8679
-413 580
-471 623
-528 678
-813 1254
-10491 2635
-10495   10098
-1036    10095
-1036    WG1023567-DNAC01-10094@0175461097
-911     10566  
-911     10603
-1036    WG1023567-DNAC01-10094@0175461097
-1036     10095
-10306   10067
-10306     10313
-10429   2704
-10429     2705
-10483   10288  
-10483     10294
-10484   10300  
-10484     10306
-10485   2746   
-10485     2747
-10486   10270  
-10486     10276
-10487   10261  
-10487     10264
-10488   2354   
-10488     2355
-10489   WG1023563-DNAD12-2332@0175460578       
-10498     10206
-10490   WG1023563-DNAC09-2220@0175460566       
-10490     10244
-10491   WG1023567-DNAC02-2635@0175460548       
-10491     10342
-10492   1247   
-10492     1264
-10498   864    
-10498     865
-10499   883    
-10499     884
-10501   969    
-10501 970
+```R
+library(calibrate)
+mds.cluster = read.csv("~/data/tmp/HM3_b37mds2R.mds.csv", header=T);
+colors=rep("red",length(mds.cluster$C1));
+colors[which(mds.cluster$FID == "CEU")] <- "lightblue";
+colors[which(mds.cluster$FID == "CHB")] <- "brown";
+colors[which(mds.cluster$FID == "YRI")] <- "yellow";
+colors[which(mds.cluster$FID == "TSI")] <- "green";
+colors[which(mds.cluster$FID == "JPT")] <- "purple";
+colors[which(mds.cluster$FID == "CHD")] <- "orange";
+colors[which(mds.cluster$FID == "MEX")] <- "grey50";
+colors[which(mds.cluster$FID == "GIH")] <- "black";
+colors[which(mds.cluster$FID == "ASW")] <- "darkolivegreen";
+colors[which(mds.cluster$FID == "LWK")] <- "magenta";
+colors[which(mds.cluster$FID == "MKK")] <- "darkblue";
+# pdf(file="mdsplot.pdf",width=7,height=7)
+plot(rev(mds.cluster$C2), rev(mds.cluster$C1), col=rev(colors),
+         ylab="Dimension 1", xlab="Dimension 2",pch=20)
+legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
+                     "MEX", "GIH", "ASW","LWK", "MKK"),
+       fill=c("red", "lightblue", "brown", "yellow", "green", "purple",
+              "orange", "grey50", "black", "darkolivegreen", "magenta",
+              "darkblue"))
+# if you want to know the subject ID label of each sample on the graph,
+# uncomment the value below
+# FIDlabels <- c("CEU", "CHB", "YRI", "TSI", "JPT", "CHD", "MEX", "GIH", "ASW",
+#                "LWK", "MKK");
+# textxy(mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C2"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C1"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "IID"])
+# dev.off();
+```
 
+![](images/2019-12-06-18-06-07.png)
 
-box=merged
-plink --bfile ${box} --remove failed_sexcheck_ids --make-bed --out ${box}_noDups
-plink --bfile ${box}_noDups --maf .01 --geno .01 --hwe .00001 --mind .01 --make-bed --out ${box}_noDups_clean
+Now, for the imputation:
 
-Using KING to double check we got rid of twins:
-
-/data/NCR_SBRB/software/KING/king -b merged_noDups_clean.bed
-
-And now we regenerate PRS:
-
-R --file=${HOME}/PRSice_v1.25/PRSice_v1.25.R -q --args  \
-  plink  ${HOME}/PRSice_v1.25/plink_1.9_linux_160914 \
-  base ~/pgc2017/adhd_jun2017  \
-  target ../merged_noDups_clean \
-  report.individual.scores T \
-  wd ./noFlip \
-  cleanup F \
-  report.best.score.only F \
-  covary F \
-  fastscore T \
-  barchart.levels 1e-5,1e-4,1e-3,1e-2,1e-1,5e-5,5e-4,5e-3,5e-2,2e-1,3e-1,4e-1,5e-1
-
-And also for the EUR GWAS:
-
-R --file=${HOME}/PRSice_v1.25/PRSice_v1.25.R -q --args  \
-  plink  ${HOME}/PRSice_v1.25/plink_1.9_linux_160914 \
-  base ~/pgc2017/adhd_eur_jun2017  \
-  target ../merged_noDups_clean \
-  report.individual.scores T \
-  wd ./noFlip_eur \
-  cleanup F \
-  report.best.score.only F \
-  covary F \
-  fastscore T \
-  barchart.levels 1e-5,1e-4,1e-3,1e-2,1e-1,5e-5,5e-4,5e-3,5e-2,2e-1,3e-1,4e-1,5e-1
-
-Now, we work on imputations:
-
-for i in {1..22}; do   plink --bfile merged_noDups_clean --chr ${i} --recode-vcf --out vcf_chr${i}; done
+```bash
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
+plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
+  --maf 0.01 --hwe 0.000001 --make-bed --noweb
+awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
+plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
+  --noweb --list-duplicate-vars
+plink --bfile lastQCb37 --exclude lastQCb37.dupvar --out lastQCb37_noduplicates \
+  --make-bed --noweb
 module load vcftools
-for f in `ls vcf*.vcf`; do echo $f; vcf-sort $f | bgzip -c > ${f}.gz; done
-
-And we should do a sneak peak using shapeit to see what kind of flips and removals we'll need to do:
-
-module load shapeit
-for c in {1..22}; do shapeit -check -T 16 -V vcf_chr${c}.vcf.gz --input-ref ../1000GP_Phase3/1000GP_Phase3_chr${c}.hap.gz ../1000GP_Phase3/1000GP_Phase3_chr${c}.legend.gz ../1000GP_Phase3/1000GP_Phase3.sample --output-log chr${c}.alignments; done
-
-I downloaded the reference panel from https://mathgen.stats.ox.ac.uk/impute/1000GP_Phase3.html
-
-Now we need to properly flip and remove all bad ids. First, format the files:
-
-for c in {1..22}; do grep Strand chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> flip_snps.txt; done
-for c in {1..22}; do grep Missing chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> missing_snps.txt; done
-
-plink --bfile merged_noDups_clean --flip flip_snps.txt --exclude missing_snps.txt --make-bed --out merged_noDups_clean_flipped
-
-Let's just make sure the set is still clean:
-
-plink --bfile merged_noDups_clean_flipped --missing --out ibd
-awk '$6 > .01 {print $0}' ibd.imiss | wc -l
-awk '$5 > .01 {print $0}' ibd.lmiss | wc -l
-
-And construct the VCFs as above to send it to the imputation server.
-
-for i in {1..22}; do   plink --bfile merged_noDups_clean_flipped --chr ${i} --recode-vcf --out vcf_chr${i}_flipped; done
-for f in `ls vcf*flipped.vcf`; do echo $f; vcf-sort $f | bgzip -c > ${f}.gz; done
-
-We also do the population analysis, first in the non-imputed data as we wait on the imputation server:
-
-/data/NCR_SBRB/software/KING/king -b merged_noDups_clean.bed --mds
-
-KING 2.1 - (c) 2010-2018 Wei-Min Chen
-
-The following parameters are in effect:
-                   Binary File : merged_noDups_clean.bed (-bname)
-
-Additional Options
-         Close Relative Inference : --related, --duplicate
-   Pairwise Relatedness Inference : --kinship, --ibdseg, --ibs, --homo
-              Inference Parameter : --degree
-         Relationship Application : --unrelated, --cluster, --build
-                        QC Report : --bysample, --bySNP, --roh, --autoQC
-                     QC Parameter : --callrateN, --callrateM
-             Population Structure : --pca, --mds [ON]
-              Structure Parameter : --projection
-              Disease Association : --tdt
-   Quantitative Trait Association : --mtscore
-                Association Model : --trait [], --covariate []
-            Association Parameter : --invnorm, --maxP
-               Genetic Risk Score : --risk, --model [], --prevalence
-              Computing Parameter : --cpus
-                           Output : --prefix [king], --rplot
-
-KING starts at Wed Oct 18 23:52:26 2017
-Loading genotype data in PLINK binary format...
-Read in PLINK fam file merged_noDups_clean.fam...
-  PLINK pedigrees loaded: 996 samples
-Read in PLINK bim file merged_noDups_clean.bim...
-  Genotype data consist of 544897 autosome SNPs
-  PLINK maps loaded: 544897 SNPs
-Read in PLINK bed file merged_noDups_clean.bed...
-  PLINK binary genotypes loaded.
-  129 MB memory allocated for KING format genotype data.
-  1 CPU cores are used to convert data from SNP-major to individual-major...
-    KING format genotype data successfully converted.
-MDS starts at Wed Oct 18 23:52:30 2017
-Genotypes stored in 8515 words for each of 996 individuals.
-1 CPU cores are used.
-SVD starts at Wed Oct 18 23:53:01 2017
+for i in {1..22}; do
+  plink --bfile lastQCb37_noduplicates --chr $i --recode vcf --out NCR_chr"$i";
+  vcf-sort NCR_chr"$i".vcf | bgzip -c > NCR_chr"$i".vcf.gz
 done
-Largest 20 eigenvalues: 10.43 2.76 1.72 1.52 1.49 1.30 1.26 1.25 1.23 1.21 1.18 1.16 1.14 1.11 1.10 1.07 1.03 1.02 1.00 0.99
-MDS ends at Wed Oct 18 23:53:14 2017
-20 principal components saved in files kingpc.dat and kingpc.ped
+```
 
-And copied them to Jen.
+Then, uploading to Michigan Imputation Server.
+
+![](images/2019-12-06-17-57-52.png)
+
+
+But I got an error from the imputation server:
+
+```
+Warning: 1 Chunk(s) excluded: < 3 SNPs (see chunks-excluded.txt for details).
+Warning: 145 Chunk(s) excluded: at least one sample has a call rate < 50.0% (see chunks-excluded.txt for details).
+Remaining chunk(s): 8
+Error: More than 100 obvious strand flips have been detected. Please check strand. Imputation cannot be started!
+```
+
+
+# TODO
+* understand strand issues!
+* make sure all samples have good call rates!
+* mark in Labmatrix those bad samples?  
+* compute PRS on imputed data and non-imputed, using new version of PrSice
