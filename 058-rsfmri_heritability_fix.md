@@ -1422,8 +1422,149 @@ ggplotRegression(lm('conn_SalVentAttnTOCont ~ SX_HI + sex + pctSpikesDV + motion
 It's not pretty, and I'll need to trim the lower end of HI a bit, but it might
 fly...
 
+# 2019-12-06 11:36:49
+
+Philip suggested I should look into a few of the 3 network combinations. Let's
+play with it. But it turns out I didn;t even try the 7 nets, so let's try that
+first.
+
+```r
+for (OD in c(80, 85, 90, 95)) {
+    phen = sprintf('rsfmri_7by7from100_7nets_p05SigSum_OD0.%d_12062019', OD)
+    data = read.csv(sprintf('~/data/heritability_change/%s.csv', phen))
+    var_names = colnames(data)[grepl(colnames(data), pattern='^conn_')]
+    for (tract in var_names) {
+        tract_data = data[, tract]
+        ul = mean(tract_data) + 3 * sd(tract_data)
+        ll = mean(tract_data) - 3 * sd(tract_data)
+        bad_subjs = c(which(tract_data<ll),which(tract_data>ul))
+        if (length(bad_subjs) > 0) {
+            data[bad_subjs, tract] = NA
+        }
+    }
+    write.csv(data, file=sprintf('~/data/heritability_change/%s_clean.csv', phen),
+            row.names=F, na='', quote=F)
+}
+```
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    for suf in '' '_clean'; do
+        cd ~/data/heritability_change
+        phen=rsfmri_7by7from100_7nets_p05SigSum_OD0.${OD}_12062019${suf};
+        for t in "conn_VisTOVis" "conn_VisTOSomMot" "conn_VisTODorsAttn" \
+                 "conn_VisTOSalVentAttn" "conn_VisTOLimbic" "conn_VisTOCont" \
+                 "conn_VisTODefault" "conn_SomMotTOSomMot" "conn_SomMotTODorsAttn" \
+                 "conn_SomMotTOSalVentAttn" "conn_SomMotTOLimbic" "conn_SomMotTOCont" \
+                 "conn_SomMotTODefault" "conn_DorsAttnTODorsAttn" \
+                 "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOLimbic" \
+                 "conn_DorsAttnTOCont" "conn_DorsAttnTODefault" \
+                 "conn_SalVentAttnTOSalVentAttn" "conn_SalVentAttnTOLimbic" \
+                 "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault" \
+                 "conn_LimbicTOLimbic" "conn_LimbicTOCont" \
+                 "conn_LimbicTODefault" "conn_ContTOCont" "conn_ContTODefault" \
+                 "conn_DefaultTODefault"; do
+            solar run_phen_var_OD_xcp ${phen} ${t};
+        done;
+        mv ${phen} ~/data/tmp/;
+        cd ~/data/tmp/${phen};
+        for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+        python ~/research_code/compile_solar_multivar_results.py ${phen}
+    done;
+done
+```
+
+```bash
+cd ~/data/tmp
+for suf in '9' '_clean'; do
+    echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_7nets_p05SigSum${suf}.csv;
+    for f in `ls polygen_results_*7nets_*p05SigSum*${suf}.csv`; do
+        # skip header
+        for line in `tail -n +2 $f`; do
+            echo $f,$line >> output_7nets_p05SigSum${suf}.csv;
+        done;
+    done;
+done
+```
+
+No, results are not good. DANtoVAN is somewhat in there, but nothing to write
+home about. Let's play with 3 nets then.
+
+```r
+for (OD in c(80, 85, 90, 95)) {
+    phen = sprintf('rsfmri_7by7from100_DANContDMN_p05SigSum_OD0.%d_12062019', OD)
+    data = read.csv(sprintf('~/data/heritability_change/%s.csv', phen))
+    var_names = colnames(data)[grepl(colnames(data), pattern='^conn_')]
+    for (tract in var_names) {
+        tract_data = data[, tract]
+        ul = mean(tract_data) + 3 * sd(tract_data)
+        ll = mean(tract_data) - 3 * sd(tract_data)
+        bad_subjs = c(which(tract_data<ll),which(tract_data>ul))
+        if (length(bad_subjs) > 0) {
+            data[bad_subjs, tract] = NA
+        }
+    }
+    write.csv(data, file=sprintf('~/data/heritability_change/%s_clean.csv', phen),
+            row.names=F, na='', quote=F)
+}
+```
+
+```bash
+# sinteractive so we don't screwp up the runs above
+for OD in 80 85 90 95; do
+    for suf in '' '_clean'; do
+        cd ~/data/heritability_change;
+        phen=rsfmri_7by7from100_DANContDMN_p05SigSum_OD0.${OD}_12062019${suf};
+        # for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOSalVentAttn" \
+        #          "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+        #          "conn_SalVentAttnTODefault" "conn_DefaultTODefault"; do
+        for t in "conn_DorsAttnTODorsAttn" "conn_DorsAttnTOCont" \
+                 "conn_DorsAttnTODefault" "conn_ContTOCont" \
+                 "conn_ContTODefault" "conn_DefaultTODefault"; do
+            solar run_phen_var_OD_xcp ${phen} ${t};
+        done;
+        mv ${phen} ~/data/tmp/;
+        cd ~/data/tmp/${phen};
+        for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+        python ~/research_code/compile_solar_multivar_results.py ${phen}
+    done;
+done
+```
+
+```bash
+cd ~/data/tmp
+for suf in '9' '_clean'; do
+    echo "file,phen,n,h2r,h_pval,h2r_se,c2,c2_pval,high_kurtosis" > output_DANContDMN_p05SigSum${suf}.csv;
+    for f in `ls polygen_results_*DANContDMN_*p05SigSum*${suf}.csv`; do
+        # skip header
+        for line in `tail -n +2 $f`; do
+            echo $f,$line >> output_DANContDMN_p05SigSum${suf}.csv;
+        done;
+    done;
+done
+```
+
+As expected, our DANtoVAN result is still robust here, and might survive FDR:
+
+![](images/2019-12-06-13-19-19.png)
+
+In DANCogDMN, we have DANtoDMN, which might survive MEff:
+
+![](images/2019-12-06-13-23-18.png)
+
+It's also there for _clean, but at p.03. In both dirty and clean it's the only
+nominal result.
+
+Let's check for multiple comparisons:
+
+
+
+
+
 
 # TODO
+* try 3 network combinations... what was the result with 7 nets?
 * review all numbers in the paper (and figures!)
 * robustness analysis (and everything else in note 044)
 * remember that OD thresholds might be different across modalities!
