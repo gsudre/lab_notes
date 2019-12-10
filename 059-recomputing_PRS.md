@@ -310,9 +310,253 @@ Remaining chunk(s): 8
 Error: More than 100 obvious strand flips have been detected. Please check strand. Imputation cannot be started!
 ```
 
+# 2019-12-09 09:06:13
+
+I certainly need to understand the strand issue a bit better. But since
+imputation might take a while, for now I'll follow the steps I've taken before
+to fix the strand issue, and try that:
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2
+module load shapeit
+refdir=/fdb/impute2/1000Genomes_Phase3_integrated_haplotypes_Oct2014/1000GP_Phase3/
+for c in {1..22}; do
+    shapeit -check -T 16 -V NCR_chr${c}.vcf.gz \
+        --input-ref $refdir/1000GP_Phase3_chr${c}.hap.gz \
+        $refdir/1000GP_Phase3_chr${c}.legend.gz $refdir/1000GP_Phase3.sample \
+        --output-log chr${c}.alignments;
+done
+# format the files:
+for c in {1..22}; do
+    grep Strand chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> flip_snps.txt;
+    grep Missing chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> missing_snps.txt;
+done
+# I'm having some issues with duplicate ID that even the list-duplicate command
+# in ENIGMA's protocol is not finding, because they have different alleles. So,
+# let's remove them completely from the analysis, before we flip it using ShapeIt results:
+module load plink
+plink --bfile lastQCb37 --write-snplist --out all_snps
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist
+plink --bfile lastQCb37 --exclude duplicated_snps.snplist --make-bed --out lastQCb37_noduplicates
+# flip and remove all bad ids
+plink --bfile lastQCb37_noduplicates --flip flip_snps.txt \
+    --exclude missing_snps.txt --make-bed --out lastQCb37_noduplicates_flipped
+#reconstruct the VCFs as above to send it to the imputation server.
+module load vcftools
+for i in {1..22}; do
+    plink --bfile lastQCb37_noduplicates_flipped --chr ${i} --recode-vcf \
+        --out NCR_chr${i}_flipped;
+    vcf-sort NCR_chr"$i"_flipped.vcf | bgzip -c > NCR_chr"$i"_flipped.vcf.gz
+done
+```
+
+And then we try the imputation server again.
+
+![](images/2019-12-09-09-51-09.png)
+
+Even though it now survives the server QC, only 8 chromossomes are working
+ebcause we have a few samples with low call rate. Let's see if we can remove
+that in PLINK or if we have to go back to GenomeStudio.
+
+```bash
+export datafileraw=merged_inter_noCtrl_sexClean_noDups
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+      --make-bed --out ${datafileraw}_filtered
+export datafile=${datafileraw}_filtered
+export datafile=merged_inter_noCtrl_sexClean_noDups_filtered
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
+plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
+    --maf 0.01 --hwe 0.000001 --mind .05 --make-bed --noweb
+awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
+plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
+    --noweb --list-duplicate-vars
+plink --bfile lastQCb37 --write-snplist --out all_snps
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist
+plink --bfile lastQCb37 --exclude duplicated_snps.snplist --make-bed --out lastQCb37_noduplicates
+# flip and remove all bad ids
+plink --bfile lastQCb37_noduplicates --flip flip_snps.txt \
+    --exclude missing_snps.txt --make-bed --out lastQCb37_noduplicates_flipped
+#reconstruct the VCFs as above to send it to the imputation server.
+module load vcftools
+for i in {1..22}; do
+    plink --bfile lastQCb37_noduplicates_flipped --chr ${i} --recode-vcf \
+        --out NCR_chr${i}_flipped;
+    vcf-sort NCR_chr"$i"_flipped.vcf | bgzip -c > NCR_chr"$i"_flipped.vcf.gz
+done
+```
+
+That seems to be running now.
+
+## Strands
+
+This explanation from 23andMe is basic but easy to understand: 
+
+```DNA consists of two strands that are complementary to each other. The DNA base "A" always pairs with "T," and "G" always pairs with "C" across these two strands. One strand is called the positive (+) strand, and the other is called the negative (-) strand.
+
+The genotypes displayed on the 23andMe website, including in the Raw Data feature, always refer to the positive (+) strand on build 37 of the human reference genome.
+
+Be aware that other websites or publications may sometimes refer to the negative strand when reporting genotypes.
+
+If the possible genotypes reported by 23andMe and another source do not match, it is likely that they are referring to complementary DNA strands rather than the same strand. For example, 23andMe might report that a SNP has two versions, G and A. But other sources may report that the versions for that SNP are C and T. Both ways of reporting the SNP are correct, because the G is paired with a C on the opposite strand, and A is paired with T.
+```
+
+Each individual has two copies of each chromosome. For example:
+https://www.genome.gov/sites/default/files/tg/en/illustration/single_nucleotide_polymorphism_snps.jpg.
+So, when we say someone is T/C, assuming the top copy (copy 1) in the figure is
+always the positive (forward) strand, then we're saying they have a T and a C in that
+position. Of course, because we know that T goes to A, and C goes to G, that's
+the same as saying the individual (1 in this case) is A/G, if we have as the
+reference the reverse strand.
+
+But as far as I understand, any SNP is listed in general, and if it's an issue,
+it's just a bigger issue if the individual has two copies of that SNP. For
+example, it'd count more in a PRS analysis. But because of that, w eneed to be
+sure we're always reporting on the correct strand, both in our data storage but
+also on the base GWAS we're using.
+
+Also found this in Biostarts, a good explanation of the basics: https://www.biostars.org/p/310841/
+
+```
+major allele
+"the most common allele for a given SNP"... in the cohort in question. The cohort may be just 10 people, though, or it could be 2,504 like in 1000 Genomes Phase III. In addition, the major allele, by definition, could have a frequency of 50.5%, in which case, although it is more frequent, it is only more frequent by 0.5%. The point that I want to make is that the major allele only makes sense when you understand the cohort in which it is the major allele, and also the size of that cohort.
+
+minor allele
+As above but, yes, the reverse, in that it is the less frequent allele. Also, yes, the MAF is the frequency of the minor allele and, from the MAF, one can infer the frequency of the major allele if it is a bi-allelic site (some sites understandably are tri- or quad-allelic).
+
+On what you said about the "variation of genotypes", if a site has a very low MAF in a global cohort (i,.e. samples from various parts of the World), it may imply that the major allele is conserved and is 'fixed' in the human genome, but not necessarily. A very rare allele at such a site may, thus, be under selective pressure if it reflects positive gain of function, or it could be deleterious and more likely to be eliminated from the human lineage.
+
+risk allele
+What you said is correct. The risk allele is statistically significantly associated with risk of having a disease under study. Such an allele should have genome-wide significance and have an odds ratio > 1.0. A situation in which a major allele may be seen as the 'risk allele' is where the minor allele is found to be protective against disease by having an odds ratio < 1.0, coupled with a statistically significant p-value. However, such a situation is not usually interpreted from the context of the major allele being the risk allele.
+
+You may have been thinking about rare and common (MAF>5%) variants. For example, it is accepted (by those who actually think) that common alleles have roles in disease. An example are the variants in the CCND1 locus, which have MAFs of ~15% in Caucasians but which confer increased risk of ER+ breast cancer. Look at Rare and common variants: twenty arguments. for further reading.
+
+I should add that many rare variants may be functionless, but that they can still accumulate in the human genome and eventually become functional if combined with other nearby variants. For example, variants accumulated over time eventually form novel TSS sites, TF binding sites, histone binding sites, protein binding sites, etc.
+
+------------------------------------
+In relation to the above 3, you may enjoy reading a recent answer that I gave: A: SNP dataset and Z Score
+
+effect allele
+This isn't used that much. It is essentially the allele whose effects in relation to disease are being studied. The effect allele is therefore, invariably, the minor allele.
+
+reference allele
+If you hear this term, exercise caution. The best way to view it is as the allele that is in a particular reference build, e.g., GRCh37 / hg19, GRCh38 / hg38, etc. In some cases, however, the reference allele can be a risk allele. Read here for further information: A: Alternate nucleotide is more frequent than reference nucleotide. OMG I'm dizzy.
+
+wildtype allele
+Not the same as the reference allele. A wildtype allele is specific to your case-control study and is merely the allele that is present in your wild-type samples. This could feasibly be a minor allele, or anything else - it's specific to your study and what you view as the wild-type condition.
+
+Thank you.
+```
+
+I also found an Evernote note on converting idat to vcf, coming originally from
+Frank Donovan. I think I'm doing most of it, but there's a GenGen part that I
+need to make sure it's being performed. Also, I'm not doing the GenomeStudio
+cleaning part, but that's what Philip had said either Cristina or Qwang Mi
+should do.
+
+I think my final files sent for imputation are already corrected, given the
+shape it step. But I should probably make sure it's all kosher based on Frank's
+original note. Well, all besides the cleaning within GenomeStudio part.
+
+Since I already have all files exported to PLINK, all I actually need it the SNP
+table file. All the 2017 and 2019 boxes are OmniExprssExm_v1.4, so they can use
+the same SNP table:
+
+For reference, the filter I'm using is:
+
+![](images/2019-12-09-15-05-28.png)
+
+But I don't want to have to re-export everything, so let's just extract the
+annotated SNPs from the PLINK files. Then, we can go with the usual steps.
+
+It's just that the steps Frank outlined didn't do anything to the end .bim file.
+It's the same as the original one. But we can still use GenGen to convert the
+.bim file to .dbsnp...
+
+Well, how big of an issue is this? We are all within the Ilumina platform:
+
+```bash
+HG-02113362-DM4:all_from_chandra sudregp$ for f in `/bin/ls */*Omni*ss.csv`; do echo $f; grep -A 1 Manifests $f; done
+Shaw01_2017_OmniExprssExm_v1.4/Shaw01_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw01_2019_OmniExprssExm_v1.4/Shaw01_2019_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw02_2017_OmniExprssExm_v1.4/Shaw02_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw02_2019_OmniExprssExm_v1.4/Shaw02_2019_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw03_2017_OmniExprssExm_v1.4/Shaw03_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw03_2019_OmniExprssExm_v1.4/Shaw03_2019_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw03_OmniExprssExm/Shaw03_OmniExprssExm_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,HumanOmniExpressExome-8-v1-2-B,,,,,,,,,,,,,,,
+Shaw04_2017_OmniExprssExm_v1.4/Shaw04_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw04_OmniExprssExm/Shaw04_OmniExprssExm_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,HumanOmniExpressExome-8-v1-2-B,,,,,,,,,,,,,,,
+Shaw05_2017_OmniExprssExm_v1.4/Shaw05_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw06_2017_OmniExprssExm_v1.4/Shaw06_2017_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw07_2017_resubmission_OmniExprssExm_v1.4/Shaw07_2017_resubmission_OmniExprssExm_v1.4_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,InfiniumOmniExpressExome-8v1-4_A1,,,,,,,,,,,,,,,
+Shaw_twins_OmniExpressExome_080714/Shaw_twins_OmniExprssExm_080714_ss.csv
+[Manifests],,,,,,,,,,,,,,,,
+A,OmniExpressExome-8v1-2_A,,,,,,,,,,,,,,,
+HG-02113362-DM4:all_from_chandra sudregp$ grep -A 1 Manifest /Volumes/Shaw/CIDR/complete_05282015/Pretesting_DataRelease\:\ et\ al/rawdataset_to_PI_UW/GenomeStudio_Project_and_Files/Shaw_836_Sample_Sheet.csv 
+[Manifests],,,,,,,,,,,,,,,,
+A,HumanOmniExpressExome-8v1-2_A,,,,,,,,,,,,,,,
+```
+
+So, I'm assuming all our exports are in the same reference frame. Maybe there
+was something funky with the CIDR sample if I used the PLINK files they sent
+instead of exporting my own? Not really... I exported them myself. Were there
+any issue in our own analysis, before merging with ENIGMA? No, not really. OK,
+so I think we just need to be careful in reporting things then. And also when
+calculating PRS. That's the catch. 
+
+I wonder if I use GenGen I will be able to get away without doing the shape it
+step... let's see. I'm assuming there's no issue with our within-sample merging.
+So, let's pick up from there:
+
+```bash
+# this came from GenomeStudio
+cut -f 1 ~/data/tmp/SNP_Table.txt > annotated_snps.txt
+plink --bfile merged_inter_noCtrl_sexClean_noDups \
+    --extract annotated_snps.txt --make-bed --out tmp
+perl ~/GenGen-1.0.1/convert_bim_allele.pl tmp.bim ~/data/tmp/SNP_Table.txt \
+    --intype top --outtype dbsnp --outfile tmp.dbsnp -v
+cp tmp.dbsnp tmp.bim;
+plink --bfile tmp --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+    --make-bed --mind .05 --out tmp_filtered
+#reconstruct the VCFs as above to send it to the imputation server.
+module load vcftools
+for i in {1..22}; do
+    plink --bfile tmp_filtered --chr ${i} --recode-vcf --out tmp_chr${i};
+    vcf-sort tmp_chr"$i".vcf | bgzip -c > tmp_chr"$i".vcf.gz
+done
+```
+
+Nope, didn't work either. I think the shapeit step is quite important, because
+it basically checks how they should be flipped with respect to the forward
+strand in the reference genome. So, in the end our flipped file is in accord
+with the forward strand. At this point, NCR_chr"$i"_flipped.vcf.gz, which is
+what we impute. Now, we need to grab that, filter, etc.
+
 
 # TODO
-* understand strand issues!
-* make sure all samples have good call rates!
-* mark in Labmatrix those bad samples?  
+* mark in Labmatrix those bad samples (bad call rates, or filtered for some
+  other reason)?  
 * compute PRS on imputed data and non-imputed, using new version of PrSice
