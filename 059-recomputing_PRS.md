@@ -556,6 +556,7 @@ with the forward strand. At this point, NCR_chr"$i"_flipped.vcf.gz, which is
 what we impute. Now, we need to grab that, filter, etc.
 
 
+
 # TODO
 * mark in Labmatrix those bad samples (bad call rates, or filtered for some
   other reason)?  
