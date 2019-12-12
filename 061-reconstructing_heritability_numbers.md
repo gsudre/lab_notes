@@ -117,6 +117,24 @@ done
 We should now check if our heritability values from before are still there.
 Hand-copied the results to medication_results.xlsx.
 
+# 2019-12-12 15:56:54
+
+Let's redo the SX analysis using all (possibly 4) time points for each subject:
+
+```r
+dti = read.csv('~/philip/MS_h2_developing_connectivity_11242019/new_fmri_pheno/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+fmri = read.csv('~/philip/MS_h2_developing_connectivity_11242019/new_fmri_pheno/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+bothd = dti[, c(1, 2, 3, 4, 9, 11, 12, 95, 96, 97, 98)]
+bothf = fmri[, c(1, 2, 40, 41, 45, 46, 47, 51, 52, 53, 54)]
+colnames(bothd) = c('MRN', 'maskid', 'DOS', 'sex', 'age_at_scan', 'extid', 
+'nucid', 'DOA', 'SX_inatt', 'SX_HI', 'source')
+colnames(bothf) = c('MRN', 'maskid', 'DOS', 'sex', 'age_at_scan', 'extid', 
+'nucid', 'DOA', 'SX_inatt', 'SX_HI', 'source')
+both = rbind(bothd, bothf)
+both = both[!duplicated(both$maskid), ]
+write.csv(both, file='~/philip/MS_h2_developing_connectivity_11242019/new_fmri_pheno/both_modalities_twoTimePoints.csv', row.names=F)
+```
+
 
 
 # TODO
