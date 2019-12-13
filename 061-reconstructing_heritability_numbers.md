@@ -307,6 +307,15 @@ meff = (sum(sqrt(absev))^2)/sum(absev)
 cat(sprintf('Galwey Meff = %.2f\n', meff))
 ```
 
+## Plotting h2 matrix
+
+```r
+cc = read.csv('~/tmp/fmri_h2r.csv')
+rownames(cc) = cc$net
+cc$net=NULL
+corrplot(as.matrix(cc), method='color', type='upper', is.corr=F)
+```
+
 # TODO
 * redo figure 1
 * redo figure 3
