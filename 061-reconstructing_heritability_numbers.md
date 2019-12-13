@@ -316,6 +316,40 @@ cc$net=NULL
 corrplot(as.matrix(cc), method='color', type='upper', is.corr=F)
 ```
 
+## numbers for ST1
+
+```r
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+bi = c()
+for (i in seq(1,nrow(data),2)) {
+    if (data$age_at_scan[i] > data$age_at_scan[i+1]) {
+        bi=c(bi, i+1)
+    }
+    else {
+        bi = c(bi, i)
+    }
+}
+fu = setdiff(1:nrow(data), bi)
+
+# determine DSM5 DX only within baseline visits
+data$DX = NA
+for (i in 1:length(bi)) {
+    if (data[bi[i], 'source'] == 'DICA_on') {
+        data[bi[i], 'DX'] = 'ADHD'
+        data[fu[i], 'DX'] = 'ADHD'
+    } else {
+        if ((data[bi[i], 'SX_inatt'] >= 6) || (data[bi[i], 'SX_hi'] >= 6)) {
+            data[bi[i], 'DX'] = 'ADHD'
+            data[fu[i], 'DX'] = 'ADHD'
+        } else {
+            data[bi[i], 'DX'] = 'NV'
+            data[fu[i], 'DX'] = 'NV'
+        }
+    }
+}
+```
+
+
 # TODO
 * redo figure 1
 * redo figure 3
