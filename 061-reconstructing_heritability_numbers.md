@@ -307,13 +307,42 @@ meff = (sum(sqrt(absev))^2)/sum(absev)
 cat(sprintf('Galwey Meff = %.2f\n', meff))
 ```
 
+Checking that there are no issues with merging.
+
+```r
+dti = read.csv('~/philip/MS_h2_developing_connectivity_11242019/new_fmri_pheno/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('~/data/heritability_change/clinical_09182019.csv')
+dti$DOA = as.character(dti$record.date.collected...Scan)
+df = mergeOnClosestDate(dti, clin,
+                        unique(dti$Medical.Record...MRN...Subjects),
+                         x.id='Medical.Record...MRN...Subjects')
+> all.equal(df$SX_hi.x, as.numeric(as.character(df$SX_hi.y)))
+[1] TRUE
+> all.equal(df$SX_inatt.x, as.numeric(as.character(df$SX_inatt.y)))
+[1] TRUE
+
+fmri = read.csv('~/philip/MS_h2_developing_connectivity_11242019/new_fmri_pheno/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+fmri$DOA = as.character(fmri$record.date.collected)
+df = mergeOnClosestDate(fmri, clin,
+                        unique(fmri$Medical.Record...MRN),
+                         x.id='Medical.Record...MRN')
+> all.equal(df$SX_hi.x, as.numeric(as.character(df$SX_hi.y)))
+[1] TRUE
+> all.equal(df$SX_inatt.x, as.numeric(as.character(df$SX_inatt.y)))
+[1] TRUE
+```
+
+OK, no issues there.
+
 ## Plotting h2 matrix
 
 ```r
+library(corrplot)
 cc = read.csv('~/tmp/fmri_h2r.csv')
 rownames(cc) = cc$net
 cc$net=NULL
-corrplot(as.matrix(cc), method='color', type='upper', is.corr=F)
+corrplot(as.matrix(cc), method='color', type='upper', is.corr=F, cl.lim=c(0,.56), addgrid.col='grey')
 ```
 
 ## numbers for ST1
