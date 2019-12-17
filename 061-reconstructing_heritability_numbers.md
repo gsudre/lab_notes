@@ -348,35 +348,115 @@ corrplot(as.matrix(cc), method='color', type='upper', is.corr=F, cl.lim=c(0,.56)
 ## numbers for ST1
 
 ```r
-data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
-bi = c()
-for (i in seq(1,nrow(data),2)) {
-    if (data$age_at_scan[i] > data$age_at_scan[i+1]) {
-        bi=c(bi, i+1)
-    }
-    else {
-        bi = c(bi, i)
-    }
-}
-fu = setdiff(1:nrow(data), bi)
+> data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+> bi = c()
+> for (i in seq(1,nrow(data),2)) {
++     if (data$age_at_scan[i] > data$age_at_scan[i+1]) {
++         bi=c(bi, i+1)
++     }
++     else {
++         bi = c(bi, i)
++     }
++ }
+> fu = setdiff(1:nrow(data), bi)
+> 
+> # determine DSM5 DX only within baseline visits
+> data$DX = NA
+> for (i in 1:length(bi)) {
++     if ((data[bi[i], 'SX_inatt'] >= 6) || (data[bi[i], 'SX_hi'] >= 6)) {
++         data[bi[i], 'DX'] = 'ADHD'
++         data[fu[i], 'DX'] = 'ADHD'
++     } else {
++         data[bi[i], 'DX'] = 'NV'
++         data[fu[i], 'DX'] = 'NV'
++     }
++ }
+> ages = data[fu,'age_at_scan']
+> dx = data[fu, 'DX']
+> sd(ages[dx=='ADHD'])
+[1] 2.437748
+> sd(ages[dx=='NV'])
+[1] 2.487363
+> t.test(ages[dx=='ADHD'], ages[dx=='NV'])
 
-# determine DSM5 DX only within baseline visits
-data$DX = NA
-for (i in 1:length(bi)) {
-    if (data[bi[i], 'source'] == 'DICA_on') {
-        data[bi[i], 'DX'] = 'ADHD'
-        data[fu[i], 'DX'] = 'ADHD'
-    } else {
-        if ((data[bi[i], 'SX_inatt'] >= 6) || (data[bi[i], 'SX_hi'] >= 6)) {
-            data[bi[i], 'DX'] = 'ADHD'
-            data[fu[i], 'DX'] = 'ADHD'
-        } else {
-            data[bi[i], 'DX'] = 'NV'
-            data[fu[i], 'DX'] = 'NV'
-        }
-    }
-}
+        Welch Two Sample t-test
+
+data:  ages[dx == "ADHD"] and ages[dx == "NV"]
+t = 0.6568, df = 220.69, p-value = 0.512
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.4312725  0.8624207
+sample estimates:
+mean of x mean of y 
+ 12.86026  12.64468 
+
+> ages = data[bi,'age_at_scan']
+> dx = data[bi, 'DX']
+> sd(ages[dx=='ADHD'])
+[1] 2.447863
+> sd(ages[dx=='NV'])
+[1] 2.575863
+> t.test(ages[dx=='ADHD'], ages[dx=='NV'])
+
+        Welch Two Sample t-test
+
+data:  ages[dx == "ADHD"] and ages[dx == "NV"]
+t = -0.728, df = 222.14, p-value = 0.4674
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.9027637  0.4157060
+sample estimates:
+mean of x mean of y 
+ 10.25688  10.50040 
 ```
+
+# 2019-12-16 14:06:26
+
+From what I can tell, the med_binary is zero for no_other_psychotropics, and
+it's 1 only for non_stimADHD_meds and yes for meds. Philip sent me the numbers
+for prop_on_psychostim for everyone whose time in the study changed. I'll re-run
+the numbers now, and then I'll need to finish up the table.
+
+But because these numbers are based on the whole study, as we added new fMRI
+timepoints the DTI results will change as well. So, let's re-run DTI too.
+
+```bash
+cd ~/data/heritability_change/;
+for p in conn_SalVentAttnTOCont conn_DorsAttnTOSalVentAttn; do
+    for c in Prop_on_psychostim Med_binary comorbid_binary; do
+        solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_meds $p $c;
+     done;
+     solar run_phen_var_OD_xcp_meds_comb3 rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_meds $p;
+done
+for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
+    for c in Prop_on_psychostim Med_binary comorbid_binary; do
+        solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds $p $c;
+     done;
+     solar run_phen_var_OD_tracts_meds_comb3 dti_JHUtracts_ADRDonly_OD0.95_meds $p;
+done
+for p in conn_SalVentAttnTOCont conn_DorsAttnTOSalVentAttn; do
+    for c in Prop_on_psychostim Med_binary; do
+        solar run_phen_var_OD_xcp_meds rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_meds_nocomorbid $p $c;
+     done;
+     solar run_phen_var_OD_xcp rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_meds_nocomorbid ${p}
+     solar run_phen_var_OD_xcp_meds_comb2 rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_meds_nocomorbid $p;
+done
+for p in rd_18 rd_5 rd_2 ad_2 rd_16 ad_10; do
+    for c in Prop_on_psychostim Med_binary; do
+        solar run_phen_var_OD_tracts_meds dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p $c;
+     done;
+     solar run_phen_var_OD_tracts dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid ${p}
+     solar run_phen_var_OD_tracts_meds_comb2 dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid $p;
+done
+```
+
+We should now check if our heritability values from before are still there.
+Hand-copied the results to medication_results_fixed.xlsx. For example:
+
+```bash
+grep -r H2r dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid/*/polygenic.out | grep "p ="
+```
+
 
 
 # TODO

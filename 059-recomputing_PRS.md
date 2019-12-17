@@ -555,7 +555,18 @@ strand in the reference genome. So, in the end our flipped file is in accord
 with the forward strand. At this point, NCR_chr"$i"_flipped.vcf.gz, which is
 what we impute. Now, we need to grab that, filter, etc.
 
+# 2019-12-17 15:08:24
 
+So, I downloaded the files from the imputation server. Now, it's just a matter
+of converting it back to PLINK and running PRSice. 
+
+```bash
+# sinteractive
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG
+for f in `ls *zip`; do unzip -P asbNBUM1U8zqq $f; done
+# I then copied all the uncompressed files to NCR/genotyping/imputations/1KG_20191217
+
+```
 
 # TODO
 * mark in Labmatrix those bad samples (bad call rates, or filtered for some
