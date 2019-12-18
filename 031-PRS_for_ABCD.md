@@ -766,3 +766,226 @@ rs10000092
 
 But it's not just an issue of numbers vs letters, because if I try converting it
 using --aleleACGT they don't match either. Need to read more about it.
+
+# 2019-12-18 15:22:33
+
+I downloaded the new ABCD data, so let's impute and run PRS again on it. Before
+we do any of that, let's check on sgender assignments of this new dataset, and
+take the usual ShapeIt steps:
+
+```bash
+# sinteractive
+[sudregp@cn2167 v201]$ pwd
+/data/NCR_SBRB/ABCD/v201
+[sudregp@cn2167 v201]$ wc -l ABCD_release_2.0.1_r1.fam
+10627 ABCD_release_2.0.1_r1.fam
+```
+
+OK, doing good in terms of using the correct file, based on the README for
+release 2.0.1. Now, we need to update sex and remove problematic IDs. In fact,
+let's just go ahead and use the exact same pipeline we used for our own data, in
+note 59:
+
+```bash
+# used abcddemo01.txt to create the update file
+plink --bfile ABCD_release_2.0.1_r1 --update-sex update_sex.txt --make-bed \
+  --out ABCD_2.0.1_sex;
+plink --bfile ABCD_2.0.1_sex --check-sex;
+```
+
+PLINK found problems determining the sex of 216 samples.  Since I cannot tell
+where the error actually is, I'll just go ahead and remove those IDs. 
+
+```bash
+grep "PROBLEM" plink.sexcheck | awk '{print $1, $2}' >> failed_sex_check.txt;
+plink --bfile ABCD_2.0.1_sex --remove failed_sex_check.txt --make-bed \
+  --out ABCD_2.0.1_sexClean;
+```
+
+Time to check for identical samples. Here I'll need further investigation to see
+if they're indeed twins, as I don't expect subjects to have more than one
+sample. In any case, whether we'll use twins later will depend on the analysis.
+
+```bash
+plink --bfile ABCD_2.0.1_sexClean --genome
+awk '{if ($10 > .95) print $1, $2, $3, $4}' plink.genome | wc -l
+```
+
+**OK, so there are 364 pairs of identical samples. Yes, they could just be twins,
+so we'll need to be careful when doing further analysis.**
+
+From now on, it's just a matter of following the ENIGMA imputation protocol. But
+I'll just go ahead and copy what I did in note 59 because ShapeIt seems to be
+quite necessary for the alignment.
+
+```bash
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bed.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bim.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.fam.gz"
+# Filter SNPs out from your dataset which do not meet Quality Control criteria
+# (Minor Allele Frequency < 0.01; Genotype Call Rate < 95%; Hardy­Weinberg
+# Equilibrium < 1x10­6)
+export datafileraw=ABCD_2.0.1_sexClean
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+      --make-bed --out ${datafileraw}_filtered
+# Unzip the HM3 genotypes. Prepare the HM3 and the raw genotype data by
+# extracting only snps that are in common between the two genotype data sets
+# this avoids exhausting the system memory. We are also removing the strand
+# ambiguous snps from the genotyped data set to avoid strand mismatch among
+# these snps. Your genotype files should be filtered to remove markers which
+# do not satisfy the quality control criteria above.
+gunzip HM3_b37*.gz
+export datafile=${datafileraw}_filtered
+awk '{print $2}' HM3_b37.bim > HM3_b37.snplist.txt
+plink --bfile ${datafile} --extract HM3_b37.snplist.txt --make-bed --noweb --out local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > local.snplist.txt
+plink --bfile HM3_b37 --extract local.snplist.txt --make-bed --noweb --out external
+# Merge the two sets of plink files. In merging the two files plink will check
+# for strand differences. If any strand differences are found plink will crash
+# with the following error (ERROR: Stopping due to mis­matching SNPs - check +/­
+# strand?). Ignore warnings regarding different physical positions
+plink --bfile local --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# got the error
+plink --bfile local --flip HM3_b37merge-merge.missnp --make-bed --noweb \
+  --out flipped
+plink --bfile flipped --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# running MDS analysis... switching to 10 dimensions to conform to old analysis
+plink --bfile HM3_b37merge --cluster --mind .05 --mds-plot 10 \
+  --extract local.snplist.txt --noweb --out HM3_b37mds
+# making the MDS plot
+awk 'BEGIN{OFS=","};{print $1, $2, $3, $4, $5, $6, $7}' HM3_b37mds.mds >> HM3_b37mds2R.mds.csv
+```
+
+<!-- Then, I made the plot locally:
+
+```R
+library(calibrate)
+mds.cluster = read.csv("~/data/tmp/HM3_b37mds2R.mds.csv", header=T);
+colors=rep("red",length(mds.cluster$C1));
+colors[which(mds.cluster$FID == "CEU")] <- "lightblue";
+colors[which(mds.cluster$FID == "CHB")] <- "brown";
+colors[which(mds.cluster$FID == "YRI")] <- "yellow";
+colors[which(mds.cluster$FID == "TSI")] <- "green";
+colors[which(mds.cluster$FID == "JPT")] <- "purple";
+colors[which(mds.cluster$FID == "CHD")] <- "orange";
+colors[which(mds.cluster$FID == "MEX")] <- "grey50";
+colors[which(mds.cluster$FID == "GIH")] <- "black";
+colors[which(mds.cluster$FID == "ASW")] <- "darkolivegreen";
+colors[which(mds.cluster$FID == "LWK")] <- "magenta";
+colors[which(mds.cluster$FID == "MKK")] <- "darkblue";
+# pdf(file="mdsplot.pdf",width=7,height=7)
+plot(rev(mds.cluster$C2), rev(mds.cluster$C1), col=rev(colors),
+         ylab="Dimension 1", xlab="Dimension 2",pch=20)
+legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
+                     "MEX", "GIH", "ASW","LWK", "MKK"),
+       fill=c("red", "lightblue", "brown", "yellow", "green", "purple",
+              "orange", "grey50", "black", "darkolivegreen", "magenta",
+              "darkblue"))
+# if you want to know the subject ID label of each sample on the graph,
+# uncomment the value below
+# FIDlabels <- c("CEU", "CHB", "YRI", "TSI", "JPT", "CHD", "MEX", "GIH", "ASW",
+#                "LWK", "MKK");
+# textxy(mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C2"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C1"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "IID"])
+# dev.off();
+```
+
+![](images/2019-12-06-18-06-07.png)
+
+Now, for the imputation:
+
+```bash
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
+plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
+  --maf 0.01 --hwe 0.000001 --make-bed --noweb
+awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
+plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
+  --noweb --list-duplicate-vars
+plink --bfile lastQCb37 --exclude lastQCb37.dupvar --out lastQCb37_noduplicates \
+  --make-bed --noweb
+module load vcftools
+for i in {1..22}; do
+  plink --bfile lastQCb37_noduplicates --chr $i --recode vcf --out NCR_chr"$i";
+  vcf-sort NCR_chr"$i".vcf | bgzip -c > NCR_chr"$i".vcf.gz
+done
+```
+
+Then, uploading to Michigan Imputation Server.
+
+![](images/2019-12-06-17-57-52.png)
+
+
+But I got an error from the imputation server:
+
+```
+Warning: 1 Chunk(s) excluded: < 3 SNPs (see chunks-excluded.txt for details).
+Warning: 145 Chunk(s) excluded: at least one sample has a call rate < 50.0% (see chunks-excluded.txt for details).
+Remaining chunk(s): 8
+Error: More than 100 obvious strand flips have been detected. Please check strand. Imputation cannot be started!
+```
+
+# 2019-12-09 09:06:13
+
+I certainly need to understand the strand issue a bit better. But since
+imputation might take a while, for now I'll follow the steps I've taken before
+to fix the strand issue, and try that:
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2
+module load shapeit
+refdir=/fdb/impute2/1000Genomes_Phase3_integrated_haplotypes_Oct2014/1000GP_Phase3/
+for c in {1..22}; do
+    shapeit -check -T 16 -V NCR_chr${c}.vcf.gz \
+        --input-ref $refdir/1000GP_Phase3_chr${c}.hap.gz \
+        $refdir/1000GP_Phase3_chr${c}.legend.gz $refdir/1000GP_Phase3.sample \
+        --output-log chr${c}.alignments;
+done
+# format the files:
+for c in {1..22}; do
+    grep Strand chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> flip_snps.txt;
+    grep Missing chr${c}.alignments.snp.strand | cut -f 4 | sort | uniq >> missing_snps.txt;
+done
+# I'm having some issues with duplicate ID that even the list-duplicate command
+# in ENIGMA's protocol is not finding, because they have different alleles. So,
+# let's remove them completely from the analysis, before we flip it using ShapeIt results:
+module load plink
+plink --bfile lastQCb37 --write-snplist --out all_snps
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist
+plink --bfile lastQCb37 --exclude duplicated_snps.snplist --make-bed --out lastQCb37_noduplicates
+# flip and remove all bad ids
+plink --bfile lastQCb37_noduplicates --flip flip_snps.txt \
+    --exclude missing_snps.txt --make-bed --out lastQCb37_noduplicates_flipped
+#reconstruct the VCFs as above to send it to the imputation server.
+module load vcftools
+for i in {1..22}; do
+    plink --bfile lastQCb37_noduplicates_flipped --chr ${i} --recode-vcf \
+        --out NCR_chr${i}_flipped;
+    vcf-sort NCR_chr"$i"_flipped.vcf | bgzip -c > NCR_chr"$i"_flipped.vcf.gz
+done
+```
+
+And then we try the imputation server again.
+
+![](images/2019-12-09-09-51-09.png)
+
+Even though it now survives the server QC, only 8 chromossomes are working
+ebcause we have a few samples with low call rate. Let's see if we can remove
+that in PLINK or if we have to go back to GenomeStudio.
+
+```bash
+export datafileraw=merged_inter_noCtrl_sexClean_noDups
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+      --make-bed --out ${datafileraw}_filtered
+export datafile=${datafileraw}_filtered
+export datafile=merged_inter_noCtrl_sexClean_noDups_filtered
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
+plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
+    --maf 0.01 --hwe 0.000001 --mind .05 --make-bed --noweb
+awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
+plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
+    --noweb --list-duplicate-vars -->
+
+ -->

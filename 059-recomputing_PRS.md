@@ -565,8 +565,37 @@ of converting it back to PLINK and running PRSice.
 cd /data/NCR_SBRB/NCR_genetics/v2/1KG
 for f in `ls *zip`; do unzip -P asbNBUM1U8zqq $f; done
 # I then copied all the uncompressed files to NCR/genotyping/imputations/1KG_20191217
-
 ```
+
+# 2019-12-18 15:10:00
+
+Time to create the PLINK version.
+
+```bash
+# sinteractive
+# for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --biallelic-only strict --make-bed --out chr${c}; done
+for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --make-bed --out chr${c}; done
+rm -rf merge_list.txt; for c in {2..22}; do echo "chr${c}" >> merge_list.txt; done
+```
+
+<!-- box=merged_HRC
+plink --bfile chr1 --merge-list merge_list.txt  --make-bed --out ${box}
+
+Had issues with multi-allelic variants. Let's remove them from the binary file before the merge. (step above necessary to create the missnp file)
+
+for c in {1..22}; do plink --bfile chr${c} --exclude ${box}-merge.missnp --make-bed --out chr${c}_biAllelicOnly; done 
+
+plink --bfile chr1_biAllelicOnly --merge-list merge_list2.txt --make-bed --out ${box}_biAllelicOnly
+
+Have to do name last because we need the original names to do cleaning based on imputation stats. And now do some cleaning:
+
+for c in {1..22}; do echo $c; zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - >> r2s.txt; done
+
+awk '$2 > .01 && $3 > .5 { print }' r2s.txt > rsids_MAFbtp01_rsbtp5.txt
+plink --bfile ${box}_biAllelicOnly --extract rsids_MAFbtp01_rsbtp5.txt --geno .05 --make-bed --out ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5
+
+plink --bfile ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5 --update-name unique_rename_ids.txt --make-bed --out ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5_renamed -->
+
 
 # TODO
 * mark in Labmatrix those bad samples (bad call rates, or filtered for some
