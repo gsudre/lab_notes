@@ -578,24 +578,140 @@ for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --make-bed --out chr${c}; d
 rm -rf merge_list.txt; for c in {2..22}; do echo "chr${c}" >> merge_list.txt; done
 ```
 
-<!-- box=merged_HRC
-plink --bfile chr1 --merge-list merge_list.txt  --make-bed --out ${box}
+# 2019-12-19 09:43:35
 
-Had issues with multi-allelic variants. Let's remove them from the binary file before the merge. (step above necessary to create the missnp file)
+That took a while... let's keep on going:
 
-for c in {1..22}; do plink --bfile chr${c} --exclude ${box}-merge.missnp --make-bed --out chr${c}_biAllelicOnly; done 
-
-plink --bfile chr1_biAllelicOnly --merge-list merge_list2.txt --make-bed --out ${box}_biAllelicOnly
-
-Have to do name last because we need the original names to do cleaning based on imputation stats. And now do some cleaning:
-
+```bash
+plink --bfile chr1 --merge-list merge_list.txt  --make-bed --out NCR_1KG
+# cleaning based on imputation stats
 for c in {1..22}; do echo $c; zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - >> r2s.txt; done
+awk '$2 > .01 && $3 > .9 { print }' r2s.txt > rsids_MAFbtp01_rsbtp9.txt
+plink --bfile NCR_1KG --extract rsids_MAFbtp01_rsbtp9.txt --geno .05 --make-bed --out NCR_1KG_genop05MAFbtp01rsbtp9
+```
 
-awk '$2 > .01 && $3 > .5 { print }' r2s.txt > rsids_MAFbtp01_rsbtp5.txt
-plink --bfile ${box}_biAllelicOnly --extract rsids_MAFbtp01_rsbtp5.txt --geno .05 --make-bed --out ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5
+Let's use the HRC variables just for renaming, as I can't find a similar file
+for 1KG.
 
-plink --bfile ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5 --update-name unique_rename_ids.txt --make-bed --out ${box}_biAllelicOnly_genop05MAFbtp01rsbtp5_renamed -->
+```bash
+wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+gunzip HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+awk '{print $1 ":" $2 " " $3}' HRC.r1-1.GRCh37.wgs.mac5.sites.tab | tail -n +2 > rename_ids.txt 
+cat rename_ids.txt | sort -u -k 1,1 | uniq > unique_rename_ids.txt
+# that took a while...
+# we need to do two renaming. First, remove the variant from the name column
+cut -f 2 NCR_1KG_genop05MAFbtp01rsbtp9.bim > tmp_name.txt;
+cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+paste tmp_name.txt tmp_name2.txt > update_snps1.txt
+plink --bfile NCR_1KG_genop05MAFbtp01rsbtp9 --update-name update_snps1.txt \
+    --make-bed --out tmp
+plink --bfile tmp --write-snplist --out all_snps
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist
+plink --bfile tmp --exclude duplicated_snps.snplist --out tmp_nodups --make-bed --noweb
+# then remove positional to rs ids
+plink --bfile tmp_nodups --update-name unique_rename_ids.txt \
+    --make-bed --out NCR_1KG_genop05MAFbtp01rsbtp9_renamed
+```
 
+Finally, let's run PRSice.
+
+```bash
+module load R
+Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.2.5/PRSice_linux \
+    --base ~/pgc2017/adhd_jun2017  \
+    --target /data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out NCR_1KG_PRS_adhd_jun2017
+```
+
+All results are currently in NCR_1KG_PRS_adhd_jun2017.all.score. Now we just
+need to parse them to have MRNs and NSBs. But, we might as well run it for the
+other base datasets as well:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.2.5/PRSice_linux \
+    --base ~/pgc2017/rps.txt  \
+    --target /data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out NCR_1KG_PRS_SCZ
+
+Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.2.5/PRSice_linux \
+    --base ~/pgc2017/daner_AUT_meta14_WW_all.hg19.Mar2016_info_0.60_maf_0.05_release_Jun2017.tsv \
+    --target /data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --all-score --stat OR \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out NCR_1KG_PRS_ASD
+
+Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.2.5/PRSice_linux \
+    --base ~/pgc2017/adhd_eur_jun2017  \
+    --target /data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --all-score --stat OR \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out NCR_1KG_PRS_adhd_eur_jun2017
+```
+
+Finally, merge everything:
+
+```r
+# this takes a while because we're reading in TXT files!
+a = read.table('/data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_PRS_adhd_jun2017.all.score', header=1)
+b = read.table('/data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_PRS_adhd_eur_jun2017.all.score', header=1)
+s = read.table('/data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_PRS_SCZ.all.score', header=1)
+d = read.table('/data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_PRS_ASD.all.score', header=1)
+pcs = read.table('/data/NCR_SBRB/NCR_genetics/v2/HM3_b37mds.mds', header=1)
+
+# keep only some of the PRs columns that were created
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4', 'X0.3', 'X0.2')
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHD_PRS%f', x)))
+af = a[, mycols]
+colnames(af) = new_names
+bf = b[, mycols]
+new_names = gsub('ADHD', x=new_names, 'ADHDeur')
+colnames(bf) = new_names
+df = d[, mycols]
+new_names = gsub('ADHDeur', x=new_names, 'ASD')
+colnames(df) = new_names
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4001', 'X0.3002', 'X0.2002')
+sf = s[,mycols]
+new_names = gsub('ASD', x=new_names, 'SCZ')
+colnames(sf) = new_names
+
+m = merge(af, bf, by='IID')
+m = merge(m, df, by='IID')
+m = merge(m, sf, by='IID')
+
+pcsf = pcs[, c(2, 4:13)]
+pcsf = pcsf[!duplicated(pcsf[, 1]), ]
+new_names = c('IID', sapply(1:10, function(x) sprintf('PC%.2d', x)))
+colnames(pcsf) = new_names
+m = merge(m, pcsf, by='IID', all.x=T, all.y=F)
+m = m[!duplicated(m[, 1]), ]
+
+write.csv(m, file='/data/NCR_SBRB/NCR_genetics/v2/1KG/merged_NCR_1KG_PRS_12192019.csv', row.names=F)
+```
+
+Note that I don't think I need to change the column names for ADHD. The README
+file says A1 is the reference allele for OR, and OR is the odds ratio for the
+effect of the A1 allele. In PRSize terms, A1 is the effective allele, so I think
+we should be good.
+
+Now I just need to merge that to MRN, and we're good to go.
 
 # TODO
 * mark in Labmatrix those bad samples (bad call rates, or filtered for some

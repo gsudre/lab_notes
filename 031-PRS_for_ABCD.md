@@ -858,11 +858,13 @@ plink --bfile HM3_b37merge --cluster --mind .05 --mds-plot 10 \
 awk 'BEGIN{OFS=","};{print $1, $2, $3, $4, $5, $6, $7}' HM3_b37mds.mds >> HM3_b37mds2R.mds.csv
 ```
 
-<!-- Then, I made the plot locally:
+# 2019-12-19 09:28:10
+
+Then, I made the plot locally:
 
 ```R
 library(calibrate)
-mds.cluster = read.csv("~/data/tmp/HM3_b37mds2R.mds.csv", header=T);
+mds.cluster = read.csv("~/tmp/HM3_b37mds2R.mds.csv", header=T);
 colors=rep("red",length(mds.cluster$C1));
 colors[which(mds.cluster$FID == "CEU")] <- "lightblue";
 colors[which(mds.cluster$FID == "CHB")] <- "brown";
@@ -893,52 +895,35 @@ legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
 # dev.off();
 ```
 
-![](images/2019-12-06-18-06-07.png)
+![](images/2019-12-19-09-31-10.png)
 
 Now, for the imputation:
 
 ```bash
-awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list;
+# there are also many SNPs in the form *MT_Physical.Position*, so let's get rid of those too
+grep Physical.Position $datafile.bim | awk '{print $2}' >> ambig.list;
 plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
-  --maf 0.01 --hwe 0.000001 --make-bed --noweb
+    --maf 0.01 --hwe 0.000001 --make-bed --noweb
 awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
 plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
-  --noweb --list-duplicate-vars
+    --noweb --list-duplicate-vars
 plink --bfile lastQCb37 --exclude lastQCb37.dupvar --out lastQCb37_noduplicates \
-  --make-bed --noweb
+    --make-bed --noweb
 module load vcftools
 for i in {1..22}; do
-  plink --bfile lastQCb37_noduplicates --chr $i --recode vcf --out NCR_chr"$i";
-  vcf-sort NCR_chr"$i".vcf | bgzip -c > NCR_chr"$i".vcf.gz
+    plink --bfile lastQCb37_noduplicates --chr $i --recode vcf --out ABCD_chr"$i";
+    vcf-sort ABCD_chr"$i".vcf | bgzip -c > ABCD_chr"$i".vcf.gz
 done
 ```
 
-Then, uploading to Michigan Imputation Server.
-
-![](images/2019-12-06-17-57-52.png)
-
-
-But I got an error from the imputation server:
-
-```
-Warning: 1 Chunk(s) excluded: < 3 SNPs (see chunks-excluded.txt for details).
-Warning: 145 Chunk(s) excluded: at least one sample has a call rate < 50.0% (see chunks-excluded.txt for details).
-Remaining chunk(s): 8
-Error: More than 100 obvious strand flips have been detected. Please check strand. Imputation cannot be started!
-```
-
-# 2019-12-09 09:06:13
-
-I certainly need to understand the strand issue a bit better. But since
-imputation might take a while, for now I'll follow the steps I've taken before
-to fix the strand issue, and try that:
+Let's now check the strand using shape it before uploading.
 
 ```bash
-cd /data/NCR_SBRB/NCR_genetics/v2
-module load shapeit
+module load shapeit/2.r904
 refdir=/fdb/impute2/1000Genomes_Phase3_integrated_haplotypes_Oct2014/1000GP_Phase3/
 for c in {1..22}; do
-    shapeit -check -T 16 -V NCR_chr${c}.vcf.gz \
+    shapeit -check -T 16 -V ABCD_chr${c}.vcf.gz \
         --input-ref $refdir/1000GP_Phase3_chr${c}.hap.gz \
         $refdir/1000GP_Phase3_chr${c}.legend.gz $refdir/1000GP_Phase3.sample \
         --output-log chr${c}.alignments;
@@ -962,30 +947,10 @@ plink --bfile lastQCb37_noduplicates --flip flip_snps.txt \
 module load vcftools
 for i in {1..22}; do
     plink --bfile lastQCb37_noduplicates_flipped --chr ${i} --recode-vcf \
-        --out NCR_chr${i}_flipped;
-    vcf-sort NCR_chr"$i"_flipped.vcf | bgzip -c > NCR_chr"$i"_flipped.vcf.gz
+        --out ABCD_chr${i}_flipped;
+    vcf-sort ABCD_chr"$i"_flipped.vcf | bgzip -c > ABCD_chr"$i"_flipped.vcf.gz
 done
 ```
 
 And then we try the imputation server again.
 
-![](images/2019-12-09-09-51-09.png)
-
-Even though it now survives the server QC, only 8 chromossomes are working
-ebcause we have a few samples with low call rate. Let's see if we can remove
-that in PLINK or if we have to go back to GenomeStudio.
-
-```bash
-export datafileraw=merged_inter_noCtrl_sexClean_noDups
-plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
-      --make-bed --out ${datafileraw}_filtered
-export datafile=${datafileraw}_filtered
-export datafile=merged_inter_noCtrl_sexClean_noDups_filtered
-awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep ambig | awk '{print $1}' > ambig.list
-plink --bfile $datafile --exclude ambig.list --make-founders --out lastQC \
-    --maf 0.01 --hwe 0.000001 --mind .05 --make-bed --noweb
-awk '{print $2, $1":"$4}' lastQC.bim > updateSNPs.txt
-plink --bfile lastQC --update-name updateSNPs.txt --make-bed --out lastQCb37 \
-    --noweb --list-duplicate-vars -->
-
- -->
