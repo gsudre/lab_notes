@@ -457,10 +457,332 @@ Hand-copied the results to medication_results_fixed.xlsx. For example:
 grep -r H2r dti_JHUtracts_ADRDonly_OD0.95_meds_nocomorbid/*/polygenic.out | grep "p ="
 ```
 
+# 2019-12-26 11:52:26
+
+Philip had asked me to show the slope values and how significant they are. I had
+initially written code to just do a regular t-test, but I think it makes more
+sense to do the actual LME I used for regression. So, let's redo that:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ad_10', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_11', '%s ~ goodVolumes'))
+formulas = rbind(formulas, c('ad_12', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_13', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_14', '%s ~ meanX.rot'))
+formulas = rbind(formulas, c('ad_15', '%s ~ 1'))
+formulas = rbind(formulas, c('ad_16', '%s ~ 1'))
+formulas = rbind(formulas, c('ad_17', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_18', '%s ~ goodVolumes'))
+formulas = rbind(formulas, c('ad_19', '%s ~ meanX.trans + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_1', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_20', '%s ~ meanX.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_2', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_3', '%s ~ goodVolumes'))
+formulas = rbind(formulas, c('ad_4', '%s ~ meanY.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_5', '%s ~ 1'))
+formulas = rbind(formulas, c('ad_6', '%s ~ goodVolumes'))
+formulas = rbind(formulas, c('ad_7', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_8', '%s ~ meanX.trans'))
+formulas = rbind(formulas, c('ad_9', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_10', '%s ~ meanZ.trans'))
+formulas = rbind(formulas, c('rd_11', '%s ~ meanY.trans'))
+formulas = rbind(formulas, c('rd_12', '%s ~ meanY.trans'))
+formulas = rbind(formulas, c('rd_13', '%s ~ meanX.rot'))
+formulas = rbind(formulas, c('rd_14', '%s ~ meanX.rot'))
+formulas = rbind(formulas, c('rd_15', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_16', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_17', '%s ~ meanZ.rot'))
+formulas = rbind(formulas, c('rd_18', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_19', '%s ~ meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_1', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_20', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_2', '%s ~ meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_3', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_4', '%s ~ meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_5', '%s ~ meanY.trans + meanZ.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_6', '%s ~ meanY.trans'))
+formulas = rbind(formulas, c('rd_7', '%s ~ 1'))
+formulas = rbind(formulas, c('rd_8', '%s ~ meanX.trans + meanX.rot'))
+formulas = rbind(formulas, c('rd_9', '%s ~ meanX.trans + meanY.rot'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+   temp<-summary(model1)$tTable[1, ]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.1e)', i, temp[1]*1000, temp[2]*1000, temp[5]))
+}
+```
+
+And repeat the same thing for FMRI:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTODefault', '%s ~ meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ 1'))
+formulas = rbind(formulas, c('conn_DefaultTODefault',
+                             '%s ~ sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont',
+                            '%s ~ meanDV + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault', '%s ~ relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn',
+                             '%s ~ motionDVCorrInit + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ normCoverage+ motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont',
+                             '%s ~ sex + pctSpikesDV + motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault',
+                             '%s ~ sex + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ sex'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+   temp<-summary(model1)$tTable[1, ]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.2f)', i, temp[1], temp[2], temp[5]))
+}
+```
+
+Philip asked me to re-run it, but this time checking the age-related term.
+Mathemetically it should be the same, but let's check it anyways. There might be
+a couple changes because the twoTimePoints dataset is not clean.
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+colnames(data)[1] = 'ID'
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTODefault',
+                             '%s ~ age_at_scan + meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ age_at_scan'))
+formulas = rbind(formulas, c('conn_DefaultTODefault',
+                             '%s ~ age_at_scan + Sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont',
+                            '%s ~ age_at_scan + meanDV + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault',
+                             '%s ~ age_at_scan + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn',
+                             '%s ~ age_at_scan + motionDVCorrInit + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ age_at_scan + normCoverage+ motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont',
+                             '%s ~ age_at_scan + Sex + pctSpikesDV + motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault',
+                             '%s ~ age_at_scan + Sex + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ age_at_scan + Sex'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+#    fm_root = formulas[r, 2]
+# I'm fixing the covariares because this analysis is on the longitudinal model, before we run any SOLAR analysis
+   fm_root = '%s ~ age_at_scan + Sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit + motionDVCorrFinal + pctSpikesRMS + relMeanRMSMotion'
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID/ID, na.action=na.omit))
+   temp<-summary(model1)$tTable['age_at_scan',]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.2f)', i, temp[1], temp[2], temp[5]))
+}
+```
+
+```
+[1] "conn_ContTODefault, 0.7 +- 0.5 (0.18)"
+[1] "conn_ContTOCont, 0.2 +- 0.2 (0.31)"
+[1] "conn_DefaultTODefault, 0.7 +- 0.5 (0.18)"
+[1] "conn_DorsAttnTOCont, 0.6 +- 0.4 (0.12)"
+[1] "conn_DorsAttnTODefault, 2.1 +- 0.6 (0.00)"
+[1] "conn_DorsAttnTODorsAttn, 0.2 +- 0.3 (0.43)"
+[1] "conn_DorsAttnTOSalVentAttn, -0.1 +- 0.4 (0.74)"
+[1] "conn_SalVentAttnTOCont, -0.1 +- 0.3 (0.83)"
+[1] "conn_SalVentAttnTODefault, -0.1 +- 0.5 (0.86)"
+[1] "conn_SalVentAttnTOSalVentAttn, -0.2 +- 0.2 (0.29)"
+```
+
+What if I select the variables based on stepAIC?
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+colnames(data)[1] = 'ID'
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTODefault',
+                             '%s ~ age_at_scan + meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ age_at_scan'))
+formulas = rbind(formulas, c('conn_DefaultTODefault',
+                             '%s ~ age_at_scan + Sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont',
+                            '%s ~ age_at_scan + meanDV + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault',
+                             '%s ~ age_at_scan + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn',
+                             '%s ~ age_at_scan + motionDVCorrInit + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ age_at_scan + normCoverage+ motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont',
+                             '%s ~ age_at_scan + Sex + pctSpikesDV + motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault',
+                             '%s ~ age_at_scan + Sex + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ age_at_scan + Sex'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = '%s ~ age_at_scan + Sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit + motionDVCorrFinal + pctSpikesRMS + relMeanRMSMotion'
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID/ID, na.action=na.omit, method='ML'))
+   # keep the best model, but always keep age_at_scan
+   step=stepAIC(model1, direction='both', trace=F, scope = list(lower = ~ age_at_scan))
+   temp<-summary(step)$tTable['age_at_scan',]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.2f)', i, temp[1], temp[2], temp[5]))
+}
+```
+
+```
+[1] "conn_ContTODefault, 0.5 +- 0.5 (0.29)"
+[1] "conn_ContTOCont, 0.1 +- 0.1 (0.41)"
+[1] "conn_DefaultTODefault, 0.7 +- 0.5 (0.17)"
+[1] "conn_DorsAttnTOCont, 0.5 +- 0.3 (0.14)"
+[1] "conn_DorsAttnTODefault, 2.2 +- 0.6 (0.00)"
+[1] "conn_DorsAttnTODorsAttn, 0.2 +- 0.2 (0.49)"
+[1] "conn_DorsAttnTOSalVentAttn, -0.1 +- 0.4 (0.79)"
+[1] "conn_SalVentAttnTOCont, -0.1 +- 0.3 (0.64)"
+[1] "conn_SalVentAttnTODefault, -0.1 +- 0.5 (0.88)"
+[1] "conn_SalVentAttnTOSalVentAttn, -0.2 +- 0.1 (0.23)"
+```
+
+Or another option is stepAIC for slopes:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+tmp = read.csv('~/data/heritability_change/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTODefault', '%s ~ meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ 1'))
+formulas = rbind(formulas, c('conn_DefaultTODefault',
+                             '%s ~ sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont',
+                            '%s ~ meanDV + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault', '%s ~ relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn',
+                             '%s ~ motionDVCorrInit + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ normCoverage+ motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont',
+                             '%s ~ sex + pctSpikesDV + motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault',
+                             '%s ~ sex + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ sex'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = '%s ~ sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit + motionDVCorrFinal + pctSpikesRMS + relMeanRMSMotion'
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit, method='ML'))
+   # keep the best model, but always keep age_at_scan
+   step=stepAIC(model1, direction='both', trace=F)
+   temp<-summary(step)$tTable[1, ]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.2f)', i, temp[1], temp[2], temp[5]))
+}
+```
+
+For DTI, we get:
+
+```r
+# library(nlme)
+# data = read.csv('~/data/heritability_change/dti_JHUtracts_ADRDonly_OD0.95.csv')
+# tmp = read.csv('~/data/heritability_change/pedigree.csv')
+# data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# # MANUALLY grabbing significant covariates form SOLAR results
+# formulas = c()
+# formulas = rbind(formulas, c('ad_10', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_11', '%s ~ goodVolumes'))
+# formulas = rbind(formulas, c('ad_12', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_13', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_14', '%s ~ meanX.rot'))
+# formulas = rbind(formulas, c('ad_15', '%s ~ 1'))
+# formulas = rbind(formulas, c('ad_16', '%s ~ 1'))
+# formulas = rbind(formulas, c('ad_17', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_18', '%s ~ goodVolumes'))
+# formulas = rbind(formulas, c('ad_19', '%s ~ meanX.trans + meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_1', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_20', '%s ~ meanX.trans + goodVolumes'))
+# formulas = rbind(formulas, c('ad_2', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_3', '%s ~ goodVolumes'))
+# formulas = rbind(formulas, c('ad_4', '%s ~ meanY.trans + goodVolumes'))
+# formulas = rbind(formulas, c('ad_5', '%s ~ 1'))
+# formulas = rbind(formulas, c('ad_6', '%s ~ goodVolumes'))
+# formulas = rbind(formulas, c('ad_7', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('ad_8', '%s ~ meanX.trans'))
+# formulas = rbind(formulas, c('ad_9', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_10', '%s ~ meanZ.trans'))
+# formulas = rbind(formulas, c('rd_11', '%s ~ meanY.trans'))
+# formulas = rbind(formulas, c('rd_12', '%s ~ meanY.trans'))
+# formulas = rbind(formulas, c('rd_13', '%s ~ meanX.rot'))
+# formulas = rbind(formulas, c('rd_14', '%s ~ meanX.rot'))
+# formulas = rbind(formulas, c('rd_15', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_16', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_17', '%s ~ meanZ.rot'))
+# formulas = rbind(formulas, c('rd_18', '%s ~ meanX.rot + goodVolumes'))
+# formulas = rbind(formulas, c('rd_19', '%s ~ meanX.trans + meanY.rot'))
+# formulas = rbind(formulas, c('rd_1', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_20', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_2', '%s ~ meanY.trans + meanY.rot + goodVolumes'))
+# formulas = rbind(formulas, c('rd_3', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_4', '%s ~ meanY.trans + meanY.rot + goodVolumes'))
+# formulas = rbind(formulas, c('rd_5', '%s ~ meanY.trans + meanZ.trans + meanY.rot'))
+# formulas = rbind(formulas, c('rd_6', '%s ~ meanY.trans'))
+# formulas = rbind(formulas, c('rd_7', '%s ~ 1'))
+# formulas = rbind(formulas, c('rd_8', '%s ~ meanX.trans + meanX.rot'))
+# formulas = rbind(formulas, c('rd_9', '%s ~ meanX.trans + meanY.rot'))
+
+# for (r in 1:nrow(formulas)) {
+#    i = formulas[r, 1]
+#    fm_root = formulas[r, 2]
+#    fm_str = sprintf(fm_root, i)
+#    model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+#    temp<-summary(model1)$tTable[1, ]  # grab just the intercept
+#    print(sprintf('%s, %.1f +- %.1f (%.1e)', i, temp[1]*1000, temp[2]*1000, temp[5]))
+#
+```
 
 
 # TODO
-* redo figure 1
-* redo figure 3
-* supplemental table 1
-* add comorbidities and med info to both file
+
+```bash
+cd /Volumes/Shaw/MR_data_by_maskid/;
+for maskid in {102..300}; do
+m=`printf %04d $maskid`;
+if [ -d $m ]; then
+echo $m;
+mkdir -p /Volumes/NCR/MR_data_by_maskid/$m &&
+rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/E* /Volumes/NCR/MR_data_by_maskid/$m/ &&
+rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/2* /Volumes/NCR/MR_data_by_maskid/$m/ &&
+find $m/ -depth -type d -empty -delete;
+fi; done
+```
