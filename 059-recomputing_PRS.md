@@ -713,7 +713,36 @@ we should be good.
 
 Now I just need to merge that to MRN, and we're good to go.
 
+# 2019-12-27 15:13:17
+
+Let's do the exact same thing for ABCD. It'll take A LOT longer, but the steps
+should be the same:
+
+```bash
+# sinteractive
+cd /data/NCR_SBRB/ABCD/v201/1KG/
+for f in `ls *zip`; do unzip -P dv7cBVoOBHzS46 $f; done
+
+
+
+
+
+
+
+# # I then copied all the uncompressed files to NCR/genotyping/imputations/1KG_20191217
+# ```
+
+# # 2019-12-18 15:10:00
+
+# Time to create the PLINK version.
+
+# ```bash
+# # sinteractive
+# # for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --biallelic-only strict --make-bed --out chr${c}; done
+# for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --make-bed --out chr${c}; done
+# rm -rf merge_list.txt; for c in {2..22}; do echo "chr${c}" >> merge_list.txt; done
+# ```
+`
 # TODO
 * mark in Labmatrix those bad samples (bad call rates, or filtered for some
   other reason)?  
-* compute PRS on imputed data and non-imputed, using new version of PrSice

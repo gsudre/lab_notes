@@ -7,9 +7,9 @@ the older Evernote note.
 We basically single out the best MPRAGE for each scan, and then run Freesurfer
 by swarming it in Biowulf.
 
-Figrst, figure out which mask ids we need to run Freesurfer. Our Freesurfer output
-is in /mnt/shaw/$USER/freesurfer5.3_subjects, and all mask ids are in
-/mnt/shaw/$USER/MR_data_by_maskid. So, if you list both directories, you will
+First, figure out which mask ids we need to run Freesurfer. Our Freesurfer output
+is in /Volumes/NCR/freesurfer5.3_subjects, and all mask ids are in
+/Volumes/NCR/MR_data_by_maskid. So, if you list both directories, you will
 find out which mask ids don't have Freesurfer yet.
 
 Before you start, make sure that all MPRAGEs have been QCed in Labmatrix, as
@@ -20,7 +20,7 @@ each MPRAGE entry.
 *Note the machine name where you should be running the commands!*
 
 ```bash
-# ncrshell01
+# locally
 mkdir -p ~/tmp
 rm -rf ~/tmp/missing*
 mkdir ~/tmp/missing

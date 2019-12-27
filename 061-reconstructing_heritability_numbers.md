@@ -776,13 +776,16 @@ For DTI, we get:
 
 ```bash
 cd /Volumes/Shaw/MR_data_by_maskid/;
-for maskid in {102..300}; do
+# for maskid in {103..250}; do
+# for maskid in {251..500}; do
+# for maskid in {501..750}; do
+for maskid in {751..1000}; do
 m=`printf %04d $maskid`;
 if [ -d $m ]; then
 echo $m;
-mkdir -p /Volumes/NCR/MR_data_by_maskid/$m &&
-rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/E* /Volumes/NCR/MR_data_by_maskid/$m/ &&
-rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/2* /Volumes/NCR/MR_data_by_maskid/$m/ &&
+mkdir -p /Volumes/NCR/MR_data_by_maskid/$m;
+rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/E* /Volumes/NCR/MR_data_by_maskid/$m/;
+rsync -z -a -r --no-perms --remove-source-files --exclude='*nii*' $m/2* /Volumes/NCR/MR_data_by_maskid/$m/;
 find $m/ -depth -type d -empty -delete;
 fi; done
 ```
