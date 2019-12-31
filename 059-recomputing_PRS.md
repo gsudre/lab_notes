@@ -722,27 +722,19 @@ should be the same:
 # sinteractive
 cd /data/NCR_SBRB/ABCD/v201/1KG/
 for f in `ls *zip`; do unzip -P dv7cBVoOBHzS46 $f; done
+```
 
+# 2019-12-31 09:58:32
 
+I then copied all the uncompressed files to NCR/ABCD/1KG_imputation_20191231.
 
+Time to create the PLINK version.
 
-
-
-
-# # I then copied all the uncompressed files to NCR/genotyping/imputations/1KG_20191217
-# ```
-
-# # 2019-12-18 15:10:00
-
-# Time to create the PLINK version.
-
-# ```bash
-# # sinteractive
-# # for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --biallelic-only strict --make-bed --out chr${c}; done
-# for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --make-bed --out chr${c}; done
+```bash
+# sinteractive
+for c in {1..22}; do plink --vcf chr${c}.dose.vcf.gz --make-bed --const-fid --out chr${c}; done
 # rm -rf merge_list.txt; for c in {2..22}; do echo "chr${c}" >> merge_list.txt; done
-# ```
-`
+```
+
 # TODO
-* mark in Labmatrix those bad samples (bad call rates, or filtered for some
-  other reason)?  
+

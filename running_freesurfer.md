@@ -67,7 +67,7 @@ Then, to bring everyone back:
 # desktop
 scp helix:~/freesurfer_logs/finished.txt ~/tmp
 while read s; do
-    scp -r helix:~/data/MEG_structural/freesurfer/${s} /Volumes/Shaw/freesurfer5.3_subjects/;
+    scp -r helix:~/data/MEG_structural/freesurfer/${s} /Volumes/NCR/freesurfer5.3_subjects/;
 done < ~/tmp/finished.txt
 ```
 
@@ -79,7 +79,8 @@ while read s; do
     echo $s;
     mv ${s}_freesurfer.log old/;
     rm -rf /scratch/sudregp/mprage/${s};
-    rm -rf ~/data/MEG_structural/freesurfer/${s};
+    # rm -rf ~/data/MEG_structural/freesurfer/${s};
+    mv ~/data/MEG_structural/freesurfer/${s} /data/NCR_SBRB/freesurfer5.3_subjects/
 done < finished.txt
 ```
 
