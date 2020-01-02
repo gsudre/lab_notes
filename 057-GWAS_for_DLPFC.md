@@ -129,7 +129,7 @@ done
 ```
 
 For --logistic, I'll also need to add the --1 flag so that 0s are unnafected and
-1s are cases! Otherwise it thinks affected are 2s, and we'd have any...
+1s are cases! Otherwise it thinks affected are 2s, and we wouldn't have any...
 
 Then, I imagine we can assume the rows in the same order to do a straight up
 merge of the columns? Otherwise we'd have to use R, which will be so slow...
@@ -164,10 +164,208 @@ for (chr in 1:22) {
     info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
     m = merge(res, info, by='SNP', all.x=T, all.y=F)
     out_fname = sprintf('assoc_chr%d_%s.gz', chr, phen)
-    fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip', sep=' ')
+    fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip', sep=' ', na='NA')
 }
 ```
 
+# 2020-01-02 10:52:58
 
+I should have all the results by now. So, let's compile them and do some quick
+check so see what survives. Just running the code above in 4 different tmuxs.
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG/GWAS
+# checking how many hits under .05 we had in chr1
+zcat assoc_chr1_scaled_inatt.gz | awk '{ if ($9 < .05) { print $_ } }' - | wc -l
+```
+
+I can also get started with the ABCD GWAS, which will follow the exact same
+format as the one above. The main issue is that I cannot combine the different
+chromossomes in PLINK, because the process is being killed. Let's see how much
+of that I can do with the broken down files...
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/GWAS
+```
+
+Note that I had to merge famids to the phenotype files Sam sent so PLINK would
+see them.
+
+```r
+library(gdata)
+a = read.xls('KEY_ab_subject_mergeID_09102019.xlsx')
+phen = read.csv('abcd_pheno_1132019.csv')
+m = merge(phen, a, by='mergeID', all.x=F, all.y=F)
+m$FID = 0
+m$IID = sapply(1:nrow(m),
+               function(x) paste0(strsplit(as.character(m$ab_key[x]),
+                                                        '_')[[1]][1:3],
+                                  collapse='_'))
+m2 = m[, c(27, 28, 1:26)]
+# we only need to update sex for whom we have phenotypes
+sex = m2[, c('FID', 'IID', 'Sex')]
+sex$binSex = as.numeric(sex$Sex)-1
+write.table(m2, file='abcd_pheno_1132019_withFAMIDs.txt', row.names=F, quote=F)
+write.table(sex, file='update_sex.txt', row.names=F, col.names=F, quote=F)
+```
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/GWAS
+for chr in {1..22}; do
+    plink --bfile ../chr${chr} --update-sex update_sex.txt --make-bed --out chr${chr}_sex;
+done
+```
+
+Now that all sex variables are updated, let's run the association per
+chromosome:
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/GWAS
+phen=scaled_inatt;
+for chr in {1..22}; do
+    plink --bfile chr${chr}_sex --linear sex hide-covar \
+        --pheno abcd_pheno_1132019_withFAMIDs.txt --pheno-name $phen \
+        --covar abcd_pheno_1132019_withFAMIDs.txt \
+        --covar-name scaled_age, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr${chr}_${phen};
+done
+```
+
+This is taking a long time, so I might have to swarm it and run locally... we'll
+see. Let me generate the updated sex files above first, and then write the
+instructions to Louk. That should give it some time to get some associations
+run.
+
+## Instructions for Louk
+
+There are many ways you can get the same results in PLINK. This is what I did
+for our dataset.
+
+I started from PLINK binary files with all our data after imputation using the
+Michigan Server. We get dosage files from the imputation server, so I imported
+them with:
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG
+for c in {1..22}; do
+    plink --vcf chr${c}.dose.vcf.gz --make-bed --out chr${c};
+done
+rm -rf merge_list.txt;
+for c in {2..22}; do
+    echo "chr${c}" >> merge_list.txt;
+done
+plink --bfile chr1 --merge-list merge_list.txt  --make-bed --out NCR_1KG
+```
+
+Then, make sure that the sex assignment in the .fam file is correct, as it will
+be one of our covariates. Below I specified to remove anyone who does not have
+sex assigned in the .fam file. If you need to update it, the .txt file should
+have 3 columns: FAMID, IID, sex. I also had to change the IDs in my .fam to
+match what was in my phenotype.
+
+In your case, you can download the phenotypes Sam created from:
+
+```
+https://hpc.nih.gov/~sudregp/genr_pheno_1132019.csv
+```
+
+and see what needs to be done.
+
+The phenotype file will need to have the first two columns as FID and IID,
+matching the same ones in the .fam (not in the same order, though). I added the
+extra column (FID) in R:
+
+```r
+fam = read.table('NCR_1KG_ids.fam')
+colnames(fam)[1:2] = c('FID', 'mergeID')
+phen = read.csv('nhgri_pheno_1132019.csv')
+phen2 = merge(fam[, 1:2], phen, by='mergeID', all.x=F, all.y=T)
+phen3 = phen2[, c(2, 1, 3:25)]
+colnames(phen3)[2] = 'IID'
+# we only need to update sex for whom we have phenotypes
+sex = phen3[, c('FID', 'IID', 'Sex')]
+sex$binSex = as.numeric(sex$Sex)-1
+write.table(phen3, file='nhgri_pheno_1132019_withFAMIDs.txt', row.names=F, quote=F)
+write.table(sex, file='update_sex.txt', row.names=F, col.names=F, quote=F)
+```
+
+So, this step will be very site specific. Here's what I did on my end:
+
+```bash
+mkdir GWAS
+cd GWAS
+# convert from NSB to the project's mergeID (N+MRN)
+plink --bfile ../NCR_1KG --update-ids to_mergeids.txt --make-bed --out NCR_1KG_ids
+# update the sex in .fam:
+plink --bfile NCR_1KG_ids --update-sex update_sex.txt --make-bed --out NCR_1KG_ids_sex
+```
+
+Finally, I decided to run the GWAS by chromosomes, because it's easier to
+modularize it that way. Especially in the ABCD dataset, this becomes quite
+important. There are 3 continuous phenotypes and one binary. So, in our dataset, I did:
+
+```bash
+phen=scaled_inatt;  # or scaled_hi, scaled_ADHD
+for chr in {1..22}; do
+    plink --bfile NCR_1KG_ids_sex --chr $chr --linear sex hide-covar \
+        --pheno nhgri_pheno_1132019_withFAMIDs.txt --pheno-name $phen \
+        --covar nhgri_pheno_1132019_withFAMIDs.txt \
+        --covar-name scaled_age, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr${chr}_${phen};
+done
+```
+
+For --logistic, I'll also need to add the --1 flag so that 0s are unnafected and
+1s are cases! Otherwise it thinks affected are 2s, and we wouldn't have any...
+
+```bash
+phen=dx_six_or_more;
+for chr in {1..22}; do
+    plink --bfile NCR_1KG_ids_sex --chr $chr --1 --logistic sex hide-covar \
+        --pheno nhgri_pheno_1132019_withFAMIDs.txt --pheno-name $phen \
+        --covar nhgri_pheno_1132019_withFAMIDs.txt \
+        --covar-name scaled_age, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr${chr}_${phen};
+done
+```
+
+Once you have results, I merged them with the INFO columns from the imputation,
+as Veera suggested in his e-mail, so that we can easily filter what SNPs we want
+to play with later. I did it in R:
+
+```r
+library(data.table)
+phen = 'scaled_inatt'
+for (chr in 1:22) {
+    print(chr)
+    res = fread(sprintf('assoc_chr%d_%s.assoc.linear', chr, phen),
+                header = T, sep = ' ')
+    info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
+    m = merge(res, info, by='SNP', all.x=T, all.y=F)
+    out_fname = sprintf('assoc_chr%d_%s.gz', chr, phen)
+    fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip', sep=' ', na='NA')
+}
+```
+
+Now the results are just big compressed text tables. It's fast to do operations
+in the comand line, like counting the number of variables at some random
+significance:
+
+```bash
+zcat assoc_chr1_scaled_inatt.gz | awk '{ if ($9 < .05) { print $_ } }' - | wc -l
+```
+
+The ABCD data was too big to be combined into one big file, so I kept the per-chromosome binary
+files in PLINK. Not much else changes in the analysis, except for the calls for
+the actual GWAS command that don't take the chr number anymore, but a changing
+binary file name.
+
+## Back to GWAS in ABCD
+
+So, my tests of running it locally didn't help much. I might as well just do one
+tmux per chromosome and go from there. I can load about 10 at once per big
+machine, if not more... I'm actually running all 22 at once without any issues.
+So, let's just do that
 
 # TODO
+* Run WNH-only analysis
