@@ -472,10 +472,102 @@ for i in {1..22}; do echo $i; done | parallel --max-args=1 \
     plink --bfile chr{}_sex --linear sex hide-covar \
         --pheno abcd_pheno_01022020_withFAMIDs_WNHonly.txt --pheno-name $phen \
         --covar abcd_pheno_01022020_withFAMIDs_WNHonly.txt \
-        --covar-name scaled_age, Plate, batch_number_PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --covar-name scaled_age, Plate, batch_number, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr{}_${phen}_WNHonly_agePlateBatchPCs;
+
+phen=dx_six_or_more;
+for i in {1..22}; do echo $i; done | parallel --max-args=1 \
+    plink --bfile chr{}_sex --1 --logistic sex hide-covar \
+        --pheno abcd_pheno_01022020_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar abcd_pheno_01022020_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, Plate, batch_number, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
         --out assoc_chr{}_${phen}_WNHonly_agePlateBatchPCs;
 ```
 
+And Sam added the batch numbers to our cohort. For our data, they all have the
+same chip, like ABCD. Some have different versions of the chip, but not like
+PNC that have actual different chips. We do have different batches, though.
+There are five batches, so just number them sequentially: twins, CIDR,
+Shaw03+Shaw04, Shaw0?_2017, and Shaw0?_2019.
+
+```r
+fam = read.table('NCR_1KG_ids.fam')
+colnames(fam)[1:2] = c('FID', 'mergeID')
+phen = read.csv('nhgri_pheno_01032020.csv')
+phen2 = merge(fam[, 1:2], phen, by='mergeID', all.x=F, all.y=T)
+phen3 = phen2[, c(2, 1, 3:26)]
+colnames(phen3)[2] = 'IID'
+write.table(phen3, file='nhgri_pheno_01032020_withFAMIDs.txt', row.names=F, quote=F)
+idx = phen3$PC_DEFINED_SUBGROUPS=='WNH'
+write.table(phen3[idx,], file='nhgri_pheno_01032020_withFAMIDs_WNHonly.txt',
+            row.names=F, quote=F)
+```
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG/GWAS;
+
+# our dataset runs quite fast, so no need to parallel
+phen=scaled_inatt;  # or scaled_hi, scaled_ADHD
+for i in {1..22}; do
+    plink --bfile NCR_1KG_ids_sex --chr ${i} --linear sex hide-covar \
+        --pheno nhgri_pheno_01032020_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar nhgri_pheno_01032020_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, batch_number, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr${i}_${phen}_WNHonly_ageBatchPCs;
+done
+
+phen=dx_six_or_more;
+for i in {1..22}; do
+    plink --bfile NCR_1KG_ids_sex --chr ${i} --1 --logistic sex hide-covar \
+        --pheno nhgri_pheno_01032020_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar nhgri_pheno_01032020_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, batch_number, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr${i}_${phen}_WNHonly_ageBatchPCs;
+done
+```
+
+```r
+library(data.table)
+setwd('/data/NCR_SBRB/NCR_genetics/v2/1KG/GWAS')
+for (phen in c('scaled_inatt', 'scaled_hi', 'scaled_ADHD', 'dx_six_or_more')) {
+    if (phen == 'dx_six_or_more') {
+        suf = 'logistic'
+    } else {
+        suf = 'linear'
+    }
+    for (chr in 1:22) {
+        print(sprintf('%s, chr %d', phen, chr))
+        res = fread(sprintf('assoc_chr%d_%s_WNHonly_ageBatchPCs.assoc.%s', chr, phen, suf),
+                    header = T, sep = ' ')
+        info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
+        m = merge(res, info, by='SNP', all.x=T, all.y=F)
+        out_fname = sprintf('assoc_chr%d_%s_WNHonly_ageBatchPCs.gz', chr, phen)
+        fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip',
+               sep=' ', na='NA')
+    }
+}
+```
+
+```r
+library(data.table)
+setwd('/data/NCR_SBRB/ABCD/v201/1KG/GWAS/')
+for (phen in c('scaled_inatt', 'scaled_hi', 'scaled_ADHD', 'dx_six_or_more')) {
+    if (phen == 'dx_six_or_more') {
+        suf = 'logistic'
+    } else {
+        suf = 'linear'
+    }
+    for (chr in 1:22) {
+        print(sprintf('%s, chr %d', phen, chr))
+        res = fread(sprintf('assoc_chr%d_%s_WNHonly_agePlateBatchPCs.assoc.%s', chr, phen, suf),
+                    header = T, sep = ' ')
+        info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
+        m = merge(res, info, by='SNP', all.x=T, all.y=F)
+        out_fname = sprintf('assoc_chr%d_%s_WNHonly_agePlateBatchPCs.gz', chr, phen)
+        fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip',
+               sep=' ', na='NA')
+    }
+}
+```
 
 # TODO
-* Run WNH-only analysis
