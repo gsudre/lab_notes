@@ -335,15 +335,22 @@ to play with later. I did it in R:
 
 ```r
 library(data.table)
-phen = 'scaled_inatt'
-for (chr in 1:22) {
-    print(chr)
-    res = fread(sprintf('assoc_chr%d_%s.assoc.linear', chr, phen),
-                header = T, sep = ' ')
-    info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
-    m = merge(res, info, by='SNP', all.x=T, all.y=F)
-    out_fname = sprintf('assoc_chr%d_%s.gz', chr, phen)
-    fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip', sep=' ', na='NA')
+for (phen in c('scaled_inatt', 'scaled_hi', 'scaled_ADHD', 'dx_six_or_more')) {
+    if (phen == 'dx_six_or_more') {
+        suf = 'logistic'
+    } else {
+        suf = 'linear'
+    }
+    for (chr in 1:22) {
+        print(sprintf('%s, chr %d', phen, chr))
+        res = fread(sprintf('assoc_chr%d_%s.assoc.%s', chr, phen, suf),
+                    header = T, sep = ' ')
+        info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
+        m = merge(res, info, by='SNP', all.x=T, all.y=F)
+        out_fname = sprintf('assoc_chr%d_%s.gz', chr, phen)
+        fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip',
+               sep=' ', na='NA')
+    }
 }
 ```
 
@@ -366,6 +373,109 @@ So, my tests of running it locally didn't help much. I might as well just do one
 tmux per chromosome and go from there. I can load about 10 at once per big
 machine, if not more... I'm actually running all 22 at once without any issues.
 So, let's just do that
+
+# 2020-01-03 09:11:03
+
+Chatting with Philip, I should try running the WNH only, and then I saw Veera's
+e-mail about using the different batches and arrays as covariates. Since I'll be
+doing this a few times, let's set up parallel.
+
+I should likely also remove the text results from the analysis, as they're
+already incorporated in the .gz. It's a 20x decrease in size...
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG/GWAS;
+head -n 1 nhgri_pheno_1132019_withFAMIDs.txt > nhgri_pheno_1132019_withFAMIDs_WNHonly.txt;
+grep WNH nhgri_pheno_1132019_withFAMIDs.txt >> nhgri_pheno_1132019_withFAMIDs_WNHonly.txt;
+phen=scaled_inatt;  # or scaled_hi, scaled_ADHD
+
+for i in {1..22}; do echo $i; done | parallel --max-args=1 \
+    plink --bfile NCR_1KG_ids_sex --chr {} --linear sex hide-covar \
+        --pheno nhgri_pheno_1132019_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar nhgri_pheno_1132019_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr{}_${phen}_WNHonly;
+```
+
+And to merge the results we do:
+
+```r
+library(data.table)
+for (phen in c('scaled_inatt', 'scaled_hi', 'scaled_ADHD', 'dx_six_or_more')) {
+    if (phen == 'dx_six_or_more') {
+        suf = 'logistic'
+    } else {
+        suf = 'linear'
+    }
+    for (chr in 1:22) {
+        print(sprintf('%s, chr %d', phen, chr))
+        res = fread(sprintf('assoc_chr%d_%s_WNHonly.assoc.%s', chr, phen, suf),
+                    header = T, sep = ' ')
+        info = fread(sprintf('../chr%d.info.gz', chr), header = T, sep = '\t')
+        m = merge(res, info, by='SNP', all.x=T, all.y=F)
+        out_fname = sprintf('assoc_chr%d_%s_WNHonly.gz', chr, phen)
+        fwrite(m, file=out_fname, row.names=F, quote=F, compress='gzip',
+               sep=' ', na='NA')
+    }
+}
+```
+
+And we can do the same thing for ABCD:
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/GWAS;
+head -n 1 abcd_pheno_1132019_withFAMIDs.txt > abcd_pheno_1132019_withFAMIDs_WNHonly.txt;
+grep WNH abcd_pheno_1132019_withFAMIDs.txt >> abcd_pheno_1132019_withFAMIDs_WNHonly.txt;
+
+phen=scaled_inatt;  # or scaled_hi, scaled_ADHD
+for i in {1..22}; do echo $i; done | parallel --max-args=1 \
+    plink --bfile chr{}_sex --linear sex hide-covar \
+        --pheno abcd_pheno_1132019_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar abcd_pheno_1132019_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr{}_${phen}_WNHonly;
+```
+
+According to Veera we should always keep the PCs, even if running WNHonly
+analysis. So, to save time, I'm not even going to run the noPCcovariates version
+for ABCD.
+
+Sam made new files for ABCD including the plate and batch as covariates. There
+is one including the problematic plate 461 and one without it. There are only 56
+samples in that plate, so I won't use them. If the analysis breaks because of 56
+samples it's wea to begin with. I'll use plate and batch as covariates as well.
+
+```r
+library(gdata)
+a = read.xls('KEY_ab_subject_mergeID_09102019.xlsx')
+phen = read.csv('abcd_pheno_01022020.csv')
+m = merge(phen, a, by='mergeID', all.x=F, all.y=F)
+m$FID = 0
+m$IID = sapply(1:nrow(m),
+               function(x) paste0(strsplit(as.character(m$ab_key[x]),
+                                                        '_')[[1]][1:3],
+                                  collapse='_'))
+m2 = m[, c(29, 30, 1:28)]
+write.table(m2, file='abcd_pheno_01022020_withFAMIDs.txt', row.names=F, quote=F)
+
+# had to do it here because there's one ABCD ID with WNH in the name
+idx = m2$PC_DEFINED_SUBGROUPS=='WNH'
+write.table(m2[idx,], file='abcd_pheno_01022020_withFAMIDs_WNHonly.txt',
+            row.names=F, quote=F)
+```
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/GWAS;
+
+phen=scaled_inatt;  # or scaled_hi, scaled_ADHD
+for i in {1..22}; do echo $i; done | parallel --max-args=1 \
+    plink --bfile chr{}_sex --linear sex hide-covar \
+        --pheno abcd_pheno_01022020_withFAMIDs_WNHonly.txt --pheno-name $phen \
+        --covar abcd_pheno_01022020_withFAMIDs_WNHonly.txt \
+        --covar-name scaled_age, Plate, batch_number_PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9, PC10 \
+        --out assoc_chr{}_${phen}_WNHonly_agePlateBatchPCs;
+```
+
 
 # TODO
 * Run WNH-only analysis
