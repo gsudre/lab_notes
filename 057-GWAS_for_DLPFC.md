@@ -369,3 +369,5 @@ So, let's just do that
 
 # TODO
 * Run WNH-only analysis
+* maybe implement this through parallel?
+* 
