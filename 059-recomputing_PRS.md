@@ -748,12 +748,22 @@ plink --bfile chr1 --merge-list merge_list.txt  --make-bed --out ABCD_1KG
 This is not really working... let me see if I can run PRSice on the broken down
 chrmomosomes...
 
+# 2020-01-03 16:16:40
+
+```bash
+cd /data/NCR_SBRB/ABCD/v201/1KG/
 # cleaning based on imputation stats
-for c in {1..22}; do echo $c; zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - >> r2s.txt; done
+for c in {1..22}; do
+    echo $c; zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - > r2s_c${c}.txt;
+done
 awk '$2 > .01 && $3 > .9 { print }' r2s.txt > rsids_MAFbtp01_rsbtp9.txt
-plink --bfile NCR_1KG --extract rsids_MAFbtp01_rsbtp9.txt --geno .05 --make-bed --out NCR_1KG_genop05MAFbtp01rsbtp9
+for c in {1..22}; do
+    plink --bfile chr${c} --extract rsids_MAFbtp01_rsbtp9.txt --geno .05 \
+        --maf 0.01 --make-bed --out chr${c}_genop05MAFbtp01rsbtp9
+done
 ```
 
+<!-- 
 Let's use the HRC variables just for renaming, as I can't find a similar file
 for 1KG.
 
