@@ -570,4 +570,18 @@ for (phen in c('scaled_inatt', 'scaled_hi', 'scaled_ADHD', 'dx_six_or_more')) {
 }
 ```
 
+# 2020-01-07 09:49:15
+
+Just going to extract some within-WNH PCs for Sam to play with.
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2/1KG/GWAS;
+cut -d" " -f 1,2 nhgri_pheno_01032020_withFAMIDs_WNHonly.txt > keep_WNH.txt;
+plink --bfile NCR_1KG_ids_sex --keep keep_WNH.txt --make-bed --out NCR_1KG_ids_sex_WNH;
+plink --bfile NCR_1KG_ids_sex_WNH --cluster --mind .05 --mds-plot 10 \
+    --noweb --out NCR_1KG_ids_sex_WNH_mds
+```
+
+Sent the results to Sam.
+
 # TODO
