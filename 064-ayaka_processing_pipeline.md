@@ -19,23 +19,16 @@ space to begin with:
 
 ```bash
 cd /scratch/sudregp/A01/
-fname=AP
-fslroi ${fname} b0 0 1
-bet b0 b0_brain -m -f 0.2
+for i in AP PA; do
+    immv ${i} ${i}_old;
+    fslreorient2std ${i}_old ${i};
+done
 ```
 
 Now it's mostly following directions from here:
 
 https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FDT/UserGuide
 
-```bash
-dtifit --data=${fname}.nii.gz --mask=b0_brain_mask --bvals=${fname}.bval \
-    --bvecs=${fname}.bvec --sse --out=dti
-```
-
-Checking that the data (V1) looks good... seems fine to me. I'll assume for now
-the other vector field is also ccorrect, but we should always check all of this
-in the end, after preprocessing, anyways.
 
 ```bash
 # running TOPUP
@@ -109,56 +102,56 @@ Regardless of what is used, it's good to run some eddy QC:
 
 https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/eddyqc/UsersGuide
 
+```bash
+eddy_quad eddy_unwarped_images -idx index.txt -par acqparams.txt -m topup_b0_brain_mask.nii.gz -b PA.bval
+```
 
-<!-- Then, it's just a matter of checking the quality of the results and running
+# 2020-01-08 13:47:52
+
+Then, it's just a matter of checking the quality of the results and running
 autoPtx and TBSS:
 
 ```bash
 # copying over some files to their correct names for bedpostX
-cp eddy_s2v_unwarped_images.nii.gz data.nii.gz;
+cp eddy_unwarped_images.nii.gz data.nii.gz;
 cp PA.bval bvals;
 cp PA.bvec old_bvecs;
 cp eddy_unwarped_images.eddy_rotated_bvecs bvecs;
 cp topup_b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
-bedpostx_gpu -n 1 ./;
 
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc data.nii.gz
+# this takes a while...
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
 
-autoPTx
+If you're also interested in doing TBSS (voxelwise) analysis, you'd need to also
+do: 
 
+```bash
+# this only needs the output from autoPtx_1
 tbss_1_preproc dti_FA.nii.gz
+```
 
+Let's generate some more QC files, just because...
+
+```bash
 cp origdata/dti_FA.nii.gz ./
 cp FA/dti_FA_FA.nii.gz dti_FA_eroded.nii.gz
 
 # make directionality encoded QC pictures, checking that eroded FA looks fine.
 # Note that the dtifit results, and the std alignment were run by autoPtx!
 fat_proc_decmap -in_fa dti_FA_eroded.nii.gz -in_v1 dti_V1.nii.gz \
-    -mask nodif_brain_mask.nii.gz -prefix DEC
+    -mask preproc/nodif_brain_mask.nii.gz -prefix DEC
 
 # apply the transform calculated by autoPtx to a few maps. code copied from 
 # tbss_non_fa
 for f in FA L1 L2 L3 MD MO FA_eroded; do
     echo Warping $f;
     applywarp -i dti_${f} -o ${f}_in_FMRIB58_FA_1mm \
-        -r $FSLDIR/data/standard/FMRIB58_FA_1mm -w nat2std_warp
+        -r $FSLDIR/data/standard/FMRIB58_FA_1mm -w preproc/nat2std_warp
 done
 
-# # make transformation QC figure: warped subject B0 is the overlay!
-# @chauffeur_afni                             \
-#     -ulay  $FSLDIR/data/standard/FMRIB58_FA_1mm.nii.gz                     \
-#     -olay  FA_in_FMRIB58_FA_1mm.nii.gz                         \
-#     -ulay_range 0% 150%                     \
-#     -func_range_perc 50                     \
-#     -pbar_posonly                           \
-#     -cbar "red_monochrome"                  \
-#     -opacity 8                              \
-#     -prefix   QC/FA_transform              \
-#     -montx 3 -monty 3                       \
-#     -set_xhairs OFF                         \
-#     -label_mode 1 -label_size 3             \
-#     -do_clean
-
-# new version with FSL template as the edges
+# make transformation QC figure: FSL template as the edges
 @snapshot_volreg FA_in_FMRIB58_FA_1mm.nii.gz \
     $FSLDIR/data/standard/FMRIB58_FA_1mm.nii.gz \
     QC/FA_transform;
@@ -166,7 +159,7 @@ done
 # make QC images for standard errors. Here we set our color scale to have 95th
 # percentile of all errors. Meaning, more red = bigger error.
 @chauffeur_afni                             \
-    -ulay  data.nii.gz                       \
+    -ulay  preproc/data.nii.gz                       \
     -olay  dti_sse.nii.gz                          \
     -opacity 5                              \
     -pbar_posonly   \
@@ -179,12 +172,64 @@ done
     -thr_olay 0 \
     -func_range_perc_nz 95 \
     -do_clean
+```
 
-# we can derive the skeleton later, either based on FMRIB58 or group
+## fMRI
 
-# note that we need to look at
-# https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/TBSS/UserGuide#Using_non-FA_Images_in_TBSS
-# to run the non-FA files! -->
+Here the approach will largely process AP and PA independently, and then towards
+the end either concanetante both time series or just average the connectivity
+metrics of the two runs.
+
+fmriprep needs data in BIDS format, so let's do that:
+
+```bash
+m=A01;
+cnt=1;
+cd /scratch/sudregp/
+mkdir fmri
+cd fmri
+jo -p "Name"="test BIDS" "BIDSVersion"="1.0.2" >> dataset_description.json;
+mkdir -p sub-${m}/anat;
+dcm2niix_afni -o sub-${m}/anat/ -z y -f sub-${m}_run-${cnt}_T1w "../T1w_MPR - 16"/
+mkdir -p sub-${m}/func;
+dcm2niix_afni -o sub-${m}/func/ -z y \
+    -f sub-${m}_task-rest_acq-PA_run-${cnt}_bold "../rfMRI_REST_PA - 15/"
+dcm2niix_afni -o sub-${m}/func/ -z y \
+    -f sub-${m}_task-rest_acq-AP_run-${cnt}_bold "../rfMRI_REST_AP - 13/"
+```
+
+Then, just run fmriprep. Note that this will be different in Biowulf, but the
+actual command you'll run is likely the same:
+
+```bash
+export TMPDIR=/lscratch/$SLURM_JOBID;
+mkdir -p $TMPDIR/out $TMPDIR/wrk;
+fmriprep /scratch/sudregp/fmri/ $TMPDIR/out \
+    participant --participant_label sub-${m} -w $TMPDIR/wrk --use-aroma \
+    --nthreads 32 --mem_mb 10000 --notrack \
+    --fs-license-file /usr/local/apps/freesurfer/license.txt --fs-no-reconall;
+```
+
+The result will be in $TMPDIR/out.
+
+Then it's time to run xcpengine:
+
+```bash
+echo id0,img > ${TMPDIR}/${m}.csv;
+cp /data/NCR_SBRB/fc-36p_despike.dsn $TMPDIR/;
+echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+xcpEngine -c $TMPDIR/${m}.csv -d $TMPDIR/fc-36p_despike.dsn -i $TMPDIR/wrk \
+    -o $TMPDIR/out -r /data/NCR_SBRB/fmriprep_output/;
+```
+
+Result will be in $TMPDIR/out.
+
+# TODO
+* AutoPtx2 not working... I'm re-running everything in A01 and left the old
+  stuff in A01.bk. This new run started with putting everything in std space.
+  Let's see if that makes a difference. Waiting on topup for now.
+* Waiting on fmriprep to run xcpengine -> need to combine the two runs somehow
 
 
 
