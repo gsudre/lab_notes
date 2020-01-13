@@ -121,7 +121,25 @@ cp topup_b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
 
 /data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc data.nii.gz
 # this takes a while...
-/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography
+```
+
+Now, the next step would be to run step 2 of autoPtx, which is simply running
+/data/NCR_SBRB/software/autoPtx/autoPtx_2_launchTractography. However, I find
+that script a big buggy... so, I came up with my own version. For a single
+subject, all you need to do is:
+
+```bash
+cd /scratch/sudregp/A01
+
+execPath=/data/NCR_SBRB/software/autoPtx
+structures=$execPath/structureList
+track=$execPath/trackSubjectStruct
+
+while read structstring; do
+    struct=`echo $structstring | awk '{print $1}'`
+    nseed=`echo $structstring | awk '{print $2}'`
+    $track ./ $struct $nseed 2>&1 & #> /dev/null &
+done < $structures
 ```
 
 If you're also interested in doing TBSS (voxelwise) analysis, you'd need to also
@@ -129,6 +147,7 @@ do:
 
 ```bash
 # this only needs the output from autoPtx_1
+cp preproc/dti_FA.nii.gz .
 tbss_1_preproc dti_FA.nii.gz
 ```
 
@@ -140,14 +159,14 @@ cp FA/dti_FA_FA.nii.gz dti_FA_eroded.nii.gz
 
 # make directionality encoded QC pictures, checking that eroded FA looks fine.
 # Note that the dtifit results, and the std alignment were run by autoPtx!
-fat_proc_decmap -in_fa dti_FA_eroded.nii.gz -in_v1 dti_V1.nii.gz \
+fat_proc_decmap -in_fa dti_FA_eroded.nii.gz -in_v1 preproc/dti_V1.nii.gz \
     -mask preproc/nodif_brain_mask.nii.gz -prefix DEC
 
 # apply the transform calculated by autoPtx to a few maps. code copied from 
 # tbss_non_fa
-for f in FA L1 L2 L3 MD MO FA_eroded; do
+for f in FA L1 L2 L3 MD MO; do
     echo Warping $f;
-    applywarp -i dti_${f} -o ${f}_in_FMRIB58_FA_1mm \
+    applywarp -i preproc/dti_${f} -o ${f}_in_FMRIB58_FA_1mm \
         -r $FSLDIR/data/standard/FMRIB58_FA_1mm -w preproc/nat2std_warp
 done
 
@@ -160,7 +179,7 @@ done
 # percentile of all errors. Meaning, more red = bigger error.
 @chauffeur_afni                             \
     -ulay  preproc/data.nii.gz                       \
-    -olay  dti_sse.nii.gz                          \
+    -olay  preproc/dti_sse.nii.gz                          \
     -opacity 5                              \
     -pbar_posonly   \
     -cbar Spectrum:red_to_blue              \
@@ -203,27 +222,36 @@ actual command you'll run is likely the same:
 
 ```bash
 export TMPDIR=/lscratch/$SLURM_JOBID;
+m=A01;
 mkdir -p $TMPDIR/out $TMPDIR/wrk;
 fmriprep /scratch/sudregp/fmri/ $TMPDIR/out \
     participant --participant_label sub-${m} -w $TMPDIR/wrk --use-aroma \
     --nthreads 32 --mem_mb 10000 --notrack \
     --fs-license-file /usr/local/apps/freesurfer/license.txt --fs-no-reconall;
+mv $TMPDIR/out/* /scratch/sudregp/fmriprep_output
 ```
 
-The result will be in $TMPDIR/out.
+The result will be in /scratch/sudregp/fmriprep_output.
 
-Then it's time to run xcpengine:
+# 2020-01-13 15:47:23
+
+Returning to this, let's see how to run two different files in xcpengine, if at
+all possible:
 
 ```bash
+export TMPDIR=/lscratch/$SLURM_JOBID;
+m=A01;
 echo id0,img > ${TMPDIR}/${m}.csv;
 cp /data/NCR_SBRB/fc-36p_despike.dsn $TMPDIR/;
 echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
 echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
 xcpEngine -c $TMPDIR/${m}.csv -d $TMPDIR/fc-36p_despike.dsn -i $TMPDIR/wrk \
-    -o $TMPDIR/out -r /data/NCR_SBRB/fmriprep_output/;
+    -o $TMPDIR/out -r /scratch/sudregp/fmriprep_output/;
+mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
 ```
 
-Result will be in $TMPDIR/out.
+Result will be in /scratch/sudregp/xcpengine_output/.
+
 
 # TODO
 * AutoPtx2 not working... I'm re-running everything in A01 and left the old
