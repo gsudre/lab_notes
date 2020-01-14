@@ -4,7 +4,7 @@
 Starting with DTI, we'll use FSL FDT:
 
 ```bash
-cd /scratch/sudregp/
+cd /scratch/sudregp/dti_fdt
 mkdir A01
 cd "dMRI_dir107_PA - 21"/
 dcm2niix_afni -z y -f PA *
@@ -18,7 +18,7 @@ Let's re-orient each file and rename them to make sure we're in the correct
 space to begin with:
 
 ```bash
-cd /scratch/sudregp/A01/
+cd /scratch/sudregp/dti_fdt/A01/
 for i in AP PA; do
     immv ${i} ${i}_old;
     fslreorient2std ${i}_old ${i};
@@ -113,13 +113,15 @@ autoPtx and TBSS:
 
 ```bash
 # copying over some files to their correct names for bedpostX
+cd /scratch/sudregp/dti_fdt/A01
 cp eddy_unwarped_images.nii.gz data.nii.gz;
 cp PA.bval bvals;
 cp PA.bvec old_bvecs;
 cp eddy_unwarped_images.eddy_rotated_bvecs bvecs;
 cp topup_b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
 
-/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc data.nii.gz
+cd /scratch/sudregp/dti_fdt
+/data/NCR_SBRB/software/autoPtx/autoPtx_1_preproc A01/data.nii.gz
 # this takes a while...
 ```
 
@@ -129,7 +131,7 @@ that script a big buggy... so, I came up with my own version. For a single
 subject, all you need to do is:
 
 ```bash
-cd /scratch/sudregp/A01
+cd /scratch/sudregp/dti_fdt
 
 execPath=/data/NCR_SBRB/software/autoPtx
 structures=$execPath/structureList
@@ -138,7 +140,7 @@ track=$execPath/trackSubjectStruct
 while read structstring; do
     struct=`echo $structstring | awk '{print $1}'`
     nseed=`echo $structstring | awk '{print $2}'`
-    $track ./ $struct $nseed 2>&1 & #> /dev/null &
+    $track A01 $struct $nseed 2>&1 > /dev/null &
 done < $structures
 ```
 
@@ -147,7 +149,7 @@ do:
 
 ```bash
 # this only needs the output from autoPtx_1
-cp preproc/dti_FA.nii.gz .
+cd /scratch/sudregp/dti_fdt/preproc/A01
 tbss_1_preproc dti_FA.nii.gz
 ```
 
@@ -159,15 +161,15 @@ cp FA/dti_FA_FA.nii.gz dti_FA_eroded.nii.gz
 
 # make directionality encoded QC pictures, checking that eroded FA looks fine.
 # Note that the dtifit results, and the std alignment were run by autoPtx!
-fat_proc_decmap -in_fa dti_FA_eroded.nii.gz -in_v1 preproc/dti_V1.nii.gz \
-    -mask preproc/nodif_brain_mask.nii.gz -prefix DEC
+fat_proc_decmap -in_fa dti_FA_eroded.nii.gz -in_v1 dti_V1.nii.gz \
+    -mask nodif_brain_mask.nii.gz -prefix DEC
 
 # apply the transform calculated by autoPtx to a few maps. code copied from 
 # tbss_non_fa
 for f in FA L1 L2 L3 MD MO; do
     echo Warping $f;
-    applywarp -i preproc/dti_${f} -o ${f}_in_FMRIB58_FA_1mm \
-        -r $FSLDIR/data/standard/FMRIB58_FA_1mm -w preproc/nat2std_warp
+    applywarp -i dti_${f} -o ${f}_in_FMRIB58_FA_1mm \
+        -r $FSLDIR/data/standard/FMRIB58_FA_1mm -w nat2std_warp
 done
 
 # make transformation QC figure: FSL template as the edges
@@ -178,8 +180,8 @@ done
 # make QC images for standard errors. Here we set our color scale to have 95th
 # percentile of all errors. Meaning, more red = bigger error.
 @chauffeur_afni                             \
-    -ulay  preproc/data.nii.gz                       \
-    -olay  preproc/dti_sse.nii.gz                          \
+    -ulay  data.nii.gz                       \
+    -olay  dti_sse.nii.gz                          \
     -opacity 5                              \
     -pbar_posonly   \
     -cbar Spectrum:red_to_blue              \
@@ -233,7 +235,7 @@ mv $TMPDIR/out/* /scratch/sudregp/fmriprep_output
 
 The result will be in /scratch/sudregp/fmriprep_output.
 
-# 2020-01-13 15:47:23
+# 2020-01-14 08:29:50
 
 Returning to this, let's see how to run two different files in xcpengine, if at
 all possible:
@@ -241,10 +243,10 @@ all possible:
 ```bash
 export TMPDIR=/lscratch/$SLURM_JOBID;
 m=A01;
-echo id0,img > ${TMPDIR}/${m}.csv;
+echo id0,id1,img > ${TMPDIR}/${m}.csv;
 cp /data/NCR_SBRB/fc-36p_despike.dsn $TMPDIR/;
-echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
-echo sub-${m},sub-${m}/fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+echo sub-${m},AP,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+echo sub-${m},PA,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
 xcpEngine -c $TMPDIR/${m}.csv -d $TMPDIR/fc-36p_despike.dsn -i $TMPDIR/wrk \
     -o $TMPDIR/out -r /scratch/sudregp/fmriprep_output/;
 mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
@@ -252,6 +254,26 @@ mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
 
 Result will be in /scratch/sudregp/xcpengine_output/.
 
+Then, you have two options: average whatever connectivity metrics you want to
+use (e.g. correlation, ReHo, ALLF), which were computed separately for AP and
+PA, between the two runs. If doing that, it might be good to also check which
+connections have a big difference. For example, computing the signed difference
+across subjects and doing a t-test.
+
+The alternative is to concatenate both processed runs over time (assuming both
+processed without errors), and re-running xcpengine on the concatenated files.
+It would go something like:
+
+```bash
+```
+
+Not sure what the differences between the two methods would be. The
+concatenation method introduces a discontinuity between the two runs, which will
+affect measures like Reho and ALFF, but not Pearson correlation. The latter
+would have more degrees of freedom, and that way increase certainty.
+
+There will be some difference in the results because the concatenation is done
+in template space, while the within-run metrics are computed in subject space.
 
 # TODO
 * AutoPtx2 not working... I'm re-running everything in A01 and left the old

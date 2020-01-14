@@ -52,3 +52,6 @@ write.csv(clin5,
 I then removed any DICA_on entries that seem to have affected either SX count,
 and kept only people with baseline <= 16. Now, we need to decide if we include
 evryone or just people with some SX at baseline. 
+
+# 2020-01-14 08:37:32
+
