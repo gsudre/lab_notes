@@ -254,33 +254,90 @@ Now we're down to 188 kids. Of those, 115 are improvers (slope < 0) in inatt and
 significant improvement? Age of first measurement? Baseline SX? Or even scale
 the variables so they are all in the same range?
 
+# 2020-01-16 09:39:38
 
+Thinking more about this analysis, it makes sense to draw the latent groups into
+something like what's in here:
 
+![](images/2020-01-16-09-42-23.png)
+
+From Barbara Franke's 2018 review
+(https://www.sciencedirect.com/science/article/pii/S0924977X18303031)
+
+That's mostly because I'd think PRS would map into some overall group membership
+like those. If not grouping, at least probability the subject is in each group.
 
 ```r
-trControl <- trainControl(method = "cv",
-    number = 10,
-    search = "grid")
-set.seed(1234)
-# Run the model
-tuneGrid <- expand.grid(.mtry = c(2: 100))
-rf_default <- train(x=train_data[, var_names],
-                    y=train_data$slope_inatt_GE4_wp05,
-                    method = "rf",
-                    metric = "RMSE",
-                    tuneGrid = tuneGrid,
-                    trControl = trControl,
-                    nodesize = 14,
-                    ntree = 300)
-params = 6:20
-score = c()
-for (m in params) {
-    model1 <- randomForest(x=train_data[, var_names],
-                       y=train_data$slope_inatt_GE4_wp05,
-                       importance = TRUE,
-                       ntree = 500, mtry = m)
-    score = c(score, )
-}
+setwd('~/data/baseline_prediction/prs_start/')
+data = read.csv('long_clin_01062020_lt16.csv')
+d3 <-lcmm(SX_inatt ~ age, random=~age, subject='MRN', mixture=~age, ng=3,
+          idiag=TRUE, data=data, link="linear")
+summary(d2)
+postprob(d3)
+```
+
+```r
+pdata = data
+pdata$MRN <- as.character(pdata$MRN)
+people3 <- as.data.frame(d3$pprob[,1:3])
+pdata$group3 <- factor(people3$class[sapply(pdata$MRN,
+                                            function(x) which(people3$MRN==x))])
+p1 <- ggplot(pdata, aes(age, SX_inatt, group=MRN, colour=group3)) + geom_line() +
+      geom_smooth(aes(group=group3), method="loess", size=2, se=F)  + 
+      scale_y_continuous(limits = c(0, 9)) +
+      labs(x="age", y="inatt", colour="Latent Class")
+```
+
+![](images/2020-01-16-11-22-12.png)
+
+This is not good at all. Let's try other models. Or, let's see if SX_hi behaves
+better:
+
+```r
+fit <-lcmm(SX_hi ~ age, random=~age, subject='MRN', mixture=~age, ng=3,
+          idiag=TRUE, data=data, link="linear")
+summary(fit)
+postprob(fit)
+
+pdata = data
+pdata$MRN <- as.character(pdata$MRN)
+people3 <- as.data.frame(d3$pprob[,1:3])
+pdata$group3 <- factor(people3$class[sapply(pdata$MRN,
+                                            function(x) which(people3$MRN==x))])
+ggplot(pdata, aes(age, SX_hi, group=MRN, colour=group3)) + geom_line() +
+       geom_smooth(aes(group=group3), method="loess", size=2, se=F)  + 
+       scale_y_continuous(limits = c(0, 9)) +
+       labs(x="age", y="hi", colour="Latent Class")
+```
+
+![](images/2020-01-16-11-25-52.png)
+
+Also not great. There are lots of things we can try here, like the the type of
+mixed model, random terms, add sex, or even center the age. Let's try them
+all...
+
+Out of curiosity, how many DSM-5 kids do we have?
+
+```r
+> hi_per = df$base_hi>=6 & df$last_hi>=6
+> hi_rem = df$base_hi>=6 & df$last_hi<6
+> inatt_per = df$base_inatt>=6 & df$last_inatt>=6
+> inatt_rem = df$base_inatt>=6 & df$last_inatt<6
+> sum(inatt_per)
+[1] 91
+> sum(inatt_rem)
+[1] 51
+> sum(hi_per)
+[1] 47
+> sum(hi_rem)
+[1] 76
+```
+
+Can I do anything with that?
+
+
+
+
 # TODO:
 * How do we add NVs to this analysis?
 * Maybe do inverse normal transform (like SOLAR) instead of winsorizing? We lose
