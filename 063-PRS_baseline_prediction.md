@@ -3,7 +3,7 @@
 Let's see if we can use the PRS for baseline prediction. We'll define the
 possible group of people as only who has PRS, and go from there. We'll pick the
 best PRS target (as is significant, but not necessarily clinically meaningful),
-and then will tyr to improve it by throwing in new phenotypes.
+and then will try to improve it by throwing in new phenotypes.
 
 If PRS fails from the get-go, we'll try using the phenotypes shown in prrevious
 papers to be good baseline predictors. Those phenotypes are the easy ones to get
@@ -355,38 +355,13 @@ y.train <- my_data[train_rows, y]
 y.test <- my_data[-train_rows, y]
 
 library(glmnet)
-fit.lasso <- glmnet(x.train, y.train, family="binomial", alpha=1)
-fit.ridge <- glmnet(x.train, y.train, family="binomial", alpha=0)
-fit.elnet <- glmnet(x.train, y.train, family="binomial", alpha=.5)
+cvfit = cv.glmnet(x.train, y.train, family = "binomial", type.measure = "auc", nfolds=5)
 ```
-# 10-fold Cross validation for each alpha = 0, 0.1, ... , 0.9, 1.0
-fit.lasso.cv <- cv.glmnet(x.train, y.train, alpha=1, 
-                          family="gaussian")
-fit.ridge.cv <- cv.glmnet(x.train, y.train, type.measure="mse", alpha=0,
-                          family="gaussian")
-fit.elnet.cv <- cv.glmnet(x.train, y.train, type.measure="mse", alpha=.5,
-                          family="gaussian")
-
-for (i in 0:10) {
-    assign(paste("fit", i, sep=""), cv.glmnet(x.train, y.train,
-                                              type.measure="mse", 
-                                              alpha=i/10, family="gaussian"))
-}
-par(mfrow=c(3,2))
-# For plotting options, type '?plot.glmnet' in R console
-plot(fit.lasso, xvar="lambda")
-plot(fit10, main="LASSO")
-
-plot(fit.ridge, xvar="lambda")
-plot(fit0, main="Ridge")
-
-plot(fit.elnet, xvar="lambda")
-plot(fit5, main="Elastic Net")
-```
-
-
 
 # TODO:
 * How do we add NVs to this analysis?
 * Maybe do inverse normal transform (like SOLAR) instead of winsorizing? We lose
   interpretability, though... especially when considering prediciton errors.
+* Try age, sex, IQ? How about handedness? Then sprinkle the rest onto it, including PRS?
+* How about using PLINK raw?
+* Still unsure what's best to test for Y...
