@@ -3,7 +3,7 @@
 Let's see if we can use the PRS for baseline prediction. We'll define the
 possible group of people as only who has PRS, and go from there. We'll pick the
 best PRS target (as is significant, but not necessarily clinically meaningful),
-and then will tyr to improve it by throwing in new phenotypes.
+and then will try to improve it by throwing in new phenotypes.
 
 If PRS fails from the get-go, we'll try using the phenotypes shown in prrevious
 papers to be good baseline predictors. Those phenotypes are the easy ones to get
@@ -335,6 +335,45 @@ Out of curiosity, how many DSM-5 kids do we have?
 
 Can I do anything with that?
 
+```r
+for (sx in c('inatt', 'hi')) {
+    df[, sprintf('outcome_%s', sx)] = NA
+    df[which(eval(parse(text=sprintf('%s_per', sx)))), sprintf('outcome_%s', sx)] = 'per'
+    df[which(eval(parse(text=sprintf('%s_rem', sx)))), sprintf('outcome_%s', sx)] = 'rem'
+}
+prs = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_12192019.csv')
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_')]
+y = 'outcome_inatt'
+my_data = data[!is.na(data[, y]), ]
+train_rows <- sample(1:nrow(my_data), .66*nrow(my_data))
+x.train <- as.matrix(my_data[train_rows, var_names])
+x.test <- as.matrix(my_data[-train_rows, var_names])
+
+y.train <- my_data[train_rows, y]
+y.test <- my_data[-train_rows, y]
+
+library(glmnet)
+cvfit = cv.glmnet(x.train, y.train, family = "binomial", type.measure = "auc", nfolds=5)
+```
+
+fit.ridge <- glmnet(x.train, y.train, family="binomial", alpha=0)
+fit.elnet <- glmnet(x.train, y.train, family="binomial", alpha=.5)
+```
+# 10-fold Cross validation for each alpha = 0, 0.1, ... , 0.9, 1.0
+fit.lasso.cv <- cv.glmnet(x.train, y.train, alpha=1, 
+                          family="gaussian")
+fit.ridge.cv <- cv.glmnet(x.train, y.train, type.measure="mse", alpha=0,
+                          family="gaussian")
+fit.elnet.cv <- cv.glmnet(x.train, y.train, type.measure="mse", alpha=.5,
+                          family="gaussian")
+
+for (i in 0:10) {
+    assign(paste("fit", i, sep=""), cv.glmnet(x.train, y.train,
+                                              type.measure="mse", 
+                                              alpha=i/10, family="gaussian"))
+}
 
 
 
