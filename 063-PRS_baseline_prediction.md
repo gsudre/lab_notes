@@ -125,7 +125,7 @@ winsorize = function(x, cut = 0.01){
   return(x)
 }
 junk = winsorize(df[idx, ]$slope_inatt)
-par(mfrow=c(1,3))
+par(mfrow=c(1,3))`
 plot(df[idx, ]$slope_inatt, main='inatt', ylim=c(-4, 2.5))
 plot(junk, main='inatt w0.01', ylim=c(-4, 2.5))
 junk = winsorize(df[idx, ]$slope_inatt, cut=.05)
@@ -358,6 +358,349 @@ library(glmnet)
 cvfit = cv.glmnet(x.train, y.train, family = "binomial", type.measure = "auc", nfolds=5)
 ```
 
+# 2020-01-17 15:44:29
+
+After all we've tried, let's see if there is anything else we can extract with
+the PRS. 
+
+```r
+setwd('~/data/baseline_prediction/prs_start/')
+data = read.csv('long_clin_01062020_lt16.csv')
+
+df = data.frame(MRN=unique(data$MRN))
+for (r in 1:nrow(df)) {
+    subj_data = data[data$MRN==df$MRN[r], ]
+    for (sx in c('inatt', 'hi')) {
+        fit = lm(as.formula(sprintf('SX_%s ~ age', sx)), data=subj_data)
+        df[r, sprintf('slope_%s', sx)] = fit$coefficients['age']
+        base_row = which.min(subj_data$age)
+        df[r, sprintf('base_%s', sx)] = subj_data[base_row, sprintf('SX_%s', sx)]
+        last_row = which.max(subj_data$age)
+        df[r, sprintf('last_%s', sx)] = subj_data[last_row, sprintf('SX_%s', sx)]
+        df[r, 'base_age'] = subj_data[base_row, 'age']
+        df[r, 'last_age'] = subj_data[last_row, 'age']
+        df[r, 'sex'] = subj_data[last_row, 'sex']
+    }
+}
+idx = df$base_inatt>=3 | df$base_hi>=3
+for (sx in c('inatt', 'hi')) {
+    df[, sprintf('slope_%s_GE3_wp05', sx)] = NA
+    junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+    df[idx, sprintf('slope_%s_GE3_wp05', sx)] = junk
+}
+prs = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_12192019.csv')
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+```
+
+Let's do some general classification using PRS:
+
+```r
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < 0),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
+X = as.matrix(data[!is.na(data[,]$y), var_names])
+Y = data[!is.na(data[,]$y), ]$y
+library(glmnet)
+library(pROC)
+cv_lasso <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 1)
+md_lasso <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
+
+cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 0)
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 0)
+coef(md_ridge)
+roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
+
+# elastic net
+library("doParallel")
+library("foreach")
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                    type.measure = "deviance", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X, Y, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(Y, as.numeric(predict(md_enet, X, type = "response")))
+```
+
+Not much here: .62 ROC. Most of it is overfitting, but I don't want to split the data
+yet. Maybe we'll do better if we use a PCA so the predictors are not too
+correlated. We should also add age of baseline and SX at baseline. If nothing
+happens, we should go for SNPs, or play a bit with thresholding the slope.
+
+```r
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < 0),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
+X1 = prcomp(data[!is.na(data[,]$y), var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[!is.na(data[,]$y), var_names[13:22]]))
+X = scale(X)
+Y = data[!is.na(data[,]$y), ]$y
+cv_lasso <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 1)
+md_lasso <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
+cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 0)
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 0)
+coef(md_ridge)
+roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                    type.measure = "deviance", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X, Y, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(Y, as.numeric(predict(md_enet, X, type = "response")))
+```
+
+Up to .66 for ridge, so let's continue playing with PCA... what happens if we
+add age, sex, and initial SX?
+
+```r
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < 0),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X1 = prcomp(data[use_me, var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[use_me, var_names[13:22]]),
+          as.matrix(data[use_me, 'base_age']))
+X = scale(X)
+colnames(X)[ncol(X)] = 'base_age'
+X = cbind(X, data[use_me, 'sex'])
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+cv_lasso <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 1)
+md_lasso <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
+cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 0)
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 0)
+coef(md_ridge)
+roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
+                    type.measure = "deviance", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X, Y, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(Y, as.numeric(predict(md_enet, X, type = "response")))
+```
+
+Now I'm at .67 for ridge. Now, the more I add variables the better ridge will
+get because of overfitting. Now it's time to start splitting the data, otherwise
+I won't be able to test the raw genotyping data. I'll also test base_SX just in case.
+
+```r
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < 0),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X1 = prcomp(data[use_me, var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[use_me, var_names[13:22]]),
+          as.matrix(data[use_me, c('base_age', 'base_hi')]))
+X = scale(X)
+colnames(X)[(ncol(X)-1):ncol(X)] = c('base_age', 'base_sx')
+X = cbind(X, data[use_me, 'sex'])
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .9, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+
+cv_ridge <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 0)
+md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 0)
+coef(md_ridge)
+roc(y_test, as.numeric(predict(md_ridge, X_test, type = "response")))
+
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "deviance", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+```
+
+We're down to .62 in ridge without adding sx, but it's still something.
+Interestingly, adding base_sx bring ridge down to chance, but lasso goes up,
+which makes enet go up to .67, and the model is all based on that. 
+
+Now we can play a bit more with Y, try a few other loss functions, or jump into
+raw SNPs just for kicks.
+
+## Exporting raw SNPs
+
+Quick side note on how I did that. Starting from the data right before
+imputations, I did:
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v2
+module load plink
+plink --bfile lastQCb37_noduplicates_flipped --export A --out genotyped_out
+```
+
+Then, in R:
+
+```r
+library(data.table)
+dread = fread('~/data/baseline_prediction/prs_start/genotyped_out.raw',
+              header = T, sep = ' ')
+d = as.data.frame(dread)
+d = d[, c(2, 7:ncol(d))]
+mrns = read.table('~/data/tmp/results.txt', skip=1)
+d2 = merge(d, mrns, by.x='IID', by.y='V1', all.x=T, all.y=F)
+colnames(d2)[ncol(d2)] = 'MRN'
+saveRDS(d2, file='~/data/baseline_prediction/prs_start/genotype_raw.rds')
+```
+
+## back to prediction
+
+OK, let's see if we gain anything by adding the raw genomic data, instead of the
+PRS. I'll try including the population PCs later, but so far they haven't helped
+much anyways...
+
+```r
+setwd('~/data/baseline_prediction/prs_start/')
+data = read.csv('long_clin_01062020_lt16.csv')
+
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+
+df = data.frame(MRN=unique(data$MRN))
+for (r in 1:nrow(df)) {
+    subj_data = data[data$MRN==df$MRN[r], ]
+    for (sx in c('inatt', 'hi')) {
+        fit = lm(as.formula(sprintf('SX_%s ~ age', sx)), data=subj_data)
+        df[r, sprintf('slope_%s', sx)] = fit$coefficients['age']
+        base_row = which.min(subj_data$age)
+        df[r, sprintf('base_%s', sx)] = subj_data[base_row, sprintf('SX_%s', sx)]
+        last_row = which.max(subj_data$age)
+        df[r, sprintf('last_%s', sx)] = subj_data[last_row, sprintf('SX_%s', sx)]
+        df[r, 'base_age'] = subj_data[base_row, 'age']
+        df[r, 'last_age'] = subj_data[last_row, 'age']
+        df[r, 'sex'] = subj_data[last_row, 'sex']
+    }
+}
+idx = df$base_inatt>=3 | df$base_hi>=3
+for (sx in c('inatt', 'hi')) {
+    df[, sprintf('slope_%s_GE3_wp05', sx)] = NA
+    junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+    df[idx, sprintf('slope_%s_GE3_wp05', sx)] = junk
+}
+gen = readRDS('~/data/baseline_prediction/prs_start/genotype_raw.rds')
+data = merge(df, gen, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(gen)[2:(ncol(gen)-1)]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < 0),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X = cbind(as.matrix(data[use_me, c(var_names, 'base_age', 'base_hi', 'sex')]))
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .9, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+
+cv_ridge <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "deviance", alpha = 0)
+md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 0)
+coef(md_ridge)
+roc(y_test, as.numeric(predict(md_ridge, X_test, type = "response")))
+
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "deviance", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+```
+
+
 # TODO:
 * How do we add NVs to this analysis?
 * Maybe do inverse normal transform (like SOLAR) instead of winsorizing? We lose
@@ -365,3 +708,4 @@ cvfit = cv.glmnet(x.train, y.train, family = "binomial", type.measure = "auc", n
 * Try age, sex, IQ? How about handedness? Then sprinkle the rest onto it, including PRS?
 * How about using PLINK raw?
 * Still unsure what's best to test for Y...
+* maybe try GE4?
