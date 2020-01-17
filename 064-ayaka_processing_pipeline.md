@@ -205,18 +205,17 @@ fmriprep needs data in BIDS format, so let's do that:
 
 ```bash
 m=A01;
-cnt=1;
 cd /scratch/sudregp/
 mkdir fmri
 cd fmri
 jo -p "Name"="test BIDS" "BIDSVersion"="1.0.2" >> dataset_description.json;
 mkdir -p sub-${m}/anat;
-dcm2niix_afni -o sub-${m}/anat/ -z y -f sub-${m}_run-${cnt}_T1w "../T1w_MPR - 16"/
+dcm2niix_afni -o sub-${m}/anat/ -z y -f sub-${m}_T1w "../T1w_MPR - 16"/
 mkdir -p sub-${m}/func;
 dcm2niix_afni -o sub-${m}/func/ -z y \
-    -f sub-${m}_task-rest_acq-PA_run-${cnt}_bold "../rfMRI_REST_PA - 15/"
+    -f sub-${m}_task-rest_acq-PA_bold "../rfMRI_REST_PA - 15/"
 dcm2niix_afni -o sub-${m}/func/ -z y \
-    -f sub-${m}_task-rest_acq-AP_run-${cnt}_bold "../rfMRI_REST_AP - 13/"
+    -f sub-${m}_task-rest_acq-AP_bold "../rfMRI_REST_AP - 13/"
 ```
 
 Then, just run fmriprep. Note that this will be different in Biowulf, but the
@@ -228,7 +227,7 @@ m=A01;
 mkdir -p $TMPDIR/out $TMPDIR/wrk;
 fmriprep /scratch/sudregp/fmri/ $TMPDIR/out \
     participant --participant_label sub-${m} -w $TMPDIR/wrk --use-aroma \
-    --nthreads 32 --mem_mb 10000 --notrack \
+    --nthreads 32 --mem_mb 50000 --notrack \
     --fs-license-file /usr/local/apps/freesurfer/license.txt --fs-no-reconall;
 mv $TMPDIR/out/* /scratch/sudregp/fmriprep_output
 ```
@@ -245,8 +244,8 @@ export TMPDIR=/lscratch/$SLURM_JOBID;
 m=A01;
 echo id0,id1,img > ${TMPDIR}/${m}.csv;
 cp /data/NCR_SBRB/fc-36p_despike.dsn $TMPDIR/;
-echo sub-${m},AP,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
-echo sub-${m},PA,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_run-1_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+echo sub-${m},AP,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-AP_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
+echo sub-${m},PA,fmriprep/sub-${m}/func/sub-${m}_task-rest_acq-PA_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz >> ${TMPDIR}/${m}.csv;
 xcpEngine -c $TMPDIR/${m}.csv -d $TMPDIR/fc-36p_despike.dsn -i $TMPDIR/wrk \
     -o $TMPDIR/out -r /scratch/sudregp/fmriprep_output/;
 mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
@@ -265,6 +264,19 @@ processed without errors), and re-running xcpengine on the concatenated files.
 It would go something like:
 
 ```bash
+export TMPDIR=/lscratch/$SLURM_JOBID;
+m=A01;
+cd /scratch/sudregp/xcpengine_output/sub-${m}
+3dTcat -prefix sub-A01_concat.nii.gz \
+    AP/regress/sub-A01_AP_residualised.nii.gz \
+    PA/regress/sub-A01_PA_residualised.nii.gz
+cp /data/NCR_SBRB/fc-template.dsn $TMPDIR/;
+echo id0,id1,img > ${TMPDIR}/${m}.csv;
+echo sub-${m},concat,sub-${m}_concat.nii.gz >> ${TMPDIR}/${m}.csv;
+
+xcpEngine -c $TMPDIR/${m}.csv -d $TMPDIR/fc-template.dsn -i $TMPDIR/wrk \
+    -o $TMPDIR/out -r /scratch/sudregp/xcpengine_output/sub-${m}/;
+mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
 ```
 
 Not sure what the differences between the two methods would be. The
