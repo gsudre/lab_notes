@@ -253,6 +253,53 @@ mv $TMPDIR/out/* /scratch/sudregp/xcpengine_output/;
 
 Result will be in /scratch/sudregp/xcpengine_output/.
 
+```
+Current processing step:
+getting data from fmriprep directory
+····································································
+· checking refvolume and structural orientation
+· generate mask and referenceVolumeBrain
+Image Exception : #22 :: ERROR: Could not open image sub-A01_AP_structmask
+terminate called after throwing an instance of 'RBD_COMMON::BaseException'
+/xcpEngine/core/functions/exec_fsl: line 1: 37588 Aborted                 ${FSLDIR}/bin/"${@}"
+Cannot open volume /lscratch/46523365/out/sub-A01/AP/prestats/sub-A01_AP_mask for reading!
+· generate new /lscratch/46523365/out/sub-A01/AP/sub-A01_AP_spaces.json with spaceMetadata
+Cannot open volume /lscratch/46523365/out/sub-A01/AP/prestats/sub-A01_AP_mask for reading!
+source space map '/lscratch/46523365/out/sub-A01/AP/prestats/sub-A01_AP_struct.nii.gz' is not an image
+· Quality assessment
+Error in readNifti(mask1path) : 
+  Failed to read image from path /lscratch/46523365/out/sub-A01/AP/prestats/sub-A01_AP_segmentation.nii.gz
+Calls: readNifti -> .Call
+In addition: Warning message:
+In readNifti(mask1path) :
+  nifti_image_read: failed to find header file for '/lscratch/46523365/out/sub-A01/AP/prestats/sub-A01_AP_segmentation.nii.gz'
+Execution halted
+```
+
+```
+Current processing step:
+getting data from fmriprep directory
+····································································
+· checking refvolume and structural orientation
+· generate mask and referenceVolumeBrain
+Image Exception : #22 :: ERROR: Could not open image sub-A01_structmask
+terminate called after throwing an instance of 'RBD_COMMON::BaseException'
+/xcpEngine/core/functions/exec_fsl: line 1: 39328 Aborted                 ${FSLDIR}/bin/"${@}"
+Cannot open volume /lscratch/46523365/out/sub-A01/prestats/sub-A01_mask for reading!
+· generate new /lscratch/46523365/out/sub-A01/sub-A01_spaces.json with spaceMetadata
+Cannot open volume /lscratch/46523365/out/sub-A01/prestats/sub-A01_mask for reading!
+source space map '/lscratch/46523365/out/sub-A01/prestats/sub-A01_struct.nii.gz' is not an image
+· Quality assessment
+Error in readNifti(mask1path) : 
+  Failed to read image from path /lscratch/46523365/out/sub-A01/prestats/sub-A01_segmentation.nii.gz
+Calls: readNifti -> .Call
+In addition: Warning message:
+In readNifti(mask1path) :
+  nifti_image_read: failed to find header file for '/lscratch/46523365/out/sub-A01/prestats/sub-A01_segmentation.nii.gz'
+Execution halted
+····································································
+```
+
 Then, you have two options: average whatever connectivity metrics you want to
 use (e.g. correlation, ReHo, ALLF), which were computed separately for AP and
 PA, between the two runs. If doing that, it might be good to also check which
@@ -287,11 +334,6 @@ would have more degrees of freedom, and that way increase certainty.
 There will be some difference in the results because the concatenation is done
 in template space, while the within-run metrics are computed in subject space.
 
-# TODO
-* AutoPtx2 not working... I'm re-running everything in A01 and left the old
-  stuff in A01.bk. This new run started with putting everything in std space.
-  Let's see if that makes a difference. Waiting on topup for now.
-* Waiting on fmriprep to run xcpengine -> need to combine the two runs somehow
 
 
 

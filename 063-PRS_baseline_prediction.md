@@ -413,7 +413,7 @@ roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
 
 cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 0)
-md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_ridge$lambda.1se,
                    alpha = 0)
 coef(md_ridge)
 roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
@@ -435,7 +435,7 @@ coef(md_enet)
 roc(Y, as.numeric(predict(md_enet, X, type = "response")))
 ```
 
-Not much here: .62 ROC. Most of it is overfitting, but I don't want to split the data
+Not much here: .57 ROC. Most of it is overfitting, but I don't want to split the data
 yet. Maybe we'll do better if we use a PCA so the predictors are not too
 correlated. We should also add age of baseline and SX at baseline. If nothing
 happens, we should go for SNPs, or play a bit with thresholding the slope.
@@ -459,7 +459,7 @@ coef(md_lasso)
 roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
 cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 0)
-md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_ridge$lambda.1se,
                    alpha = 0)
 coef(md_ridge)
 roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
@@ -477,7 +477,7 @@ coef(md_enet)
 roc(Y, as.numeric(predict(md_enet, X, type = "response")))
 ```
 
-Up to .66 for ridge, so let's continue playing with PCA... what happens if we
+Up to .64 for ridge, so let's continue playing with PCA... what happens if we
 add age, sex, and initial SX?
 
 ```r
@@ -504,7 +504,7 @@ coef(md_lasso)
 roc(Y, as.numeric(predict(md_lasso, X, type = "response")))
 cv_ridge <- cv.glmnet(X, Y, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 0)
-md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_lasso$lambda.1se,
+md_ridge <- glmnet(X, Y, family = "binomial", lambda = cv_ridge$lambda.1se,
                    alpha = 0)
 coef(md_ridge)
 roc(Y, as.numeric(predict(md_ridge, X, type = "response")))
@@ -522,7 +522,7 @@ coef(md_enet)
 roc(Y, as.numeric(predict(md_enet, X, type = "response")))
 ```
 
-Now I'm at .67 for ridge. Now, the more I add variables the better ridge will
+Now I'm at .66 for ridge. Now, the more I add variables the better ridge will
 get because of overfitting. Now it's time to start splitting the data, otherwise
 I won't be able to test the raw genotyping data. I'll also test base_SX just in case.
 
@@ -560,7 +560,7 @@ roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
 
 cv_ridge <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 0)
-md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_ridge$lambda.1se,
                    alpha = 0)
 coef(md_ridge)
 roc(y_test, as.numeric(predict(md_ridge, X_test, type = "response")))
@@ -579,9 +579,8 @@ coef(md_enet)
 roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
 ```
 
-We're down to .62 in ridge without adding sx, but it's still something.
 Interestingly, adding base_sx bring ridge down to chance, but lasso goes up,
-which makes enet go up to .67, and the model is all based on that. 
+which makes enet go up to .67, and the model is all based on that.
 
 Now we can play a bit more with Y, try a few other loss functions, or jump into
 raw SNPs just for kicks.
@@ -662,7 +661,13 @@ data[which(data$slope_hi_GE3_wp05 >= 0),]$y = 'nonimp'
 use_me = !is.na(data[,]$y)
 X = cbind(as.matrix(data[use_me, c(var_names, 'base_age', 'base_hi', 'sex')]))
 colnames(X)[ncol(X)] = 'sex'
+X2 = apply(X, 2, as.numeric)
 Y = data[use_me, ]$y
+
+# remove any variables with NAs
+rm_var = colSums(is.na(X2)) > 0
+X = X2[, !rm_var]
+var_names = var_names[!rm_var]
 
 library(caret)
 set.seed(3456)
@@ -672,18 +677,23 @@ X_test  <- X[-trainIndex,]
 y_train <- Y[trainIndex]
 y_test  <- Y[-trainIndex]
 
+# remove variables with zero or near zero variance
+nzv <- nearZeroVar(X_train)
+X_train = X_train[, -nzv]
+X_test = X_test[, -nzv]
+
+library(glmnet)
+library(pROC)
 cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 1)
 md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
                    alpha = 1)
-coef(md_lasso)
 roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
 
 cv_ridge <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
                       type.measure = "deviance", alpha = 0)
-md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+md_ridge <- glmnet(X_train, y_train, family = "binomial", lambda = cv_ridge$lambda.1se,
                    alpha = 0)
-coef(md_ridge)
 roc(y_test, as.numeric(predict(md_ridge, X_test, type = "response")))
 
 a <- seq(0.1, 0.9, 0.05)
@@ -696,10 +706,10 @@ search <- foreach(i = a, .combine = rbind) %dopar% {
 cv_enet <- search[search$cvm == min(search$cvm), ]
 md_enet <- glmnet(X_train, y_train, family = "binomial",
                   lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
-coef(md_enet)
 roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
 ```
 
+Using Lasso now I'm at .6524. 
 
 # TODO:
 * How do we add NVs to this analysis?
@@ -709,3 +719,4 @@ roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
 * How about using PLINK raw?
 * Still unsure what's best to test for Y...
 * maybe try GE4?
+* use something else other than deviance?
