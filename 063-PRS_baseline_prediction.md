@@ -709,14 +709,342 @@ md_enet <- glmnet(X_train, y_train, family = "binomial",
 roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
 ```
 
-Using Lasso now I'm at .6524. 
+Using Lasso now I'm at .6524, which is slightly better than enet (.63).
+
+# 2020-01-21 09:36:47
+
+## Trying other objective functions
+
+Let's see if using something other than deviance works best. I'll play with the
+best PRS and best raw models so far:
+
+```r
+registerDoParallel(cores = 4)
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "auc", alpha = i, parallel=T)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "auc", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+```
+
+Using AUC as objective function gives me the same ROC when using PRS and enet
+(.677). Using raw data, Lasso and AUC gives .6667, slightly better than using
+deviance (.6524). Using raw data and enet gives, compared to .63 using deviance.
+
+# Trying different Ys
+
+What  if I use the significance of the slope into determining whether it's a
+meaningful improvement or not? Actually, there are some flat slopes getting very
+small values, but they are not zero. Let's establish a threshold, say -1 to be a
+significant improvement... the problem is then we have only about 10% showing
+improvement. Let's try -.5
+
+```r
+setwd('~/data/baseline_prediction/prs_start/')
+data = read.csv('long_clin_01062020_lt16.csv')
+
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+
+df = data.frame(MRN=unique(data$MRN))
+for (r in 1:nrow(df)) {
+    subj_data = data[data$MRN==df$MRN[r], ]
+    for (sx in c('inatt', 'hi')) {
+        fit = lm(as.formula(sprintf('SX_%s ~ age', sx)), data=subj_data)
+        df[r, sprintf('slope_%s', sx)] = fit$coefficients['age']
+        base_row = which.min(subj_data$age)
+        df[r, sprintf('base_%s', sx)] = subj_data[base_row, sprintf('SX_%s', sx)]
+        last_row = which.max(subj_data$age)
+        df[r, sprintf('last_%s', sx)] = subj_data[last_row, sprintf('SX_%s', sx)]
+        df[r, 'base_age'] = subj_data[base_row, 'age']
+        df[r, 'last_age'] = subj_data[last_row, 'age']
+        df[r, 'sex'] = subj_data[last_row, 'sex']
+    }
+}
+idx = df$base_inatt>=3 | df$base_hi>=3
+for (sx in c('inatt', 'hi')) {
+    df[, sprintf('slope_%s_GE3_wp05', sx)] = NA
+    junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+    df[idx, sprintf('slope_%s_GE3_wp05', sx)] = junk
+}
+prs = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_12192019.csv')
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < -.5),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= -.5),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X1 = prcomp(data[use_me, var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[use_me, var_names[13:22]]),
+          as.matrix(data[use_me, c('base_age', 'base_hi')]))
+X = scale(X)
+colnames(X)[(ncol(X)-1):ncol(X)] = c('base_age', 'base_sx')
+X = cbind(X, data[use_me, 'sex'])
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .9, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "auc", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "auc", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+```
+
+If we define it at .5 symptoms, we go up to .7024 ROC in both Lasso and enet. Still,
+base_sx is the only thing that matters... and at .3 we get .678... maybe leave
+it at .5? It makes some sense. How does it look for the raw data?
+
+```r
+setwd('~/data/baseline_prediction/prs_start/')
+data = read.csv('long_clin_01062020_lt16.csv')
+
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+
+df = data.frame(MRN=unique(data$MRN))
+for (r in 1:nrow(df)) {
+    subj_data = data[data$MRN==df$MRN[r], ]
+    for (sx in c('inatt', 'hi')) {
+        fit = lm(as.formula(sprintf('SX_%s ~ age', sx)), data=subj_data)
+        df[r, sprintf('slope_%s', sx)] = fit$coefficients['age']
+        base_row = which.min(subj_data$age)
+        df[r, sprintf('base_%s', sx)] = subj_data[base_row, sprintf('SX_%s', sx)]
+        last_row = which.max(subj_data$age)
+        df[r, sprintf('last_%s', sx)] = subj_data[last_row, sprintf('SX_%s', sx)]
+        df[r, 'base_age'] = subj_data[base_row, 'age']
+        df[r, 'last_age'] = subj_data[last_row, 'age']
+        df[r, 'sex'] = subj_data[last_row, 'sex']
+    }
+}
+idx = df$base_inatt>=3 | df$base_hi>=3
+for (sx in c('inatt', 'hi')) {
+    df[, sprintf('slope_%s_GE3_wp05', sx)] = NA
+    junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+    df[idx, sprintf('slope_%s_GE3_wp05', sx)] = junk
+}
+gen = readRDS('~/data/baseline_prediction/prs_start/genotype_raw.rds')
+data = merge(df, gen, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(gen)[2:(ncol(gen)-1)]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < -.5),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= -.5),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X = cbind(as.matrix(data[use_me, c(var_names, 'base_age', 'base_hi', 'sex')]))
+colnames(X)[ncol(X)] = 'sex'
+X2 = apply(X, 2, as.numeric)
+Y = data[use_me, ]$y
+
+# remove any variables with NAs
+rm_var = colSums(is.na(X2)) > 0
+X = X2[, !rm_var]
+var_names = var_names[!rm_var]
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .9, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+# remove variables with zero or near zero variance
+nzv <- nearZeroVar(X_train)
+X_train = X_train[, -nzv]
+X_test = X_test[, -nzv]
+
+pkgs <- list("glmnet", "doParallel", "foreach", "pROC")
+lapply(pkgs, require, character.only = T)
+registerDoParallel(cores = 4)
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "auc", alpha = 1, parallel=T)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "auc", alpha = i, parallel=T)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+```
+
+Here I get .7024 as well in Lasso, which leads me to believe nothing is getting
+selected either, only base sx. 
+
+
+# Playing with class balance
+
+What if we play with class balance?
+
+```r
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < -.5),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= -.5),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X1 = prcomp(data[use_me, var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[use_me, var_names[13:22]]),
+          as.matrix(data[use_me, c('base_age', 'base_hi')]))
+X = scale(X)
+colnames(X)[(ncol(X)-1):ncol(X)] = c('base_age', 'base_sx')
+X = cbind(X, data[use_me, 'sex'])
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .9, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+set.seed(3456)
+up_train <- upSample(x = X_train,
+                     y = as.factor(y_train))
+X_train = up_train[, -ncol(up_train)]
+y_train = as.character(up_train$Class)
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "auc", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+
+a <- seq(0.1, 0.9, 0.05)
+search <- foreach(i = a, .combine = rbind) %dopar% {
+    cv <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                    type.measure = "auc", alpha = i)
+    data.frame(cvm = cv$cvm[cv$lambda == cv$lambda.1se],
+               lambda.1se = cv$lambda.1se, alpha = i)
+}
+cv_enet <- search[search$cvm == min(search$cvm), ]
+md_enet <- glmnet(X_train, y_train, family = "binomial",
+                  lambda = cv_enet$lambda.1se, alpha = cv_enet$alpha)
+coef(md_enet)
+roc(y_test, as.numeric(predict(md_enet, X_test, type = "response")))
+```
+
+This didn't make much difference, but possibly it's because PRS is such a poor
+predictor? I wonder if it'd work for other types of variables.
+
+## Different fold sizes
+
+Let me see if using something else than a 10/90 split would help out a bit
+
+```r
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+
+var_names = colnames(data)[grepl(colnames(data), pattern='ADHD_') |
+                           grepl(colnames(data), pattern='PC')]
+data$y = NA
+data[which(data$slope_hi_GE3_wp05 < -.5),]$y = 'imp'
+data[which(data$slope_hi_GE3_wp05 >= -.5),]$y = 'nonimp'
+use_me = !is.na(data[,]$y)
+X1 = prcomp(data[use_me, var_names[1:12]])$x
+colnames(X1) = sapply(1:ncol(X1), function(x) sprintf('PRSPC%02d', x))
+X = cbind(X1, as.matrix(data[use_me, var_names[13:22]]),
+          as.matrix(data[use_me, c('base_age', 'base_hi')]))
+X = scale(X)
+colnames(X)[(ncol(X)-1):ncol(X)] = c('base_age', 'base_sx')
+X = cbind(X, data[use_me, 'sex'])
+colnames(X)[ncol(X)] = 'sex'
+Y = data[use_me, ]$y
+
+library(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(Y, p = .75, list = FALSE, times = 1)
+X_train <- X[ trainIndex,]
+X_test  <- X[-trainIndex,]
+y_train <- Y[trainIndex]
+y_test  <- Y[-trainIndex]
+
+set.seed(3456)
+up_train <- upSample(x = X_train,
+                     y = as.factor(y_train))
+X_train = up_train[, -ncol(up_train)]
+y_train = as.character(up_train$Class)
+
+cv_lasso <- cv.glmnet(X_train, y_train, family = "binomial", nfold = 10,
+                      type.measure = "auc", alpha = 1)
+md_lasso <- glmnet(X_train, y_train, family = "binomial", lambda = cv_lasso$lambda.1se,
+                   alpha = 1)
+coef(md_lasso)
+roc(y_test, as.numeric(predict(md_lasso, X_test, type = "response")))
+```
+
+Actually, at .67 split (so, 3 fold cross validation), I get .76 ROC, regardless
+if I use usampling or not... but only .5 for inatt. Well, it gives us room for
+improvement... 
+
+Since none of it is showing improvement in terms of picking up PRS predictors,
+let's decide to choose this later...
 
 # TODO:
 * How do we add NVs to this analysis?
-* Maybe do inverse normal transform (like SOLAR) instead of winsorizing? We lose
-  interpretability, though... especially when considering prediciton errors.
-* Try age, sex, IQ? How about handedness? Then sprinkle the rest onto it, including PRS?
-* How about using PLINK raw?
 * Still unsure what's best to test for Y...
 * maybe try GE4?
-* use something else other than deviance?
