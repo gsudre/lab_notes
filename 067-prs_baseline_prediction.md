@@ -465,6 +465,45 @@ Let's see if we do any better if we binarize the data. Let's start with the
 median value as the cutoff. But we could even optimize that, if the goal here is
 really stacking up the deck...
 
+We start with one per family as before:
+
+<!-- ```r
+hold = c()
+prs_var_names = colnames(data_prs)[grepl(colnames(data_prs), pattern='ADHDeur_')]
+covars = '+ PC01 + PC02 + PC03 + PC04 + PC05 + PC06 + PC07 + PC08 + PC09 + PC10 + base_age + sex.x'
+out_fname = '~/data/baseline_prediction/prs_start/univar_prs_WNH_PCsAgeSex_lm.csv'
+for (sx in c('inatt', 'hi', 'total')) {
+    for (min_sx in c(0, 3, 4)) {
+        phen = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+        phen_res = c()
+        for (prs in prs_var_names) {
+            use_me = !is.na(data_prs[, phen]) & data_prs$bestInFamily & data_prs$isWNH
+            fm_str = paste(phen, "~", prs, covars, sep="")
+            fit = lm(as.formula(fm_str), data=data_prs[use_me, ])
+            # assuming interesting variable is always first one
+            temp = c(summary(fit)$coefficients[2, ], summary(fit)$r.squared,
+                     summary(fit)$adj.r.squared)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+        phen_res = data.frame(phen_res)
+        phen_res$formula = rownames(phen_res)
+        phen_res$predictor = prs_var_names
+        phen_res$outcome = phen
+        hold = rbind(hold, phen_res)
+    }
+}
+colnames(hold)[5:6] = c('R2', 'adjR2')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+
+fm = as.formula(sprintf("%s ~ OLS_%s_slope + (1|nuclearFamID)", colnames(df)[i], sx))
+            print(fm)
+            fit = try(glmer(fm, data=df[idx2, ], na.action=na.omit, family = binomial(link = "logit")))
+            print(summary(fit)$coefficients[2,]) -->
+
+
 
 # TODO
 * binary groups
