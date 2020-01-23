@@ -33,7 +33,7 @@ for (r in 1:nrow(df)) {
         df[r, 'sex'] = subj_data[last_row, 'sex']
     }
 }
-for (min_sx in c(0, 3, 4)) {
+for (min_sx in c(0, 3, 4, 6)) {
     idx = df$base_inatt>=min_sx | df$base_hi>=min_sx
     for (sx in c('inatt', 'hi', 'total')) {
         df[, sprintf('slope_%s_GE%d_wp05', sx, min_sx)] = NA
