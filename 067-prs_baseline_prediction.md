@@ -465,46 +465,191 @@ Let's see if we do any better if we binarize the data. Let's start with the
 median value as the cutoff. But we could even optimize that, if the goal here is
 really stacking up the deck...
 
-We start with one per family as before:
+We start with one per family as before. Just a quick note on defining the slope
+threshold:
 
-<!-- ```r
+```
+> phen_slope
+[1] "slope_total_GE4_wp05"
+> summary(data_prs[, phen_slope])
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+-2.2794 -0.9430 -0.4343 -0.4585  0.0000  1.0013     164 
+> quantile(data_prs[, phen_slope], .75, na.rm=T)
+         75% 
+1.004859e-14 
+> quantile(data_prs[, phen_slope], .25, na.rm=T)
+       25% 
+-0.9429821 
+```
+
+So, lower values mean stronger requirement (more negative slope) to be
+considered an improver.
+
+```r
 hold = c()
 prs_var_names = colnames(data_prs)[grepl(colnames(data_prs), pattern='ADHDeur_')]
 covars = '+ PC01 + PC02 + PC03 + PC04 + PC05 + PC06 + PC07 + PC08 + PC09 + PC10 + base_age + sex.x'
-out_fname = '~/data/baseline_prediction/prs_start/univar_prs_WNH_PCsAgeSex_lm.csv'
+out_fname = '~/data/baseline_prediction/prs_start/univar_prs_WNH_PCsAgeSex_glm.csv'
 for (sx in c('inatt', 'hi', 'total')) {
-    for (min_sx in c(0, 3, 4)) {
-        phen = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
-        phen_res = c()
-        for (prs in prs_var_names) {
+    for (min_sx in c(3, 4, 6)) {
+        for (qtile in c(.2, .25, .33, .5)) {
+            phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+            phen = sprintf('bin%.2f_%s_GE%d_wp05', qtile, sx, min_sx)
+            thresh = quantile(data_prs[, phen_slope], qtile, na.rm=T)
+            data_prs[, phen] = NA
+            data_prs[which(data_prs[, phen_slope] < thresh), phen] = 'imp'
+            data_prs[which(data_prs[, phen_slope] >= thresh), phen] = 'nonimp'
+            data_prs[, phen] = as.factor(data_prs[, phen])
             use_me = !is.na(data_prs[, phen]) & data_prs$bestInFamily & data_prs$isWNH
-            fm_str = paste(phen, "~", prs, covars, sep="")
-            fit = lm(as.formula(fm_str), data=data_prs[use_me, ])
-            # assuming interesting variable is always first one
-            temp = c(summary(fit)$coefficients[2, ], summary(fit)$r.squared,
-                     summary(fit)$adj.r.squared)
-            phen_res = rbind(phen_res, temp)
-            rownames(phen_res)[nrow(phen_res)] = fm_str
+
+            phen_res = c()
+            for (prs in prs_var_names) {
+                fm_str = paste(phen, "~", prs, covars, sep="")
+                fit = glm(as.formula(fm_str), data=data_prs[use_me, ],
+                          family=binomial(link='logit'))
+                # assuming interesting variable is always first one
+                temp = c(summary(fit)$coefficients[2, ], summary(fit)$aic,
+                         summary(fit)$deviance)
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            }
+            phen_res = data.frame(phen_res)
+            phen_res$formula = rownames(phen_res)
+            phen_res$predictor = prs_var_names
+            phen_res$outcome = phen
+            hold = rbind(hold, phen_res)
         }
-        phen_res = data.frame(phen_res)
-        phen_res$formula = rownames(phen_res)
-        phen_res$predictor = prs_var_names
-        phen_res$outcome = phen
-        hold = rbind(hold, phen_res)
     }
 }
-colnames(hold)[5:6] = c('R2', 'adjR2')
+colnames(hold)[5:6] = c('AIC', 'deviance')
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
+I put all results in prs_univariate_binary_results.xslx. I'm trying to get the
+code below for glmer working...
 
-fm = as.formula(sprintf("%s ~ OLS_%s_slope + (1|nuclearFamID)", colnames(df)[i], sx))
-            print(fm)
-            fit = try(glmer(fm, data=df[idx2, ], na.action=na.omit, family = binomial(link = "logit")))
-            print(summary(fit)$coefficients[2,]) -->
+For now, it'd make sense to go with binary results because we have nice hits for
+inatt, hi, and total. In that, WNH results are only hi, but we could maybe use
+that to pick the thresholding? Maybe 0.33 or .50 would work, but GE6 looked
+best. Is it good for all as well? Yeah. In fact hi_bin0.33_GE6 is the outcome
+with most associated predictors in all dataset as well. (looking at filtered_
+tabs in spreadsheet). bin.33 also works for total and inatt, so we could just go
+with that? 
 
+Here are the splits using GE6: 188 in all, 133 if only best in family, 83 if WNH
+only). Given the GLM results above are with 133 or 83, using .33 quantile we
+have a threshold of -.24 in inatt, for 44 improvers VS 89 nonimprovers. In HI,
+we have a threshold of -.53, for 44 improvers VS 89 nonimprovers (evidently, as
+it's a quantile of the data as the ratios should stay the same).
 
+The median (.5) would also work, but it doesn't have as many hits...
+
+## Persistence PRS
+
+Let's give it a try with the persistence PRS. I have to calculate it for the new
+sample too. The Dutch also recommended using the ADHD PRS as covariates when
+working with the persistence PRS.
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.2.5/PRSice_linux \
+    --base ~/pgc2017/ToShare_fused-gwas-adult-minus-child-impact-pgc_mod.txt  \
+    --target /data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out NCR_1KG_PRS_persistent
+```
+
+and combine it with our other PRS variables:
+
+```r
+# this takes a while because we're reading in TXT files!
+a = read.table('/data/NCR_SBRB/NCR_genetics/v2/1KG/NCR_1KG_PRS_persistent.all.score', header=1)
+b = read.csv('/data/NCR_SBRB/NCR_genetics/v2/1KG/merged_NCR_1KG_PRS_12192019.csv')
+
+# keep only some of the PRs columns that were created
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4', 'X0.3', 'X0.2')
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHDpersistent_PRS%f', x)))
+af = a[, mycols]
+colnames(af) = new_names
+
+m = merge(af, b, by='IID')
+
+write.csv(m, file='/data/NCR_SBRB/NCR_genetics/v2/1KG/merged_NCR_1KG_PRS_01232020.csv', row.names=F)
+```
+
+Now we merge it into our current data and re-run the regressions:
+
+```r
+prs_per = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_01232020.csv')
+per_var_names = colnames(prs_per)[grepl(colnames(prs_per), pattern='ADHDpersistent_')]
+data_prs = merge(data_prs, prs_per[, c('MRN', per_var_names)], by='MRN', all.x=F, all.y=F)
+```
 
 # TODO
-* binary groups
 * try persistence PRS
+* continue work on glmer model just for robustness 
+
+<!-- And we do something similar using a mixed model:
+
+```r
+library(lme4)
+hold = c()
+prs_var_names = colnames(data_prs)[grepl(colnames(data_prs), pattern='ADHDeur_')]
+covars = c()#apply(1:10, function(x) sprintf('PC%02d', x)))#, 'base_age')
+add_sex = F
+out_fname = '~/data/baseline_prediction/prs_start/univar_prs_WNH_noCovs_glmer.csv'
+for (sx in c('inatt')) {#}, 'hi', 'total')) {
+    for (min_sx in c(3, 4)){#}, 6)) {
+        print(sprintf('%s %s', sx, min_sx))
+        for (qtile in c(.2, .25)){#}, .33, .5)) {
+            phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+            phen = sprintf('bin%.2f_%s_GE%d_wp05', qtile, sx, min_sx)
+            thresh = quantile(data_prs[, phen_slope], qtile, na.rm=T)
+            data_prs[, phen] = NA
+            data_prs[which(data_prs[, phen_slope] < thresh), phen] = 'imp'
+            data_prs[which(data_prs[, phen_slope] >= thresh), phen] = 'nonimp'
+            data_prs[, phen] = as.factor(data_prs[, phen])
+            use_me = !is.na(data_prs[, phen]) & data_prs$isWNH
+
+            this_data = data_prs[use_me, c(phen, 'FAMID', prs_var_names,
+                                           covars)]
+            this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+            if (add_sex) {
+                this_data$sex = data_prs[use_me, 'sex.x']
+                tmp_covars = c(covars, 'sex')
+            } else {
+                tmp_covars = covars
+            }
+            phen_res = c()
+            for (prs in prs_var_names) {
+                fm_str = paste(phen, "~", prs, '+',
+                               paste(tmp_covars, collapse='+'), '+(1|FAMID)',
+                               sep="")
+                fit = glmer(as.formula(fm_str), data=this_data,
+                            family=binomial(link='logit'))
+                if (isSingular(fit)) {
+                    # assuming interesting variable is always first one
+                    temp = c(summary(fit)$coefficients[2, ],
+                             summary(fit)$AICtab[1:2], prs)
+                    phen_res = rbind(phen_res, temp)
+                    rownames(phen_res)[nrow(phen_res)] = fm_str
+                }
+            }
+            phen_res = data.frame(phen_res)
+            phen_res$formula = rownames(phen_res)
+            phen_res$outcome = phen
+            hold = rbind(hold, phen_res)
+        }
+    }
+}
+write.csv(hold, file=out_fname, row.names=F)
+``` -->
+
+
+
