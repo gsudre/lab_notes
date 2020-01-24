@@ -145,5 +145,7 @@ PC04 violates it for ADHD_PRS0.001000,
 
 
 # TODO
+* which ones can we keep? which ones don't violate the assumptions and have good
+  pairwise comparisons?
 * try persistence PRS
 * continue work on glmer model just for robustness 
