@@ -542,15 +542,22 @@ the models converge. If they do, we could potentially use the left out kids for
 validation? Only 19 out of the 133 scans we're using (ADHD only) will be thrown
 away... maybe this will work.
 
-<!-- data_prs$bestInFamily = F
+# 2020-01-29 09:51:45
+
+So, let's select the best in family, and see if a regular logistic model is
+still singular:
+
+```r
+data_dti$bestInFamily = F
 nvisits = table(clin_long$MRN)
-data_prs = merge(data_prs, as.matrix(nvisits), by.x='MRN', by.y=0)
-colnames(data_prs)[ncol(data_prs)] = 'nvisits'
-for (f in unique(data_prs$FAMID)) {
-    fam_rows = which(data_prs$FAMID == f)
-    fam_data = data_prs[fam_rows,]
+data_dti = merge(data_dti, as.matrix(nvisits),
+                 by.x='Medical.Record...MRN...Subjects', by.y=0)
+colnames(data_dti)[ncol(data_dti)] = 'nvisits'
+for (f in unique(data_dti$FAMID)) {
+    fam_rows = which(data_dti$FAMID == f)
+    fam_data = data_dti[fam_rows,]
     if (nrow(fam_data) == 1) {
-        data_prs[fam_rows,]$bestInFamily = T
+        data_dti[fam_rows,]$bestInFamily = T
     } else {
         stotal = sort(fam_data$slope_total, index.return=T, decreasing=T)
         # if there's a tie
@@ -559,37 +566,492 @@ for (f in unique(data_prs$FAMID)) {
             svisits = sort(fam_data$nvisits, index.return=T, decreasing=T)
             if (svisits$x[1] == svisits$x[2]) {
                 print(sprintf('Tie in number of visits for %d', f))
-                print(fam_data[fam_data$nvisits==svisits$x[1], ]$MRN)
+                print(fam_data[fam_data$nvisits==svisits$x[1], ]$Medical.Record...MRN...Subjects)
             } else {
-                data_prs[fam_rows[svisits$ix[1]], ]$bestInFamily = T
+                data_dti[fam_rows[svisits$ix[1]], ]$bestInFamily = T
             }
         } else {
-            data_prs[fam_rows[stotal$ix[1]], ]$bestInFamily = T
+            data_dti[fam_rows[stotal$ix[1]], ]$bestInFamily = T
         }
     }
 }
+
+data_dti[data_dti$Medical.Record...MRN...Subjects==4585574, ]$bestInFamily = T
+data_dti[data_dti$Medical.Record...MRN...Subjects==4925051, ]$bestInFamily = T
+data_dti[data_dti$Medical.Record...MRN...Subjects==7079035, ]$bestInFamily = T
+# chosen because of overall best MPRAGE QC
+data_dti[data_dti$Medical.Record...MRN...Subjects==4640378, ]$bestInFamily = T
+# chosen because of overall best MPRAGE QC
+data_dti[data_dti$Medical.Record...MRN...Subjects==7218965, ]$bestInFamily = T
 ```
 
-There are only 6 ties, so I can select them manually.
+OK, now we actually have 192 subjects, including NVs. Let's try the non-mixed model:
 
 ```r
-data_prs[data_prs$MRN==4585574, ]$bestInFamily = T
-data_prs[data_prs$MRN==4925051, ]$bestInFamily = T
-data_prs[data_prs$MRN==7079035, ]$bestInFamily = T
-data_prs[data_prs$MRN==7378993, ]$bestInFamily = T
+hold = c()
+tract_names = c(colnames(tracts)[grepl(colnames(tracts), pattern="^ad")],
+                colnames(tracts)[grepl(colnames(tracts), pattern="^rd")])
+qc_vars = c("norm.trans", "norm.rot", "goodVolumes")
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_all_GE6_norm_bestInFamily_outcomeOnly.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    } else {
+        thresh = -.48
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data_dti[, phen] = NA
+    data_dti[which(data_dti[, phen_slope] < thresh), phen] = 'imp'
+    data_dti[which(data_dti[, phen_slope] >= thresh), phen] = 'nonimp'
+    data_dti[, phen] = factor(data_dti[, phen], ordered=F)
+    data_dti[, phen] = relevel(data_dti[, phen], ref='imp')
+    use_me = !is.na(data_dti[, phen]) & data_dti$bestInFamily #data_dti$isWNH
+
+    this_data = data_dti[use_me, c(phen, 'FAMID', tract_names, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data_dti[use_me, 'sex.x']
+    tmp_covars = c(covars, 'sex')
+    phen_res = c()
+    for (tract in tract_names) {
+        fm_str = paste(phen, " ~ ", tract, ' + ',
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = glm(as.formula(fm_str), data=this_data,
+                          family=binomial(link='logit'))
+        temp = c(summary(fit)$coefficients[tract, ], summary(fit)$aic,
+                    summary(fit)$deviance)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = tract_names
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5:6] = c('AIC', 'deviance')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-29-10-06-33.png)
+
+Great, the models now converge. I'll check FA and MO, and then move on. We can
+always see how the NVs place with respect to the good predictors later.
+
+I want to make sure the model still works without the norm as covariates. After
+re-running the code in a fresh R session, now we actually have 197 subjects,
+including NVs. Not sure where 192 came from... Let's try the non-mixed model
+again:
+
+```r
+hold = c()
+tract_names = c(colnames(tracts)[grepl(colnames(tracts), pattern="^ad")],
+                colnames(tracts)[grepl(colnames(tracts), pattern="^rd")])
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_all_GE6_bestInFamily_outcomeOnly.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    } else {
+        thresh = -.48
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data_dti[, phen] = NA
+    data_dti[which(data_dti[, phen_slope] < thresh), phen] = 'imp'
+    data_dti[which(data_dti[, phen_slope] >= thresh), phen] = 'nonimp'
+    data_dti[, phen] = factor(data_dti[, phen], ordered=F)
+    data_dti[, phen] = relevel(data_dti[, phen], ref='imp')
+    use_me = !is.na(data_dti[, phen]) & data_dti$bestInFamily #data_dti$isWNH
+
+    this_data = data_dti[use_me, c(phen, 'FAMID', tract_names, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data_dti[use_me, 'sex.x']
+    tmp_covars = c(covars, 'sex')
+    phen_res = c()
+    for (tract in tract_names) {
+        fm_str = paste(phen, " ~ ", tract, ' + ',
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = glm(as.formula(fm_str), data=this_data,
+                          family=binomial(link='logit'))
+        temp = c(summary(fit)$coefficients[tract, ], summary(fit)$aic,
+                    summary(fit)$deviance)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = tract_names
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5:6] = c('AIC', 'deviance')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-29-14-47-58.png)
+
+Yeah, results change a bit, but it makes sense. At least our strongest stuff,
+for HI, is still there. Maybe I should do stepAIC and just keep the best
+covariates? 
+
+```r
+library(MASS)
+
+hold = c()
+tract_names = c(colnames(tracts)[grepl(colnames(tracts), pattern="^ad")],
+                colnames(tracts)[grepl(colnames(tracts), pattern="^rd")])
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_all_GE6_bestInFamily_outcomeOnly_stepAIC.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    } else {
+        thresh = -.48
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data_dti[, phen] = NA
+    data_dti[which(data_dti[, phen_slope] < thresh), phen] = 'imp'
+    data_dti[which(data_dti[, phen_slope] >= thresh), phen] = 'nonimp'
+    data_dti[, phen] = factor(data_dti[, phen], ordered=F)
+    data_dti[, phen] = relevel(data_dti[, phen], ref='imp')
+    use_me = !is.na(data_dti[, phen]) & data_dti$bestInFamily #data_dti$isWNH
+
+    this_data = data_dti[use_me, c(phen, 'FAMID', tract_names, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data_dti[use_me, 'sex.x']
+    tmp_covars = c(covars, 'sex')
+    phen_res = c()
+    for (tract in tract_names) {
+        fm_str = paste(phen, " ~ ", tract, ' + ',
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = glm(as.formula(fm_str), data=this_data,
+                          family=binomial(link='logit'))
+        step=stepAIC(fit, direction='both', trace=F,
+                     scope = list(lower = as.formula(sprintf('~ %s', tract))))
+        temp = c(summary(step)$coefficients[tract, ], summary(step)$aic,
+                 summary(step)$deviance)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = tract_names
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5:6] = c('AIC', 'deviance')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-29-15-05-17.png)
+
+Not much for inatt, but plenty for HI. This actually seems to be working better.
+
+I'll do the same below for FA.
+
+## Calculating mode
+
+I'll need to go back to the raw data to calculate mode, because I'll need it in
+voxel space:
+
+```bash
+3dcalc -a 0754_tensor_diffeo_lambda1.nii.gz \
+    -b 0754_tensor_diffeo_lambda2.nii.gz \
+    -c 0754_tensor_diffeo_lambda3.nii.gz \
+    -prefix output_MO.nii.gz \
+    -expr "((-a-b+2*c)*(2*a-b-c)*(-a+2*b-c))/2*(a^2+b^2+c^2-a*b-b*c-c*a)^(3/2)"
+```
+
+Now I need to run it for a few IDs and check if labmda 1 corresponds to AD, and
+mean(lambda2, lambda3) do RD.
+
+```bash
+# bw
+mydir=~/data/baseline_prediction/
+DTITK_ROOT=/data/NCR_SBRB/software/dti-tk/dtitk-2.3.1-Linux-x86_64/bin/
+weighted_tracts=jhu_tracts_mode.csv;
+cd $mydir
+row="id";
+for t in `seq 1 20`; do
+    # for m in ad rd myad myrd mode; do
+    for m in mode; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat ids1020.txt`; do
+    echo ${m}
+    ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -eigs >/dev/null 2>&1;
+    ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -fa \
+        -out nii/${m}_fa.nii >/dev/null 2>&1;
+    # ${DTITK_ROOT}/TVtool -in nii/${m}_tensor_diffeo.nii.gz -rd \
+        # -out nii/${m}_rd.nii >/dev/null 2>&1;
+    3dresample -master nii/${m}_fa.nii -prefix ./rois.nii \
+                -inset ../JHU_ICBM_tractsThr25_inAging.nii.gz \
+                -rmode NN -overwrite 2>/dev/null &&
+    row="${m}";
+    for t in `seq 1 20`; do
+        3dcalc -a rois.nii -expr "amongst(a, $t)" -prefix mask.nii \
+            -overwrite 2>/dev/null &&
+        # ad=`3dmaskave -q -mask mask.nii nii/${m}_ad.nii 2>/dev/null`;
+        # rd=`3dmaskave -q -mask mask.nii nii/${m}_rd.nii 2>/dev/null`;
+        # myad=`3dmaskave -q -mask mask.nii nii/${m}_tensor_diffeo_lambda1.nii.gz 2>/dev/null`;
+        # 3dcalc -a nii/${m}_tensor_diffeo_lambda2.nii.gz \
+        #     -b nii/${m}_tensor_diffeo_lambda3.nii.gz -overwrite \
+        #     -prefix nii/myrd.nii.gz -expr "(a+b)/2"
+        # myrd=`3dmaskave -q -mask mask.nii nii/myrd.nii.gz 2>/dev/null`;
+        3dcalc -a nii/${m}_tensor_diffeo_lambda1.nii.gz \
+            -b nii/${m}_tensor_diffeo_lambda2.nii.gz \
+            -c nii/${m}_tensor_diffeo_lambda3.nii.gz \
+            -overwrite -prefix nii/MO.nii.gz \
+            -expr "((-a-b+2*c)*(2*a-b-c)*(-a+2*b-c))/2*(a^2+b^2+c^2-a*b-b*c-c*a)^(3/2)"
+        mo=`3dmaskave -q -mask mask.nii nii/MO.nii.gz 2>/dev/null`;
+        # row=${row}','${ad}','${rd}','${myad}','${myrd}','${mo};
+        row=${row}','${mo};
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+AD and RD do match the combinations of lambda I mentioned above. OK, so I'll
+just produce MO then.
+
+## FA results
+
+While that's running, let's go ahead and run the code for FA:
+
+```r
+# restrict based on QC
+qc_vars = c("meanX.trans", "meanY.trans", "meanZ.trans",
+            "meanX.rot", "meanY.rot", "meanZ.rot",
+            "goodVolumes")
+dti_meta = dti_meta[dti_meta$"age_at_scan...Scan...Subjects" < 18, ]
+dti_meta = dti_meta[dti_meta$"goodVolumes" <= 61, ]
+dti_meta = dti_meta[dti_meta$"numVolumes" < 80, ]
+
+# down to 928 scans that obey criteria and have PRS
+library(solitude)
+iso <- isolationForest$new()
+iso$fit(dti_meta[, qc_vars])
+scores_if = as.matrix(iso$scores)[,3]
+library(dbscan)
+# here I set the number of neighbors to a percentage of the total data
+scores_lof = lof(dti_meta[, qc_vars], k = round(.5 * nrow(dti_meta)))
+
+qtile=.95
+thresh_lof = quantile(scores_lof, qtile)
+thresh_if = quantile(scores_if, qtile)
+idx = scores_lof < thresh_lof & scores_if < thresh_if
+
+tracts = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+# somehow I have two entries for 1418?
+x = duplicated(tracts$id)
+jhu_data = merge(dti_meta[idx,], tracts[!x, ], by.x='Mask.ID...Scan', by.y='id')
+tract_names = colnames(tracts)[grepl(colnames(tracts), pattern="^fa")]
+
+iso <- isolationForest$new()
+iso$fit(jhu_data[, tract_names])
+scores_if = as.matrix(iso$scores)[,3]
+scores_lof = lof(jhu_data[, tract_names], k = round(.5 * nrow(jhu_data)))
+
+thresh_lof = quantile(scores_lof, qtile)
+thresh_if = quantile(scores_if, qtile)
+idx = scores_lof < thresh_lof & scores_if < thresh_if
+
+clean_jhu_data = jhu_data[idx, ]
+
+# down to 795 scans when only scans at .95 in both criteria are used
+
+# selecting earliest scan for each subject, regardless of score, as we're assu ing every scan now is good
+keep_me = c()
+for (s in unique(clean_jhu_data$Medical.Record...MRN...Subjects)) {
+    subj_rows = which(clean_jhu_data$Medical.Record...MRN...Subjects == s)
+    subj_data = clean_jhu_data[subj_rows, ]
+    min_subj_row = which.min(subj_data$age_at_scan...Scan...Subjects)
+    keep_me = c(keep_me, subj_rows[min_subj_row])
+}
+data_dti = clean_jhu_data[keep_me, ]
+# finished with 274 scans when using baseline for each subject
+demo = read.csv('prs_demo.csv')
+# just to get FAMID
+data_dti = merge(data_dti, demo, by.x='Medical.Record...MRN...Subjects',
+                 by.y='MRN')
+
+# selecting best kid in family
+data_dti$bestInFamily = F
+nvisits = table(clin_long$MRN)
+data_dti = merge(data_dti, as.matrix(nvisits),
+                 by.x='Medical.Record...MRN...Subjects', by.y=0)
+colnames(data_dti)[ncol(data_dti)] = 'nvisits'
+for (f in unique(data_dti$FAMID)) {
+    fam_rows = which(data_dti$FAMID == f)
+    fam_data = data_dti[fam_rows,]
+    if (nrow(fam_data) == 1) {
+        data_dti[fam_rows,]$bestInFamily = T
+    } else {
+        stotal = sort(fam_data$slope_total, index.return=T, decreasing=T)
+        # if there's a tie
+        if (stotal$x[1] == stotal$x[2]) {
+            # print(sprintf('Tie in slope for %d', f))
+            svisits = sort(fam_data$nvisits, index.return=T, decreasing=T)
+            if (svisits$x[1] == svisits$x[2]) {
+                print(sprintf('Tie in number of visits for %d', f))
+                print(fam_data[fam_data$nvisits==svisits$x[1], ]$Medical.Record...MRN...Subjects)
+            } else {
+                data_dti[fam_rows[svisits$ix[1]], ]$bestInFamily = T
+            }
+        } else {
+            data_dti[fam_rows[stotal$ix[1]], ]$bestInFamily = T
+        }
+    }
+}
+
+data_dti[data_dti$Medical.Record...MRN...Subjects==4585574, ]$bestInFamily = T
+data_dti[data_dti$Medical.Record...MRN...Subjects==4925051, ]$bestInFamily = T
+data_dti[data_dti$Medical.Record...MRN...Subjects==7079035, ]$bestInFamily = T
 # chosen because of overall best MPRAGE QC
-data_prs[data_prs$MRN==4640378, ]$bestInFamily = T
+data_dti[data_dti$Medical.Record...MRN...Subjects==4640378, ]$bestInFamily = T
 # chosen because of overall best MPRAGE QC
-data_prs[data_prs$MRN==7218965, ]$bestInFamily = T
-``` -->
+data_dti[data_dti$Medical.Record...MRN...Subjects==7218965, ]$bestInFamily = T
+```
+
+OK, now we have 193 subjects after FA cleaning, including NVs. Let's try the non-mixed model:
+
+```r
+hold = c()
+tract_names = colnames(tracts)[grepl(colnames(tracts), pattern="^fa")]
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsFA_all_GE6_bestInFamily_outcomeOnly.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    } else {
+        thresh = -.48
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data_dti[, phen] = NA
+    data_dti[which(data_dti[, phen_slope] < thresh), phen] = 'imp'
+    data_dti[which(data_dti[, phen_slope] >= thresh), phen] = 'nonimp'
+    data_dti[, phen] = factor(data_dti[, phen], ordered=F)
+    data_dti[, phen] = relevel(data_dti[, phen], ref='imp')
+    use_me = !is.na(data_dti[, phen]) & data_dti$bestInFamily #data_dti$isWNH
+
+    this_data = data_dti[use_me, c(phen, 'FAMID', tract_names, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data_dti[use_me, 'sex.x']
+    tmp_covars = c(covars, 'sex')
+    phen_res = c()
+    for (tract in tract_names) {
+        fm_str = paste(phen, " ~ ", tract, ' + ',
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = glm(as.formula(fm_str), data=this_data,
+                          family=binomial(link='logit'))
+        temp = c(summary(fit)$coefficients[tract, ], summary(fit)$aic,
+                    summary(fit)$deviance)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = tract_names
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5:6] = c('AIC', 'deviance')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+That was a bust. I only got FA_17 at 0.041, which was most likely driven by RD
+based on our previous results.
+
+```r
+hold = c()
+tract_names = colnames(tracts)[grepl(colnames(tracts), pattern="^fa")]
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsFA_all_GE6_bestInFamily_outcomeOnly_step.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    } else {
+        thresh = -.48
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data_dti[, phen] = NA
+    data_dti[which(data_dti[, phen_slope] < thresh), phen] = 'imp'
+    data_dti[which(data_dti[, phen_slope] >= thresh), phen] = 'nonimp'
+    data_dti[, phen] = factor(data_dti[, phen], ordered=F)
+    data_dti[, phen] = relevel(data_dti[, phen], ref='imp')
+    use_me = !is.na(data_dti[, phen]) & data_dti$bestInFamily #data_dti$isWNH
+
+    this_data = data_dti[use_me, c(phen, 'FAMID', tract_names, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data_dti[use_me, 'sex.x']
+    tmp_covars = c(covars, 'sex')
+    phen_res = c()
+    for (tract in tract_names) {
+        fm_str = paste(phen, " ~ ", tract, ' + ',
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = glm(as.formula(fm_str), data=this_data,
+                          family=binomial(link='logit'))
+        step=stepAIC(fit, direction='both', trace=F,
+                     scope = list(lower = as.formula(sprintf('~ %s', tract))))
+        temp = c(summary(step)$coefficients[tract, ], summary(step)$aic,
+                 summary(step)$deviance)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = tract_names
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5:6] = c('AIC', 'deviance')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Not much change. FA_17 went down to .09 and FA_13 is now at 0.04. Need to do AD
+and RD, unless mode proves itself useful.
+
+## Mode results
+
+
+
+
 
 
 
 # TODO
-* check what are the group differences
-* add mode and FA
-* could we do probability function easier if our logistic regression weren't
-  ordered? 
+* check where NVs compare to the other two groups in the selected variables
+* add mode
+* should we cap how late a scan can be related to last clinical assessment? or
+  far away from baseline clinical?
+
 # links
 
 https://strengejacke.github.io/ggeffects/articles/logisticmixedmodel.html
