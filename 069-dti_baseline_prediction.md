@@ -1668,10 +1668,637 @@ out_fname = sprintf('%s_lme.csv', out_fname_root)
 write.csv(hold_lme, file=out_fname, row.names=F)
 ```
 
+![](images/2020-01-30-11-30-39.png)
+
+Results don't change that much... how about if I run a regular ANCOVA?
+
+```r
+hold_aov = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname_root = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_GE6_3groups'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'nv'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, "~", paste(tmp_covars, collapse='+'), '+', phen, sep="")
+        fit = aov(as.formula(fm_str), data=this_data)
+        p = summary(fit)[[1]]
+        temp = c(p[phen, 5], p[nrow(p), 3])
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = brain_vars
+    phen_res$outcome = phen
+    hold_aov = rbind(hold_aov, phen_res)
+}
+colnames(hold_aov)[1:2] = c('pval', 'residMeanSq')
+out_fname = sprintf('%s_aov.csv', out_fname_root)
+write.csv(hold_aov, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-30-11-36-09.png)
+
+It seems like we get some more results in the mixed model. BTW, 3/4 are CST, so
+those are not ideal. I need to check which groups are different anyways... 
+
+But let's check the 4group option as well:
+
+```r
+hold_aov = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname_root = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_GE6_4groups'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    my_nvs = is.na(data[, phen_slope])
+    mid_nv = sprintf('notGE%dadhd', min_sx)
+    data[, phen] = mid_nv
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, "~", paste(tmp_covars, collapse='+'), '+', phen, sep="")
+        fit = aov(as.formula(fm_str), data=this_data)
+        p = summary(fit)[[1]]
+        temp = c(p[phen, 5], p[nrow(p), 3])
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = brain_vars
+    phen_res$outcome = phen
+    hold_aov = rbind(hold_aov, phen_res)
+}
+colnames(hold_aov)[1:2] = c('pval', 'residMeanSq')
+out_fname = sprintf('%s_aov.csv', out_fname_root)
+write.csv(hold_aov, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-30-11-39-35.png)
+
+Our SLF results are still there, so we could potentially make this a more
+hypothesis driven manuscript? Let's see where the differences actually are...
+impVSnonimp by any chance?
+
+```r
+library(multcomp)
+
+sx = 'hi'
+min_sx = 6
+if (sx == 'inatt') {
+    thresh = 0
+} else if (sx == 'hi') {
+    thresh = -.5
+}
+use_me = T
+my_tracts = c('rd_3', 'rd_4', 'rd_18', 'ad_19') #hi
+# my_tracts = c('rd_3', 'rd_4', 'rd_18', 'rd_19', 'ad_19', 'rd_11', 'rd_2') #inatt
+
+phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+data[, phen] = 'notGE6adhd'
+my_nvs = which(is.na(data[, phen_slope]))
+idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+data[my_nvs[idx], phen] = 'nv012'
+data[which(data[, phen_slope] < thresh), phen] = 'imp'
+data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+data[, phen] = factor(data[, phen], ordered=F)
+data[, phen] = relevel(data[, phen], ref='nv012')
+
+this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+this_data$sex = data[use_me, 'sex']
+tmp_covars = c(covars, 'sex')
+for (tract in my_tracts) {
+    fm_str = paste(tract, " ~ ", phen, " +",
+                        paste(tmp_covars, collapse='+'),
+                        sep="")
+    fit = lme(as.formula(fm_str), ~1|FAMID, data=this_data)
+    p = Anova(fit)
+    # posthoc = glht(fit, linfct=mcp(thresh0.00_inatt_GE6_wp05 = "Tukey"))
+    posthoc = glht(fit, linfct=mcp(thresh0.50_hi_GE6_wp05 = "Tukey"))
+    sig_idx = summary(posthoc)$test$pvalues < .05
+    print(sprintf('%s, %s', phen, tract))
+    print(names(coef(posthoc))[sig_idx])
+}
+```
+
+```[1] "thresh0.00_inatt_GE6_wp05, rd_3"
+[1] "imp - nv012"
+[1] "thresh0.00_inatt_GE6_wp05, rd_4"
+[1] "imp - nv012"    "nonimp - nv012"
+[1] "thresh0.00_inatt_GE6_wp05, rd_18"
+character(0)
+[1] "thresh0.00_inatt_GE6_wp05, rd_19"
+character(0)
+[1] "thresh0.00_inatt_GE6_wp05, ad_19"
+[1] "imp - nv012"
+[1] "thresh0.00_inatt_GE6_wp05, rd_11"
+[1] "imp - nv012"
+[1] "thresh0.00_inatt_GE6_wp05, rd_2"
+character(0)
+[1] "thresh0.50_hi_GE6_wp05, rd_3"
+[1] "nonimp - nv012"
+[1] "thresh0.50_hi_GE6_wp05, rd_4"
+[1] "nonimp - nv012"
+[1] "thresh0.50_hi_GE6_wp05, rd_18"
+character(0)
+[1] "thresh0.50_hi_GE6_wp05, ad_19"
+character(0)
+```
+
+Based on our previous papers, we have FA in uncinate and inferior
+fronto-occipital fasciculi with showing differences in inat, but not HI. RD was
+the driver. In JHU, we'd be looking at 17/18 and 11/12. And not FA, but RD only
+in SLF (15/16 and/or 19/20).
+
+So let's try running FA under this framework to see what we get:
+
+```r
+qtile=.95
+library(solitude)
+iso <- isolationForest$new()
+iso$fit(brain_meta[, qc_vars])
+scores_if = as.matrix(iso$scores)[,3]
+library(dbscan)
+# here I set the number of neighbors to a percentage of the total data
+scores_lof = lof(brain_meta[, qc_vars], k = round(.5 * nrow(brain_meta)))
+thresh_lof = quantile(scores_lof, qtile)
+thresh_if = quantile(scores_if, qtile)
+idx = scores_lof < thresh_lof & scores_if < thresh_if
+
+# 859 after OD on qc_vars
+all_brain_data = read.csv('~/data/heritability_change/jhu_tracts_1020.csv')
+# somehow I have two entries for 1418?
+x = duplicated(all_brain_data$id)
+brain_data = merge(brain_meta[idx,], all_brain_data[!x, ], by.x='Mask.ID...Scan',
+                   by.y='id')
+brain_vars = colnames(brain_data)[grepl(colnames(brain_data), pattern="^fa")]
+
+iso <- isolationForest$new()
+iso$fit(brain_data[, brain_vars])
+scores_if = as.matrix(iso$scores)[,3]
+scores_lof = lof(brain_data[, brain_vars], k = round(.5 * nrow(brain_data)))
+
+thresh_lof = quantile(scores_lof, qtile)
+thresh_if = quantile(scores_if, qtile)
+idx = scores_lof < thresh_lof & scores_if < thresh_if
+
+clean_brain_data = brain_data[idx, ]
+
+# down to 800 scans when only scans at .95 in both criteria are used
+
+keep_me = c()
+for (s in unique(clean_brain_data$MRN)) {
+    subj_rows = which(clean_brain_data$MRN == s)
+    subj_data = clean_brain_data[subj_rows, ]
+    min_subj_row = which.min(subj_data$age_at_scan...Scan...Subjects)
+    if (abs(subj_data[min_subj_row, 'base_age'] -
+            subj_data[min_subj_row, 'age_at_scan...Scan...Subjects'])<1) {
+        keep_me = c(keep_me, subj_rows[min_subj_row])
+    }
+}
+data = clean_brain_data[keep_me, ]
+
+for (sx in c('inatt', 'hi')) {
+    for (min_sx in c(3, 4, 6)) {
+        if (sx == 'inatt') {
+            thresh = 0
+        } else if (sx == 'hi') {
+            thresh = -.5
+        }
+        phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+        phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+        my_nvs = is.na(data[, phen_slope])
+        mid_nv = sprintf('notGE%dadhd', min_sx)
+        data[, phen] = mid_nv
+        idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+        data[my_nvs[idx], phen] = 'nv012'
+        data[which(data[, phen_slope] < thresh), phen] = 'imp'
+        data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+        data[, phen] = factor(data[, phen],
+                            levels=c('nv012', mid_nv, 'imp', 'nonimp'),
+                            ordered=T)
+        print(phen)
+        print(table(data[,phen]))
+    }
+}
+```
+
+```[1] "thresh0.00_inatt_GE3_wp05"
+
+     nv012 notGE3adhd        imp     nonimp 
+        73          0         59         43 
+[1] "thresh0.00_inatt_GE4_wp05"
+
+     nv012 notGE4adhd        imp     nonimp 
+        50         24         58         43 
+[1] "thresh0.00_inatt_GE6_wp05"
+
+     nv012 notGE6adhd        imp     nonimp 
+        56         44         46         29 
+[1] "thresh0.50_hi_GE3_wp05"
+
+     nv012 notGE3adhd        imp     nonimp 
+        73          0         40         62 
+[1] "thresh0.50_hi_GE4_wp05"
+
+     nv012 notGE4adhd        imp     nonimp 
+        50         24         40         61 
+[1] "thresh0.50_hi_GE6_wp05"
+
+     nv012 notGE6adhd        imp     nonimp 
+        56         44         30         45 
+```
+
+```r
+hold_lme = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname_root = '~/data/baseline_prediction/prs_start/univar_JHUtractsFA_GE6_4groups'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    my_nvs = is.na(data[, phen_slope])
+    mid_nv = sprintf('notGE%dadhd', min_sx)
+    data[, phen] = mid_nv
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ", phen, " +",
+                       paste(tmp_covars, collapse='+'),
+                       sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit) > 1) {
+            step=try(stepAIC(fit, direction='both', trace=F,
+                        scope = list(lower = as.formula(sprintf('~ %s', phen)))))
+            if (length(step) > 1) {
+                p = Anova(step)
+                temp = c(p[1,3], summary(step)$logLik, summary(step)$AIC,
+                         summary(step)$BIC)
+            } else {
+                # initial fit worked, but step failed
+                p = Anova(fit)
+                temp = c(p[1,3], summary(fit)$logLik, summary(fit)$AIC,
+                         summary(fit)$BIC)
+            }
+        } else {
+            temp = rep(NA, 4)
+        }
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$predictor = brain_vars
+    phen_res$outcome = phen
+    hold_lme = rbind(hold_lme, phen_res)
+}
+colnames(hold_lme)[1:4] = c('pval', 'logLik', 'AIC', 'BIC')
+out_fname = sprintf('%s_lme.csv', out_fname_root)
+write.csv(hold_lme, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-30-12-55-42.png)
+
+So there's some stuff there. If we go hypothesis based, we get 17 and 11, but
+they're for HI, not inatt. 
+
+I'm not filling too confident about where this is going...
+
+## Back to ordinal model
+
+Using this reduced dataset, let's try the ordered model again to make the story
+with PRS more consistent:
+
+```r
+hold = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsFA_4groupOrdered_lme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered +",
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = lme(as.formula(fm_str), ~1|FAMID, data=this_data)
+        temp = c(summary(fit)$tTable['ordered.L', ],
+                     summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                     bv, 'linear')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+        temp = c(summary(fit)$tTable['ordered.Q', ],
+                     summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                     bv, 'quadratic')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+        temp = c(summary(fit)$tTable['ordered.C', ],
+                     summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                     bv, 'cubic')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-30-13-35-03.png)
+
+It looks like for FA the linear model is prevailing.
+
+![](images/2020-01-30-13-38-22.png)
+
+Linear model also looks fine for AD/RD.
+
+![](images/2020-01-30-13-41-41.png)
+
+We also have some stuff with mode.
+
+But let's see if refining the model does any good:
+
+```r
+hold = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsMO_4groupOrdered_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered +",
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML')
+        step=try(stepAIC(fit, direction='both', trace=F,
+                     scope = list(lower = ~ ordered)))
+        if (length(step) > 1) {
+            temp = c(summary(step)$tTable['ordered.L', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(step)$tTable['ordered.Q', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(step)$tTable['ordered.C', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+        } else {
+            temp = c(summary(fit)$tTable['ordered.L', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable['ordered.Q', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable['ordered.C', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+        }
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Yes, p-values were a bit nicer stepping the model. This is MO:
+
+![](images/2020-01-30-13-47-10.png)
+
+Then FA:
+
+![](images/2020-01-30-13-57-16.png)
+
+Similar improvement here. And finally AD/RD:
+
+![](images/2020-01-30-14-01-31.png)
+
+What happens if I specify the inverse order of the variables, which could make
+sense for the brain...
+
+```r
+hold = c()
+covars = c(qc_vars, 'age_at_scan...Scan...Subjects')
+out_fname = '~/data/baseline_prediction/prs_start/univar_JHUtractsADRD_4groupInverseOrdered_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nonimp', 'imp', 'notGE6adhd', 'nv012'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered +",
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML')
+        step=try(stepAIC(fit, direction='both', trace=F,
+                     scope = list(lower = ~ ordered)))
+        if (length(step) > 1) {
+            temp = c(summary(step)$tTable['ordered.L', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(step)$tTable['ordered.Q', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(step)$tTable['ordered.C', ],
+                        summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+        } else {
+            temp = c(summary(fit)$tTable['ordered.L', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable['ordered.Q', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable['ordered.C', ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+        }
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+OK, I get the exact same T/p values, but our value for the coefficient is
+inverted. Makes sense... exactly what I wanted to see. If I were to plot this in
+a daisy wheel, maybe I could plot the coefficient after scaling the target as
+well?
+
+My only concern is that this type of contrast assumes equal spacing in the
+predictor. In other words, the outcome categories we're using are assumed to be
+equally spaced (whatever that would mean in the ADHD continuoum). See this, for
+example: 
+
+https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/#ORTHOGONAL
+
+Maybe we can make a case for it, but we'll see.
+
+## MCC
+
+None of it survives Bonferoni. Maybe Meff? Unlikely... maybe FDR at .1. Worth a
+try. Worst case scenario we just use it nominally, and just use it as a
+filtering step for the ML later.
+
 # TODO
-* Does it get better with 3 groups only?
-* what are the actual group differences?
-* Can we just run a regular ANCOVA?
+* MCC
 
 # links
 
