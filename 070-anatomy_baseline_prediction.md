@@ -335,6 +335,24 @@ This is muuuuch better. We still get a few crappy variables in there, but it's
 just a matter of excluding them in the initial selection. We also got lots of
 cubic fits... interesting.
 
+# Next directions
+
+After chatting with PHilip, here are the next things to try:
+
+1) Massage the data a bit to make MCC work out. Start with DTI, try adding the
+   sides, drop a few of the regions (7, 8), maybe combine 9/10. Also combine big
+   lobar regions in volume.
+2) Try FDR at .1
+3) Try MEff
+4) Try model with simple predictors (age, sex, IQ, comorbidities. Try it with
+   and without base_sx.
+5) Try model with neuropsych
+6) If nothing works, go the voxelwise route, first with DTI.
+
+The paper in the end should have the daisy wheel, which will have the slopes
+(beta) for the significant predictors, then a pie chart with the contributions
+of each predictor in an overall model that includes everything, and finally a
+ROC curve with ML.
 
 # TODO
 * Can we do QC using mriqc parameters?
