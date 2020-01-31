@@ -237,6 +237,204 @@ The idea here is to use baseline age, sex, IQ, and comorbidities. I'll also plug
 in base_sx, since I'm running them univariate, using a similar approach as what
 I did for PRS and neuroimaging.
 
+Picking up from after selecting the best in family, we do:
+
+```r
+iq = read.csv('~/data/baseline_prediction/basics.csv')
+# no need to curb to 1 year difference
+data = merge(df, iq, by='MRN', all.x=T, all.y=F)
+```
+
+Now it's just a matter of running the models:
+
+```r
+brain_vars = c('base_age', 'FSIQ', 'SES', 'externalizing',
+               'internalizing', 'base_inatt', 'base_hi')
+hold = c()
+out_fname = '~/data/baseline_prediction/prs_start/univar_basics_4groupOrdered_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered", sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML',
+                  na.action=na.omit))
+        if (length(fit)>1) {
+            step=try(stepAIC(fit, direction='both', trace=F,
+                        scope = list(lower = ~ ordered)))
+            if (length(step) > 1) {
+                temp = c(summary(step)$tTable['ordered.L', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.Q', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.C', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            } else {
+                # fit worked but broke stepping
+                temp = c(summary(fit)$tTable['ordered.L', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.Q', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.C', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            }
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-31-16-45-45.png)
+
+These were all expected... but still quite impressive!
+
+I'm going to go back to covarying sex, because I'm not sure how else to use it
+in this univariate way... I could do a different test, but then I'm not sure if
+it's the best thing to do to change the entire framework for a single variable,
+when it will for sure be included in the overall model:
+
+```r
+brain_vars = c('base_age', 'FSIQ', 'SES', 'externalizing',
+               'internalizing', 'base_inatt', 'base_hi')
+hold = c()
+out_fname = '~/data/baseline_prediction/prs_start/univar_basics_4groupOrdered_sexCov_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered + sex", sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML',
+                      na.action=na.omit))
+        if (length(fit)>1) {
+            step=try(stepAIC(fit, direction='both', trace=F,
+                        scope = list(lower = ~ ordered)))
+            if (length(step) > 1) {
+                temp = c(summary(step)$tTable['ordered.L', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.Q', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.C', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            } else {
+                # fit worked but broke stepping
+                temp = c(summary(fit)$tTable['ordered.L', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.Q', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.C', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            }
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-31-17-00-53.png)
+
+Not much difference...
+
+
 # TODO
 * should I worry about base_age as a covariate everywhere and then checking its
   predictive power?

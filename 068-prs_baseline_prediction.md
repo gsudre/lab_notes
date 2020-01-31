@@ -852,6 +852,221 @@ ordered fashion, and finally look at the ordinal classes as the outcome.
 Philip also suggested I should look at even more strict PRS thresholds, as it
 sounds like our results are in that lower side.
 
+# 2020-01-31 17:06:56
+
+I want to check if the values output by LME are standardized or not. So, I'll
+run the same code I'm running for the brain variables, just to make sure our PRS
+results are still there:
+
+```r
+setwd('~/data/baseline_prediction/prs_start/')
+clin_long = read.csv('long_clin_01062020_lt16.csv')
+clin_long$SX_total = clin_long$SX_inatt + clin_long$SX_hi
+
+winsorize = function(x, cut = 0.01){
+  cut_point_top <- quantile(x, 1 - cut, na.rm = T)
+  cut_point_bottom <- quantile(x, cut, na.rm = T)
+  i = which(x >= cut_point_top) 
+  x[i] = cut_point_top
+  j = which(x <= cut_point_bottom) 
+  x[j] = cut_point_bottom
+  return(x)
+}
+
+df = data.frame(MRN=unique(clin_long$MRN))
+for (r in 1:nrow(df)) {
+    subj_data = clin_long[clin_long$MRN==df$MRN[r], ]
+    for (sx in c('inatt', 'hi', 'total')) {
+        fit = lm(as.formula(sprintf('SX_%s ~ age', sx)), data=subj_data)
+        df[r, sprintf('slope_%s', sx)] = fit$coefficients['age']
+        base_row = which.min(subj_data$age)
+        df[r, sprintf('base_%s', sx)] = subj_data[base_row, sprintf('SX_%s', sx)]
+        last_row = which.max(subj_data$age)
+        df[r, sprintf('last_%s', sx)] = subj_data[last_row, sprintf('SX_%s', sx)]
+        df[r, 'base_age'] = subj_data[base_row, 'age']
+        df[r, 'last_age'] = subj_data[last_row, 'age']
+        df[r, 'sex'] = subj_data[last_row, 'sex']
+    }
+}
+for (min_sx in c(0, 3, 4, 6)) {
+    idx = df$base_inatt>=min_sx | df$base_hi>=min_sx
+    for (sx in c('inatt', 'hi', 'total')) {
+        df[, sprintf('slope_%s_GE%d_wp05', sx, min_sx)] = NA
+        junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+        df[idx, sprintf('slope_%s_GE%d_wp05', sx, min_sx)] = junk
+    }
+}
+
+demo = read.csv('prs_demo.csv')
+# just to get FAMID, sex already there
+df = merge(df, subset(demo, select=-sex), by='MRN')
+
+# selecting best kid in family
+df$bestInFamily = F
+nvisits = table(clin_long$MRN)
+df = merge(df, as.matrix(nvisits),
+                 by.x='MRN', by.y=0)
+colnames(df)[ncol(df)] = 'nvisits'
+for (f in unique(df$FAMID)) {
+    fam_rows = which(df$FAMID == f)
+    fam_data = df[fam_rows,]
+    if (nrow(fam_data) == 1) {
+        df[fam_rows,]$bestInFamily = T
+    } else {
+        stotal = sort(fam_data$slope_total, index.return=T, decreasing=T)
+        # if there's a tie
+        if (stotal$x[1] == stotal$x[2]) {
+            # print(sprintf('Tie in slope for %d', f))
+            svisits = sort(fam_data$nvisits, index.return=T, decreasing=T)
+            if (svisits$x[1] == svisits$x[2]) {
+                print(sprintf('Tie in number of visits for %d', f))
+                print(fam_data[fam_data$nvisits==svisits$x[1], ]$MRN)
+            } else {
+                df[fam_rows[svisits$ix[1]], ]$bestInFamily = T
+            }
+        } else {
+            df[fam_rows[stotal$ix[1]], ]$bestInFamily = T
+        }
+    }
+}
+
+df[df$MRN==4585574, ]$bestInFamily = T
+df[df$MRN==4925051, ]$bestInFamily = T
+df[df$MRN==7079035, ]$bestInFamily = T
+df[df$MRN==7378993, ]$bestInFamily = T
+# chosen because of overall best MPRAGE QC
+df[df$MRN==4640378, ]$bestInFamily = T
+# chosen because of overall best MPRAGE QC
+df[df$MRN==7218965, ]$bestInFamily = T
+
+prs = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_12192019.csv')
+data = merge(df, prs, by='MRN', all.x=F, all.y=F)
+```
+
+Now we run the model, first with the variables as is:
+
+```r
+library(nlme)
+library(MASS)
+
+brain_vars = colnames(data)[grepl(colnames(data), pattern='ADHD_')]
+covars = c(sapply(1:10, function(x) sprintf('PC%02d', x)), 'base_age')
+hold = c()
+out_fname = '~/data/baseline_prediction/prs_start/univar_all_PRS_4groupOrdered_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+    this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+    this_data$sex = data[use_me, 'sex']
+    tmp_covars = c(covars, 'sex')
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered +",
+                           paste(tmp_covars, collapse='+'),
+                           sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            step=try(stepAIC(fit, direction='both', trace=F,
+                        scope = list(lower = ~ ordered)))
+            if (length(step) > 1) {
+                temp = c(summary(step)$tTable['ordered.L', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.Q', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.C', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            } else {
+                # fit worked but broke stepping
+                temp = c(summary(fit)$tTable['ordered.L', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.Q', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.C', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            }
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-01-31-17-40-49.png)
+
+OK, results still there. But now, let's run the exact same model, but with the
+target scaled:
+
+```
+> fm_str
+[1] "ADHD_PRS0.200000 ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+> summary(step)$tTable
+                  Value  Std.Error  DF    t-value      p-value
+(Intercept)  0.01734858 0.05871301 251  0.2954810 7.678707e-01
+ordered.L    0.03850638 0.08440602 137  0.4562042 6.489655e-01
+ordered.Q   -0.03198897 0.09252862 137 -0.3457198 7.300836e-01
+ordered.C    0.07295620 0.10536134 137  0.6924380 4.898343e-01
+PC01         0.37304320 0.05348571 137  6.9746330 1.190376e-10
+> this_data$scaled = scale(this_data$ADHD_PRS0.200000)
+> fm_str = "scaled ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+> fit2 = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+> step2 = try(stepAIC(fit2, direction='both', trace=F,scope = list(lower = ~ ordered)))
+> summary(step2)$tTable
+                  Value  Std.Error  DF    t-value      p-value
+(Intercept)  0.01734858 0.05871301 251  0.2954810 7.678707e-01
+ordered.L    0.03850638 0.08440602 137  0.4562042 6.489655e-01
+ordered.Q   -0.03198897 0.09252862 137 -0.3457198 7.300836e-01
+ordered.C    0.07295620 0.10536134 137  0.6924380 4.898343e-01
+PC01         0.37304320 0.05348571 137  6.9746330 1.190376e-10
+```
+
+Yep, "Value" is the beta. Which makes sense, if it's the slope of the linear fit.
 
 # TODO
 * which ones can we keep? which ones don't violate the assumptions and have good
