@@ -135,6 +135,7 @@ the other.
 library(nlme)
 library(MASS)
 
+# rm DS.wisc, remove SS.wisc, remove PS.wj
 brain_vars = c('VMI.beery',
                'DS.wisc', 'DSB.wisc', 'DSF.wisc', 'SS.wisc', 'SSB.wisc', 'SSF.wisc',
                'PS.wj', 'DS.wj', 'VM.wj')

@@ -127,6 +127,75 @@ How about removing PRS?
 Now it's just a matter of selecting which one we want to go with to put in the
 big model...
 
+# 2020-02-03 15:42:28
+
+After chatting with Philip, there were a few more changes to make in terms of
+P-values:
+
+* condense some of the neuropsych metrics, because they're one plus the other: remove DS.wisc, remove SS.wisc, remove PS.wj
+* only use the best PRS
+
+So, our new FDR corrected metrics become:
+
+```
+> ps = read.csv('~/data/baseline_prediction/prs_start/all_ps3.csv')
+> hi_p = ps[ps$sx=='hi',]
+> p2 = p.adjust(hi_p[,'pval'], method='fdr')
+> hi_p[p2<.05,'var']
+[1] VMI.beery        VM.wj            FSIQ             externalizing   
+[5] IFO_fa           DS.wj            ADHD_PRS0.001000 OFC             
+[9] ATR_fa          
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> hi_p[p2<.1,'var']
+ [1] VMI.beery        VM.wj            FSIQ             externalizing   
+ [5] IFO_fa           DS.wj            ADHD_PRS0.001000 OFC             
+ [9] ATR_fa           CST_fa           base_age         cingulate       
+[13] DSF.wisc        
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> inatt_p = ps[ps$sx=='inatt',]
+> p2 = p.adjust(inatt_p[,'pval'], method='fdr')
+> inatt_p[p2<.05,'var']
+[1] FSIQ             VMI.beery        VM.wj            base_age        
+[5] externalizing    ADHD_PRS0.000500
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> inatt_p[p2<.1,'var']
+[1] FSIQ             VMI.beery        VM.wj            base_age        
+[5] externalizing    ADHD_PRS0.000500 DSF.wisc         IFO_fa          
+[9] DS.wj           
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+```
+
+And if we remove base_age:
+
+```
+> ps = ps[ps$var!='base_age',]
+> hi_p = ps[ps$sx=='hi',]
+> p2 = p.adjust(hi_p[,'pval'], method='fdr')
+> hi_p[p2<.05,'var']
+[1] VMI.beery        VM.wj            FSIQ             externalizing   
+[5] IFO_fa           DS.wj            ADHD_PRS0.001000 OFC             
+[9] ATR_fa          
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> hi_p[p2<.1,'var']
+ [1] VMI.beery        VM.wj            FSIQ             externalizing   
+ [5] IFO_fa           DS.wj            ADHD_PRS0.001000 OFC             
+ [9] ATR_fa           CST_fa           cingulate        DSF.wisc        
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> inatt_p = ps[ps$sx=='inatt',]
+> p2 = p.adjust(inatt_p[,'pval'], method='fdr')
+> inatt_p[p2<.05,'var']
+[1] FSIQ             VMI.beery        VM.wj            externalizing   
+[5] ADHD_PRS0.000500
+30 Levels: ADHD_PRS0.000500 ADHD_PRS0.001000 ATR_fa base_age CC_fa ... VMI.beery
+> inatt_p[p2<.1,'var']
+[1] FSIQ             VMI.beery        VM.wj            externalizing   
+[5] ADHD_PRS0.000500 DSF.wisc         IFO_fa           DS.wj           
+```
+
+I think these make more sense, without the age, as it compares the power of the
+different tests... age and sex are not necessarily tests.
+
+
 # TODO
 * construct model with everything
 * ML

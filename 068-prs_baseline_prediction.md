@@ -1066,7 +1066,67 @@ ordered.C    0.07295620 0.10536134 137  0.6924380 4.898343e-01
 PC01         0.37304320 0.05348571 137  6.9746330 1.190376e-10
 ```
 
-Yep, "Value" is the beta. Which makes sense, if it's the slope of the linear fit.
+Yep, "Value" is the beta. Which makes sense, if it's the slope of the linear
+fit.
+
+But the betas are very different if I don't scale the predictors! T and p-values
+still the same, just a different beta. But we get the same beta if we scale the
+target! In other words, as long as we scale the target, we should be fine!
+
+```r
+this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+this_data[, 3:ncol(this_data)] = scale(this_data[, 3:ncol(this_data)])
+this_data$sex = data[use_me, 'sex']
+tmp_covars = c(covars, 'sex')
+this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+fm_str = "ADHD_PRS0.200000 ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+fit_TsP = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+print(summary(fit_TsP)$tTable[1:3,])
+this_data$scaled = scale(this_data$ADHD_PRS0.200000)
+fm_str = "scaled ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+fit_sTsP = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+print(summary(fit_sTsP)$tTable[1:3,])
+this_data = data[use_me, c(phen, 'FAMID', brain_vars, covars)]
+this_data$sex = data[use_me, 'sex']
+tmp_covars = c(covars, 'sex')
+this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+fm_str = "ADHD_PRS0.200000 ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+fit_TP = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+print(summary(fit_TP)$tTable[1:3,])
+this_data$scaled = scale(this_data$ADHD_PRS0.200000)
+fm_str = "scaled ~ ordered +PC01+PC02+PC03+PC04+PC05+PC06+PC07+PC08+PC09+PC10+base_age+sex"
+fit_sTP = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+print(summary(fit_sTP)$tTable[1:3,])
+```
+
+Here are the results...
+
+```
+> print(summary(fit_TsP)$tTable[1:3,])
+                  Value  Std.Error  DF    t-value   p-value
+(Intercept)  0.04589435 0.08758489 251  0.5239985 0.6007420
+ordered.L    0.05136319 0.08691827 126  0.5909366 0.5556214
+ordered.Q   -0.03036834 0.09475437 126 -0.3204953 0.7491238
+> print(summary(fit_sTsP)$tTable[1:3,])
+                  Value  Std.Error  DF    t-value   p-value
+(Intercept)  0.04589435 0.08758489 251  0.5239985 0.6007420
+ordered.L    0.05136319 0.08691827 126  0.5909366 0.5556214
+ordered.Q   -0.03036834 0.09475437 126 -0.3204953 0.7491238
+> print(summary(fit_TP)$tTable[1:3,])
+                    Value    Std.Error  DF     t-value       p-value
+(Intercept) -5.895298e-04 1.276989e-05 251 -46.1656114 1.181608e-124
+ordered.L    3.522433e-06 5.960757e-06 126   0.5909372  5.556211e-01
+ordered.Q   -2.082628e-06 6.498148e-06 126  -0.3204957  7.491235e-01
+> print(summary(fit_sTP)$tTable[1:3,])
+                  Value  Std.Error  DF    t-value   p-value
+(Intercept)  0.29206137 0.18620733 251  1.5684741 0.1180303
+ordered.L    0.05136319 0.08691827 126  0.5909366 0.5556214
+ordered.Q   -0.03036834 0.09475437 126 -0.3204953 0.7491238
+```
 
 # TODO
 * which ones can we keep? which ones don't violate the assumptions and have good
