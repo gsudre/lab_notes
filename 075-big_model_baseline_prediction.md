@@ -538,6 +538,89 @@ But even by doing something like that I'm running into trouble in the ps...
 After chatting with Philip, a few more things we can try. First, does ordered
 logistic regression help at all?
 
+```r
+library(nnet)
+library(MASS)
+
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
+data$externalizing = as.factor(data$externalizing)
+
+# Q < .1, including PRS but after cleaning correlated variables
+hi_vars = c('VMI.beery', 'VM.wj', 'FSIQ', 'externalizing', 'IFO_fa', 'DS.wj',
+            'ADHD_PRS0.001000', 'OFC', 'ATR_fa', 'CST_fa', 'cingulate',
+            'DSF.wisc')
+inatt_vars = c('FSIQ', 'VMI.beery', 'VM.wj', 'externalizing',
+               'ADHD_PRS0.000500', 'DSF.wisc', 'IFO_fa', 'DS.wj')
+covars = c('base_age', sapply(1:10, function(x) sprintf('PC%02d', x)),
+           "meanX.trans", "meanY.trans", "meanZ.trans", "meanX.rot",
+           "meanY.rot", "meanZ.rot", "goodVolumes",
+           "mprage_score", "ext_avg", "int_avg", 'sex')
+predictors = inatt_vars
+sx = 'inatt'
+min_sx = 6
+
+if (sx == 'inatt') {
+    thresh = 0
+} else if (sx == 'hi') {
+    thresh = -.5
+}
+phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+data[, phen] = 'notGE6adhd'
+my_nvs = which(is.na(data[, phen_slope]))
+idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+data[my_nvs[idx], phen] = 'nv012'
+data[which(data[, phen_slope] < thresh), phen] = 'imp'
+data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+data[, phen] = factor(data[, phen], ordered=F)
+data[, phen] = relevel(data[, phen], ref='nv012')
+
+predictors_str = paste(predictors, collapse='+')
+fm_str = paste(phen, " ~ ", predictors_str, ' + ',
+               paste(covars, collapse='+'),
+               sep="")
+
+use_me = !is.na(data[, phen])
+this_data = data[use_me, c(phen, predictors, covars)]
+scale_me = c()
+for (v in c(predictors, covars)) {
+    if (!is.factor(this_data[, v])) {
+        scale_me = c(scale_me, v)
+    }
+}
+this_data[, scale_me] = scale(this_data[, scale_me])
+fit_all = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+
+use_me = !is.na(data[, phen]) & data$bestInFamily
+this_data = data[use_me, c(phen, predictors, covars)]
+scale_me = c()
+for (v in c(predictors, covars)) {
+    if (!is.factor(this_data[, v])) {
+        scale_me = c(scale_me, v)
+    }
+}
+this_data[, scale_me] = scale(this_data[, scale_me])
+fit_bif = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+
+# make sure to step to remove only covariates!
+step = stepAIC(fit_all, direction='both', trace=F,
+                scope = list(lower = as.formula(sprintf('~ %s', predictors_str))))
+
+z <- summary(fit_all)$coefficients/summary(fit_all)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+```
+
+Now I need to assess variable importance here. Let's see if dominance analysis
+works with multinomial logistic regression. If not, I could find a different way
+to quantify variable importance, or run several pairwise logistic regressions,
+having pie-charts for each comparison. That might actually be a bit more
+informative, but I don't think it'll converge... no, it didn't. 
+
+OK, so next steps are to try dominance analysis in multinomial, or find other
+ways to quantify the variables.
+
+
+
 
 
 # TODO
