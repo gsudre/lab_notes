@@ -72,7 +72,7 @@ gmbFit <- train(x = training[, var_names], y=training[, phen],
                  preProc = c("center", "scale"),
                  tuneLength = 8,
                  metric = "ROC")
-resamps <- resamples(list(GBM = gbmFit,
+resamps <- resamples(list(GBM = gmbFit,
                           SVM = svmFit,
                           RDA = rdaFit))
 summary(resamps)
@@ -86,5 +86,5 @@ trellis.par.set(theme1)
 bwplot(resamps, layout = c(3, 1))
 
 trellis.par.set(caretTheme())
-dotplot(resamps, metric = "ROC")
+dotplot(resamps, metric = "Accuracy")
 ```
