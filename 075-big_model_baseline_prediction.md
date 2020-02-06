@@ -742,7 +742,6 @@ for (sx in c('inatt', 'hi')) {
 prs = read.csv('/Volumes/NCR/reference/merged_NCR_1KG_PRS_12192019.csv')
 data = merge(df, prs, by='MRN', all.x=F, all.y=F)
 library(nlme)
-brain_vars = colnames(data)[grepl(colnames(data), pattern='ADHD')]
 qc_vars = sapply(1:10, function(x) sprintf('PC%02d', x))
 for (bv in brain_vars) {
     fm_str = paste(bv, " ~ ", paste(qc_vars, collapse='+'), sep="")

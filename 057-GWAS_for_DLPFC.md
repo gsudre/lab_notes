@@ -328,7 +328,6 @@ for chr in {1..22}; do
         --out assoc_chr${chr}_${phen};
 done
 ```
-
 Once you have results, I merged them with the INFO columns from the imputation,
 as Veera suggested in his e-mail, so that we can easily filter what SNPs we want
 to play with later. I did it in R:

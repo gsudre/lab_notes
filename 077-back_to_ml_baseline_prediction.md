@@ -8,6 +8,7 @@ I'll try not to residualize or impute anything. At least not at first.
 ```r
 data = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
 data$externalizing = as.factor(data$externalizing)
+min_sx = 6
 for (sx in c('inatt', 'hi')) {
     if (sx == 'inatt') {
         thresh = 0
@@ -88,3 +89,53 @@ bwplot(resamps, layout = c(3, 1))
 trellis.par.set(caretTheme())
 dotplot(resamps, metric = "Accuracy")
 ```
+
+# 2020-02-06 09:09:41
+
+OK, so let's play with methods that can handle NAs, which is one of the main
+reasons to do this anyways:
+
+```r
+library(caret)
+
+my_cols = c(38:49, 86:123, 125, 128:138)
+phen = 'thresh0.00_inatt_GE6_wp05'
+var_names = c(colnames(data)[my_cols], 'base_age', 'sex', 'base_inatt')
+phen = 'thresh0.50_hi_GE6_wp05'
+var_names = c(colnames(data)[my_cols], 'base_age', 'sex', 'base_hi')
+models = c('AdaBoost.M1', 'AdaBag', 'ada', 'C5.0', 'rpart', 'rpart1SE',
+           'rpart2', 'rpartScore', 'C5.0Cost', 'rpartCost', 'C5.0Rules',
+           'C5.0Tree')
+models = c('C5.0', 'rpart', 'rpart1SE',
+           'rpart2', 'rpartScore', 'C5.0Cost', 'rpartCost', 'C5.0Rules',
+           'C5.0Tree')
+
+adhd = data[, phen] == 'nonimp' | data[, phen] == 'imp'
+data2 = data[adhd, ]
+data2[, phen] = factor(data2[, phen], ordered=F)
+data2[, phen] = relevel(data2[, phen], ref='imp')
+training = data2[data2$bestInFamily, ]
+testing = data2[!data2$bestInFamily, ]
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T)
+for (m in models) {
+    print(m)
+    model_str = sprintf('fit_%s <- train(x = training[, var_names],
+                                         y=training[, phen],
+                                         method = "%s",
+                                         trControl = fitControl,
+                                         tuneLength = 10,
+                                         metric = "AUC")', m, m)
+    eval(parse(text=model_str))
+}
+```
+
+Note that it might be better to train within-modality classifiers first just so
+we can deal with the covariates properly, instead of using PC covariates with
+brain predictors, for example. If we go that route, then we'd have to use
+stacked/voting classifiers on top of everything, especially one that takes into
+consideration NAs.
+
