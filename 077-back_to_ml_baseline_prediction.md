@@ -139,3 +139,153 @@ brain predictors, for example. If we go that route, then we'd have to use
 stacked/voting classifiers on top of everything, especially one that takes into
 consideration NAs.
 
+# 2020-02-07 10:43:25
+
+AdaBoost and AdaBag took a whole night and still weren't finished. I'll not play
+with those for now, until I can actually optimize them.
+
+```r
+fits_str = sapply(models, function(m) sprintf('%s = fit_%s', m, m))
+rs_str = paste('resamps <- resamples(list(',
+               paste(fits_str, collapse=','),
+               '))', sep="")
+eval(parse(text=rs_str))
+summary(resamps)
+
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+bwplot(resamps, layout = c(3, 1))
+```
+
+![](images/2020-02-07-11-16-53.png)
+
+The results haven't been overwhelming. But I think it's a better approach to do
+a per-domain classifier first, and then promote those classifiers later. So, the
+approach will be:
+
+ * split data into train and test
+ * within train, remove any entries with NAs and try the best possible
+   classifier there. Make sure that when predicting new data is is NAs, we get
+   NA probabilities. 
+* train a classifier on top of those that combines the probabilities of the
+  different modalities. Maybe weighted average, or even anoter stack.
+* use the test data
+
+A few questions arise, such as whether we should do it only for the ADHDs, or do
+the 4 group classification. Let's do 4 groups for now, but it shouldn't be too
+hard to change everything for binary later.
+
+I'm going to do this with randomforests for now because they're quick, but we
+could potentially have different classifiers per domain? Maybe not, too hard to
+explain why we did it that way. But at least try other models across domains to
+see what we get.
+
+```r
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'rf'
+sx = 'inatt'
+adhd = data[, phen] == 'nonimp' | data[, phen] == 'imp'
+data2 = data[adhd, ]
+data2[, phen] = factor(data2[, phen], ordered=F)
+data2[, phen] = relevel(data2[, phen], ref='imp')
+training = data2[data2$bestInFamily, ]
+testing = data2[!data2$bestInFamily, ]
+
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=twoClassSummary
+                           )
+
+# dti
+var_names = colnames(data)[107:121]
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+dti_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+dti_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(dti_fit, type='prob')
+dti_preds[keep_me, ] = preds
+
+# anat
+var_names = colnames(data)[96:106]
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+anat_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+anat_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(anat_fit, type='prob')
+anat_preds[keep_me, ] = preds
+
+# genomics
+var_names = c(colnames(data)[38:49], colnames(data)[86:95])
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+dna_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+dna_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(dna_fit, type='prob')
+dna_preds[keep_me, ] = preds
+
+# neuropsych
+var_names = c('FSIQ', "VMI.beery", "DS.wisc", "SSB.wisc", "SSF.wisc", "DS.wj",
+              "VM.wj")
+# I'll impute within neuropsych, so I don't have to train a classifier for each test
+this_data = training[, var_names]
+numNAvars = rowSums(is.na(this_data))
+# but first remove anyone that only has one or no neuropsych
+keep_me = numNAvars < 5
+this_data = this_data[keep_me, ]
+impute = preProcess(this_data, method = "bagImpute")
+this_data <- predict(impute, this_data)
+neuro_fit <- train(x = this_data[, var_names], y=training[keep_me, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+neuro_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(neuro_fit, type='prob')
+neuro_preds[keep_me, ] = preds
+
+# demo
+var_names = c('base_age', 'sex', 'SES')
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+demo_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+demo_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(demo_fit, type='prob')
+demo_preds[keep_me, ] = preds
+
+# clinics
+var_names = c('internalizing', 'externalizing', sprintf('base_%s', sx))
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+clin_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+clin_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(clin_fit, type='prob')
+clin_preds[keep_me, ] = preds
+
+# ensemble
+prob_data = cbind(dti_preds[, 1], anat_preds[, 1], dna_preds[, 1],
+                  neuro_preds[, 1], demo_preds[, 1], clin_preds[, 1])
+colnames(prob_data) = c('dti', 'anat', 'dna', 'neuro', 'demo', 'clin')
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+```
+
+Now that I have an ensemble classifier, let's see how well it does on the test
+data:
+
