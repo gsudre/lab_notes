@@ -277,6 +277,17 @@ clin_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(trainin
 preds = predict(clin_fit, type='prob')
 clin_preds[keep_me, ] = preds
 
+# demo
+var_names = c('base_age')
+keep_me = !is.na(training[var_names[1]])
+this_data = training[keep_me, ]
+demo_fit <- train(x = this_data[, var_names], y=this_data[, phen],
+                 method = model, trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+demo_preds = data.frame(imp=rep(NA, nrow(training)), nonimp=rep(NA, nrow(training)))
+preds = predict(demo_fit, type='prob')
+demo_preds[keep_me, ] = preds
+
 # ensemble
 prob_data = cbind(dti_preds[, 1], anat_preds[, 1], dna_preds[, 1],
                   neuro_preds[, 1], demo_preds[, 1], clin_preds[, 1])
@@ -289,3 +300,199 @@ ens_fit <- train(x = prob_data, y=training[, phen],
 Now that I have an ensemble classifier, let's see how well it does on the test
 data:
 
+```r
+for (dom in colnames(prob_data)) {
+    print(dom)
+    eval(parse(text=sprintf('keep_me = !is.na(testing[, colnames(%s_fit$trainingData)[1]])', dom)))
+    this_data = testing[keep_me, ]
+    eval(parse(text=sprintf('%s_test_preds = data.frame(imp=rep(NA, nrow(testing)), nonimp=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+```
+
+That almost worked, but neuropsych is still breaking. Also, I don't want to just
+impute that one. Let's then modularize this to break up neuropsych...
+
+```r
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'rf'
+sx = 'inatt'
+adhd = data[, phen] == 'nonimp' | data[, phen] == 'imp'
+data2 = data[adhd, ]
+data2[, phen] = factor(data2[, phen], ordered=F)
+data2[, phen] = relevel(data2[, phen], ref='imp')
+training = data2[data2$bestInFamily, ]
+testing = data2[!data2$bestInFamily, ]
+
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=twoClassSummary
+                           )
+
+domains = list(iq_vmi = c('FSIQ', "VMI.beery"),
+               wisc = c("SSB.wisc", "SSF.wisc", 'DSF.wisc', 'DSB.wisc'),
+               wj = c("DS.wj", "VM.wj"),
+               demo = c('base_age', 'sex', 'SES'),
+               clin = c('internalizing', 'externalizing', sprintf('base_%s', sx)),
+               gen = c(colnames(data)[38:49], colnames(data)[86:95]),
+               dti = colnames(data)[107:121],
+               anat = colnames(data)[96:106]
+               )
+
+for (dom in names(domains)) {
+    print(sprintf('Training %s on %s (sx=%s)', dom, phen, sx))
+    var_names = domains[[dom]]
+    numNAvars = rowSums(is.na(training[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = training[keep_me, ]
+    eval(parse(text=sprintf('%s_fit <- train(x = this_data[, var_names],
+                                             y=this_data[, phen],
+                                             method = model,
+                                             trControl = fitControl,
+                                             tuneLength = 10, metric="ROC")',
+                            dom)))
+    eval(parse(text=sprintf('%s_preds = data.frame(imp=rep(NA, nrow(training)),
+                                                   nonimp=rep(NA, nrow(training)))',
+                            dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob")', dom)))
+    eval(parse(text=sprintf('%s_preds[keep_me, ] = preds', dom)))
+}
+# ensemble
+preds_str = sapply(names(domains), function(d) sprintf('%s_preds[, 1]', d))
+cbind_str = paste('prob_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_data) = names(domains)
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='ROC')
+```
+
+Now we can do the testing again:
+
+```r
+library(pROC)
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # ignore .outcome
+    numNAvars = rowSums(is.na(testing[, var_names[1:(length(var_names)-1)]]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, ]
+    eval(parse(text=sprintf('%s_test_preds = data.frame(imp=rep(NA, nrow(testing)), nonimp=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds[, 1]', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = names(domains)
+preds = predict(ens_fit, newdata=prob_test_data)
+confusionMatrix(data = preds, reference = testing[, phen])
+```
+
+Before we start tuning this so we're not overfitting the training set, let's
+play with the entire dataset to integrate all 4 groups:
+
+```r
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'rf'
+sx = 'inatt'
+training = data[data$bestInFamily, ]
+testing = data[!data$bestInFamily, ]
+
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=multiClassSummary
+                           )
+
+domains = list(iq_vmi = c('FSIQ', "VMI.beery"),
+               wisc = c("SSB.wisc", "SSF.wisc", 'DSF.wisc', 'DSB.wisc'),
+               wj = c("DS.wj", "VM.wj"),
+               demo = c('base_age', 'sex', 'SES'),
+               clin = c('internalizing', 'externalizing', sprintf('base_%s', sx)),
+               gen = c(colnames(data)[38:49], colnames(data)[86:95]),
+               dti = colnames(data)[107:121],
+               anat = colnames(data)[96:106]
+               )
+
+for (dom in names(domains)) {
+    print(sprintf('Training %s on %s (sx=%s)', dom, phen, sx))
+    var_names = domains[[dom]]
+    numNAvars = rowSums(is.na(training[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = training[keep_me, ]
+    eval(parse(text=sprintf('%s_fit <- train(x = this_data[, var_names],
+                                             y=this_data[, phen],
+                                             method = model,
+                                             trControl = fitControl,
+                                             tuneLength = 10, metric="AUC")',
+                            dom)))
+    eval(parse(text=sprintf('%s_preds = data.frame(nv012=rep(NA, nrow(training)),
+                                                   imp=rep(NA, nrow(training)),
+                                                   nonimp=rep(NA, nrow(training)),
+                                                   notGE6adhd=rep(NA, nrow(training)))',
+                            dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob")', dom)))
+    eval(parse(text=sprintf('%s_preds[keep_me, ] = preds', dom)))
+}
+# ensemble
+preds_str = sapply(names(domains), function(d) sprintf('%s_preds', d))
+cbind_str = paste('prob_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+prob_header = c()
+for (dom in names(domains)) {
+    for (g in colnames(preds)) {
+        prob_header = c(prob_header, sprintf('%s_%s', dom, g))
+    }
+}
+colnames(prob_data) = prob_header
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='AUC')
+```
+
+Then we modify the code for testing as well to take into account all 4 groups:
+
+```r
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # ignore .outcome
+    numNAvars = rowSums(is.na(testing[, var_names[1:(length(var_names)-1)]]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, ]
+    eval(parse(text=sprintf('%s_test_preds = data.frame(nv012=rep(NA, nrow(testing)),
+                                                   imp=rep(NA, nrow(testing)),
+                                                   nonimp=rep(NA, nrow(testing)),
+                                                   notGE6adhd=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = prob_header
+preds = predict(ens_fit, newdata=prob_test_data, type='prob')
+multiclass.roc(testing[, phen], preds)
+```
+
+OK, so this code is now working. I can certainly play with kinds of metrics I'll
+be evaluating, such as AUC or other, but at least training and predictions are
+happening. Now, it's just a matter of tunning it.
+
+# TODO
+* test different models that don't overfit
+* do 4 group analysis
