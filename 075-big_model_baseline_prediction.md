@@ -1834,5 +1834,507 @@ Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adh
 Multi-class area under the curve: 0.8786
 ```
 
+# 2020-02-10 12:36:13
+
+Philip sent me a table with the medication status at baseline. Let's run it just
+to check if it makes a difference:
+
+```r
+library(caret)
+data0 = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_02052020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/med_at_base.csv')
+data = merge(data0, meds, by='MRN')
+data$medication_status_at_observation = as.numeric(data$medication_status_at_observation)
+```
+
+As expected, the distribution is indeed a bit off:
+
+```
+> table(data$medication_status_at_observation, data$thresh0.50_hi_GE6_wp05)
+         
+          nv012 imp nonimp notGE6adhd
+  none      159  52     78         37
+  nonstim     0   3      2          1
+  stim        0  21     32          8
+```
+
+But let's run the univariate model just to show if it works or not...
+
+```r
+brain_vars = c('medication_status_at_observation')
+hold = c()
+out_fname = '~/data/baseline_prediction/prs_start/univar_meds_4groupOrdered_stepAIClme.csv'
+for (sx in c('inatt', 'hi')) {
+    min_sx = 6
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    use_me = T
+
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+    this_data$ordered = factor(this_data[, phen],
+                           levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+    phen_res = c()
+    for (bv in brain_vars) {
+        fm_str = paste(bv, " ~ ordered", sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML',
+                  na.action=na.omit))
+        if (length(fit)>1) {
+            step=try(stepAIC(fit, direction='both', trace=F,
+                        scope = list(lower = ~ ordered)))
+            if (length(step) > 1) {
+                temp = c(summary(step)$tTable['ordered.L', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.Q', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(step)$tTable['ordered.C', ],
+                            summary(step)$logLik, summary(step)$AIC, summary(step)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            } else {
+                # fit worked but broke stepping
+                temp = c(summary(fit)$tTable['ordered.L', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'linear')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.Q', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'quadratic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+                temp = c(summary(fit)$tTable['ordered.C', ],
+                            summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                            bv, 'cubic')
+                phen_res = rbind(phen_res, temp)
+                rownames(phen_res)[nrow(phen_res)] = fm_str
+            }
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+As expected, the linear fit is extremely significant:
+
+![](images/2020-02-10-12-49-58.png)
+
+So, let's add it to the big model:
+
+```r
+library(caret)
+data0 = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_02052020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/med_at_base.csv')
+data1 = merge(data0, meds, by='MRN')
+data = data1[!is.na(data0$IFO_fa), ]
+data$externalizing = as.factor(data$externalizing)
+
+set.seed(42)
+base_vars = c(colnames(data)[42:65], colnames(data)[74:81])
+# anatomical
+imp_vars = colnames(data)[66:73]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# beery
+imp_vars = colnames(data)[89]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# wj
+imp_vars = colnames(data)[96:98]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# wisc
+imp_vars = colnames(data)[90:95]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+```
+
+Now it's a matter of choosing which variables to run. At first, we add it to the
+model that doesn't use externalizing, because of the imbalance of that variable:
+
+```r
+library(nnet)
+library(pROC)
+hi_vars = c('VMI.beery', 'VM.wj', 'FSIQ', 'IFO_fa', 'DS.wj',
+            'ADHD_PRS0.001000', 'OFC', 'ATR_fa', 'CST_fa', 'cingulate',
+            'DSF.wisc')
+inatt_vars = c('FSIQ', 'VMI.beery', 'VM.wj',
+               'ADHD_PRS0.000500', 'DSF.wisc', 'IFO_fa', 'DS.wj')
+covars = c('base_age', 'sex', 'medication_status_at_observation')
+min_sx = 6
+
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]', sx)))
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    fm_str = paste(phen, " ~ ", predictors_str, ' + ',
+               paste(covars, collapse='+'),
+               sep="")
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+```
+
+It doesn't quite work out because of the same issue of running externalizing.
+So, I'll have to run just the 3 groups for this:
+
+<!-- x
+[1] "inatt"
+                                           Overall
+FSIQ                                     0.8278991
+VMI.beery                                1.4567942
+VM.wj                                    1.0402199
+ADHD_PRS0.000500                         0.8393871
+DSF.wisc                                 0.3040160
+IFO_fa                                   1.0981418
+DS.wj                                    1.2037948
+base_age                                 1.6952046
+sexMale                                  1.0717422
+medication_status_at_observationnonstim 42.2653945
+medication_status_at_observationstim    55.0329034
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.7564
+# weights:  68 (48 variable)
+initial  value 249.532985 
+iter  10 value 186.270227
+iter  20 value 177.808045
+iter  30 value 175.691146
+iter  40 value 175.150748
+iter  50 value 174.994482
+iter  60 value 174.987259
+final  value 174.987050 
+converged
+[1] "hi"
+                                           Overall
+VMI.beery                                1.3881893
+VM.wj                                    0.5798119
+FSIQ                                     0.9357802
+IFO_fa                                   0.7331851
+DS.wj                                    1.4402980
+ADHD_PRS0.001000                         0.6602974
+OFC                                      0.8576428
+ATR_fa                                   0.7719326
+CST_fa                                   0.6776853
+cingulate                                0.4203304
+DSF.wisc                                 0.6387271
+base_age                                 1.0859779
+sexMale                                  1.5411749
+medication_status_at_observationnonstim 37.1543259
+medication_status_at_observationstim    51.3134873
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.7806
+
+Let's see how it looks after we add in base_sx:
+
+```r
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars, "base_%s")]',
+                            sx, sx)))
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    fm_str = paste(phen, " ~ ", predictors_str, sprintf(' + base_%s + ', sx),
+               paste(covars, collapse='+'),
+               sep="")
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+```
+
+Big jump as expected:
+
+```
+[1] "inatt"
+                    Overall
+FSIQ              0.5190794
+VMI.beery         1.2832258
+VM.wj             1.1350190
+ADHD_PRS0.000500  1.1784921
+DSF.wisc          3.0009173
+IFO_fa            1.6415447
+DS.wj             0.7241186
+base_inatt       28.0924540
+base_age          0.8509839
+sexMale           2.2257656
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.9115
+
+[1] "hi"
+                    Overall
+VMI.beery         1.8090450
+VM.wj             3.2007661
+FSIQ              1.4060350
+IFO_fa            1.6473047
+DS.wj             0.5276963
+ADHD_PRS0.001000  2.0131734
+OFC               1.5049995
+ATR_fa            0.5186103
+CST_fa            2.7554278
+cingulate         1.1505311
+DSF.wisc          0.5744980
+base_hi          24.1625875
+base_age          3.8087047
+sexMale           2.6791743
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.9163
+```
+
+What if we reduce it to a 3 group comparison only?
+
+```r
+hi_vars = c('VMI.beery', 'VM.wj', 'FSIQ', 'externalizing', 'IFO_fa', 'DS.wj',
+            'ADHD_PRS0.001000', 'OFC', 'ATR_fa', 'CST_fa', 'cingulate',
+            'DSF.wisc')
+inatt_vars = c('FSIQ', 'VMI.beery', 'VM.wj', 'externalizing',
+               'ADHD_PRS0.000500', 'DSF.wisc', 'IFO_fa', 'DS.wj')
+covars = c('base_age', 'sex')
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]', sx)))
+
+    this_data = this_data[this_data[, phen] != 'nv012',]
+    this_data[, phen] = factor(this_data[, phen], ordered=F)
+    this_data[, phen] = relevel(this_data[, phen], ref='notGE6adhd')
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    fm_str = paste(phen, " ~ ", predictors_str, ' + ',
+               paste(covars, collapse='+'),
+               sep="")
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+```
+
+It still carries weight, but at least it's not over the top.
+
+```
+[1] "inatt"
+                   Overall
+FSIQ             1.3936495
+VMI.beery        0.4464261
+VM.wj            0.7960408
+externalizing1   2.4373028
+ADHD_PRS0.000500 1.3741709
+DSF.wisc         0.5311392
+IFO_fa           0.4959420
+DS.wj            0.4958580
+base_age         1.0964769
+sexMale          1.1486840
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.7569
+
+[1] "hi"
+                   Overall
+VMI.beery        0.4864423
+VM.wj            0.5471967
+FSIQ             1.6412003
+externalizing1   2.5931840
+IFO_fa           0.6310506
+DS.wj            0.4103319
+ADHD_PRS0.001000 1.1681734
+OFC              1.0591294
+ATR_fa           0.2912992
+CST_fa           0.9043042
+cingulate        0.2246797
+DSF.wisc         0.5846238
+base_age         1.0156251
+sexMale          1.6160933
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.7823
+```
+
+And if we include base_sx...
+
+```r
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars, "base_%s")]',
+                            sx, sx)))
+
+    this_data = this_data[this_data[, phen] != 'nv012',]
+    this_data[, phen] = factor(this_data[, phen], ordered=F)
+    this_data[, phen] = relevel(this_data[, phen], ref='notGE6adhd')
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    fm_str = paste(phen, " ~ ", predictors_str, sprintf(' + base_%s + ', sx),
+               paste(covars, collapse='+'),
+               sep="")
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+```
+
+Yep, makes sense:
+
+```
+[1] "inatt"
+                   Overall
+FSIQ             0.7149091
+VMI.beery        0.2881959
+VM.wj            1.1430780
+externalizing1   2.7247453
+ADHD_PRS0.000500 1.1872987
+DSF.wisc         0.1431103
+IFO_fa           0.8085379
+DS.wj            0.5387884
+base_inatt       5.3156872
+base_age         0.7218521
+sexMale          2.4801733
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.8596
+
+[1] "hi"
+                   Overall
+VMI.beery        0.7125827
+VM.wj            0.6703544
+FSIQ             1.7043603
+externalizing1   1.1160982
+IFO_fa           1.0440388
+DS.wj            0.3050194
+ADHD_PRS0.001000 1.9647090
+OFC              1.2091195
+ATR_fa           0.5853600
+CST_fa           1.3282894
+cingulate        0.2831388
+DSF.wisc         1.2255681
+base_hi          4.9314779
+base_age         3.7619075
+sexMale          1.8857750
+
+Call:
+multiclass.roc.default(response = this_data[, phen], predictor = preds)
+
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.8786
+``` -->
+
+
 
 # TODO
