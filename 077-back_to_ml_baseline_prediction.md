@@ -497,8 +497,14 @@ happening. Now, it's just a matter of tunning it.
 
 ```r
 library(caret)
+library(pROC)
 data = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
 data$externalizing = as.factor(data$externalizing)
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'lda'
+sx = 'inatt'
+
 min_sx = 6
 for (sx in c('inatt', 'hi')) {
     if (sx == 'inatt') {
@@ -537,11 +543,6 @@ fitControl <- trainControl(method = "repeatedcv",
                            classProbs=T,
                            summaryFunction=multiClassSummary
                            )
-
-phen = 'thresh0.00_inatt_GE6_wp05'
-# phen = 'thresh0.50_hi_GE6_wp05'
-model = 'lda'
-sx = 'inatt'
 training = data[data$bestInFamily, ]
 testing = data[!data$bestInFamily, ]
 for (dom in names(domains)) {
@@ -591,7 +592,50 @@ ens_fit <- train(x = prob_data, y=training[, phen],
 print(ens_fit)
 ```
 
+And let's see how we do in test data:
+
+```r
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # remove .outcome
+    var_names = var_names[1:(length(var_names)-1)]
+    numNAvars = rowSums(is.na(testing[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_test_preds = data.frame(nv012=rep(NA, nrow(testing)),
+                                                   imp=rep(NA, nrow(testing)),
+                                                   nonimp=rep(NA, nrow(testing)),
+                                                   notGE6adhd=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = prob_header
+preds = predict(ens_fit, newdata=prob_test_data, type='prob')
+multiclass.roc(testing[, phen], preds)
+```
+
+This wasn't terrible... .77 ROC for the 4 group classification inattention. But
+that's average ROC over all groups, so it can be a bit misleading. And we have
+.62 for HI.
+
+Let's add medication status, then we can go back to tuning the best model and
+using just the clinical groups.
 
 # TODO
-* test different models that don't overfit
-* do 4 group analysis
+* add medication status
+* tune best classifier for 4 group model
+* go back to tune best classifier for clinical groups
