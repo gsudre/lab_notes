@@ -635,7 +635,656 @@ that's average ROC over all groups, so it can be a bit misleading. And we have
 Let's add medication status, then we can go back to tuning the best model and
 using just the clinical groups.
 
+# 2020-02-12 08:43:14
+
+```r
+library(caret)
+library(pROC)
+data0 = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/med_at_base.csv')
+data = merge(data0, meds, by='MRN')
+data$externalizing = as.factor(data$externalizing)
+
+min_sx = 6
+for (sx in c('inatt', 'hi')) {
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    ophen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, ophen] = factor(data[, phen],
+                         levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                         ordered=T)
+}
+
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'lda'
+my_sx = 'inatt'
+
+domains = list(iq_vmi = c('FSIQ', "VMI.beery"),
+               wisc = c("SSB.wisc", "SSF.wisc", 'DSF.wisc', 'DSB.wisc'),
+               wj = c("DS.wj", "VM.wj"),
+               demo = c('base_age', 'sex', 'SES'),
+               clin = c('internalizing', 'externalizing',
+                        'medication_status_at_observation',
+                        sprintf('base_%s', my_sx)),
+               gen = c(colnames(data)[38:49], colnames(data)[86:95]),
+               dti = colnames(data)[107:121],
+               anat = colnames(data)[96:106]
+               )
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=multiClassSummary
+                           )
+training = data[data$bestInFamily, ]
+testing = data[!data$bestInFamily, ]
+for (dom in names(domains)) {
+    print(sprintf('Training %s on %s (sx=%s, model=%s)', dom, phen, my_sx, model))
+    var_names = domains[[dom]]
+    numNAvars = rowSums(is.na(training[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = training[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_fit <- train(x = this_data,
+                                             y=training[keep_me, phen],
+                                             method = model,
+                                             trControl = fitControl,
+                                             tuneLength = 10, metric="AUC")',
+                            dom)))
+    eval(parse(text=sprintf('%s_preds = data.frame(nv012=rep(NA, nrow(training)),
+                                                   imp=rep(NA, nrow(training)),
+                                                   nonimp=rep(NA, nrow(training)),
+                                                   notGE6adhd=rep(NA, nrow(training)))',
+                            dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob")', dom)))
+    eval(parse(text=sprintf('%s_preds[keep_me, ] = preds', dom)))
+}
+# ensemble training
+preds_str = sapply(names(domains), function(d) sprintf('%s_preds', d))
+cbind_str = paste('prob_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+prob_header = c()
+for (dom in names(domains)) {
+    for (g in colnames(preds)) {
+        prob_header = c(prob_header, sprintf('%s_%s', dom, g))
+    }
+}
+colnames(prob_data) = prob_header
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='AUC')
+print(ens_fit)
+
+# testing
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # remove .outcome
+    var_names = var_names[1:(length(var_names)-1)]
+    numNAvars = rowSums(is.na(testing[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_test_preds = data.frame(nv012=rep(NA, nrow(testing)),
+                                                   imp=rep(NA, nrow(testing)),
+                                                   nonimp=rep(NA, nrow(testing)),
+                                                   notGE6adhd=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = prob_header
+preds = predict(ens_fit, newdata=prob_test_data, type='prob')
+multiclass.roc(testing[, phen], preds)
+```
+
+We're up to .839 AUC for the 4-group situation in inatt, and for .793 HI. In inatt,
+that was actually pretty similar to our training AUC as well (.888), so that looks
+nice. For HI we got training AUC .825 as well, so maybe some tiny overfit there.
+
+The inattention variable importance:
+
+```
+> varImp(ens_fit)
+rpart2 variable importance
+
+  only 20 most important variables shown (out of 32)
+
+                Overall
+clin_imp        100.000
+clin_nv012       98.642
+clin_nonimp      84.223
+clin_notGE6adhd  49.439
+demo_imp         23.181
+dti_nonimp       18.512
+demo_nonimp      16.147
+demo_nv012        9.357
+gen_imp           8.934
+anat_nonimp       8.226
+dti_notGE6adhd    8.010
+demo_notGE6adhd   6.844
+anat_nv012        6.525
+anat_imp          5.876
+dti_imp           5.568
+gen_nonimp        5.184
+wj_nonimp         4.661
+gen_nv012         2.794
+iq_vmi_imp        2.544
+iq_vmi_nv012      0.000
+```
+
+and HI:
+
+```
+> varImp(ens_fit)
+rpart2 variable importance
+
+  only 20 most important variables shown (out of 32)
+
+                Overall
+clin_imp        100.000
+clin_nv012       99.632
+clin_nonimp      89.524
+clin_notGE6adhd  63.224
+gen_nonimp       42.015
+demo_imp         18.382
+dti_imp          15.472
+gen_nv012        12.533
+demo_nv012       11.633
+demo_notGE6adhd  11.068
+dti_notGE6adhd    6.936
+anat_nonimp       6.814
+gen_notGE6adhd    5.936
+gen_imp           5.551
+demo_nonimp       5.199
+wj_nv012          4.206
+wj_nonimp         4.206
+wj_notGE6adhd     3.957
+iq_vmi_nv012      0.000
+wisc_notGE6adhd   0.000
+```
+
+But Philip brought up a good point that because of the class distributions, we
+should likely not include any of the clinical metrics in the 4-group
+discrimination. So, let's see what we get there:
+
+```r
+library(caret)
+library(pROC)
+data0 = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/med_at_base.csv')
+data = merge(data0, meds, by='MRN')
+data$externalizing = as.factor(data$externalizing)
+
+min_sx = 6
+for (sx in c('inatt', 'hi')) {
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    ophen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, ophen] = factor(data[, phen],
+                         levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                         ordered=T)
+}
+
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'lda'
+my_sx = 'inatt'
+
+domains = list(iq_vmi = c('FSIQ', "VMI.beery"),
+               wisc = c("SSB.wisc", "SSF.wisc", 'DSF.wisc', 'DSB.wisc'),
+               wj = c("DS.wj", "VM.wj"),
+               demo = c('base_age', 'sex', 'SES'),
+               gen = c(colnames(data)[38:49], colnames(data)[86:95]),
+               dti = colnames(data)[107:121],
+               anat = colnames(data)[96:106]
+               )
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=multiClassSummary
+                           )
+training = data[data$bestInFamily, ]
+testing = data[!data$bestInFamily, ]
+for (dom in names(domains)) {
+    print(sprintf('Training %s on %s (sx=%s, model=%s)', dom, phen, my_sx, model))
+    var_names = domains[[dom]]
+    numNAvars = rowSums(is.na(training[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = training[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_fit <- train(x = this_data,
+                                             y=training[keep_me, phen],
+                                             method = model,
+                                             trControl = fitControl,
+                                             tuneLength = 10, metric="AUC")',
+                            dom)))
+    eval(parse(text=sprintf('%s_preds = data.frame(nv012=rep(NA, nrow(training)),
+                                                   imp=rep(NA, nrow(training)),
+                                                   nonimp=rep(NA, nrow(training)),
+                                                   notGE6adhd=rep(NA, nrow(training)))',
+                            dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob")', dom)))
+    eval(parse(text=sprintf('%s_preds[keep_me, ] = preds', dom)))
+}
+# ensemble training
+preds_str = sapply(names(domains), function(d) sprintf('%s_preds', d))
+cbind_str = paste('prob_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+prob_header = c()
+for (dom in names(domains)) {
+    for (g in colnames(preds)) {
+        prob_header = c(prob_header, sprintf('%s_%s', dom, g))
+    }
+}
+colnames(prob_data) = prob_header
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='AUC')
+print(ens_fit)
+
+# testing
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # remove .outcome
+    var_names = var_names[1:(length(var_names)-1)]
+    numNAvars = rowSums(is.na(testing[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_test_preds = data.frame(nv012=rep(NA, nrow(testing)),
+                                                   imp=rep(NA, nrow(testing)),
+                                                   nonimp=rep(NA, nrow(testing)),
+                                                   notGE6adhd=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = prob_header
+preds = predict(ens_fit, newdata=prob_test_data, type='prob')
+multiclass.roc(testing[, phen], preds)
+```
+
+As expected, without the clinical domain we are down to .59 AUC in inatt
+training, and .479 in testing. In HI we are down to in .566 training and .516 in
+testing. So, that's quite close to chance. We can of course still tune the
+classifiers, but at least this is where we're starting.
+
+And let's see where we are in the 2 clinical group model, but here it's fine to
+go with the clinical domain as well.
+
+```r
+library(caret)
+library(pROC)
+data0 = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/med_at_base.csv')
+data = merge(data0, meds, by='MRN')
+data$externalizing = as.factor(data$externalizing)
+
+min_sx = 6
+for (sx in c('inatt', 'hi')) {
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    ophen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, ophen] = factor(data[, phen],
+                         levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                         ordered=T)
+}
+
+phen = 'thresh0.00_inatt_GE6_wp05'
+# phen = 'thresh0.50_hi_GE6_wp05'
+model = 'lda'
+my_sx = 'inatt'
+
+domains = list(iq_vmi = c('FSIQ', "VMI.beery"),
+               wisc = c("SSB.wisc", "SSF.wisc", 'DSF.wisc', 'DSB.wisc'),
+               wj = c("DS.wj", "VM.wj"),
+               demo = c('base_age', 'sex', 'SES'),
+               clin = c('internalizing', 'externalizing',
+                        'medication_status_at_observation',
+                        sprintf('base_%s', my_sx)),
+               gen = c(colnames(data)[38:49], colnames(data)[86:95]),
+               dti = colnames(data)[107:121],
+               anat = colnames(data)[96:106]
+               )
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           classProbs=T,
+                           summaryFunction=twoClassSummary
+                           )
+
+adhd = data[, phen] == 'nonimp' | data[, phen] == 'imp'
+data2 = data[adhd, ]
+data2[, phen] = factor(data2[, phen], ordered=F)
+data2[, phen] = relevel(data2[, phen], ref='imp')
+training = data2[data2$bestInFamily, ]
+testing = data2[!data2$bestInFamily, ]
+for (dom in names(domains)) {
+    print(sprintf('Training %s on %s (sx=%s, model=%s)', dom, phen, my_sx, model))
+    var_names = domains[[dom]]
+    numNAvars = rowSums(is.na(training[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = training[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_fit <- train(x = this_data,
+                                             y=training[keep_me, phen],
+                                             method = model,
+                                             trControl = fitControl,
+                                             tuneLength = 10, metric="ROC")',
+                            dom)))
+    eval(parse(text=sprintf('%s_preds = data.frame(imp=rep(NA, nrow(training)),
+                                                   nonimp=rep(NA, nrow(training)))',
+                            dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob")', dom)))
+    eval(parse(text=sprintf('%s_preds[keep_me, ] = preds', dom)))
+}
+# ensemble training
+preds_str = sapply(names(domains), function(d) sprintf('%s_preds', d))
+cbind_str = paste('prob_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+prob_header = c()
+for (dom in names(domains)) {
+    for (g in colnames(preds)) {
+        prob_header = c(prob_header, sprintf('%s_%s', dom, g))
+    }
+}
+colnames(prob_data) = prob_header
+ens_fit <- train(x = prob_data, y=training[, phen],
+                 method = 'rpart2', trControl = fitControl, tuneLength = 10,
+                 metric='AUC')
+print(ens_fit)
+
+# testing
+for (dom in names(domains)) {
+    print(dom)
+    eval(parse(text=sprintf('var_names = colnames(%s_fit$trainingData)', dom)))
+    # remove .outcome
+    var_names = var_names[1:(length(var_names)-1)]
+    numNAvars = rowSums(is.na(testing[, var_names]))
+    keep_me = numNAvars == 0
+    this_data = testing[keep_me, var_names]
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        } else {
+            this_data[, v] = as.numeric(this_data[, v])
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+    eval(parse(text=sprintf('%s_test_preds = data.frame(imp=rep(NA, nrow(testing)),
+                                                   nonimp=rep(NA, nrow(testing)))', dom)))
+    eval(parse(text=sprintf('preds = predict(%s_fit, type="prob", newdata=this_data)', dom)))
+    eval(parse(text=sprintf('%s_test_preds[keep_me, ] = preds', dom)))
+}
+preds_str = sapply(names(domains), function(d) sprintf('%s_test_preds', d))
+cbind_str = paste('prob_test_data = cbind(', paste(preds_str, collapse=','), ')',
+                  sep="")
+eval(parse(text=cbind_str))
+colnames(prob_test_data) = prob_header
+preds_class = predict(ens_fit, newdata=prob_test_data)
+preds_probs = predict(ens_fit, newdata=prob_test_data, type='prob')
+dat = cbind(data.frame(obs = testing[, phen],
+                 pred = preds_class), preds_probs)
+twoClassSummary(dat, lev=colnames(preds_probs))
+```
+
+Training ROC for inatt was .786, and testing .616. For hi, we got .742 in
+training and .558 in testing.
+
+Philip also suggested I could try the 3 group classification and keep (maybe not
+all) variables in the clinical domain.
+
+Now that I'll try to best tune these situations, let's put the chunks of code
+above in scripts so we can modulatize the classifiers. Then, we can run
+something like this:
+
+```bash
+Rscript ~/research_code/baseline_prediction/stacked_2group.R inatt lda rpart2
+```
+
+In the 2 group classification, keeping lda constant, the best training result I
+got was using C5.0 as ensemble classifier (.852 AUC). Just note that these were the
+only classifiers that handle missig data that worked:
+
+C5.0
+rpart
+rpart1SE
+rpart2
+C5.0Rules
+C5.0Tree
+
+But testing ROC there was only .596. Our best test ROC was .653 using C5.0Tree,
+which got .76 in training. If we look at HI instead, we also see C5.0 with best
+training ROC (.758), but testing at .655. C5.0Tree got the same testing ROC, but
+only .739 in training. C5.0Tree is looking a bit better overall then, but
+regular C5.0 might also be a good alternative.
+
+Let's play with the main classifier now. I'll first try some classifiers that
+include implicit feature selection:
+
+inatt
+model, train_ROC, test_ROC
+bagEarthGCV, .975, .610
+LogitBoost, .974, .583
+C5.0, .912, .613
+rpart, .843, .589
+rpart1SE, .845, .607
+cforest, .875, .673
+ctree, .804, .589
+glmStepAIC, .756, .632
+glmnet, .709, .641
+LMT, .796, .637
+ctree2, .801, .592
+earth, .82, .64
+gcvEarth, .798, .650
+pam, .707, .730
+parRF, .992, .5
+ranger, .989, .5
+Rborist, .992, .5
+rf, .991, .5
+PART, .846, .673
+C5.0Rules, .818, .659
+C5.0Tree, .818, .659
+OneR, .779, .637
+sdwd, .715, .641
+sparseLDA, .707, .717
+gbm, .931, .546
+wsrf, .991, .485
+J48, .850, .641
+rotationForest, .954, .648
+RRFglobal, .988, .532
+bagEarth, .889, .629
+ORSpls, .992, .5
+ORFridge, .992, .476
+extraTrees, 1, .547
+evtree, .773, .603
+
+
+Many models in the caret list wouldn't run, or didn't calculate probabilities,
+so I just ignored those. Also, a few took over 2h to run, so I skipped them as well.
+
+There's considerable overfit here, so I wonder if I could do better if
+cross-validating the ensemble classifier as well.
+
+I think the issue is coming from the decision trees. Basically, it's nice to use
+them to deal with the NAs, but some cut-offs might not make sense at all given
+that their input data is all probabilities. It's much easier to understand the
+ensemble if we can do some sort of weighted or majority voting. But for that
+we'll need to deal with NAs. For that, I could try imputation, but I could also
+just set the probabilities to .5, or the class ratio...
+
+So, I implemented the bagImpute for probabilities in
+stacked_2group_linearEnsemble.R, so let's see if that helps anything. I'll start
+with glmStepAIC as my ensemble model, but of course we can play with that too.
+
+A few models were about to finish running when I started testing this, which
+means they took a long time, but eventually finished. So, worth trying in the
+future:
+
+adaboost
+ada
+xgbLinear
+xgbTree
+ordinalNet
+RRF
+JRip
+
+## glmStepAIC ensembles
+
+So, let's run some tests using the linear ensemble and the classifiers from
+above. Note that I'm doing bagImpute on the NAs, which seems like a reasonable
+approach for now. The predictor is made all in the training set.
+
+inatt
+model, train_ROC_C5.0Tree, test_ROC_C5.0Tree, train_ROC_linear, test_ROC_linear
+bagEarthGCV, .975, .610, 0.9667827, 0.4764808
+LogitBoost, .974, .583, .966, .648
+C5.0, .912, .613, 0.9593899, 0.5801394
+rpart, .843, .589, 0.8820179, 0.6463415
+rpart1SE, .845, .607, 0.9630357, 0.6794425
+cforest, .875, .673, 0.9460417, 0.6263066
+ctree, .804, .589, 0.8921488, 0.6141115
+glmStepAIC, .756, .632, 0.8333274, 0.6620209
+glmnet, .709, .641, 0.8334762, 0.6689895
+LMT, .796, .637, 0.861994, 0.7003484
+ctree2, .801, .592, 0.9162292, 0.6271777
+earth, .82, .64, 0.8299821, 0.6358885
+gcvEarth, .798, .650, 0.8506399, 0.5923345
+pam, .707, .730, 0.7709643, 0.6689895
+parRF, .992, .5, 1, 0.6350174
+ranger, .989, .5, 1, 0.6202091
+Rborist, .992, .5, 1, 0.5252613
+rf, .991, .5, 1, 0.6445993
+PART, .846, .673, 0.9556175, 0.5783972
+C5.0Rules, .818, .659, 0.927744, 0.6750871
+C5.0Tree, .818, .659, 0.9346399, 0.6541812
+OneR, .779, .637, 0.8901548, 0.5818815
+sdwd, .715, .641, 0.8071071, 0.6689895
+sparseLDA, .707, .717, 0.8128929, 0.7003484
+gbm, .931, .546, 0.9741696, 0.5505226
+wsrf, .991, .485
+J48, .850, .641
+rotationForest, .954, .648
+RRFglobal, .988, .532
+
+bagEarth, .889, .629
+ORSpls, .992, .5
+ORFridge, .992, .476
+extraTrees, 1, .547
+evtree, .773, .603
+
+I'm actually not sure this is the best approach, as the imputation makes us
+trust the predictors more, not less. I think a more fair approach would be the
+class ratio... but I'm getting different values now that I have the seed fixed
+for C5.0Tree, so it's not a good comparison either. At least, now that the seed
+is fixed, my values are not changing anymore.
+
+So, I have a classifier and an ensemble dimension... maybe I can just script
+that out? Testing multiple missing value ensembles across the different
+classifiers we have so far, and then some of the linear ensembles as well? We
+can save train and test ROC.
+
+
+
+
 # TODO
 * add medication status
 * tune best classifier for 4 group model
 * go back to tune best classifier for clinical groups
+* try some SVMs?
