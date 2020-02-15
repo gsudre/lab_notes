@@ -1217,10 +1217,6 @@ A few models were about to finish running when I started testing this, which
 means they took a long time, but eventually finished. So, worth trying in the
 future:
 
-adaboost
-ada
-xgbLinear
-xgbTree
 ordinalNet
 RRF
 JRip
@@ -1280,11 +1276,260 @@ that out? Testing multiple missing value ensembles across the different
 classifiers we have so far, and then some of the linear ensembles as well? We
 can save train and test ROC.
 
+# 2020-02-13 08:58:28
+
+Then, we can leave it running something like this:
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for clf in `cat clf1.txt`; do
+    for ens in `cat ens1.txt`; do
+        for sx in inatt hi; do
+            Rscript $my_script $sx $clf $ens ~/tmp/missing.csv;
+        done;
+    done;
+done
+```
+
+And also:
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for clf in `cat clf1.txt`; do
+    for ens in `cat ens2.txt`; do
+        for sx in inatt hi; do
+            Rscript $my_script $sx $clf $ens ~/tmp/class_probs.csv;
+        done;
+    done;
+done
+```
+
+And let's start some SVMs and other linear classifiers as well, because they
+likely on't overfit and weren't selected in our previous lists:
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        for ens in `cat ens1.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/missing.csv;
+        done;
+    done;
+done
+```
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/class_probs.csv;
+        done;
+    done;
+done
+```
+
+I looked at some of those intermediate results in R, and C5.0Tree is
+significantly better than most other ensembles. So, let's stick with that for
+missing data. That might not be true for the imputation with class probabilities
+though.
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for clf in `cat clf1.txt`; do
+        Rscript $my_script $sx $clf C5.0Tree ~/tmp/missing.csv;
+    done;
+done
+```
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat clf1.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/class_probs.csv;
+        done;
+    done;
+done
+```
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        Rscript $my_script $sx $clf C5.0Tree ~/tmp/missing.csv;
+    done;
+done
+```
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/class_probs.csv;
+        done;
+    done;
+done
+```
+
+# 2020-02-14 10:09:04
+
+Our best results for were:
+
+```
+inatt stepLDA C5.0Tree 0.897962 0.741289
+hi glmStepAIC C5.0Tree 0.856618 0.719577
+```
+
+and they're better than the class probability imputations. If we stick to a
+single classifier, then this is best:
+
+```
+inatt stepLDA C5.0Tree 0.897962 0.741289
+hi stepLDA C5.0Tree 0.740196 0.696429
+```
+
+The issue is that although the distribution in the ensemble makes sense, the
+brain image seems to be carried away by the Qc variables, at least as strongly
+as the actual brain variables:
+
+```
+> varImp(ens_fit)
+C5.0Tree variable importance
+
+       Overall
+clin    100.00
+gen      40.60
+demo     34.59
+anat     17.29
+wisc      5.26
+dti       0.00
+wj        0.00
+iq_vmi    0.00
+> varImp(clin_fit)
+ROC curve variable importance
+
+                                 Importance
+base_inatt                          100.000
+externalizing                         1.290
+medication_status_at_observation      1.207
+internalizing                         0.000
+> varImp(anat_fit)
+ROC curve variable importance
+
+             Importance
+mprage_score    100.000
+occipital        99.533
+ext_avg          82.710
+cingulate        82.243
+temporal         79.439
+insula           72.897
+parietal         66.822
+frontal          42.523
+OFC              27.103
+sensorimotor      7.009
+int_avg           0.000
+> varImp(dti_fit)
+ROC curve variable importance
+
+            Importance
+meanX.rot      100.000
+CIN_fa          96.753
+meanZ.trans     79.221
+UNC_fa          73.052
+ATR_fa          72.078
+CC_fa           72.078
+IFO_fa          59.740
+ILF_fa          54.545
+CST_fa          40.260
+meanZ.rot       37.013
+meanY.trans     31.818
+meanX.trans      9.740
+meanY.rot        9.091
+goodVolumes      1.299
+SLF_fa           0.000
+```
+
+So, what now? One option is to check for correlation. If QC is correlated with
+the brain metric, then we think about residualizing. Otherwise, just drop it
+completely? Yep, right off the bat mprage_score is correlated to cingulate.
+
+Let's then re-run out tests, but with the residualized data this time:
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        Rscript $my_script $sx $clf C5.0Tree ~/tmp/resids_missing.csv;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for clf in `cat clf1.txt`; do
+        Rscript $my_script $sx $clf C5.0Tree ~/tmp/resids_missing.csv;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat linear_clf.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/resids_class_probs.csv;
+        done;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat clf1.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/resids_class_probs.csv;
+        done;
+    done;
+done
+```
+
+And for the 3 groups we do something similar:
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_3group.R;
+for sx in inatt hi; do
+    for clf in `cat multi_clf.txt`; do
+        Rscript $my_script $sx $clf C5.0Tree ~/tmp/resids_3class_missing.csv;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_3group_linearEnsemble.R;
+for sx in inatt hi; do
+    for clf in `cat multi_clf.txt`; do
+        for ens in `cat ens2.txt`; do
+            Rscript $my_script $sx $clf $ens ~/tmp/resids_3class_class_probs.csv;
+        done;
+    done;
+done
+```
+
+Still need the linearEnsemble option!!!
+
 
 
 
 # TODO
-* add medication status
-* tune best classifier for 4 group model
-* go back to tune best classifier for clinical groups
-* try some SVMs?
+* tune best classifier for 3 group model
