@@ -1528,6 +1528,54 @@ done
 
 Still need the linearEnsemble option!!!
 
+# 2020-02-18 14:17:54
+
+Let's compile these results. In the 2-class case, I have the best results using
+the imputed class probabilities:
+
+```
+> a[i[76],]
+      V1        V2       V3       V4       V5
+76 inatt dwdLinear C5.0Tree 0.944114 0.748258
+> which.max(a[h,]$V5)
+[1] 119
+> a[h[119],]
+    V1      V2  V3      V4       V5
+311 hi stepLDA glm 0.78848 0.742063
+> a[a$V1=='inatt' & a$V2=='stepLDA' & a$V3=='glm',]
+      V1      V2  V3       V4       V5
+64 inatt stepLDA glm 0.833944 0.667247
+> a[a$V1=='hi' & a$V2=='dwdLinear' & a$V3=='C5.0Tree',]
+    V1        V2       V3       V4       V5
+315 hi dwdLinear C5.0Tree 0.793627 0.718915
+```
+
+If we look at the missing data results, we get:
+
+```r
+> a = read.csv('~/data/baseline_prediction/prs_start/resids_missing.csv', header=F)
+> i = which(a$V1=='inatt')
+> h = which(a$V1=='hi')
+> which.max(a[i,]$V5)
+[1] 2
+> a[i[2],]
+     V1       V2       V3       V4       V5
+2 inatt bayesglm C5.0Tree 0.897274 0.762195
+> a[a$V1=='hi' & a$V2=='bayesglm' & a$V3=='C5.0Tree',]
+   V1       V2       V3       V4       V5
+47 hi bayesglm C5.0Tree 0.856005 0.584656
+> which.max(a[h,]$V5)
+[1] 12
+> a[h[12],]
+   V1    V2       V3       V4       V5
+33 hi earth C5.0Tree 0.892157 0.730159
+> a[a$V1=='inatt' & a$V2=='earth' & a$V3=='C5.0Tree',]
+      V1    V2       V3      V4       V5
+20 inatt earth C5.0Tree 0.72721 0.641115
+```
+
+In a hackish way, our best results come from using dwdLinear and C5.0Tree, with
+an average of .73 AUC.
 
 
 
