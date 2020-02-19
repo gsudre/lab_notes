@@ -1577,7 +1577,31 @@ If we look at the missing data results, we get:
 In a hackish way, our best results come from using dwdLinear and C5.0Tree, with
 an average of .73 AUC.
 
+How about the 3 class case?
 
+```r
+> a = read.csv('~/data/baseline_prediction/prs_start/resids_3class_missing.csv', header=F)
+> i = which(a$V1=='inatt')
+> h = which(a$V1=='hi')
+> which.max(a[i,]$V5)
+[1] 20
+> a[i[20],]
+      V1  V2       V3       V4       V5
+20 inatt rda C5.0Tree 0.858298 0.617821
+> a[a$V1=='hi' & a$V2=='rda' & a$V3=='C5.0Tree',]
+   V1  V2       V3       V4       V5
+46 hi rda C5.0Tree 0.934679 0.487253
+> which.max(a[h,]$V5)
+[1] 2
+> a[h[2],]
+   V1         V2       V3 V4       V5
+28 hi LogitBoost C5.0Tree  1 0.499961
+> a[a$V1=='inatt' & a$V2=='LogitBoost' & a$V3=='C5.0Tree',]
+     V1         V2       V3       V4       V5
+2 inatt LogitBoost C5.0Tree 0.976105 0.427402
+```
+
+Class_proba case didn't finish running for hi... should we?
 
 # TODO
 * tune best classifier for 3 group model

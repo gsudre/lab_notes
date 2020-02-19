@@ -52,3 +52,6 @@ focus on the kids only, which should be something close to 300:
 
 https://s3.amazonaws.com/fcp-indi/data/Projects/RocklandSample/RawDataBIDS/participants.tsv
 
+I'll wait until they post the ages for all scans in RawDataBIDSLatest. I sent
+them an e-mail with a request for it... worst case scenario I could go with the
+ones above, but I'd be missing a dozen or so scans.

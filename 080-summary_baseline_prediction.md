@@ -525,11 +525,323 @@ externalizing:
   stim        0  21     32          8
 ```
 
-So, of course the linear fit is extremely significant. 
+So, of course the linear fit for this variable by itself (similar to analysis
+#1) is very significant. Adding it to the big model as is will just give results
+very similar to when I was adding externalizing. So, let's just run the model
+with 3 groups instead. First, without base_sx:
 
+```
+[1] "inatt"
+                                          Overall
+FSIQ                                    1.5794703
+VMI.beery                               0.4064579
+VM.wj                                   0.7626587
+externalizing1                          2.2779352
+ADHD_PRS0.000500                        1.4058793
+DSF.wisc                                0.8553022
+IFO_fa                                  0.5188099
+DS.wj                                   0.4738631
+base_age                                1.0790133
+sexMale                                 0.9700791
+medication_status_at_observationnonstim 2.5387123
+medication_status_at_observationstim    2.5825405
+Multi-class area under the curve: 0.766
 
+[1] "hi"
+                                           Overall
+VMI.beery                                0.3949537
+VM.wj                                    0.6577070
+FSIQ                                     1.7894836
+externalizing1                           2.1609333
+IFO_fa                                   0.6791764
+DS.wj                                    0.4973218
+ADHD_PRS0.001000                         1.2240894
+OFC                                      1.0448133
+ATR_fa                                   0.2579573
+CST_fa                                   0.9364096
+cingulate                                0.2619426
+DSF.wisc                                 0.8888433
+base_age                                 0.9071128
+sexMale                                  1.9337588
+medication_status_at_observationnonstim 17.1836361
+medication_status_at_observationstim     1.9955208
+Multi-class area under the curve: 0.8002
+```
 
+The medication variable dominates the predictors in the HI case. It's not a
+considerable improvement in AUC though. What if we add base_sx?
+
+```
+[1] "inatt"
+                                          Overall
+FSIQ                                    0.7414561
+VMI.beery                               0.3028156
+VM.wj                                   1.0315119
+externalizing1                          2.7496942
+ADHD_PRS0.000500                        1.1781947
+DSF.wisc                                0.2350047
+IFO_fa                                  0.7335736
+DS.wj                                   0.4558638
+base_inatt                              5.2208425
+base_age                                0.7560045
+sexMale                                 2.3631864
+medication_status_at_observationnonstim 1.6377845
+medication_status_at_observationstim    0.8823375
+Multi-class area under the curve: 0.8641
+
+[1] "hi"
+                                           Overall
+VMI.beery                                0.8857438
+VM.wj                                    0.4973983
+FSIQ                                     1.8330103
+externalizing1                           0.7141466
+IFO_fa                                   0.8766953
+DS.wj                                    0.2795922
+ADHD_PRS0.001000                         1.9459321
+OFC                                      1.1504444
+ATR_fa                                   0.6752563
+CST_fa                                   1.5048279
+cingulate                                0.1098872
+DSF.wisc                                 1.1715570
+base_hi                                  5.0591415
+base_age                                 3.6486695
+sexMale                                  2.3601317
+medication_status_at_observationnonstim 15.6503299
+medication_status_at_observationstim     2.6920838
+Multi-class area under the curve: 0.9
+```
+
+We see the usual bump in AUC, but medication is still extremely important.
 
 ## Analysis 3: ML
 
+The idea here is to take all variables that were analyzed in the univariate
+analysis (#1), but instead of taking them individually we take them all
+together (after any within-domain residualizing procedures).
 
+There is no imputation because the classifiers are trained within
+domain. We separate for testing everyone but one participant in the same family.
+Some of the testing cases will have data only for some of the domains, similarly
+to what we will have in the training data. Note that the testing data is never
+used during training, but it's not a clean cross-validation: the test data is
+not independent from the training data because of the family component, and also
+because of the residualizing procedure that uses the entire dataset for robustness.
+
+So, we train the best classifier we can within each domain. We also train an
+ensemble classifier that learns to combine the "vote" for each domain. In other
+words, each domain votes (with a probability) what group a given participant
+belongs to, and the ensemble classifier learns how to best consider each vote
+(i.e. trust/take into consideration some domains more than others). When there
+is no data for a given domain it either votes NA, or just the class probability
+deducted from the training data. I tried it both ways, the difference being that
+if voting NA we need to use an ensembler that takes that in (i.e. any
+GLM/weighted majority voting won't work).
+
+The training itself is a 10-fold repeated cross validation (10 times), which
+happens only within the training set. For this analysis, we can not only assess variable importance within domain, but also how
+important each domain was in the ensemble classifier.
+
+I only ran this for the 3 and 2 class scenarios, as I didn't think it'd be fair to
+run externalizing and medication variables in the 4-class case. The results
+using 3-classes is just an average of the 3 different ROC curves. Still, not
+very impressive: .62 for inatt and .5 for hi. 
+
+For the 2-class case, we get up to .75 for inatt and .72 for hi.
+
+These are the training/testing splits in each domain (neuropsych was further
+divided to avoid additional imputation):
+
+```
+"Training iq_vmi on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 103 participants"
+[1] "Training wisc on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 72 participants"
+[1] "Training wj on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 106 participants"
+[1] "Training demo on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 133 participants"
+[1] "Training clin on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 133 participants"
+[1] "Training gen on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 133 participants"
+[1] "Training dti on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 56 participants"
+[1] "Training anat on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 84 participants"
+[1] "iq_vmi"
+[1] "Testing on 49 participants"
+[1] "wisc"
+[1] "Testing on 43 participants"
+[1] "wj"
+[1] "Testing on 50 participants"
+[1] "demo"
+[1] "Testing on 55 participants"
+[1] "clin"
+[1] "Testing on 55 participants"
+[1] "gen"
+[1] "Testing on 55 participants"
+[1] "dti"
+[1] "Testing on 23 participants"
+[1] "anat"
+[1] "Testing on 41 participants"
+```
+
+```
+[1] "Training iq_vmi on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 126 participants"
+[1] "Training wisc on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 93 participants"
+[1] "Training wj on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 130 participants"
+[1] "Training demo on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 160 participants"
+[1] "Training gen on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 160 participants"
+[1] "Training dti on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 71 participants"
+[1] "Training anat on thresh0.00_inatt_GE6_wp05 (sx=inatt, model=lda)"
+[1] "Training on 105 participants"
+[1] "iq_vmi"
+[1] "Testing on 65 participants"
+[1] "wisc"
+[1] "Testing on 60 participants"
+[1] "wj"
+[1] "Testing on 69 participants"
+[1] "demo"
+[1] "Testing on 74 participants"
+[1] "gen"
+[1] "Testing on 74 participants"
+[1] "dti"
+[1] "Testing on 35 participants"
+[1] "anat"
+[1] "Testing on 57 participants"
+```
+
+If we spit out the importance of the variables in each domain, and the ensemble,
+we get (inattention first, then hi):
+
+
+```
+          Importance
+FSIQ             100
+         Importance
+SSB.wisc     100.00
+DSB.wisc      36.89
+DSF.wisc      13.33
+SSF.wisc       0.00
+      Importance
+VM.wj        100
+DS.wj          0
+         Importance
+base_age     100.00
+SES           39.41
+sex            0.00
+                                 Importance
+base_inatt                          100.000
+externalizing                         1.290
+medication_status_at_observation      1.207
+internalizing                         0.000
+                 Importance
+ADHD_PRS0.000100  1.000e+02
+ADHD_PRS0.000050  8.856e+01
+ADHD_PRS0.000500  7.214e+01
+ADHD_PRS0.001000  3.651e+01
+ADHD_PRS0.050000  3.226e+01
+ADHD_PRS0.005000  1.393e+01
+ADHD_PRS0.100000  1.364e+01
+ADHD_PRS0.200000  9.238e+00
+ADHD_PRS0.010000  8.504e+00
+ADHD_PRS0.300000  2.053e+00
+ADHD_PRS0.400000  7.107e-14
+ADHD_PRS0.500000  0.000e+00
+       Importance
+CIN_fa     100.00
+UNC_fa      63.89
+ATR_fa      59.72
+CC_fa       56.25
+IFO_fa      38.89
+ILF_fa      15.97
+CST_fa      10.42
+SLF_fa       0.00
+             Importance
+insula          100.000
+parietal         92.473
+occipital        74.194
+cingulate        69.892
+OFC              35.484
+sensorimotor     20.430
+temporal          6.452
+frontal           0.000
+       Overall
+gen     100.00
+clin    100.00
+anat     33.83
+iq_vmi   30.08
+wisc     25.56
+demo      0.00
+wj        0.00
+dti       0.00
+```
+
+```
+          Importance
+VMI.beery        100
+FSIQ               0
+         Importance
+SSF.wisc     100.00
+DSB.wisc      82.55
+DSF.wisc      26.17
+SSB.wisc       0.00
+      Importance
+VM.wj        100
+DS.wj          0
+         Importance
+base_age     100.00
+sex           63.91
+SES            0.00
+                                 Importance
+base_hi                             100.000
+medication_status_at_observation      4.985
+internalizing                         2.085
+externalizing                         0.000
+                 Importance
+ADHD_PRS0.000100    100.000
+ADHD_PRS0.000500     78.663
+ADHD_PRS0.010000     75.835
+ADHD_PRS0.001000     73.265
+ADHD_PRS0.005000     68.638
+ADHD_PRS0.000050     66.067
+ADHD_PRS0.300000     12.596
+ADHD_PRS0.400000      5.398
+ADHD_PRS0.500000      4.113
+ADHD_PRS0.100000      3.085
+ADHD_PRS0.200000      2.314
+ADHD_PRS0.050000      0.000
+       Importance
+CST_fa    100.000
+ATR_fa     93.333
+ILF_fa     54.444
+UNC_fa     41.111
+SLF_fa     22.222
+CC_fa      17.778
+CIN_fa      8.889
+IFO_fa      0.000
+             Importance
+occipital        100.00
+OFC               94.17
+sensorimotor      71.67
+cingulate         62.50
+parietal          37.50
+insula            23.33
+frontal           23.33
+temporal           0.00
+       Overall
+clin     100.0
+dti       78.2
+demo       0.0
+anat       0.0
+wj         0.0
+gen        0.0
+wisc       0.0
+iq_vmi     0.0
+```
