@@ -561,6 +561,78 @@ colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
+# 2020-02-21 13:11:03
+
+We should keep the 1 year limit in the clinics, but make sure that the year of
+neuroimage and neuropsych is not the same as FU. Let's check that.
+
+I did check and the two subjects with anatomical that would be the closest are
+within the error margin of their recorrent visits. In other words, the
+difference between last_age and age_at scan was < 1, but not < .9. And looking
+at the ages, it made sense. We did go from 286 to 282 subjects with scans,
+meaning that all 4 subjects we removed because of not enough time between
+clinicals actually had an mprage scan.
+
+For DTI we only lost 1 (from 180 to 179). And the two subjects that were < 1
+were in the same situation as anatomical, so we can keep them.
+
+The issue here then is how to keep our results, as PRS is not surviving FDR in
+the 4-group logistic regression. It's the very next predictor when using either
+.05 or .1 Q, in either inatt or HI, but it's not getting there anymore.
+
+Also, I couldn't get anything in the 2 and 3 group comparison. Likely don't have
+enough data to estimate the model. Maybe another reason to not make it mixed?
+
+We could try going the lm route, or trying total symptoms. Let's see what we
+get:
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
+
+brain_vars = colnames(data)[c(42:53, 66:90)]
+hold = c()
+min_sx = 6
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_4groupOrdered_lm.csv'
+for (sx in c('inatt', 'hi')) {   
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data[, bv])
+        this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = lm(as.formula(fm_str), data=this_data)
+        temp = c(summary(fit)$coefficients[sprintf('%s.L', phen), ], bv)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[5] = 'brainVar'
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Nope, still the exact same issue as before... well, good to know lm and lme are
+not that different. Still, doesn't solve our problems. What if we do it in totla
+symptoms? I'll mark it to be improving in total just based on whether it
+improves in inatt or HI:
+
+
+
+
+
+
+
+
+
 
  # TODO
  * do descriptive splits again
@@ -569,3 +641,5 @@ write.csv(hold, file=out_fname, row.names=F)
  * see how ML models change with these new values for the same variables
  * check if results stable with bigger clinical delta threshold. Say, 2 or 3
    years? (RDS files are already created)
+ * maybe use lm for univariate as well, instead of lme, to get better
+   significance? (need to show that family term doesn't matter...)
