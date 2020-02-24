@@ -621,22 +621,173 @@ write.csv(hold, file=out_fname, row.names=F)
 ```
 
 Nope, still the exact same issue as before... well, good to know lm and lme are
-not that different. Still, doesn't solve our problems. What if we do it in totla
+not that different. Still, doesn't solve our problems. What if we do it in total
 symptoms? I'll mark it to be improving in total just based on whether it
 improves in inatt or HI:
 
+# 2020-02-24 09:14:04
 
+```r
+library(nlme)
+library(MASS)
 
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
 
+brain_vars = colnames(data)[c(42:53, 66:90)]
+hold = c()
+min_sx = 6
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_4groupOrdered_total.csv'
 
+data$ORDtotal = data$ORDthresh0.00_inatt_GE6_wp05
+inatt_imp = data$ORDthresh0.00_inatt_GE6_wp05 == 'imp'
+hi_imp = data$ORDthresh0.50_hi_GE6_wp05 == 'imp'
+data[inatt_imp | hi_imp, 'ORDtotal'] = 'imp'
 
+sx = 'total'
+phen = 'ORDtotal'
 
+phen_res = c()
+for (bv in brain_vars) {
+    use_me = !is.na(data[, bv])
+    this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+    fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+    fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+    if (length(fit)>1) {
+        temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                    summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                    bv, 'linear')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+        temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                    summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                    bv, 'quadratic')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+        temp = c(summary(fit)$tTable[sprintf('%s.C', phen), ],
+                    summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                    bv, 'cubic')
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    } else {
+        # fit broke
+        temp = rep(NA, 10)
+        phen_res = rbind(phen_res, temp)
+        rownames(phen_res)[nrow(phen_res)] = fm_str
+    }
+}
+phen_res = data.frame(phen_res)
+phen_res$formula = rownames(phen_res)
+phen_res$outcome = phen
+hold = rbind(hold, phen_res)
+
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-02-24-09-33-29.png)
+
+Even though we might get some PRS, no brain would survive... let's see what else
+we can do. It looks like we can have better results if we include all variables
+together, for inatt and hi (but only the best PRS, like before):
+
+```
+> ps[p2<.1,c('brainVar', 'outcome')]
+           brainVar                      outcome
+1              FSIQ ORDthresh0.00_inatt_GE6_wp05
+2         VMI.beery ORDthresh0.00_inatt_GE6_wp05
+3             VM.wj ORDthresh0.00_inatt_GE6_wp05
+4  ADHD_PRS0.000500 ORDthresh0.00_inatt_GE6_wp05
+36        VMI.beery    ORDthresh0.50_hi_GE6_wp05
+37             FSIQ    ORDthresh0.50_hi_GE6_wp05
+38            VM.wj    ORDthresh0.50_hi_GE6_wp05
+39           IFO_fa    ORDthresh0.50_hi_GE6_wp05
+40           CST_fa    ORDthresh0.50_hi_GE6_wp05
+41 ADHD_PRS0.001000    ORDthresh0.50_hi_GE6_wp05
+42           ATR_fa    ORDthresh0.50_hi_GE6_wp05
+43              OFC    ORDthresh0.50_hi_GE6_wp05
+```
+
+That's a decent approach, but let's see if defining a better threshold for total
+might actually work better. I'll try .25, .33, and .5:
+
+```r
+library(nlme)
+library(MASS)
+
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
+
+brain_vars = colnames(data)[c(42:53, 66:90)]
+
+min_sx = 6
+sx = 'total'
+for (thresh in c(.25, .33, .5)) {
+    phen_slope = sprintf('slope_%s_GE%d_wp05', sx, min_sx)
+    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(data[, phen_slope]))
+    idx = data[my_nvs, 'base_inatt'] <= 2 & data[my_nvs, 'base_hi'] <= 2
+    data[my_nvs[idx], phen] = 'nv012'
+    data[which(data[, phen_slope] < thresh), phen] = 'imp'
+    data[which(data[, phen_slope] >= thresh), phen] = 'nonimp'
+    data[, phen] = factor(data[, phen], ordered=F)
+    data[, phen] = relevel(data[, phen], ref='nv012')
+    ophen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    data[, ophen] = factor(data[, phen],
+                         levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                         ordered=T)
+}
+
+hold = c()
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_4groupOrdered_totalThresh.csv'
+
+for (thresh in c(.25, .33, .5)) {
+    phen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data[, bv])
+        this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.C', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+.25 did best overall, then .5, but none of them included a brain variable even
+at Q < .1, so I think I'll stick to the results per SX above.
 
 
 
  # TODO
  * do descriptive splits again
- * evaluate FDR
  * evaluate big models
  * see how ML models change with these new values for the same variables
  * check if results stable with bigger clinical delta threshold. Say, 2 or 3
