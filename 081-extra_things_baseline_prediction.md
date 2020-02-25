@@ -1360,6 +1360,245 @@ for sx in inatt hi; do
 done
 ```
 
+# 2020-02-25 10:52:16
+
+Let's check the ML results:
+
+```r
+> a = read.csv('~/data/baseline_prediction/prs_start/resids390_missing.csv', header=F)
+> i = which(a$V1=='inatt')
+> h = which(a$V1=='hi')
+> which.max(a[i,]$V5)
+[1] 23
+> a[i[23],]
+      V1        V2       V3       V4       V5
+36 inatt kernelpls C5.0Tree 0.934828 0.798214
+> a[a$V1=='hi' & a$V2=='kernelpls' & a$V3=='C5.0Tree',]
+   V1        V2       V3       V4       V5
+56 hi kernelpls C5.0Tree 0.790816 0.663237
+> which.max(a[h,]$V5)
+[1] 4
+> a[h[4],]
+   V1    V2       V3       V4       V5
+25 hi rpart C5.0Tree 0.936346 0.696845
+> a[a$V1=='inatt' & a$V2=='rpart' & a$V3=='C5.0Tree',]
+      V1    V2       V3      V4       V5
+10 inatt rpart C5.0Tree 0.85954 0.597321
+```
+
+The results weren't as strong if instead we impute NAs using class probabilities
+for an average vote weighting. So let's see how the weights look in those
+models. Inattention first:
+
+```r
+      ROC      Sens      Spec 
+0.7982143 0.7250000 0.7857143 
+C5.0Tree variable importance
+
+       Overall
+gen     100.00
+clin    100.00
+wj       33.08
+anat     22.56
+wisc     15.04
+demo      0.00
+iq_vmi    0.00
+dti       0.00
+Error in cat(x, file = file, sep = c(rep.int(sep, ncolumns - 1), "\n"),  : 
+  object 'out_file' not found
+> varImp(gen_fit)
+
+Attaching package: ‘pls’
+
+The following object is masked from ‘package:caret’:
+
+    R2
+
+The following object is masked from ‘package:stats’:
+
+    loadings
+
+kernelpls variable importance
+
+                 Overall
+ADHD_PRS0.000100 100.000
+ADHD_PRS0.000050  82.128
+ADHD_PRS0.000500  63.251
+ADHD_PRS0.001000  37.160
+ADHD_PRS0.050000  20.155
+ADHD_PRS0.200000  10.495
+ADHD_PRS0.100000   7.974
+ADHD_PRS0.500000   6.850
+ADHD_PRS0.005000   6.388
+ADHD_PRS0.300000   6.005
+ADHD_PRS0.010000   3.762
+ADHD_PRS0.400000   0.000
+> varImp(clin_fit)
+kernelpls variable importance
+
+                                 Overall
+base_inatt                       100.000
+medication_status_at_observation   3.097
+externalizing                      1.069
+internalizing                      0.000
+> varImp(wj)
+Error in varImp(wj) : object 'wj' not found
+> varImp(wj_fit)
+kernelpls variable importance
+
+      Overall
+VM.wj     100
+DS.wj       0
+> varImp(anat_fit)
+kernelpls variable importance
+
+             Overall
+insula       100.000
+frontal       77.689
+OFC           75.049
+temporal      55.794
+sensorimotor  43.055
+occipital      8.546
+parietal       5.143
+cingulate      0.000
+> varImp(wisc_fit)
+kernelpls variable importance
+
+         Overall
+SSB.wisc 100.000
+DSB.wisc  32.275
+SSF.wisc   7.458
+DSF.wisc   0.000
+> varImp(demo_fit)
+kernelpls variable importance
+
+         Overall
+base_age  100.00
+SES        50.88
+sex         0.00
+> varImp(iq_vmi_fit)
+kernelpls variable importance
+
+          Overall
+VMI.beery     100
+FSIQ            0
+> varImp(dti_fit)
+kernelpls variable importance
+
+       Overall
+CIN_fa 100.000
+CST_fa  73.513
+IFO_fa  62.856
+SLF_fa  34.610
+ATR_fa  21.773
+UNC_fa  20.315
+ILF_fa   5.659
+CC_fa    0.000
+
+```
+
+I just noticed I didn't include base_hi here for clinicals... shouldn't change
+the results much, right?
+
+```r
+C5.0Tree variable importance
+
+       Overall
+gen     100.00
+clin    100.00
+wj       31.58
+anat     22.56
+wisc     15.04
+demo      0.00
+iq_vmi    0.00
+dti       0.00
+Error in cat(x, file = file, sep = c(rep.int(sep, ncolumns - 1), "\n"),  : 
+  object 'out_file' not found
+> line
+[1] "inatt,kernelpls,C5.0Tree,0.950460,0.766964"
+> varImp(gen_fit)
+kernelpls variable importance
+
+                 Overall
+ADHD_PRS0.000100 100.000
+ADHD_PRS0.000050  82.128
+ADHD_PRS0.000500  63.251
+ADHD_PRS0.001000  37.160
+ADHD_PRS0.050000  20.155
+ADHD_PRS0.200000  10.495
+ADHD_PRS0.100000   7.974
+ADHD_PRS0.500000   6.850
+ADHD_PRS0.005000   6.388
+ADHD_PRS0.300000   6.005
+ADHD_PRS0.010000   3.762
+ADHD_PRS0.400000   0.000
+> varImp(clin_fit)
+kernelpls variable importance
+
+                                  Overall
+base_inatt                       100.0000
+base_hi                           39.2072
+medication_status_at_observation   2.6315
+externalizing                      0.9896
+internalizing                      0.0000
+> varImp(wj_fit)
+kernelpls variable importance
+
+      Overall
+VM.wj     100
+DS.wj       0
+> varImp(anat_fit)
+kernelpls variable importance
+
+             Overall
+insula       100.000
+frontal       77.689
+OFC           75.049
+temporal      55.794
+sensorimotor  43.055
+occipital      8.546
+parietal       5.143
+cingulate      0.000
+> varImp(wisc_fit)
+kernelpls variable importance
+
+         Overall
+SSB.wisc 100.000
+DSB.wisc  32.275
+SSF.wisc   7.458
+DSF.wisc   0.000
+> varImp(demo_fit)
+kernelpls variable importance
+
+         Overall
+base_age  100.00
+SES        50.88
+sex         0.00
+> varImp(iq_vmi_fit)
+kernelpls variable importance
+
+          Overall
+VMI.beery     100
+FSIQ            0
+> varImp(dti_fit)
+kernelpls variable importance
+
+       Overall
+CIN_fa 100.000
+CST_fa  73.513
+IFO_fa  62.856
+SLF_fa  34.610
+ATR_fa  21.773
+UNC_fa  20.315
+ILF_fa   5.659
+CC_fa    0.000
+```
+
+And for HI, we get... it dropped to .59. Not good. Also, the ratio was very off.
+Let me try running the whole gammut of test using both base_sx and see if
+something looks nicer.
+
+
 ## WNH analysis
 
 Let's make a quick comparison, even within univariate results only, of whether
@@ -1368,11 +1607,173 @@ using WNH only data helps the results.
 Note that the ADHDeur PRS has already been residualized like the all population
 results, so it's just a matter of picking the WNH subjects only.
 
+```r
+library(nlme)
+library(MASS)
 
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
+data_old = readRDS('~/data/baseline_prediction/prs_start/complete_massaged_data_02032020.rds')
+data_old$isWNH = F
+idx = data_old$PC01 < -.033 & data_old$PC02 < -.018
+data_old[idx,]$isWNH = T
+imWNH = data_old[data_old$isWNH,]$MRN
+data$isWNH = data$MRN %in% imWNH
+
+brain_vars = colnames(data)[42:65]
+hold = c()
+min_sx = 6
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_4groupOrdered_WNHcomparison.csv'
+for (sx in c('inatt', 'hi')) {   
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data[, bv]) & data$isWNH
+        this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.C', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Then, let's run the 3 and 2 group comparison as well.
+
+```r
+hold = c()
+min_sx = 6
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_3groupOrdered_WNHcomparison.csv'
+for (sx in c('inatt', 'hi')) {
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+
+    adhd = data[, phen] != 'nv012'
+    data2 = data[adhd, ]
+    data2[, phen] = factor(data2[, phen],
+                           levels=c('notGE6adhd', 'imp', 'nonimp'),
+                           ordered=T)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data2[, bv]) & data2$isWNH
+        this_data = data2[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+```r
+hold = c()
+min_sx = 6
+out_fname = '~/data/baseline_prediction/prs_start/univar_allResidClinDiff1_2groupOrdered_WNHcomparison.csv'
+for (sx in c('inatt', 'hi')) {
+    if (sx == 'inatt') {
+        thresh = 0
+    } else if (sx == 'hi') {
+        thresh = -.5
+    }
+    phen = sprintf('ORDthresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+
+    adhd = data[, phen] == 'nonimp' | data[, phen] == 'imp'
+    data2 = data[adhd, ]
+    data2[, phen] = factor(data2[, phen],
+                           levels=c('imp', 'nonimp'),
+                           ordered=T)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data2[, bv]) & data2$isWNH
+        this_data = data2[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Note that I trimmed the number of participants here to only the WNH ones, and
+compared whether the PRS or PRSeur did a better job in univariate analysis.
+There's barely any difference in the 4-group analysis. Nothing significant in
+the 3-class analysis, but the main result is in the 2-class analysis, where only
+PRS has two nominal hits, while PRSeur has none.
 
 
  # TODO
- * evaluate big models
  * see how ML models change with these new values for the same variables
- * check if results stable with bigger clinical delta threshold. Say, 2 or 3
-   years? (RDS files are already created)
