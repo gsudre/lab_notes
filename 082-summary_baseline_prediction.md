@@ -515,7 +515,8 @@ important each domain was in the ensemble classifier.
 I only ran this for the 2 class scenarios, as I didn't think it'd be fair to
 run externalizing and medication variables in the 4 and 3-class cases.
 
-For the 2-class case, we get ROC AUC up to X for inatt and X for hi.
+For the 2-class case, we get ROC AUC up to .78/.7 for inatt and .63/.73 for hi,
+depending on how we ensemble the domains.
 
 These are the training/testing splits in each domain (neuropsych was further
 divided to avoid additional imputation):
@@ -590,12 +591,406 @@ divided to avoid additional imputation):
 [1] "Testing on 39 participants"
 ```
 
-If we spit out the importance of the variables in each domain, and the ensemble,
-we get (inattention first, then hi):
+Then it's a matter of choosing what sort of voting ensemlber we think makes more
+sense. First, let's look at variable importance for the case where we ignore the
+domain if the participant has no data, inattention firts:
 
 ```
+[1] "iq_vmi"
+[1] "Testing on 48 participants"
+ROC curve variable importance
+
+          Importance
+VMI.beery        100
+FSIQ               0
+[1] "wisc"
+[1] "Testing on 42 participants"
+ROC curve variable importance
+
+         Importance
+SSB.wisc     100.00
+DSB.wisc      34.82
+DSF.wisc      10.53
+SSF.wisc       0.00
+[1] "wj"
+[1] "Testing on 49 participants"
+ROC curve variable importance
+
+      Importance
+DS.wj        100
+VM.wj          0
+[1] "demo"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+         Importance
+base_age     100.00
+SES           42.81
+sex            0.00
+[1] "clin"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+                                 Importance
+base_inatt                          100.000
+base_hi                              45.063
+medication_status_at_observation      4.754
+externalizing                         1.788
+internalizing                         0.000
+[1] "gen"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+                 Importance
+ADHD_PRS0.000100    100.000
+ADHD_PRS0.000050     88.644
+ADHD_PRS0.000500     68.770
+ADHD_PRS0.001000     39.905
+ADHD_PRS0.050000     32.808
+ADHD_PRS0.100000     14.196
+ADHD_PRS0.005000     10.410
+ADHD_PRS0.200000     10.095
+ADHD_PRS0.010000      9.779
+ADHD_PRS0.400000      3.943
+ADHD_PRS0.500000      1.262
+ADHD_PRS0.300000      0.000
+[1] "dti"
+[1] "Testing on 24 participants"
+ROC curve variable importance
+
+       Importance
+CIN_fa    100.000
+CST_fa     96.053
+UNC_fa     46.053
+CC_fa      43.421
+SLF_fa     38.158
+IFO_fa     31.579
+ILF_fa      2.632
+ATR_fa      0.000
+[1] "anat"
+[1] "Testing on 39 participants"
+ROC curve variable importance
+
+             Importance
+frontal         100.000
+insula           65.942
+OFC              64.493
+temporal         58.696
+cingulate        12.319
+parietal          9.420
+occipital         3.623
+sensorimotor      0.000
+      ROC      Sens      Spec
+0.7000000 0.5000000 0.7857143
+C5.0Tree variable importance
+
+       Overall
+clin    100.00
+gen      72.93
+wj       47.37
+anat     12.78
+dti       0.00
+demo      0.00
+wisc      0.00
+iq_vmi    0.00
+[1] "inatt,hdda,C5.0Tree,0.919770,0.700000"
+```
+
+So, our testing ROC AUC is .70. Now missing votes for hi:
 
 ```
+[1] "iq_vmi"
+[1] "Testing on 48 participants"
+ROC curve variable importance
+
+          Importance
+FSIQ             100
+VMI.beery          0
+[1] "wisc"
+[1] "Testing on 42 participants"
+ROC curve variable importance
+
+         Importance
+SSF.wisc    100.000
+DSB.wisc     12.613
+DSF.wisc      1.802
+SSB.wisc      0.000
+[1] "wj"
+[1] "Testing on 49 participants"
+ROC curve variable importance
+
+      Importance
+VM.wj        100
+DS.wj          0
+[1] "demo"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+         Importance
+base_age     100.00
+sex           91.13
+SES            0.00
+[1] "clin"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+                                 Importance
+base_hi                            100.0000
+base_inatt                           8.8206
+internalizing                        1.4113
+medication_status_at_observation     0.7056
+externalizing                        0.0000
+[1] "gen"
+[1] "Testing on 54 participants"
+ROC curve variable importance
+
+                 Importance
+ADHD_PRS0.000100    100.000
+ADHD_PRS0.000500     69.553
+ADHD_PRS0.001000     68.715
+ADHD_PRS0.010000     65.642
+ADHD_PRS0.000050     63.128
+ADHD_PRS0.005000     60.335
+ADHD_PRS0.300000     18.994
+ADHD_PRS0.400000      7.542
+ADHD_PRS0.050000      7.263
+ADHD_PRS0.500000      4.190
+ADHD_PRS0.200000      2.793
+ADHD_PRS0.100000      0.000
+[1] "dti"
+[1] "Testing on 24 participants"
+ROC curve variable importance
+
+       Importance
+CST_fa    100.000
+UNC_fa     57.297
+ILF_fa     51.892
+CC_fa      48.649
+IFO_fa     20.000
+SLF_fa     14.054
+CIN_fa      1.081
+ATR_fa      0.000
+[1] "anat"
+[1] "Testing on 39 participants"
+ROC curve variable importance
+
+             Importance
+OFC              100.00
+parietal          51.74
+cingulate         47.76
+frontal           26.87
+insula            16.92
+sensorimotor      16.42
+temporal          10.45
+occipital          0.00
+      ROC      Sens      Spec
+0.7270233 0.4074074 0.9259259
+C5.0Tree variable importance
+
+       Overall
+clin    100.00
+dti      26.32
+anat     23.31
+demo      0.00
+wj        0.00
+gen       0.00
+wisc      0.00
+iq_vmi    0.00
+[1] "hi,hdda,C5.0Tree,0.846088,0.727023"
+```
+
+Our testing ROC AUC is .73.
+
+Now we try domain voting imputation based on class train ratios. Inatt first:
+
+```
+[1] "iq_vmi"
+ROC curve variable importance
+
+          Importance
+VMI.beery        100
+FSIQ               0
+[1] "wisc"
+ROC curve variable importance
+
+         Importance
+SSB.wisc     100.00
+DSB.wisc      34.82
+DSF.wisc      10.53
+SSF.wisc       0.00
+[1] "wj"
+ROC curve variable importance
+
+      Importance
+DS.wj        100
+VM.wj          0
+[1] "demo"
+ROC curve variable importance
+
+         Importance
+base_age     100.00
+SES           42.81
+sex            0.00
+[1] "clin"
+ROC curve variable importance
+
+                                 Importance
+base_inatt                          100.000
+base_hi                              45.063
+medication_status_at_observation      4.754
+externalizing                         1.788
+internalizing                         0.000
+[1] "gen"
+ROC curve variable importance
+
+                 Importance
+ADHD_PRS0.000100    100.000
+ADHD_PRS0.000050     88.644
+ADHD_PRS0.000500     68.770
+ADHD_PRS0.001000     39.905
+ADHD_PRS0.050000     32.808
+ADHD_PRS0.100000     14.196
+ADHD_PRS0.005000     10.410
+ADHD_PRS0.200000     10.095
+ADHD_PRS0.010000      9.779
+ADHD_PRS0.400000      3.943
+ADHD_PRS0.500000      1.262
+ADHD_PRS0.300000      0.000
+[1] "dti"
+ROC curve variable importance
+
+       Importance
+CIN_fa    100.000
+CST_fa     96.053
+UNC_fa     46.053
+CC_fa      43.421
+SLF_fa     38.158
+IFO_fa     31.579
+ILF_fa      2.632
+ATR_fa      0.000
+[1] "anat"
+ROC curve variable importance
+
+             Importance
+frontal         100.000
+insula           65.942
+OFC              64.493
+temporal         58.696
+cingulate        12.319
+parietal          9.420
+occipital         3.623
+sensorimotor      0.000
+rpart2 variable importance
+
+       Overall
+clin   100.000
+gen     62.971
+demo    49.842
+iq_vmi  29.977
+dti     29.127
+wisc    16.268
+anat     4.765
+wj       0.000
+[1] "inatt,hdda,rpart2,0.930345,0.782143"
+```
+
+It's the highest AUC ROC we get, at .78, and the ensemble looks a bit more
+equalitarian too. 
+
+And also voting imputations for hi:
+
+```
+[1] "iq_vmi"
+ROC curve variable importance
+
+          Importance
+FSIQ             100
+VMI.beery          0
+[1] "wisc"
+ROC curve variable importance
+
+         Importance
+SSF.wisc    100.000
+DSB.wisc     12.613
+DSF.wisc      1.802
+SSB.wisc      0.000
+[1] "wj"
+ROC curve variable importance
+
+      Importance
+VM.wj        100
+DS.wj          0
+[1] "demo"
+ROC curve variable importance
+
+         Importance
+base_age     100.00
+sex           91.13
+SES            0.00
+[1] "clin"
+ROC curve variable importance
+
+                                 Importance
+base_hi                            100.0000
+base_inatt                           8.8206
+internalizing                        1.4113
+medication_status_at_observation     0.7056
+externalizing                        0.0000
+[1] "gen"
+ROC curve variable importance
+
+                 Importance
+ADHD_PRS0.000100    100.000
+ADHD_PRS0.000500     69.553
+ADHD_PRS0.001000     68.715
+ADHD_PRS0.010000     65.642
+ADHD_PRS0.000050     63.128
+ADHD_PRS0.005000     60.335
+ADHD_PRS0.300000     18.994
+ADHD_PRS0.400000      7.542
+ADHD_PRS0.050000      7.263
+ADHD_PRS0.500000      4.190
+ADHD_PRS0.200000      2.793
+ADHD_PRS0.100000      0.000
+[1] "dti"
+ROC curve variable importance
+
+       Importance
+CST_fa    100.000
+UNC_fa     57.297
+ILF_fa     51.892
+CC_fa      48.649
+IFO_fa     20.000
+SLF_fa     14.054
+CIN_fa      1.081
+ATR_fa      0.000
+[1] "anat"
+ROC curve variable importance
+
+             Importance
+OFC              100.00
+parietal          51.74
+cingulate         47.76
+frontal           26.87
+insula            16.92
+sensorimotor      16.42
+temporal          10.45
+occipital          0.00
+rpart2 variable importance
+
+       Overall
+clin    100.00
+dti      75.65
+demo     66.89
+wisc     58.73
+anat     35.93
+gen      27.17
+iq_vmi   14.53
+wj        0.00
+[1] "hi,hdda,rpart2,0.814626,0.631001"
+```
+
+Results not as strong, though.
 
 # TODO
 * robustness analysis using subjects with 2 and 3 years between baseline and follow-up?
