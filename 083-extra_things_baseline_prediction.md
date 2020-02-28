@@ -1098,3 +1098,209 @@ Let's then check what FDR gives us (clinDiff2 comes first):
 Well, some results might actually be a bit better than the 1year diff results,
 even though the overall N is not as impressive. How to decide? Maybe based on ML
 results? Or big model for 2 class?
+
+# 2020-02-28 08:41:14
+
+Let's run the ML experiments and then we can decide whether to go big model for
+the other two clinical thresholds as well.
+
+Because now I have all kinds of different variables to play with, let's create a
+table to store all these results
+(data/baseline_prediction/prs_start/train_test.xlsx).
+
+I'll start with hdda results just to see how it goes, using the non-imputed
+classes, and see how that goes.
+
+```bash
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_2group.R;
+for sx in inatt hi; do
+    for cd in 1 2 3; do
+        for cm in "T F" "T T" "F F"; do
+            for imp in T F; do
+                Rscript $my_script $sx hdda C5.0Tree $cd $cm $imp ~/tmp/resids_2group.csv;
+            done;
+        done;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_3group.R;
+for sx in inatt hi; do
+    for cd in 1 2 3; do
+        for cm in "T F" "T T" "F F"; do
+            for imp in T F; do
+                Rscript $my_script $sx hdda C5.0Tree $cd $cm $imp ~/tmp/resids_3group.csv;
+            done;
+        done;
+    done;
+done
+
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_4group.R;
+for sx in inatt hi; do
+    for cd in 1 2 3; do
+        for cm in "T F" "T T" "F F"; do
+            for imp in T F; do
+                Rscript $my_script $sx hdda C5.0Tree $cd $cm $imp ~/tmp/resids_4group.csv;
+            done;
+        done;
+    done;
+done
+```
+
+Instead of trying all kinds of different classifiers, which will take forever,
+let's start with the ones that had the best results in the past, and go from
+there:
+
+best classifiers:
+hdda
+rda
+stepLDA
+glmStepAIC
+dwdLinear
+bayesglm
+earth
+LogitBoost
+kernelpls
+cforest
+
+best ensemblers:
+rpart
+glm
+glmStepAIC
+rpart2
+C5.0Tree
+
+Maybe there's a better way to split this using parallel?
+
+```bash
+g=4
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_${g}group.R;
+out_file=swarm.${g}group
+for clf in hdda rda stepLDA glmStepAIC dwdLinear bayesglm earth LogitBoost \
+    kernelpls cforest; do
+    for ens in rpart glm glmStepAIC rpart2 C5.0Tree; do
+        for sx in inatt hi; do
+            for cd in 1 2 3; do
+                for cm in "T F" "T T" "F F"; do
+                    for imp in T F; do
+                        echo "Rscript $my_script $sx $clf $ens $cd $cm $imp ~/tmp/resids_${g}group.csv;" >> $out_file;
+                    done;
+                done;
+            done;
+        done
+    done;
+done
+
+swarm -g 10 -t 1 --job-name group${g} --time 15:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Instead of checking what's the best combination of parameters manually, let's
+just brute-force it. The score will be the average of the test_AUC among the
+three group comparisons. We will ignore NAs for now, but I'll also try it taking
+them into consideration to see if there are errors for me to re-run:
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/res.csv')
+for (clf in unique(res$model)) {
+    for (ens in unique(res$ensemble)) {
+        for (cd in unique(res$clin_diff)) {
+            for (uc in unique(res$use_clinical)) {
+                for (um in unique(res$use_meds)) {
+                    idx = (res$model == clf & res$ensemble == ens &
+                           res$clin_diff == cd & res$use_clinical == uc &
+                           res$use_meds == um)
+                    pos = which(idx)
+                    if (length(pos) > 0) {
+                        my_str = paste(c(clf, ens, cd, uc, um), collapse='_')
+                        params = c(params, my_str)
+                        scores = c(scores, mean(res[pos, 'test_AUC']))
+                    }
+                }
+            }
+        }
+    }
+}
+print(params[which.max(scores)])
+```
+
+Interesting that after all this work, hdda_C5.0Tree_1_TRUE_FALSE is still the
+best :)
+
+Forgot impute_vote...
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/res.csv')
+for (clf in unique(res$model)) {
+    for (ens in unique(res$ensemble)) {
+        for (cd in unique(res$clin_diff)) {
+            for (uc in unique(res$use_clinical)) {
+                for (um in unique(res$use_meds)) {
+                    for (iv in unique(res$impute_vote)) {
+                        idx = (res$model == clf & res$ensemble == ens &
+                               res$clin_diff == cd & res$use_clinical == uc &
+                               res$use_meds == um & res$impute_vote == iv)
+                        pos = which(idx)
+                        if (length(pos) > 0) {
+                            my_str = paste(c(clf, ens, cd, iv, uc, um), collapse='_')
+                            params = c(params, my_str)
+                            scores = c(scores, mean(res[pos, 'test_AUC']))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+print(params[which.max(scores)])
+```
+
+Still similar, but apparently we choose to impute the voting...
+
+"hdda_C5.0Tree_1_TRUE_TRUE_FALSE"
+
+
+## Back to big model
+
+Let's also check whether the big model performs better or worse in the other
+clinDiff datasets. I'll put the results in a new tab of the compilation file.
+
+I'm not going to re-copy the code, just the variables that will change for the 2
+and 3 clinDiff datasets:
+
+```r
+# clinDiff2
+hi_vars = c('OFC', 'VM.wj', 'FSIQ', 'VMI.beery', 'ADHD_PRS0.000500',
+            'DSF.wisc', 'ATR_fa', 'ILF_fa', 'CST_fa', 'IFO_fa', 'DS.wj')
+inatt_vars = c('FSIQ', 'VM.wj', 'ADHD_PRS0.000100', 'OFC', 'VMI.beery',
+               'DSF.wisc', 'ILF_fa', 'ATR_fa', 'SES')
+
+# clinDiff3
+hi_vars = c('FSIQ', 'IFO_fa', 'CST_fa', 'VM.wj', 'OFC', 'ADHD_PRS0.000500',
+            'DSF.wisc', 'ILF_fa', 'ATR_fa')
+inatt_vars = c('FSIQ', 'ADHD_PRS0.000500', 'DSF.wisc', 'VM.wj', 'OFC',
+               'IFO_fa', 'CST_fa', 'insula')
+
+covars = c('base_age', 'sex', 'externalizing', 'internalizing',
+           'medication_status_at_observation', 'base_inatt', 'base_hi')
+covars = c('base_age', 'sex', 'comorbidity',
+           'medication_status_at_observation', 'base_inatt', 'base_hi')
+covars = c('base_age', 'sex')
+min_sx = 6
+
+data$comorbidity = as.factor(data$internalizing==1 | data$externalizing==1)
+```
+
+Here's a picture summarizing the results, in case I screw up the table...
+
+![](images/2020-02-28-14-36-10.png)
+
+
+# TODO
