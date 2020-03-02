@@ -1266,6 +1266,38 @@ Still similar, but apparently we choose to impute the voting...
 
 "hdda_C5.0Tree_1_TRUE_TRUE_FALSE"
 
+If I select based on just the 2-class discrimination, then I go with:
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/res.csv')
+for (clf in unique(res$model)) {
+    for (ens in unique(res$ensemble)) {
+        for (cd in unique(res$clin_diff)) {
+            for (uc in unique(res$use_clinical)) {
+                for (um in unique(res$use_meds)) {
+                    for (iv in unique(res$impute_vote)) {
+                        idx = (res$model == clf & res$ensemble == ens &
+                               res$clin_diff == cd & res$use_clinical == uc &
+                               res$use_meds == um & res$impute_vote == iv &
+                               res$num_groups == 2)
+                        pos = which(idx)
+                        if (length(pos) > 0) {
+                            my_str = paste(c(clf, ens, cd, iv, uc, um), collapse='_')
+                            params = c(params, my_str)
+                            scores = c(scores, mean(res[pos, 'test_AUC']))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+print(params[which.max(scores)])
+```
+
+The results for earth_glm_1_FALSE_TRUE_TRUE didn't run all the way for hi... 
 
 ## Back to big model
 
