@@ -1306,3 +1306,111 @@ anat_imp         0.0
 [1] "hi,kernelpls,C5.0Tree,TRUE,1,TRUE,TRUE,4,0.995936,0.861600"
 ```
 
+# 2020-03-03 10:07:42
+
+Looking back at my notes I realized I wasn't restricting it only to PRS and DTI
+for imputations. I was imputing DTI from PRS. Let's try that and see what kind
+of hit we get.
+
+```r
+library(caret)
+
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
+
+set.seed(42)
+data = data[!is.na(data$CC_fa), ]
+base_vars = c(colnames(data)[42:53], colnames(data)[74:81])
+# anatomical
+imp_vars = colnames(data)[66:73]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# beery, FSIQ, SES
+imp_vars = c(colnames(data)[82], 'FSIQ', 'SES')
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# wj
+imp_vars = colnames(data)[87:88]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+# wisc
+imp_vars = colnames(data)[83:86]
+test = preProcess(data[, c(base_vars, imp_vars)], method = "bagImpute")
+data[, c(base_vars, imp_vars)] <- predict(test, data[, c(base_vars, imp_vars)])
+
+saveRDS(data,
+        file='~/data/baseline_prediction/prs_start/complete_massagedResidsImputedOnPRSDTI_clinDiffGE1_03032020.rds',
+        compress=T)
+```
+
+Now, if using these imputed data, what happens to the big model? I added a new
+column in the tab in train_test.xlsx.
+
+![](images/2020-03-03-10-28-34.png)
+
+And just because I'll wonder later, these are the Ns and class ditributions:
+
+```
+> data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResidsImputedOnPRSDTI_clinDiffGE1_03032020.rds')
+> dim(data)
+[1] 179  93
+> table(data$ORDthresh0.00_inatt_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        73         26         49         31 
+> table(data$ORDthresh0.50_hi_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        73         26         33         47 
+> data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResidsImputedOnPRSDTI_clinDiffGE2_03032020.rds')
+> dim(data)
+[1] 150  93
+> table(data$ORDthresh0.00_inatt_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        57         24         41         28 
+> table(data$ORDthresh0.50_hi_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        57         24         29         40 
+> data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResidsImputedOnPRSDTI_clinDiffGE3_03032020.rds')
+> dim(data)
+[1] 144  93
+> table(data$ORDthresh0.00_inatt_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        55         22         42         25 
+> table(data$ORDthresh0.50_hi_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        55         22         26         41 
+```
+
+Let's take a look at how much we're imputing:
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResids_clinDiffGE1_02202020.rds')
+
+data = data[!is.na(data$CC_fa), ]
+base_vars = c(colnames(data)[42:53], colnames(data)[74:81])
+# anatomical
+imp_vars = colnames(data)[66:73]
+print(sprintf('Anatomy: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+for (iv in c(colnames(data)[82], 'FSIQ', 'SES')) {
+    print(sprintf('%s: %s', iv, sum(is.na(data[, iv]))/nrow(data)))
+}
+imp_vars = colnames(data)[87:88]
+print(sprintf('WJ: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+# wisc
+imp_vars = colnames(data)[83:86]
+print(sprintf('WISC: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+```
+
+A few other things that came out of chat with Philip: 
+
+* use irmi to impute tha data, all at once
+* check that no imputed values are crazy. Median and mean should stay the same,
+  but check the range. No more than 15% of data imputed
+* daisy wheel will be results of step 1, pie chart will be step 2, ROC curves
+  for ML
+* send final inputation ratio and variable contribution values to Philip
+* check that time in psychostimulants doesn't vary with groups (just for discussion)

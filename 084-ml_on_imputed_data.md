@@ -118,4 +118,59 @@ hi	stepLDA	glmStepAIC	1	TRUE	FALSE	2	0.807823	0.766804
 
 These are a little less overfitty, and go back to clinDiff1.
 
+# 2020-03-03 09:35:26
 
+Chatting with Philip he suggested I should try it both ways. I'll create an
+imputed dataset just to make life easier and not let things take very long. See
+note 085. I only created the imputations that have PRS and DTI, but I can redo
+it for the entire dataset later.
+
+```bash
+g=2
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_${g}group_dataImpute.R;
+out_file=swarm.${g}group_impStack
+rm $out_file
+for clf in hdda rda stepLDA glmStepAIC dwdLinear bayesglm earth LogitBoost \
+    kernelpls cforest; do
+    for ens in rpart glm glmStepAIC rpart2 C5.0Tree; do
+        for sx in inatt hi; do
+            for cd in 1 2 3; do
+                for cm in "T F" "T T" "F F"; do
+                    echo "Rscript $my_script $sx $clf $ens $cd $cm ~/tmp/resids_${g}group_impStack.csv;" >> $out_file;
+                done;
+            done;
+        done
+    done;
+done
+
+swarm -g 10 -t 1 --job-name stack${g} --time 20:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+```bash
+g=2
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/nonstacked_${g}group_dataImpute.R;
+out_file=swarm.${g}group_impInter
+rm $out_file
+for clf in `cat all_clf.txt`; do
+    for sx in inatt hi; do
+        for cd in 1 2 3; do
+            for cm in "T F" "T T" "F F"; do
+                echo "Rscript $my_script $sx $clf $cd $cm ~/tmp/resids_${g}group_impInter.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name inter${g} --time 20:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+It's getting hard to get cores to run the swarm... I can also run stuff in
+parallel:
+
+```bash
+cat swarm.${g}group_impInter | parallel --max-args=1 -j 32 {1};
+```
