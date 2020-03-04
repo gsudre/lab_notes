@@ -1138,5 +1138,30 @@ res[res$model=='bayesglm' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$us
 res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
 ```
 
-bayesglm didn't run either!!!
+bayesglm didn't run either!!! Something wrong with the caret code? Let's move on
+to 3rd option, which is "hdda_glm_3_TRUE_FALSE":
 
+```
+> res[res$model=='hdda' & res$ensemble=='glm' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==F,]
+      sx model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+61 inatt  hdda      glm         3         TRUE    FALSE          2  0.982609
+63    hi  hdda      glm         3         TRUE    FALSE          2  0.959150
+   test_AUC
+61 0.916667
+63 0.800000
+```
+
+```r
+res = read.csv('~/tmp/resids_3group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='hdda' & res$ensemble=='glm' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+res = read.csv('~/tmp/resids_4group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='hdda' & res$ensemble=='glm' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+```
+
+Still nothing? Why didn't it run this time?
