@@ -892,3 +892,251 @@ Setting direction: controls < cases
 Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
 Multi-class area under the curve: 0.9555
 ```
+
+# 2020-03-04 08:56:01
+
+Let's check the ML results running last night. It looks like we have great
+results now, certainly because of the imputation procedure, which takes into
+account the entire dataset. We do have a smaller dataset, though.
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/resids_2group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+for (clf in unique(res$model)) {
+    for (ens in unique(res$ensemble)) {
+        for (cd in unique(res$clin_diff)) {
+            for (uc in unique(res$use_clinical)) {
+                for (um in unique(res$use_meds)) {
+                    idx = (res$model == clf & res$ensemble == ens &
+                            res$clin_diff == 1 & res$use_clinical == uc &
+                            res$use_meds == um)
+                    pos = which(idx)
+                    if (length(pos) == 2) {
+                        my_str = paste(c(clf, ens, cd, uc, um), collapse='_')
+                        params = c(params, my_str)
+                        scores = c(scores, mean(res[pos, 'test_AUC']))
+                    }
+                }
+            }
+        }
+    }
+}
+print(params[which.max(scores)])
+```
+
+In the stacked classifier, my best combination is
+"glmStepAIC_glmStepAIC_3_TRUE_TRUE", which shows:
+
+```
+> res[res$model=='glmStepAIC' & res$ensemble=='glmStepAIC' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+       sx      model   ensemble clin_diff use_clinical use_meds num_groups
+222    hi glmStepAIC glmStepAIC         3         TRUE     TRUE          2
+315 inatt glmStepAIC glmStepAIC         3         TRUE     TRUE          2
+    train_AUC test_AUC
+222  0.993464 0.844444
+315  0.798551 0.916667
+```
+
+If we restrict it to only the ones with clin_diff==1, we get
+stepLDA_C5.0Tree_1_TRUE_FALSE, which shows:
+
+```
+> res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+       sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+365    hi stepLDA C5.0Tree         1         TRUE    FALSE          2  0.950213
+395 inatt stepLDA C5.0Tree         1         TRUE    FALSE          2  0.989144
+    test_AUC
+365 0.671429
+395 0.850000
+```
+
+Let's look at the case where we allow interactions:
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/resids_2group_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+for (clf in unique(res$model)) {
+    for (cd in unique(res$clin_diff)) {
+        for (uc in unique(res$use_clinical)) {
+            for (um in unique(res$use_meds)) {
+                idx = (res$model == clf &
+                        res$clin_diff == 1 & res$use_clinical == uc &
+                        res$use_meds == um)
+                pos = which(idx)
+                if (length(pos) == 2) {
+                    my_str = paste(c(clf, cd, uc, um), collapse='_')
+                    params = c(params, my_str)
+                    scores = c(scores, mean(res[pos, 'test_AUC']))
+                }
+            }
+        }
+    }
+}
+print(params[which.max(scores)])
+```
+
+Here we get "glmnet_3_1_TRUE":
+
+```
+> res[res$model=='glmnet' & res$clin_diff==3 & res$use_clinical==1 & res$use_meds==T,]
+       sx  model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+378 inatt glmnet         3            1     TRUE          2  0.805797 0.791667
+380    hi glmnet         3            1     TRUE          2  0.895425 0.933333
+```
+
+And if we restrict it to clinDiff==1, we do get "cforest_1_1_FALSE":
+
+```
+> res[res$model=='cforest' & res$clin_diff==1 & res$use_clinical==1 & res$use_meds==F,]
+       sx   model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+115    hi cforest         1            1    FALSE          2  0.988620 0.728571
+117 inatt cforest         1            1    FALSE          2  0.978289 0.912500
+```
+
+The clin_diff==1 results for interactive model are better than stacked, but the
+overall best results (clin_diff==3 in both cases) are somewhat of a toss.
+Sligthly better for the stacked model on average, and also nice to show both
+above .8.
+
+So, it's intriguing that clinDiff==3 shows the best results. I should also check:
+
+ * how the variable importance looks like for these 4 options
+ * maybe use the 2-group non-clinical results to help decide?
+ * their results for 3 and 4 groups
+ * recap the numbers for clin_diff 1, 2, 3
+ * run big model for clin_diff 2 and 3
+
+Here we go...
+
+## Results for all group differences
+
+```r
+res = read.csv('~/tmp/resids_3group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='glmStepAIC' & res$ensemble=='glmStepAIC' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+res = read.csv('~/tmp/resids_4group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='glmStepAIC' & res$ensemble=='glmStepAIC' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+```
+
+glmstepAIC didn't run for 3 or 4 group stacked, but stepLDA did:
+
+```
+      sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+73    hi stepLDA C5.0Tree         1         TRUE    FALSE          3  0.957323
+76 inatt stepLDA C5.0Tree         1         TRUE    FALSE          3  0.935012
+   test_AUC
+73 0.873876
+76 0.914034
+
+       sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+89  inatt stepLDA C5.0Tree         1         TRUE    FALSE          4  0.976449
+103    hi stepLDA C5.0Tree         1         TRUE    FALSE          4  0.980712
+```
+
+```r
+res = read.csv('~/tmp/resids_3group_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='glmnet' & res$clin_diff==3 & res$use_clinical==1 & res$use_meds==T,]
+res[res$model=='cforest' & res$clin_diff==1 & res$use_clinical==1 & res$use_meds==F,]
+res = read.csv('~/tmp/resids_4group_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='glmnet' & res$clin_diff==3 & res$use_clinical==1 & res$use_meds==T,]
+res[res$model=='cforest' & res$clin_diff==1 & res$use_clinical==1 & res$use_meds==F,]
+```
+
+The conditional forest model seems to be a bit better in the 3 and 4 group
+models:
+
+```
+       sx  model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+370 inatt glmnet         3            1     TRUE          3  0.779958 0.818813
+378    hi glmnet         3            1     TRUE          3  0.999272 0.797438
+
+       sx   model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+305    hi cforest         1            1    FALSE          3  0.997188 0.915085
+330 inatt cforest         1            1    FALSE          3  0.988938 0.929167
+
+       sx  model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+139 inatt glmnet         3            1     TRUE          4  0.942069 0.936911
+259    hi glmnet         3            1     TRUE          4  0.999585 0.898935
+
+      sx   model clin_diff use_clinical use_meds num_groups train_AUC test_AUC
+98 inatt cforest         1            1    FALSE          4  0.996633 0.964996
+99    hi cforest         1            1    FALSE          4  0.996718 0.963622
+```
+
+Seems like cforest does best, even better that it's in clinDiff==1. Why didn't
+glmStepAIC run? It's a 2-class only classifier :( Let's pick the second best:
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/tmp/resids_2group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+for (clf in unique(res$model)) {
+    for (ens in unique(res$ensemble)) {
+        for (cd in unique(res$clin_diff)) {
+            for (uc in unique(res$use_clinical)) {
+                for (um in unique(res$use_meds)) {
+                    idx = (res$model == clf & res$ensemble == ens &
+                            res$clin_diff == cd & res$use_clinical == uc &
+                            res$use_meds == um)
+                    pos = which(idx)
+                    if (length(pos) == 2) {
+                        my_str = paste(c(clf, ens, cd, uc, um), collapse='_')
+                        params = c(params, my_str)
+                        scores = c(scores, mean(res[pos, 'test_AUC']))
+                    }
+                }
+            }
+        }
+    }
+}
+a = sort(scores, decreasing=T, index.return=T)
+print(params[a$ix[2]])
+```
+
+And now we get "bayesglm_C5.0Tree_3_TRUE_TRUE":
+
+```
+> res[res$model=='bayesglm' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+       sx    model ensemble clin_diff use_clinical use_meds num_groups
+469 inatt bayesglm C5.0Tree         3         TRUE     TRUE          2
+474    hi bayesglm C5.0Tree         3         TRUE     TRUE          2
+    train_AUC test_AUC
+469  0.917391 0.958333
+474  1.000000 0.800000
+```
+
+Maybe a bit overfitty? Have to check the variable weights... but how does it
+perform now in the 3 and 4 class cases?
+
+```r
+res = read.csv('~/tmp/resids_3group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='bayesglm' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+res = read.csv('~/tmp/resids_4group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='bayesglm' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==T,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+```
+
+bayesglm didn't run either!!!
+
