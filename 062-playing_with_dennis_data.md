@@ -40,3 +40,6 @@ cp eddy_unwarped_images.eddy_rotated_bvecs bvecs;
 cp b0_brain_mask.nii.gz nodif_brain_mask.nii.gz;
 ```
 
+# 2020-03-05 10:45:00
+
+Removed all data as the project did not moved forward at this time.
