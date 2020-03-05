@@ -1042,6 +1042,9 @@ glmstepAIC didn't run for 3 or 4 group stacked, but stepLDA did:
        sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
 89  inatt stepLDA C5.0Tree         1         TRUE    FALSE          4  0.976449
 103    hi stepLDA C5.0Tree         1         TRUE    FALSE          4  0.980712
+    test_AUC
+89  0.841908
+103 0.923763
 ```
 
 ```r
@@ -1164,4 +1167,381 @@ res[res$model=='hdda' & res$ensemble=='glm' & res$clin_diff==3 & res$use_clinica
 res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
 ```
 
-Still nothing? Why didn't it run this time?
+Still nothing? Why didn't it run this time? I'll have to go into the code to
+figure out that one... nope... glm is 2-class only, as the warning messages
+say... let's try something different then? The first successful one is
+eigth-place: stepLDA_C5.0Tree_3_TRUE_FALSE
+
+```
+       sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+371    hi stepLDA C5.0Tree         3         TRUE    FALSE          2  0.845588
+374 inatt stepLDA C5.0Tree         3         TRUE    FALSE          2  0.979710
+    test_AUC
+371 0.833333
+374 0.791667
+```
+
+which is slightly better than the clinDiff==1 result, using the same parameters.
+
+```r
+res = read.csv('~/tmp/resids_3group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==F,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+res = read.csv('~/tmp/resids_4group_impStack.csv', header=F)
+colnames(res) = c('sx', 'model', 'ensemble', 'clin_diff', 'use_clinical',
+                  'use_meds', 'num_groups', 'train_AUC', 'test_AUC')
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==3 & res$use_clinical==T & res$use_meds==F,]
+res[res$model=='stepLDA' & res$ensemble=='C5.0Tree' & res$clin_diff==1 & res$use_clinical==T & res$use_meds==F,]
+```
+
+```
+      sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+75    hi stepLDA C5.0Tree         3         TRUE    FALSE          3  0.858292
+85 inatt stepLDA C5.0Tree         3         TRUE    FALSE          3  0.928040
+   test_AUC
+75 0.659303
+85 0.717526
+      sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+73    hi stepLDA C5.0Tree         1         TRUE    FALSE          3  0.957323
+76 inatt stepLDA C5.0Tree         1         TRUE    FALSE          3  0.935012
+   test_AUC
+73 0.873876
+76 0.914034
+
+       sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+96  inatt stepLDA C5.0Tree         3         TRUE    FALSE          4  0.990834
+126    hi stepLDA C5.0Tree         3         TRUE    FALSE          4  0.942668
+    test_AUC
+96  0.797930
+126 0.701498
+       sx   model ensemble clin_diff use_clinical use_meds num_groups train_AUC
+89  inatt stepLDA C5.0Tree         1         TRUE    FALSE          4  0.976449
+103    hi stepLDA C5.0Tree         1         TRUE    FALSE          4  0.980712
+    test_AUC
+89  0.841908
+103 0.923763
+```
+
+Organizing the results (ml_compile.xlsx):
+
+![](images/2020-03-04-20-05-07.png)
+
+So, questions are:
+
+* interactive or stacked?
+* clinDiff1 or 3?
+
+Philip said he'd prefer to go with clinDiff==1. That gives us a very powerful
+cforest model in the interactive pipeline. But what are the results without the
+clinical domain? And what are the variable splits?
+
+For inatt:
+
+```
+   ROC   Sens   Spec 
+0.9125 1.0000 0.8000 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                 Overall
+base_inatt       100.000
+ADHD_PRS0.000100  18.325
+SSF.wisc          12.216
+base_age          11.183
+ADHD_PRS0.000500  10.019
+base_hi            8.296
+CIN_fa             7.405
+SSB.wisc           6.418
+ADHD_PRS0.100000   5.496
+parietal           5.314
+ADHD_PRS0.400000   4.740
+UNC_fa             4.722
+IFO_fa             4.424
+ADHD_PRS0.500000   4.290
+ADHD_PRS0.010000   4.062
+ADHD_PRS0.300000   3.993
+CC_fa              3.759
+frontal            3.528
+ADHD_PRS0.050000   3.393
+OFC                3.193
+```
+
+And hi:
+
+```
+[1] "Training on 56 participants"
+[1] "Testing on 24 participants"
+
+      ROC      Sens      Spec 
+0.7285714 0.9000000 0.3571429 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                 Overall
+base_hi          100.000
+CST_fa            73.385
+ADHD_PRS0.010000  11.304
+VMI.beery          9.080
+DSB.wisc           8.542
+ILF_fa             8.089
+base_age           7.807
+UNC_fa             7.418
+DSF.wisc           6.955
+ADHD_PRS0.000100   6.753
+DS.wj              6.723
+ADHD_PRS0.000500   6.347
+ADHD_PRS0.400000   6.182
+SES                6.165
+ADHD_PRS0.300000   6.030
+ADHD_PRS0.200000   6.030
+CIN_fa             5.904
+frontal            5.894
+IFO_fa             5.772
+ATR_fa             5.705
+```
+
+As one would expect, without the clinical variables the results are quite bad.
+For inatt:
+
+```
+[1] "Training on 56 participants"
+   ROC   Sens   Spec 
+0.5375 0.2500 0.7000 
+cforest variable importance
+
+  only 20 most important variables shown (out of 39)
+
+                 Overall
+base_age          100.00
+CIN_fa             57.47
+SSF.wisc           47.55
+ADHD_PRS0.000100   35.03
+ADHD_PRS0.000500   33.49
+frontal            22.46
+CST_fa             19.52
+ADHD_PRS0.100000   18.45
+ADHD_PRS0.200000   18.11
+sensorimotor       18.06
+DSB.wisc           17.80
+ADHD_PRS0.500000   16.62
+UNC_fa             16.17
+ATR_fa             15.99
+ADHD_PRS0.001000   15.68
+ADHD_PRS0.300000   15.67
+SES                15.52
+ADHD_PRS0.000050   14.87
+ADHD_PRS0.010000   14.87
+insula             14.85
+[1] "Testing on 24 participants"
+```
+
+And hi:
+
+```
+      ROC      Sens      Spec 
+0.5000000 0.7000000 0.2142857 
+cforest variable importance
+
+  only 20 most important variables shown (out of 39)
+
+                 Overall
+CST_fa           100.000
+UNC_fa             9.989
+ADHD_PRS0.010000   9.140
+DSB.wisc           6.994
+base_age           6.454
+DS.wj              5.302
+temporal           4.607
+occipital          3.731
+ADHD_PRS0.000100   3.709
+ATR_fa             3.669
+CC_fa              3.614
+ADHD_PRS0.001000   3.558
+SSB.wisc           3.519
+insula             3.500
+ADHD_PRS0.300000   3.357
+ADHD_PRS0.400000   3.357
+ADHD_PRS0.200000   3.357
+IFO_fa             3.196
+SES                3.167
+CIN_fa             3.002
+```
+
+If that's what we want, we could pick the best ML models that maximize the
+results without the clinical variables...
+
+Just for kicks, let's do variable importance in the 3 and 4-class cases as well.
+Inatt first:
+
+```
+[1] "Training on 70 participants"
+               logLoss                    AUC                  prAUC 
+             0.3731340              0.9291667              0.6820267 
+              Accuracy                  Kappa                Mean_F1 
+             0.8611111              0.7500000              0.7212544 
+      Mean_Sensitivity       Mean_Specificity    Mean_Pos_Pred_Value 
+             0.7166667              0.9166667              0.7301587 
+   Mean_Neg_Pred_Value         Mean_Precision            Mean_Recall 
+             0.9252525              0.7301587              0.7166667 
+   Mean_Detection_Rate Mean_Balanced_Accuracy 
+             0.2870370              0.8166667 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                  Overall
+base_inatt       100.0000
+base_hi           60.8103
+SSF.wisc           2.5509
+ADHD_PRS0.000100   1.6969
+base_age           1.5739
+ADHD_PRS0.010000   1.2044
+ADHD_PRS0.000500   1.2008
+ADHD_PRS0.500000   1.1648
+ADHD_PRS0.000050   1.1582
+ADHD_PRS0.300000   1.0604
+VM.wj              1.0359
+ADHD_PRS0.400000   1.0328
+ADHD_PRS0.100000   1.0276
+VMI.beery          0.9816
+SLF_fa             0.9536
+occipital          0.9213
+DSB.wisc           0.9211
+FSIQ               0.8097
+ADHD_PRS0.200000   0.8000
+CIN_fa             0.7984
+[1] "Testing on 36 participants"
+```
+
+And inatt 4-class:
+
+```
+[1] "Training on 118 participants"
+               logLoss                    AUC                  prAUC 
+             0.4409928              0.9649956              0.7421892 
+              Accuracy                  Kappa                Mean_F1 
+             0.9180328              0.8791122              0.8342285 
+      Mean_Sensitivity       Mean_Specificity    Mean_Pos_Pred_Value 
+             0.8291667              0.9720885              0.8403846 
+   Mean_Neg_Pred_Value         Mean_Precision            Mean_Recall 
+             0.9740329              0.8403846              0.8291667 
+   Mean_Detection_Rate Mean_Balanced_Accuracy 
+             0.2295082              0.9006276 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                  Overall
+base_inatt       100.0000
+base_hi           20.2996
+SSF.wisc           1.3483
+base_age           0.8122
+ADHD_PRS0.000100   0.8028
+ADHD_PRS0.010000   0.7836
+VM.wj              0.5743
+ADHD_PRS0.000050   0.5133
+ADHD_PRS0.500000   0.4959
+UNC_fa             0.4611
+ADHD_PRS0.100000   0.4604
+CC_fa              0.4515
+ADHD_PRS0.200000   0.4003
+DSF.wisc           0.3936
+FSIQ               0.3854
+ADHD_PRS0.400000   0.3589
+insula             0.3584
+occipital          0.3345
+ADHD_PRS0.300000   0.3339
+DSB.wisc           0.3124
+[1] "Testing on 61 participants"
+```
+
+Then hi:
+
+```
+[1] "Training on 70 participants"
+               logLoss                    AUC                  prAUC 
+             0.5360230              0.9150849              0.7450429 
+              Accuracy                  Kappa                Mean_F1 
+             0.7500000              0.6334842              0.7460317 
+      Mean_Sensitivity       Mean_Specificity    Mean_Pos_Pred_Value 
+             0.7761905              0.8822844              0.7955182 
+   Mean_Neg_Pred_Value         Mean_Precision            Mean_Recall 
+             0.8905021              0.7955182              0.7761905 
+   Mean_Detection_Rate Mean_Balanced_Accuracy 
+             0.2500000              0.8292374 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                  Overall
+base_inatt       100.0000
+base_hi           83.3991
+CST_fa             8.1801
+ADHD_PRS0.010000   1.7778
+cingulate          1.7569
+DSB.wisc           1.7276
+base_age           1.3748
+ATR_fa             1.3378
+CC_fa              1.2462
+parietal           1.1727
+DS.wj              1.0032
+DSF.wisc           0.9609
+CIN_fa             0.9503
+ADHD_PRS0.400000   0.9128
+ILF_fa             0.9023
+UNC_fa             0.8774
+ADHD_PRS0.500000   0.8759
+ADHD_PRS0.000100   0.8740
+ADHD_PRS0.100000   0.8740
+ADHD_PRS0.300000   0.8535
+[1] "Testing on 36 participants"
+```
+
+And hi 4-class:
+
+```
+               logLoss                    AUC                  prAUC 
+             0.5265217              0.9636215              0.7914761 
+              Accuracy                  Kappa                Mean_F1 
+             0.8524590              0.7941507              0.8163963 
+      Mean_Sensitivity       Mean_Specificity    Mean_Pos_Pred_Value 
+             0.8291667              0.9534227              0.8497596 
+   Mean_Neg_Pred_Value         Mean_Precision            Mean_Recall 
+             0.9564256              0.8497596              0.8291667 
+   Mean_Detection_Rate Mean_Balanced_Accuracy 
+             0.2131148              0.8912947 
+cforest variable importance
+
+  only 20 most important variables shown (out of 41)
+
+                  Overall
+base_inatt       100.0000
+base_hi           25.2572
+CST_fa             3.5948
+UNC_fa             0.8284
+occipital          0.4158
+cingulate          0.4033
+ADHD_PRS0.300000   0.3453
+ADHD_PRS0.000100   0.2937
+ATR_fa             0.2926
+VM.wj              0.2870
+ADHD_PRS0.100000   0.2842
+DS.wj              0.2705
+IFO_fa             0.2699
+ADHD_PRS0.000050   0.2673
+insula             0.2672
+ADHD_PRS0.005000   0.2610
+ADHD_PRS0.400000   0.2528
+ADHD_PRS0.200000   0.2528
+SLF_fa             0.2480
+frontal            0.2475
+[1] "Testing on 61 participants"
+```
+
+Makes perfect sense that it's heavily based on base_sx! Is it worth it getting
+variable distributions without the clinical domain, if the results were not
+optimized for that?
