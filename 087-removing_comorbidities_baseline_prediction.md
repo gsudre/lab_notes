@@ -3588,3 +3588,6 @@ done
 swarm -g 10 -t 1 --job-name stack${g} --time 20:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
+
+* Still need ot run these!
+* Try ordinal (clmm2) model: why didn't I keep that after the univariate selection?
