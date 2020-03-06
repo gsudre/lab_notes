@@ -666,7 +666,9 @@ print(res_clean[p2<.1,c('brainVar', 'outcome')])
 ```
 
 Yep, still there. Fewer variables, but that's not necessarily bad. Let's
-re-create the data file for the rest of the analysis then:
+re-create the data file for the rest of the analysis then, but adding some
+additional safe checks on the dates so that there's less running over base and
+last clinical DOA:
 
 ```r
 min_clin = 1
@@ -1142,22 +1144,18 @@ for (suf in c('beery', 'wj', 'wisc')) {
 ```
 
 Those numbers are in units of days. There is something funky about beery
-though... NEED TO CHECK ON THAT
+though... well, not really. All we're saying is that neuropsych needs to be
+within 18 months from clinical DOA, and that's still true.
 
+Let's keep on going then.
 
+# 2020-03-06 09:34:10
 
-
-
-
-
-
-
-
-just checking univariate really quick
+Checking univariate results:
 
 ```r
 data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
-brain_vars = colnames(data)[c(50:61, 74:98)]
+brain_vars = colnames(data)[c(51:62, 75:99)]
 hold = c()
 min_sx = 6
 cd = 1
@@ -1167,7 +1165,7 @@ for (sx in c('inatt', 'hi')) {
 
     phen_res = c()
     for (bv in brain_vars) {
-        use_me = !is.na(data[, bv]) & data$bestInFamily
+        use_me = !is.na(data[, bv])
         this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
         fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
         fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
@@ -1201,7 +1199,11 @@ for (sx in c('inatt', 'hi')) {
 }
 colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
 write.csv(hold, file=out_fname, row.names=F)
+```
 
+And as usual, we check FDR:
+
+```r
 cd = 1
 res = read.csv(sprintf('~/data/baseline_prediction/prs_start/univar_medianClinDiff%d_4groupOrdered_lme.csv', cd))
 res = res[res$modtype=='linear',]
@@ -1219,26 +1221,58 @@ print(res_clean[p2<.05,c('brainVar', 'outcome')])
 print(res_clean[p2<.1,c('brainVar', 'outcome')])
 ```
 
+```
+> print(res_clean[p2<.05,c('brainVar', 'outcome')])
+     brainVar                     outcome
+85  VMI.beery ORDthreshMED_inatt_GE6_wp05
+106      FSIQ ORDthreshMED_inatt_GE6_wp05
+196 VMI.beery    ORDthreshMED_hi_GE6_wp05
+217      FSIQ    ORDthreshMED_hi_GE6_wp05
+> print(res_clean[p2<.1,c('brainVar', 'outcome')])
+            brainVar                     outcome
+55               OFC ORDthreshMED_inatt_GE6_wp05
+61            ATR_fa ORDthreshMED_inatt_GE6_wp05
+85         VMI.beery ORDthreshMED_inatt_GE6_wp05
+103            VM.wj ORDthreshMED_inatt_GE6_wp05
+106             FSIQ ORDthreshMED_inatt_GE6_wp05
+166              OFC    ORDthreshMED_hi_GE6_wp05
+172           ATR_fa    ORDthreshMED_hi_GE6_wp05
+175           CST_fa    ORDthreshMED_hi_GE6_wp05
+184           IFO_fa    ORDthreshMED_hi_GE6_wp05
+196        VMI.beery    ORDthreshMED_hi_GE6_wp05
+214            VM.wj    ORDthreshMED_hi_GE6_wp05
+217             FSIQ    ORDthreshMED_hi_GE6_wp05
+4   ADHD_PRS0.001000 ORDthreshMED_inatt_GE6_wp05
+115 ADHD_PRS0.001000    ORDthreshMED_hi_GE6_wp05
+```
 
-
-
-
-Let's set up the code for IRMI imputation, instead of using random forests:
+And run IRMI imputation, instead of using random forests:
 
 ```r
 library(VIM)
-df = readRDS('~/df/baseline_prediction/prs_start/complete_massagedRawNeuropsychResids_clinDiffGE1_03032020.rds')
+data = readRDS('~/df/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
 
 set.seed(42)
 data = data[!is.na(data$CC_fa), ]
-my_vars = c(colnames(data)[42:53], # PRS
-            colnames(data)[74:81], # DTI
+my_vars = c(colnames(data)[51:62], # PRS
+            colnames(data)[83:90], # DTI
             'FSIQ', 'SES', # these don't usually need imputation
-            colnames(data)[66:73], # anatomical
+            colnames(data)[75:82], # anatomical
             'VMI.beery',
-            colnames(data)[87:88], # WJ
-            colnames(data)[83:86] #WISC
+            colnames(data)[96:97], # WJ
+            colnames(data)[92:95] #WISC
 )
+
+imp_vars = colnames(data)[75:82]
+print(sprintf('Anatomy: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+for (iv in c('VMI.beery', 'FSIQ', 'SES')) {
+    print(sprintf('%s: %s', iv, sum(is.na(data[, iv]))/nrow(data)))
+}
+imp_vars = colnames(data)[96:97]
+print(sprintf('WJ: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+imp_vars = colnames(data)[92:95]
+print(sprintf('WISC: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+
 
 x = irmi(data[, my_vars])
 # let's plot all variables to make sure the imputed values are within the range
@@ -1253,37 +1287,279 @@ for (v in 23:length(my_vars)) {
 data[, my_vars] = x[, 1:length(my_vars)]
 
 saveRDS(data,
-        file='~/data/baseline_prediction/prs_start/complete_massagedResidsIRMI_clinDiffGE1_03032020.rds',
+        file='~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesIRMI_clinDiffGE1_03062020.rds',
         compress=T)
 ```
 
-![](images/2020-03-03-14-33-24.png)
+```
+[1] "Anatomy: 0.0697674418604651"
+[1] "VMI.beery: 0.122093023255814"
+[1] "FSIQ: 0"
+[1] "SES: 0"
+[1] "WJ: 0.127906976744186"
+[1] "WISC: 0.127906976744186"
+```
 
-We have some outliers in these (residualized) variables, but nothing that would
-be worth throwing away even more data...
+![](images/2020-03-06-09-51-17.png)
 
-Before I start re-running the big model, I'll fire up the ML models (see note
-084).
+We have some outliers in these (residualized) variables, could they be driving
+results? What happens if we plot all variables? In particular, could the OFC
+results be driven by that oulier? Let's plot the entire dataset, the same data
+used for univariate analysis:
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
+
+brain_vars = colnames(data)[c(51:62, 75:99)]
+
+par(mfrow=c(5,8))
+for (v in brain_vars) {
+    plot(data[, v], pch=19, main=v)
+}
+```
+
+![](images/2020-03-06-09-59-26.png)
+
+If we were to winsorize them, just like we did for slopes, how would it look?
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
+
+brain_vars = colnames(data)[c(51:62, 75:99)]
+
+par(mfrow=c(5,8))
+for (v in brain_vars) {
+    plot(data[, v], pch=19, main=v)
+    idx = which(!is.na(data[, v]))
+    junk = winsorize(data[idx, v], cut=.01)
+    changed = which(junk != data[idx, v])
+    points(idx[changed], data[idx[changed], v], col='red', pch=19)
+}
+```
+
+![](images/2020-03-06-10-05-47.png)
+
+It's a different cut-off then what I used for slopes... but let's see what it
+does to the univariate results:
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
+brain_vars = colnames(data)[c(51:62, 75:99)]
+hold = c()
+min_sx = 6
+cd = 1
+out_fname = sprintf('~/data/baseline_prediction/prs_start/univar_medianClinDiff%d_4groupOrdered_lme_windsor.csv', cd)
+for (sx in c('inatt', 'hi')) {
+    phen = sprintf('ORDthreshMED_%s_GE%d_wp05', sx, min_sx)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data[, bv])
+        this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+        this_data[, bv] = winsorize(this_data[, bv], cut=.01)
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.C', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+How does it affect FDR?
+
+```r
+cd = 1
+res = read.csv(sprintf('~/data/baseline_prediction/prs_start/univar_medianClinDiff%d_4groupOrdered_lme_windsor.csv', cd))
+res = res[res$modtype=='linear',]
+# keep only top PRS
+prs_rows = which(grepl(res$brainVar, pattern='^ADHD') &
+                 grepl(res$outcome, pattern='_inatt_'))
+inatt_best = prs_rows[which.min(res[prs_rows, 'p.value'])]
+prs_rows = which(grepl(res$brainVar, pattern='^ADHD') &
+                 grepl(res$outcome, pattern='_hi_'))
+hi_best = prs_rows[which.min(res[prs_rows, 'p.value'])]
+res_clean = rbind(res[!grepl(res$brainVar, pattern='^ADHD'),],
+                  res[inatt_best, ], res[hi_best, ])
+p2 = p.adjust(res_clean$p.value, method='fdr')
+print(res_clean[p2<.05,c('brainVar', 'outcome', 'p.value')])
+print(res_clean[p2<.1,c('brainVar', 'outcome', 'p.value')])
+```
+
+```
+> print(res_clean[p2<.05,c('brainVar', 'outcome', 'p.value')])
+     brainVar                     outcome      p.value
+85  VMI.beery ORDthreshMED_inatt_GE6_wp05 5.724110e-05
+106      FSIQ ORDthreshMED_inatt_GE6_wp05 2.403473e-05
+166       OFC    ORDthreshMED_hi_GE6_wp05 3.464857e-03
+196 VMI.beery    ORDthreshMED_hi_GE6_wp05 1.984023e-05
+217      FSIQ    ORDthreshMED_hi_GE6_wp05 5.809955e-05
+> print(res_clean[p2<.1,c('brainVar', 'outcome', 'p.value')])
+            brainVar                     outcome      p.value
+55               OFC ORDthreshMED_inatt_GE6_wp05 1.064964e-02
+61            ATR_fa ORDthreshMED_inatt_GE6_wp05 2.078491e-02
+85         VMI.beery ORDthreshMED_inatt_GE6_wp05 5.724110e-05
+94          DSF.wisc ORDthreshMED_inatt_GE6_wp05 2.660160e-02
+103            VM.wj ORDthreshMED_inatt_GE6_wp05 2.628244e-02
+106             FSIQ ORDthreshMED_inatt_GE6_wp05 2.403473e-05
+166              OFC    ORDthreshMED_hi_GE6_wp05 3.464857e-03
+172           ATR_fa    ORDthreshMED_hi_GE6_wp05 1.560683e-02
+175           CST_fa    ORDthreshMED_hi_GE6_wp05 1.699166e-02
+184           IFO_fa    ORDthreshMED_hi_GE6_wp05 8.400598e-03
+196        VMI.beery    ORDthreshMED_hi_GE6_wp05 1.984023e-05
+214            VM.wj    ORDthreshMED_hi_GE6_wp05 1.172718e-02
+217             FSIQ    ORDthreshMED_hi_GE6_wp05 5.809955e-05
+4   ADHD_PRS0.001000 ORDthreshMED_inatt_GE6_wp05 1.350316e-02
+115 ADHD_PRS0.001000    ORDthreshMED_hi_GE6_wp05 1.201843e-02
+```
+
+Results look a bit more balanced now, and it's somewhat nice that the same PRS
+threshold works for both SX. However, it only works in q < .1!
+
+Let's create a winsorized version of the data and redo the imputation:
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03052020.rds')
+brain_vars = colnames(data)[c(51:62, 75:99)]
+for (bv in brain_vars) {
+    use_me = !is.na(data[, bv])
+    data[use_me, bv] = winsorize(data[use_me, bv], cut=.01)
+}
+saveRDS(data,
+        file='~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesWinsor_clinDiffGE1_03062020.rds',
+        compress=T)
+```
+
+And let's replot the data to see that we're in good shape. Anything outside the
+mean +- 3SD interval?
+
+```r
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesWinsor_clinDiffGE1_03052020.rds')
+
+brain_vars = colnames(data)[c(51:62, 75:99)]
+
+par(mfrow=c(5,8))
+for (v in brain_vars) {
+    plot(data[, v], pch=19, main=v)
+    m = mean(data[, v], na.rm=T)
+    s = sd(data[, v], na.rm=T)
+    abline(h=m + 3*s, col='red')
+    abline(h=m - 3*s, col='red')
+}
+```
+
+![](images/2020-03-06-10-22-39.png)
+
+Much more well-behaved. Only DSB and SES show some points that could be
+considered outliers, but that's not enough to mess around with.
+
+```r
+library(VIM)
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesWinsor_clinDiffGE1_03062020.rds')
+
+set.seed(42)
+data = data[!is.na(data$CC_fa), ]
+my_vars = c(colnames(data)[51:62], # PRS
+            colnames(data)[83:90], # DTI
+            'FSIQ', 'SES', # these don't usually need imputation
+            colnames(data)[75:82], # anatomical
+            'VMI.beery',
+            colnames(data)[96:97], # WJ
+            colnames(data)[92:95] #WISC
+)
+
+imp_vars = colnames(data)[75:82]
+print(sprintf('Anatomy: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+for (iv in c('VMI.beery', 'FSIQ', 'SES')) {
+    print(sprintf('%s: %s', iv, sum(is.na(data[, iv]))/nrow(data)))
+}
+imp_vars = colnames(data)[96:97]
+print(sprintf('WJ: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+imp_vars = colnames(data)[92:95]
+print(sprintf('WISC: %s', max(colSums(is.na(data[, imp_vars])))/nrow(data)))
+
+
+x = irmi(data[, my_vars])
+# let's plot all variables to make sure the imputed values are within the range
+par(mfrow=c(4,4))
+for (v in 23:length(my_vars)) {
+    plot(x[, my_vars[v]], pch=19, main=my_vars[v])
+    xvar = sprintf('%s_imp', my_vars[v])
+    # highlight imputed points in red
+    points(which(x[, xvar]), x[x[, xvar], my_vars[v]], col='red', pch=19)
+}
+
+data[, my_vars] = x[, 1:length(my_vars)]
+
+saveRDS(data,
+        file='~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesWinsorIRMI_clinDiffGE1_03062020.rds',
+        compress=T)
+```
+
+![](images/2020-03-06-10-28-59.png)
+
+Imputation seems fine. There's somewhat of an outlier in the temporal cortex,
+but maybe it wouldn't be outlier if taking the entire dataset.
+
+```
+> dim(data)
+[1] 172 100
+> table(data$ORDthreshMED_inatt_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        68         26         38         40 
+> table(data$ORDthreshMED_hi_GE6_wp05)
+
+     nv012 notGE6adhd        imp     nonimp 
+        68         26         36         42 
+```
+
+Now, time for the big model:
 
 ```r
 library(caret)
 library(nnet)
 library(pROC)
 
-data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedResidsIRMI_clinDiffGE1_03032020.rds')
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesWinsorIRMI_clinDiffGE1_03062020.rds')
 
 # clinDiff1
-inatt_vars = c('IFO_fa', 'UNC_fa', 'VMI.beery', 'DSF.wisc', 'FSIQ',
-               'ADHD_PRS0.000100')
-hi_vars = c('OFC', 'CST_fa', 'CC_fa', 'IFO_fa', 'ILF_fa', 'UNC_fa', 'VMI.beery',
-            'DSF.wisc', 'FSIQ', 'ADHD_PRS0.001000')
+inatt_vars = c('OFC', 'ATR_fa', 'VMI.beery', 'DSF.wisc', 'VM.wj', 'FSIQ',
+               'ADHD_PRS0.001000')
+hi_vars = c('OFC', 'ATR_fa', 'CST_fa', 'IFO_fa', 'VMI.beery', 'VM.wj', 'FSIQ',
+            'ADHD_PRS0.001000')
 
 # clinDiff2
 
 # clinDiff3
 
 
-covars = c('base_age', 'sex', 'externalizing', 'internalizing',
+covars = c('base_age', 'sex',
            'medication_status_at_observation', 'base_inatt', 'base_hi')
 covars = c('base_age', 'sex')
 min_sx = 6
@@ -1293,12 +1569,7 @@ min_sx = 6
 # 4 classes
 for (sx in c('inatt', 'hi')) {
     set.seed(42)
-    if (sx == 'inatt') {
-        thresh = 0
-    } else if (sx == 'hi') {
-        thresh = -.5
-    }
-    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
     eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
                             sx)))
 
@@ -1324,12 +1595,7 @@ for (sx in c('inatt', 'hi')) {
 # 3 classes
 for (sx in c('inatt', 'hi')) {
     set.seed(42)
-    if (sx == 'inatt') {
-        thresh = 0
-    } else if (sx == 'hi') {
-        thresh = -.5
-    }
-    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
     eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
                             sx)))
 
@@ -1359,12 +1625,7 @@ for (sx in c('inatt', 'hi')) {
 # 2 classes
 for (sx in c('inatt', 'hi')) {
     set.seed(42)
-    if (sx == 'inatt') {
-        thresh = 0
-    } else if (sx == 'hi') {
-        thresh = -.5
-    }
-    phen = sprintf('thresh%.2f_%s_GE%d_wp05', abs(thresh), sx, min_sx)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
     eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
                             sx)))
 
@@ -1398,227 +1659,207 @@ First, clinDiffGE1 wihout clinical domain:
 ```
 [1] "inatt"
                    Overall
-IFO_fa           1.1337538
-UNC_fa           0.3940763
-VMI.beery        1.0360779
-DSF.wisc         0.1168736
-FSIQ             1.2978501
-ADHD_PRS0.000100 0.6781986
-base_age         1.1955356
-sexMale          1.2814979
+OFC              0.8060871
+ATR_fa           0.7079529
+VMI.beery        0.6929847
+DSF.wisc         0.3731622
+VM.wj            1.7652685
+FSIQ             0.9425196
+ADHD_PRS0.001000 0.5173079
+base_age         1.1344135
+sexMale          1.3048063
 Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
-Multi-class area under the curve: 0.6964
+Multi-class area under the curve: 0.7288
 
 [1] "hi"
-                    Overall
-OFC              0.72389936
-CST_fa           0.62942813
-CC_fa            0.28022108
-IFO_fa           1.25574645
-ILF_fa           0.22960373
-UNC_fa           0.66451554
-VMI.beery        0.93530507
-DSF.wisc         0.07030009
-FSIQ             1.20628212
-ADHD_PRS0.001000 0.70031188
-base_age         0.87811277
-sexMale          1.35437171
+                   Overall
+OFC              0.7194207
+ATR_fa           0.4437181
+CST_fa           0.7057723
+IFO_fa           0.8508287
+VMI.beery        0.6014777
+VM.wj            1.8095752
+FSIQ             1.1583544
+ADHD_PRS0.001000 0.6479086
+base_age         0.9204040
+sexMale          1.0373158
 Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
-Multi-class area under the curve: 0.7284
+Multi-class area under the curve: 0.7506
 
 
 [1] "inatt"
                    Overall
-IFO_fa           0.8503082
-UNC_fa           0.7125218
-VMI.beery        0.5631733
-DSF.wisc         0.2089559
-FSIQ             1.7388800
-ADHD_PRS0.000100 0.9146793
-base_age         0.7108348
-sexMale          1.0493940
+OFC              0.6727792
+ATR_fa           0.6919007
+VMI.beery        0.7693628
+DSF.wisc         0.5183162
+VM.wj            1.0209427
+FSIQ             1.9612588
+ADHD_PRS0.001000 1.1125947
+base_age         0.9755496
+sexMale          0.9681470
 Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
-Multi-class area under the curve: 0.7358
+Multi-class area under the curve: 0.757
+
+[1] "hi"
+                   Overall
+OFC              0.5251595
+ATR_fa           0.4063076
+CST_fa           0.8536637
+IFO_fa           0.9022815
+VMI.beery        0.6986213
+VM.wj            1.0997982
+FSIQ             2.2513560
+ADHD_PRS0.001000 1.4203341
+base_age         0.7551648
+sexMale          1.1017703
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.7823
+
+
+[[1] "inatt"
+                    Overall
+OFC              0.02921628
+ATR_fa           0.02969024
+VMI.beery        0.10595755
+DSF.wisc         0.19126440
+VM.wj            0.05549173
+FSIQ             0.49615842
+ADHD_PRS0.001000 0.12178788
+base_age         0.76047196
+sexMale          0.97135751
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.7355
 
 [1] "hi"
                     Overall
-OFC              0.66628463
-CST_fa           0.78506272
-CC_fa            0.27514823
-IFO_fa           0.76643673
-ILF_fa           0.04709866
-UNC_fa           0.90772943
-VMI.beery        0.45920649
-DSF.wisc         0.43234822
-FSIQ             1.96750528
-ADHD_PRS0.001000 1.61446224
-base_age         0.80411039
-sexMale          1.38273742
-Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
-Multi-class area under the curve: 0.7982
-
-
-[1] "inatt"
-                     Overall
-IFO_fa           0.442189432
-UNC_fa           0.293236665
-VMI.beery        0.045715237
-DSF.wisc         0.001245774
-FSIQ             0.019557007
-ADHD_PRS0.000100 0.529331866
-base_age         0.730540955
-sexMale          0.552679768
-Setting direction: controls < cases
+OFC              0.46418587
+ATR_fa           0.23631403
+CST_fa           0.90550377
+IFO_fa           0.07483577
+VMI.beery        0.12755094
+VM.wj            0.06473750
+FSIQ             0.64652534
+ADHD_PRS0.001000 0.20901665
+base_age         0.40536608
+sexMale          0.90149153
 Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
-Multi-class area under the curve: 0.7393
-
-[1] "hi"
-                    Overall
-OFC              0.23860387
-CST_fa           0.81452296
-CC_fa            0.22688228
-IFO_fa           0.10094873
-ILF_fa           0.08964611
-UNC_fa           0.65425803
-VMI.beery        0.23479709
-DSF.wisc         0.14643882
-FSIQ             0.36601095
-ADHD_PRS0.001000 0.30093194
-base_age         0.59404671
-sexMale          0.96995271
-Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
-Multi-class area under the curve: 0.8117
+Multi-class area under the curve: 0.7751
 ```
 
-And now we sprinle in the clinical variables, which as usual gzump the ratios... 
+And now we sprinkle in the clinical variables, which as usual gzump the ratios... 
 
 ```
-[1] "inatt"
-                                        Overall
-IFO_fa                                66.518709
-UNC_fa                                34.762076
-VMI.beery                             23.088234
-DSF.wisc                               4.614194
-FSIQ                                   7.079450
-ADHD_PRS0.000100                       1.289066
-base_age                              47.240272
-sexMale                              115.088028
-externalizing1                        36.862635
-internalizing1                        96.319235
-medication_status_at_observationstim   3.252187
-base_inatt                           266.617513
-base_hi                              183.509358
-Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
-Multi-class area under the curve: 0.9558
-
-[1] "hi"
-                                         Overall
-OFC                                    0.7770739
-CST_fa                                31.1930282
-CC_fa                                 12.3315902
-IFO_fa                                36.7535875
-ILF_fa                                24.9823351
-UNC_fa                                14.9358350
-VMI.beery                              4.4785714
-DSF.wisc                               3.0513940
-FSIQ                                   3.2466573
-ADHD_PRS0.001000                      25.8751095
-base_age                               6.9396762
-sexMale                               38.5372708
-externalizing1                        19.4212078
-internalizing1                        84.2936715
-medication_status_at_observationstim  10.9294356
-base_inatt                           172.9297429
-base_hi                              121.2113825
-Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
-Multi-class area under the curve: 0.9859
-
-
-[1] "inatt"
-                                        Overall
-IFO_fa                                2.9740322
-UNC_fa                                1.4660097
-VMI.beery                             0.2095025
-DSF.wisc                              0.8774142
-FSIQ                                  0.4895357
-ADHD_PRS0.000100                      0.7994475
-base_age                              0.8463906
-sexMale                               1.2893157
-externalizing1                        1.4032423
-internalizing1                       14.7597995
-medication_status_at_observationstim  1.6367453
-base_inatt                            8.5831474
-base_hi                               5.4119909
-Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
-Multi-class area under the curve: 0.9116
-
-[1] "hi"
-                                        Overall
-OFC                                   0.8566864
-CST_fa                                1.4784913
-CC_fa                                 4.0054928
-IFO_fa                                6.9904869
-ILF_fa                                2.2509926
-UNC_fa                                3.6655881
-VMI.beery                             0.9426344
-DSF.wisc                              4.5307499
-FSIQ                                  1.4234256
-ADHD_PRS0.001000                      3.9161127
-base_age                              1.6021491
-sexMale                               4.0080317
-externalizing1                        3.6487981
-internalizing1                       15.2477529
-medication_status_at_observationstim 12.1800076
-base_inatt                           20.9884223
-base_hi                              18.3958847
-Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
-Multi-class area under the curve: 0.9718
-
-
 [1] "inatt"
                                        Overall
-IFO_fa                               0.6092381
-UNC_fa                               0.4611497
-VMI.beery                            0.1668313
-DSF.wisc                             0.3109822
-FSIQ                                 0.4890851
-ADHD_PRS0.000100                     0.8476052
-base_age                             0.4528113
-sexMale                              1.4494731
-externalizing1                       0.1455927
-internalizing1                       9.8522255
-medication_status_at_observationstim 1.6792748
-base_inatt                           2.2081249
-base_hi                              0.0446106
+OFC                                   55.81772
+ATR_fa                                51.09362
+VMI.beery                             26.61533
+DSF.wisc                              87.25288
+VM.wj                                 11.37386
+FSIQ                                  67.94515
+ADHD_PRS0.001000                     145.86457
+base_age                             160.73030
+sexMale                              139.65123
+medication_status_at_observationstim  87.30891
+base_inatt                           745.67947
+base_hi                              512.19436
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.968
+
+[1] "hi"
+                                       Overall
+OFC                                   15.38553
+ATR_fa                                39.24080
+CST_fa                                18.91692
+IFO_fa                                21.66437
+VMI.beery                             30.01697
+VM.wj                                 34.90371
+FSIQ                                  30.24326
+ADHD_PRS0.001000                      36.50770
+base_age                              30.04870
+sexMale                               42.62176
+medication_status_at_observationstim  32.61810
+base_inatt                           269.08676
+base_hi                              196.37039
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.9732
+
+
+[1] "inatt"
+                                        Overall
+OFC                                   0.8058600
+ATR_fa                                3.8584815
+VMI.beery                             0.5301668
+DSF.wisc                              1.5980869
+VM.wj                                 1.2307827
+FSIQ                                  1.5021518
+ADHD_PRS0.001000                      2.1324584
+base_age                              0.9225739
+sexMale                               2.0699869
+medication_status_at_observationstim  1.2995558
+base_inatt                           12.5417367
+base_hi                               9.5866172
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.9361
+
+[1] "hi"
+                                       Overall
+OFC                                  0.7433969
+ATR_fa                               2.2785339
+CST_fa                               0.8633166
+IFO_fa                               2.0892571
+VMI.beery                            0.4425482
+VM.wj                                1.0852571
+FSIQ                                 2.0884231
+ADHD_PRS0.001000                     3.2072404
+base_age                             2.1304853
+sexMale                              1.5794547
+medication_status_at_observationstim 2.1629514
+base_inatt                           9.2151566
+base_hi                              9.6355862
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.9465
+
+
+[1] "inatt"
+                                        Overall
+OFC                                  0.05978971
+ATR_fa                               0.37280405
+VMI.beery                            0.25067433
+DSF.wisc                             0.02816081
+VM.wj                                0.17554436
+FSIQ                                 0.11618025
+ADHD_PRS0.001000                     0.44852120
+base_age                             0.11510250
+sexMale                              1.78859057
+medication_status_at_observationstim 1.07833547
+base_inatt                           1.84898753
+base_hi                              0.72184322
 Setting direction: controls < cases
 Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
-Multi-class area under the curve: 0.8973
+Multi-class area under the curve: 0.8776
 
 [1] "hi"
                                         Overall
-OFC                                   0.2564494
-CST_fa                                1.2389472
-CC_fa                                 1.5299926
-IFO_fa                                1.7492764
-ILF_fa                                0.7578988
-UNC_fa                                1.7753722
-VMI.beery                             0.2810949
-DSF.wisc                              0.9005752
-FSIQ                                  1.1988716
-ADHD_PRS0.001000                      0.6037666
-base_age                              1.3446113
-sexMale                               3.5685796
-externalizing1                        3.5439395
-internalizing1                       11.1344614
-medication_status_at_observationstim  6.9375882
-base_inatt                            1.3559531
-base_hi                               5.9487498
-Setting direction: controls < cases
+OFC                                  0.44821118
+ATR_fa                               0.01673110
+CST_fa                               0.82767337
+IFO_fa                               0.01565778
+VMI.beery                            0.03663199
+VM.wj                                0.30113434
+FSIQ                                 0.94477614
+ADHD_PRS0.001000                     0.18036436
+base_age                             0.60348582
+sexMale                              1.43486448
+medication_status_at_observationstim 2.12097766
+base_inatt                           0.44336487
+base_hi                              2.27112868
 Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
-Multi-class area under the curve: 0.9555
+Multi-class area under the curve: 0.8942
 ```
 
-# 2020-03-04 08:56:01
+<!-- # 2020-03-04 08:56:01
 
 Let's check the ML results running last night. It looks like we have great
 results now, certainly because of the imputation procedure, which takes into
@@ -2269,36 +2510,4 @@ frontal            0.2475
 
 Makes perfect sense that it's heavily based on base_sx! Is it worth it getting
 variable distributions without the clinical domain, if the results were not
-optimized for that?
-
-# 2020-03-05 09:48:34
-
-Philip suggested I should urn the big model using the q < .05 variables as well.
-To recap, they were:
-
-```
-> print(res_clean[p2<.05,c('brainVar', 'outcome')])
-            brainVar                      outcome
-85         VMI.beery ORDthresh0.00_inatt_GE6_wp05
-94          DSF.wisc ORDthresh0.00_inatt_GE6_wp05
-106             FSIQ ORDthresh0.00_inatt_GE6_wp05
-166              OFC    ORDthresh0.50_hi_GE6_wp05
-175           CST_fa    ORDthresh0.50_hi_GE6_wp05
-184           IFO_fa    ORDthresh0.50_hi_GE6_wp05
-193           UNC_fa    ORDthresh0.50_hi_GE6_wp05
-196        VMI.beery    ORDthresh0.50_hi_GE6_wp05
-205         DSF.wisc    ORDthresh0.50_hi_GE6_wp05
-217             FSIQ    ORDthresh0.50_hi_GE6_wp05
-1   ADHD_PRS0.000100 ORDthresh0.00_inatt_GE6_wp05
-115 ADHD_PRS0.001000    ORDthresh0.50_hi_GE6_wp05
-```
-
-Let's re-run the code then:
-
-```r
-inatt_vars = c('VMI.beery', 'DSF.wisc', 'FSIQ', 'ADHD_PRS0.000100')
-hi_vars = c('OFC', 'CST_fa', 'IFO_fa', 'UNC_fa', 'VMI.beery', 'DSF.wisc',
-            'FSIQ', 'ADHD_PRS0.001000')
-```
-
-Bu before running that, let's see the effect of comorbidities...
+optimized for that? -->
