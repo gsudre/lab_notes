@@ -317,6 +317,31 @@ for clf in hdda rda stepLDA glmStepAIC dwdLinear bayesglm earth LogitBoost \
     done;
 done
 
-swarm -g 10 -t 1 --job-name stack${g} --time 4:00:00 -f $out_file \
+swarm -g 10 -t 1 --job-name stack2_1010 --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+```bash
+g=2
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_${g}group_dataImpute_LOOCV310.R;
+out_file=swarm.${g}group_impStackLOOCV
+rm $out_file
+for clf in hdda rda stepLDA glmStepAIC dwdLinear bayesglm earth LogitBoost \
+    kernelpls cforest; do
+    for ens in rpart glm glmStepAIC rpart2 C5.0Tree plr; do
+        for sx in inatt hi; do
+            if [[ $g == 2 ]]; then
+                for cm in T F; do
+                    echo "Rscript $my_script $sx $clf $ens 1 $cm F ~/tmp/residsNOCO_${g}group_impStackLOOCV310.csv;" >> $out_file;
+                done;
+            else
+                echo "Rscript $my_script $sx $clf $ens 1 F F ~/tmp/residsNOCO_${g}group_impStackLOOCV310.csv;" >> $out_file;
+            fi;
+        done
+    done;
+done
+
+swarm -g 10 -t 1 --job-name stack2_310 --time 3:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
