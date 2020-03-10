@@ -345,3 +345,32 @@ done
 swarm -g 10 -t 1 --job-name stack2_310 --time 3:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
+
+I'm gonna run some with all classifiers overnight...
+
+```bash
+g=2
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/stacked_${g}group_dataImpute_LOOCV.R;
+out_file=swarm.${g}group_impStackLOOCV
+rm $out_file
+for clf in `cat all_clf.txt`; do
+    for ens in rpart glm glmStepAIC rpart2 C5.0Tree plr; do
+        for sx in inatt hi; do
+            if [[ $g == 2 ]]; then
+                for cm in T F; do
+                    echo "Rscript $my_script $sx $clf $ens 1 $cm F ~/tmp/residsNOCO_${g}group_impStackLOOCall.csv;" >> $out_file;
+                done;
+            else
+                echo "Rscript $my_script $sx $clf $ens 1 F F ~/tmp/residsNOCO_${g}group_impStackLOOCVall.csv;" >> $out_file;
+            fi;
+        done
+    done;
+done
+
+swarm -g 10 -t 1 --job-name stack2_all --time 3:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+I ran it for the 5-5 combination because that's the one with best results so
+far, but the other ones are still running, so who knows... 
