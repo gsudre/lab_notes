@@ -465,7 +465,6 @@ colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'tract', 'modtype')
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
-We actually get more fits for quadratic and cubic... we will eventually get into
 an issue of multiple comparisons here. 
 
 Here's another idea. Philip's daisywheel had an inspiring title:

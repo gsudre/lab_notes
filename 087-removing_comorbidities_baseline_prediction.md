@@ -3535,59 +3535,459 @@ Number of Groups: 68
 
 Not significant anymore.
 
-## ML is back
-
-Let's re-run our ML pipelines, keeping in mind that we don't need to run groups
-3 and 4 using clinicals, and only cd==1.
-
-```bash
-g=2
-cd ~/data/baseline_prediction/prs_start
-my_script=~/research_code/baseline_prediction/nonstacked_${g}group_dataImpute.R;
-out_file=swarm.${g}group_impInter
-rm $out_file
-for clf in `cat all_clf.txt`; do
-    for sx in inatt hi; do
-        if [[ $g == 2 ]]; then
-            for cm in "T F" "T T" "F F"; do
-                echo "Rscript $my_script $sx $clf 1 $cm ~/tmp/residsNOCO_${g}group_impInter.csv;" >> $out_file;
-            done;
-        else
-            echo "Rscript $my_script $sx $clf 1 F F ~/tmp/residsNOCO_${g}group_impInter.csv;" >> $out_file;
-        fi;
-    done;
-done
-
-swarm -g 10 -t 1 --job-name inter${g} --time 20:00 -f $out_file \
-    -m R --partition quick --logdir trash
-```
-
-and then:
-
-```bash
-g=2
-cd ~/data/baseline_prediction/prs_start
-my_script=~/research_code/baseline_prediction/stacked_${g}group_dataImpute.R;
-out_file=swarm.${g}group_impStack
-rm $out_file
-for clf in hdda rda stepLDA glmStepAIC dwdLinear bayesglm earth LogitBoost \
-    kernelpls cforest; do
-    for ens in rpart glm glmStepAIC rpart2 C5.0Tree; do
-        for sx in inatt hi; do
-            if [[ $g == 2 ]]; then
-                for cm in "T F" "T T" "F F"; do
-                    echo "Rscript $my_script $sx $clf $ens 1 $cm ~/tmp/residsNOCO_${g}group_impStack.csv;" >> $out_file;
-                done;
-            else
-                echo "Rscript $my_script $sx $clf $ens 1 F F ~/tmp/residsNOCO_${g}group_impStack.csv;" >> $out_file;
-            fi;
-        done
-    done;
-done
-
-swarm -g 10 -t 1 --job-name stack${g} --time 20:00 -f $out_file \
-    -m R --partition quick --logdir trash
-```
-
-* Still need ot run these!
 * Try ordinal (clmm2) model: why didn't I keep that after the univariate selection?
+
+# 2020-03-09 08:48:23
+
+Philip suggested a few other analysis over the weekend. Let's tackle them.
+
+First, running the big model with medication. That only affects the 2-group
+case:
+
+```r
+library(caret)
+library(nnet)
+library(pROC)
+
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesIRMI_clinDiffGE1_03062020.rds')
+
+# clinDiff1
+inatt_vars = c('OFC', 'ATR_fa', 'CC_fa', 'VMI.beery', 'VM.wj', 'FSIQ',
+               'ADHD_PRS0.001000')
+hi_vars = c('temporal', 'OFC', 'ATR_fa', 'CST_fa', 'CC_fa', 'IFO_fa',
+            'VMI.beery', 'DSF.wisc', 'VM.wj', 'FSIQ', 'ADHD_PRS0.001000')
+
+covars = c('base_age', 'sex', 'base_inatt', 'base_hi')
+min_sx = 6
+# 2 classes
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
+                            sx)))
+
+    this_data = this_data[this_data[, phen] != 'nv012',]
+    this_data = this_data[this_data[, phen] != 'notGE6adhd',]
+    this_data[, phen] = factor(this_data[, phen], ordered=F)
+    this_data[, phen] = relevel(this_data[, phen], ref='nonimp')
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    fm_str = paste(phen, " ~ ", predictors_str, ' + ', 
+               paste(covars, collapse='+'),
+               sep="")
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+```
+
+And the variable weights are:
+
+```
+[1] "inatt"
+                    Overall
+OFC              0.02846646
+ATR_fa           0.89789305
+CC_fa            0.96559927
+VMI.beery        0.57989666
+VM.wj            0.18971287
+FSIQ             0.41851081
+ADHD_PRS0.001000 0.55382858
+base_age         0.12215532
+sexMale          2.36828489
+base_inatt       1.95852774
+base_hi          0.78801482
+Setting direction: controls < cases
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.8986
+
+[1] "hi"
+                   Overall
+temporal         0.1450540
+OFC              0.5368086
+ATR_fa           0.2205730
+CST_fa           0.6328485
+CC_fa            0.3393535
+IFO_fa           0.1862839
+VMI.beery        0.0371179
+DSF.wisc         0.1610379
+VM.wj            0.1820555
+FSIQ             1.1116885
+ADHD_PRS0.001000 0.1825929
+base_age         0.4132071
+sexMale          1.5972278
+base_inatt       0.2797876
+base_hi          2.0507050
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.8739
+```
+
+Philip also asked to see the results of adding age and sex to the FDR:
+
+```r
+library(nlme)
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03062020.rds')
+data$sex = as.numeric(data$sex)
+brain_vars = c(colnames(data)[c(51:62, 75:99)], 'base_age', 'sex')
+hold = c()
+min_sx = 6
+cd = 1
+out_fname = sprintf('~/data/baseline_prediction/prs_start/univar_medianClinDiff%d_4groupOrdered_lmeAgeAndSex.csv', cd)
+for (sx in c('inatt', 'hi')) {
+    phen = sprintf('ORDthreshMED_%s_GE%d_wp05', sx, min_sx)
+
+    phen_res = c()
+    for (bv in brain_vars) {
+        use_me = !is.na(data[, bv]) #& data$bestInFamily
+        this_data = data[use_me, c(phen, 'FAMID', brain_vars)]
+        fm_str = paste(bv, sprintf(" ~ %s", phen), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=this_data, method='ML'))
+        if (length(fit)>1) {
+            temp = c(summary(fit)$tTable[sprintf('%s.L', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'linear')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.Q', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'quadratic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+            temp = c(summary(fit)$tTable[sprintf('%s.C', phen), ],
+                        summary(fit)$logLik, summary(fit)$AIC, summary(fit)$BIC,
+                        bv, 'cubic')
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        } else {
+            # fit broke
+            temp = rep(NA, 10)
+            phen_res = rbind(phen_res, temp)
+            rownames(phen_res)[nrow(phen_res)] = fm_str
+        }
+    }
+    phen_res = data.frame(phen_res)
+    phen_res$formula = rownames(phen_res)
+    phen_res$outcome = phen
+    hold = rbind(hold, phen_res)
+}
+colnames(hold)[6:10] = c('logLik', 'AIC', 'BIC', 'brainVar', 'modtype')
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+Let's see if that changes our FDR results:
+
+```r
+res = read.csv('~/data/baseline_prediction/prs_start/univar_medianClinDiff1_4groupOrdered_lmeAgeAndSex.csv')
+res = res[res$modtype=='linear',]
+# keep only top PRS
+prs_rows = which(grepl(res$brainVar, pattern='^ADHD') &
+                 grepl(res$outcome, pattern='_inatt_'))
+inatt_best = prs_rows[which.min(res[prs_rows, 'p.value'])]
+prs_rows = which(grepl(res$brainVar, pattern='^ADHD') &
+                 grepl(res$outcome, pattern='_hi_'))
+hi_best = prs_rows[which.min(res[prs_rows, 'p.value'])]
+res_inatt = rbind(res[!grepl(res$brainVar, pattern='^ADHD') & grepl(res$outcome, pattern='_inatt_'),],
+                  res[inatt_best, ])
+p2_inatt = p.adjust(res_inatt[, 'p.value'], method='fdr')
+res_hi = rbind(res[!grepl(res$brainVar, pattern='^ADHD') & grepl(res$outcome, pattern='_hi_'),],
+                  res[hi_best, ])
+p2_hi = p.adjust(res_hi[, 'p.value'], method='fdr')
+print(res_inatt[p2_inatt<.05,c('brainVar', 'outcome', 'p.value')])
+print(res_hi[p2_hi<.05,c('brainVar', 'outcome', 'p.value')])
+print(res_inatt[p2_inatt<.1,c('brainVar', 'outcome', 'p.value')])
+print(res_hi[p2_hi<.1,c('brainVar', 'outcome', 'p.value')])
+```
+
+```
+> print(res_inatt[p2_inatt<.05,c('brainVar', 'outcome', 'p.value')])
+     brainVar                     outcome      p.value
+85  VMI.beery ORDthreshMED_inatt_GE6_wp05 6.364996e-05
+106      FSIQ ORDthreshMED_inatt_GE6_wp05 2.742290e-05
+112  base_age ORDthreshMED_inatt_GE6_wp05 1.674481e-03
+> print(res_hi[p2_hi<.05,c('brainVar', 'outcome', 'p.value')])
+            brainVar                  outcome      p.value
+172              OFC ORDthreshMED_hi_GE6_wp05 3.670474e-03
+178           ATR_fa ORDthreshMED_hi_GE6_wp05 6.308342e-03
+181           CST_fa ORDthreshMED_hi_GE6_wp05 1.142843e-02
+190           IFO_fa ORDthreshMED_hi_GE6_wp05 8.076652e-03
+202        VMI.beery ORDthreshMED_hi_GE6_wp05 2.243446e-05
+220            VM.wj ORDthreshMED_hi_GE6_wp05 7.631343e-03
+223             FSIQ ORDthreshMED_hi_GE6_wp05 7.202085e-05
+121 ADHD_PRS0.001000 ORDthreshMED_hi_GE6_wp05 1.119771e-02
+> print(res_inatt[p2_inatt<.1,c('brainVar', 'outcome', 'p.value')])
+            brainVar                     outcome      p.value
+55               OFC ORDthreshMED_inatt_GE6_wp05 1.315436e-02
+61            ATR_fa ORDthreshMED_inatt_GE6_wp05 1.348709e-02
+70             CC_fa ORDthreshMED_inatt_GE6_wp05 2.003963e-02
+85         VMI.beery ORDthreshMED_inatt_GE6_wp05 6.364996e-05
+103            VM.wj ORDthreshMED_inatt_GE6_wp05 1.930910e-02
+106             FSIQ ORDthreshMED_inatt_GE6_wp05 2.742290e-05
+112         base_age ORDthreshMED_inatt_GE6_wp05 1.674481e-03
+4   ADHD_PRS0.001000 ORDthreshMED_inatt_GE6_wp05 1.255169e-02
+> print(res_hi[p2_hi<.1,c('brainVar', 'outcome', 'p.value')])
+            brainVar                  outcome      p.value
+172              OFC ORDthreshMED_hi_GE6_wp05 3.670474e-03
+178           ATR_fa ORDthreshMED_hi_GE6_wp05 6.308342e-03
+181           CST_fa ORDthreshMED_hi_GE6_wp05 1.142843e-02
+190           IFO_fa ORDthreshMED_hi_GE6_wp05 8.076652e-03
+202        VMI.beery ORDthreshMED_hi_GE6_wp05 2.243446e-05
+220            VM.wj ORDthreshMED_hi_GE6_wp05 7.631343e-03
+223             FSIQ ORDthreshMED_hi_GE6_wp05 7.202085e-05
+121 ADHD_PRS0.001000 ORDthreshMED_hi_GE6_wp05 1.119771e-02
+```
+
+This variable selection might look nicer too, as sex had big weights in the
+2-class model and won't be there anymore. We also lost temporal from hi, which
+loked a bit funky too.
+
+So, let's re-run the big-models then:
+
+```r
+library(caret)
+library(nnet)
+library(pROC)
+
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbiditiesIRMI_clinDiffGE1_03062020.rds')
+
+# clinDiff1
+inatt_vars = c('OFC', 'ATR_fa', 'CC_fa', 'VMI.beery', 'VM.wj', 'FSIQ', 'base_age', 
+               'ADHD_PRS0.001000')
+hi_vars = c('OFC', 'ATR_fa', 'CST_fa', 'IFO_fa',
+            'VMI.beery', 'VM.wj', 'FSIQ', 'ADHD_PRS0.001000')
+
+covars = c()
+min_sx = 6
+
+# 4 classes
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
+                            sx)))
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    if (length(covars) > 0) {
+        fm_str = paste(phen, " ~ ", predictors_str, ' + ', 
+               paste(covars, collapse='+'),
+               sep="")
+    } else {
+        fm_str = paste(phen, " ~ ", predictors_str, sep="")
+    }
+
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+
+# 3 classes
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
+                            sx)))
+
+    this_data = this_data[this_data[, phen] != 'nv012',]
+    this_data[, phen] = factor(this_data[, phen], ordered=F)
+    this_data[, phen] = relevel(this_data[, phen], ref='notGE6adhd')
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    if (length(covars) > 0) {
+        fm_str = paste(phen, " ~ ", predictors_str, ' + ', 
+               paste(covars, collapse='+'),
+               sep="")
+    } else {
+        fm_str = paste(phen, " ~ ", predictors_str, sep="")
+    }
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+
+# 2 classes
+for (sx in c('inatt', 'hi')) {
+    set.seed(42)
+    phen = sprintf('threshMED_%s_GE%d_wp05', sx, min_sx)
+    eval(parse(text=sprintf('this_data = data[, c(phen, %s_vars, covars)]',
+                            sx)))
+
+    this_data = this_data[this_data[, phen] != 'nv012',]
+    this_data = this_data[this_data[, phen] != 'notGE6adhd',]
+    this_data[, phen] = factor(this_data[, phen], ordered=F)
+    this_data[, phen] = relevel(this_data[, phen], ref='nonimp')
+
+    scale_me = c()
+    for (v in colnames(this_data)) {
+        if (!is.factor(this_data[, v])) {
+            scale_me = c(scale_me, v)
+        }
+    }
+    this_data[, scale_me] = scale(this_data[, scale_me])
+
+    eval(parse(text=sprintf('predictors_str=paste(%s_vars, collapse="+")', sx)))
+    if (length(covars) > 0) {
+        fm_str = paste(phen, " ~ ", predictors_str, ' + ', 
+               paste(covars, collapse='+'),
+               sep="")
+    } else {
+        fm_str = paste(phen, " ~ ", predictors_str, sep="")
+    }
+    fit = multinom(as.formula(fm_str), data=this_data, maxit=2000)
+    preds = predict(fit, type='prob')
+    print(sx)
+    print(varImp(fit))
+    print(multiclass.roc(this_data[, phen], preds))
+}
+
+covars = c('base_inatt', 'base_hi')
+
+# repeat 2 classes!
+```
+
+And these are the new weights:
+
+```
+[1] "inatt"
+                   Overall
+OFC              0.8367455
+ATR_fa           0.8195108
+CC_fa            0.6742910
+VMI.beery        0.8237748
+VM.wj            1.8142522
+FSIQ             1.0345247
+base_age         1.2131446
+ADHD_PRS0.001000 0.5876132
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.734
+
+[1] "hi"
+                   Overall
+OFC              0.7987530
+ATR_fa           0.5377048
+CST_fa           0.7324253
+IFO_fa           0.8339179
+VMI.beery        0.9524689
+VM.wj            1.8213355
+FSIQ             1.0785322
+ADHD_PRS0.001000 0.7009769
+Data: multivariate predictor preds with 4 levels of this_data[, phen]: nv012, imp, nonimp, notGE6adhd.
+Multi-class area under the curve: 0.7244
+
+
+[1] "inatt"
+                   Overall
+OFC              0.6499210
+ATR_fa           0.7808217
+CC_fa            0.6369187
+VMI.beery        0.6483071
+VM.wj            1.0741005
+FSIQ             2.1332369
+base_age         1.0379867
+ADHD_PRS0.001000 1.0960322
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.7599
+
+[1] "hi"
+                   Overall
+OFC              0.6165721
+ATR_fa           0.5419530
+CST_fa           0.7750120
+IFO_fa           0.9976900
+VMI.beery        0.5432081
+VM.wj            0.9974110
+FSIQ             1.9307809
+ADHD_PRS0.001000 1.4039214
+Data: multivariate predictor preds with 3 levels of this_data[, phen]: notGE6adhd, imp, nonimp.
+Multi-class area under the curve: 0.7534
+
+
+[1] "inatt"
+                    Overall
+OFC              0.30150387
+ATR_fa           0.24065790
+CC_fa            0.58822510
+VMI.beery        0.07100498
+VM.wj            0.04721154
+FSIQ             0.45019041
+base_age         0.81722046
+ADHD_PRS0.001000 0.17706220
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.7349
+
+[1] "hi"
+                    Overall
+OFC              0.40404437
+ATR_fa           0.15883720
+CST_fa           0.82841940
+IFO_fa           0.08032946
+VMI.beery        0.08718376
+VM.wj            0.06586944
+FSIQ             0.61603773
+ADHD_PRS0.001000 0.20064926
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.74
+```
+
+And we add in base_sx for the clinical domain:
+
+```
+[1] "inatt"
+                   Overall
+OFC              0.2226160
+ATR_fa           0.5727578
+CC_fa            0.6268315
+VMI.beery        0.0765019
+VM.wj            0.1496885
+FSIQ             0.2279085
+base_age         0.1872046
+ADHD_PRS0.001000 0.4410067
+base_inatt       1.4675412
+base_hi          0.7176022
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.8582
+
+[1] "hi"
+                     Overall
+OFC              0.305137722
+ATR_fa           0.115171477
+CST_fa           0.619097177
+IFO_fa           0.003244446
+VMI.beery        0.227187475
+VM.wj            0.127799922
+FSIQ             0.768889097
+ADHD_PRS0.001000 0.109051519
+base_inatt       0.332364391
+base_hi          1.493837846
+Setting direction: controls < cases
+Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
+Multi-class area under the curve: 0.834
+```
