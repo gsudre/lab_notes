@@ -3991,3 +3991,124 @@ Setting direction: controls < cases
 Data: preds with 2 levels of this_data[, phen]: nonimp, imp.
 Multi-class area under the curve: 0.834
 ```
+
+# 2020-03-11 11:04:18
+
+Let's redo the proportion in medication analysis:
+
+```r
+library(nlme)
+data = readRDS('~/data/baseline_prediction/prs_start/complete_massagedRawNeuropsychResidsNoComorbidities_clinDiffGE1_03062020.rds')
+meds = read.csv('~/data/baseline_prediction/prs_start/prop_meds_from_pat.csv')
+df = merge(data, meds, by='MRN')
+adhd = df$ORDthreshMED_inatt_GE6_wp05 != 'nv012' & df$ORDthreshMED_inatt_GE6_wp05 != 'notGE6adhd'
+df2 = df[adhd, ]
+fit = lme(med_proportion ~ ORDthreshMED_inatt_GE6_wp05, ~1|FAMID, data=df2, method='ML')
+print(summary(fit))
+fit = lme(med_proportion ~ ORDthreshMED_hi_GE6_wp05, ~1|FAMID, data=df2, method='ML')
+print(summary(fit))
+```
+
+```Linear mixed-effects model fit by maximum likelihood
+ Data: df2
+       AIC      BIC    logLik
+  162.4701 175.0367 -77.23503
+Random effects:
+ Formula: ~1 | FAMID
+        (Intercept) Residual
+StdDev:   0.1045848 0.365754
+Fixed effects: med_proportion ~ ORDthreshMED_inatt_GE6_wp05
+                                  Value  Std.Error  DF   t-value p-value
+(Intercept)                   0.5263850 0.02981956 137 17.652341  0.0000
+ORDthreshMED_inatt_GE6_wp05.L 0.0046726 0.04131431  32  0.113099  0.9107
+ Correlation:
+                              (Intr)
+ORDthreshMED_inatt_GE6_wp05.L -0.006
+Standardized Within-Group Residuals:
+        Min          Q1         Med          Q3         Max
+-1.64775108 -1.22914576  0.08157057  0.88044508  1.31755019
+Number of Observations: 171
+Number of Groups: 138
+> fit = lme(med_proportion ~ ORDthreshMED_hi_GE6_wp05, ~1|FAMID, data=df2, method='ML')
+> print(summary(fit))
+Linear mixed-effects model fit by maximum likelihood
+ Data: df2
+       AIC      BIC    logLik
+  162.4598 175.0264 -77.22989
+Random effects:
+ Formula: ~1 | FAMID
+        (Intercept)  Residual
+StdDev:   0.1103602 0.3641127
+Fixed effects: med_proportion ~ ORDthreshMED_hi_GE6_wp05
+                                Value  Std.Error  DF   t-value p-value
+(Intercept)                 0.5263895 0.02987851 137 17.617662  0.0000
+ORDthreshMED_hi_GE6_wp05.L -0.0064351 0.04128998  32 -0.155852  0.8771
+ Correlation:
+                           (Intr)
+ORDthreshMED_hi_GE6_wp05.L 0.002
+Standardized Within-Group Residuals:
+        Min          Q1         Med          Q3         Max
+-1.67206006 -1.21073114  0.07803404  0.86723396  1.32618072
+Number of Observations: 171
+Number of Groups: 138
+```
+
+If we look at the 3 groups, we get:
+
+```r
+adhd = df$ORDthreshMED_inatt_GE6_wp05 != 'nv012'
+df2 = df[adhd, ]
+fit = lme(med_proportion ~ ORDthreshMED_inatt_GE6_wp05, ~1|FAMID, data=df2, method='ML')
+print(summary(fit))
+fit = lme(med_proportion ~ ORDthreshMED_hi_GE6_wp05, ~1|FAMID, data=df2, method='ML')
+print(summary(fit))
+```
+
+```
+Linear mixed-effects model fit by maximum likelihood
+ Data: df2
+       AIC      BIC    logLik
+  208.0727 224.9259 -99.03635
+Random effects:
+ Formula: ~1 | FAMID
+        (Intercept)  Residual
+StdDev:   0.1359624 0.3597015
+Fixed effects: med_proportion ~ ORDthreshMED_inatt_GE6_wp05 
+                                   Value  Std.Error  DF  t-value p-value
+(Intercept)                    0.4519874 0.02863865 165 15.78242  0.0000
+ORDthreshMED_inatt_GE6_wp05.L  0.1649124 0.05029826  47  3.27869  0.0020
+ORDthreshMED_inatt_GE6_wp05.Q -0.0908476 0.04499900  47 -2.01888  0.0492
+ Correlation: 
+                              (Intr) ORDMED__GE6_05.L
+ORDthreshMED_inatt_GE6_wp05.L -0.268                 
+ORDthreshMED_inatt_GE6_wp05.Q  0.173 -0.211          
+Standardized Within-Group Residuals:
+         Min           Q1          Med           Q3          Max 
+-1.614087378 -0.754410082 -0.006537877  0.943859792  1.706939413 
+Number of Observations: 215
+Number of Groups: 166 
+
+Linear mixed-effects model fit by maximum likelihood
+ Data: df2 
+       AIC      BIC    logLik
+  208.0623 224.9155 -99.03117
+Random effects:
+ Formula: ~1 | FAMID
+        (Intercept)  Residual
+StdDev:   0.1377942 0.3590496
+Fixed effects: med_proportion ~ ORDthreshMED_hi_GE6_wp05
+                                Value  Std.Error  DF   t-value p-value
+(Intercept)                 0.4519938 0.02866278 165 15.769361  0.0000
+ORDthreshMED_hi_GE6_wp05.L  0.1602839 0.05028273  47  3.187654  0.0026
+ORDthreshMED_hi_GE6_wp05.Q -0.0991026 0.04495089  47 -2.204685  0.0324
+ Correlation:
+                           (Intr) ORDMED__GE6_05.L
+ORDthreshMED_hi_GE6_wp05.L -0.263
+ORDthreshMED_hi_GE6_wp05.Q  0.182 -0.212
+Standardized Within-Group Residuals:
+          Min            Q1           Med            Q3           Max
+-1.617602e+00 -7.627648e-01  5.613678e-06  9.334688e-01  1.703687e+00
+Number of Observations: 215
+Number of Groups: 166
+```
+

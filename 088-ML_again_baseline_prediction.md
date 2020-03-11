@@ -374,3 +374,36 @@ swarm -g 10 -t 1 --job-name stack2_all --time 3:00:00 -f $out_file \
 
 I ran it for the 5-5 combination because that's the one with best results so
 far, but the other ones are still running, so who knows... 
+
+# 2020-03-11 10:46:44
+
+From this analysis, our best results were indeed using the 5-5 combination.
+
+```
+276 inatt     slda        plr  1 TRUE FALSE  2 0.799444 0.084046
+274 hi slda plr  1  TRUE FALSE  2 0.647550 0.117585
+```
+
+The hi results is not terrible... but let's take a look at variable importance
+to see if the model makes sense. If not, I can try for the interaction models
+from above? Or, what if we don't stack but do the usual CVs?
+
+```bash
+g=2
+cd ~/data/baseline_prediction/prs_start
+my_script=~/research_code/baseline_prediction/nonstacked_${g}group_dataImpute_LOOCV.R;
+out_file=swarm.${g}group_impInterLOOCV
+rm $out_file
+for clf in `cat all_clf.txt`; do
+    for sx in inatt hi; do
+        for cm in T F; do
+            for fold in "10 10" "5 5" "10 3"; do
+                echo "Rscript $my_script $sx $clf 1 $cm F $fold ~/tmp/residsNOCO_${g}group_impInterLOOCV.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name inter${g}LOOCV --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
