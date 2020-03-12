@@ -6,6 +6,7 @@ the new analysis:
 * check that univariate results hold for PRS if we hold all covariates in
 * re-run everything, starting at univariate, for unordered 5 groups
 * re-run everything, starting at univariate, for ordered 5 groups: nv012, subthreshold, emergent, improvers, persisters
+* analyses defining the 'imp and nonimp' according to their baseline symptoms in that domain.  SO the imp and nonimp for inatt would have to have 6 or more sx of inatt at baseline.  The same for hi,
 
 First, grab the file Philip sent, add the 10 PCs and original PRS, and send it back to him:
 
@@ -208,4 +209,33 @@ Only VMI and FSIQ survive Q < .05, but the usual variables are there at q < .1:
 215                   FSIQ    ORDthreshMED_hi_GE6_wp05_emerge_included
 16  ADHD_PRS0.000500.resid ORDthreshMED_inatt_GE6_wp05_emerge_included
 113 ADHD_PRS0.001000.resid    ORDthreshMED_hi_GE6_wp05_emerge_included
+```
+
+# 2020-03-11 21:22:41
+
+Philip asked for analysis using within-sx defined groups. 
+
+```r
+min_sx = 6
+for (sx in c('inatt', 'hi')) {
+    idx = df[, sprintf('base_%s', sx) >= min_sx
+    df[, sprintf('WithinSX_slope_%s_GE%d_wp05', sx, min_sx)] = NA
+    junk = winsorize(df[idx, sprintf('slope_%s', sx)], cut=.05)
+    df[idx, sprintf('WithinSX_slope_%s_GE%d_wp05', sx, min_sx)] = junk
+
+    phen_slope = sprintf('WithinSX_slope_%s_GE%d_wp05', sx, min_sx)
+    thresh = median(df[, phen_slope], na.rm=T)
+    phen = sprintf('WithinSX_threshMED_%s_GE%d_wp05', sx, min_sx)
+    df[, phen] = 'notGE6adhd'
+    my_nvs = which(is.na(df[, phen_slope]))
+    idx = df[my_nvs, 'base_inatt'] <= 2 & df[my_nvs, 'base_hi'] <= 2
+    df[my_nvs[idx], phen] = 'nv012'
+    df[which(df[, phen_slope] < thresh), phen] = 'imp'
+    df[which(df[, phen_slope] >= thresh), phen] = 'nonimp'
+    df[, phen] = factor(df[, phen], ordered=F)
+    df[, phen] = relevel(df[, phen], ref='nv012')
+    ophen = sprintf('WithinSX_ORDthreshMED_%s_GE%d_wp05', sx, min_sx)
+    df[, ophen] = factor(df[, phen],
+                        levels=c('nv012', 'notGE6adhd', 'imp', 'nonimp'),
+                        ordered=T)
 ```
