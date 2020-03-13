@@ -751,5 +751,36 @@ way.
 
 Then, the inatt/sx analysis is more of a robustness check.
 
+# 2020-03-13 08:59:41
+
+Let's try that idea then. In other words, we defined ADHD at baseline based on
+the clinical DSM5 guidelines, and now we're determining whether someone is an
+improvers or non-improver. That can be done in improving either inatt or HI, or
+improving total symptoms...
+
+Another way to think about this is to group everyone in the clinical groups.
+Basically, persistent or remission. But to do that we'd need everyone to have
+reached an adult age where that's acceptable. We can decide on that, but a
+reasonable number would be the ceiling of our max last_age, 21.69, so that
+everyone is imputed in the end. The imputation is based on the derived rate,
+capping it at 9 or 0 when needed. That's the exact same thing as doing the
+regressions directly on slopes (at least, the same amount of trust in the
+values), but it's just that now we can classify groups based on remission and
+persistence, which wouldn't be reasonable in our current last_age range: 
+
+```
+> summary(data$last_age)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   5.68   10.89   12.80   12.94   15.06   21.69 
+```
+
+Philip suggested I should look into the mixed latent classes again. But this
+idea of projected age is also good. Look at the data distribution and maybe
+project to 16 first, and then try other cut-offs. But don't go much further than
+90% of the data. Then, could try splitting to partially remission as well. Also,
+might need to treat the emergents differently. Either combine them to persistent
+or be a group by themselves.
+
+
 * Maybe try old way to do QC, to get a different neuroimaging dataset, after
   determining the best target from PRS?
