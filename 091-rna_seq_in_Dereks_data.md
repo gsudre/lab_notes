@@ -132,39 +132,51 @@ for (dp in 1:length(dep_vars)) {
     dep_var = dep_vars[dp]
     fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
                    paste(test_vars, collapse='+'), sep="")
-    fit = lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data, na.action=na.omit)
-    res = summary(fit)$tTable
-    # filtering variables
-    sig_vars = c()
-    for (v in 1:length(test_vars)) {
-        # rows in results table that correspond to the screened variable
-        var_rows = which(grepl(rownames(res),
-                         pattern=sprintf('^%s', test_vars[v])))
-        for (r in var_rows) {
-            if (res[r, 'p-value'] < pthresh) {
-                sig_vars = c(sig_vars, test_vars[v])
+    fit = try(lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data, na.action=na.omit))
+    if (length(fit) > 1) {
+        res = summary(fit)$tTable
+        # filtering variables
+        sig_vars = c()
+        for (v in 1:length(test_vars)) {
+            # rows in results table that correspond to the screened variable
+            var_rows = which(grepl(rownames(res),
+                            pattern=sprintf('^%s', test_vars[v])))
+            for (r in var_rows) {
+                if (res[r, 'p-value'] < pthresh) {
+                    sig_vars = c(sig_vars, test_vars[v])
+                }
             }
         }
+        # factors might get added several times, so here we clean it up
+        sig_vars = unique(sig_vars)
+        if (length(sig_vars) > 0) {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                        paste(sig_vars, collapse='+'), sep="")
+        } else {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
+        }
+        # new model
+        clean_fit = try(lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data,
+                        na.action=na.omit))
+        if (length(clean_fit) > 1) {
+            res = data.frame(summary(clean_fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = clean_fm_str
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        } else {
+            res = data.frame(summary(fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = NA
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        }
+        hold = rbind(hold, res)
     }
-    # factors might get added several times, so here we clean it up
-    sig_vars = unique(sig_vars)
-    if (length(sig_vars) > 0) {
-        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
-                       paste(sig_vars, collapse='+'), sep="")
-    } else {
-        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
-    }
-    # new model
-    clean_fit = lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data,
-                    na.action=na.omit)
-    res = data.frame(summary(clean_fit)$tTable)
-    # remove intercept
-    res = res[2:nrow(res),]
-    res$dep_var = dep_var
-    res$formula = clean_fm_str
-    res$orig_formula = fm_str
-    res$predictor = rownames(res)
-    hold = rbind(hold, res)
 }
 write.csv(hold, file=out_fname, row.names=F)
 ```
