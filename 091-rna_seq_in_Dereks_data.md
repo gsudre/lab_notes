@@ -13,7 +13,7 @@ tabs.
 ```r
 myregion = 'ACC'
 pthresh = .05
-keep_str = 'Diagnosis'
+keep_str = 'Diagnosis*Age'
 
 data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
 data$substance_group = as.factor(data$substance_group)
@@ -23,6 +23,7 @@ grex_names = sapply(colnames(data)[34:ncol(data)],
                     function(x) sprintf('grex%s', x))
 colnames(data)[34:ncol(data)] = grex_names
 data = data[data$Region==myregion, ]
+
 # dependent
 dep_vars = colnames(data)[34:ncol(data)]
 # keep these regardless of significance
@@ -35,7 +36,7 @@ test_vars = c(# brain-related
               #clinical
               'comorbid_group', 'substance_group',
               # others
-              'Sex', 'Age')
+              'Sex')
 # spit out the results
 out_fname = sprintf('~/tmp/res_%s_pLT%.02f_%s.csv', myregion, pthresh,
                     gsub(pattern='\\*',replacement='',x=keep_str))
@@ -46,7 +47,7 @@ for (dp in 1:length(dep_vars)) {
         print(sprintf('%d of %d (%s)', dp, length(dep_vars), out_fname))
     }
 
-    dep_var = dep_vars[1]
+    dep_var = dep_vars[dp]
     fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
                    paste(test_vars, collapse='+'), sep="")
     fit = lm(as.formula(fm_str), data=data)
@@ -74,6 +75,8 @@ for (dp in 1:length(dep_vars)) {
     # new model
     clean_fit = lm(as.formula(clean_fm_str), data=data)
     res = data.frame(summary(clean_fit)$coefficients)
+    # remove intercept
+    res = res[2:nrow(res),]
     res$dep_var = dep_var
     res$formula = clean_fm_str
     res$orig_formula = fm_str
@@ -92,7 +95,7 @@ subject. So, we'll run lme():
 ```r
 library(nlme)
 pthresh = .05
-keep_str = 'Region*Diagnosis*Age'
+keep_str = 'Diagnosis*Region'
 
 data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
 data$substance_group = as.factor(data$substance_group)
@@ -115,7 +118,7 @@ test_vars = c(# brain-related
               #clinical
               'comorbid_group', 'substance_group',
               # others
-              'Sex')
+              'Sex', 'Age')
 # spit out the results
 out_fname = sprintf('~/tmp/res_pLT%.02f_%s.csv', pthresh,
                     gsub(pattern='\\*',replacement='',x=keep_str))
@@ -126,10 +129,10 @@ for (dp in 1:length(dep_vars)) {
         print(sprintf('%d of %d (%s)', dp, length(dep_vars), out_fname))
     }
 
-    dep_var = dep_vars[1]
+    dep_var = dep_vars[dp]
     fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
                    paste(test_vars, collapse='+'), sep="")
-    fit = lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data)
+    fit = lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data, na.action=na.omit)
     res = summary(fit)$tTable
     # filtering variables
     sig_vars = c()
@@ -152,8 +155,11 @@ for (dp in 1:length(dep_vars)) {
         clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
     }
     # new model
-    clean_fit = lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data)
+    clean_fit = lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data,
+                    na.action=na.omit)
     res = data.frame(summary(clean_fit)$tTable)
+    # remove intercept
+    res = res[2:nrow(res),]
     res$dep_var = dep_var
     res$formula = clean_fm_str
     res$orig_formula = fm_str
@@ -163,7 +169,14 @@ for (dp in 1:length(dep_vars)) {
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
-So, in the end I had to change from the original approach. Now, we have...
+So, in the end I had to change from the original approach. Now, we have only p <
+.05 and p<.1 to select the variables. I'll play with stepAIC later if necessary.
+I then tried lme models if using both regions, but only lm if doing it within
+region. I also played with Diagnosis or Diagnosis*Age for lm (keeping Age as
+covariate candidate in the former), and Diagnosis*Region, Diagnosis*Age for lme,
+but keeping Region as fixed covariate and Age as fitereable when appropriate.
 
-* Try also dx + region!
+I'm compiling them into 2 different Excel sheets, with different tabs
+each.
+
 * play with adding the different covariate domains sequentially
