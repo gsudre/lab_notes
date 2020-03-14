@@ -191,4 +191,337 @@ but keeping Region as fixed covariate and Age as fitereable when appropriate.
 I'm compiling them into 2 different Excel sheets, with different tabs
 each.
 
+Maybe it's easier to do the filtering in R:
+
+```r
+res = read.csv('res_ACC_pLT0.05_Diagnosis.csv')
+res = res[res$predictor=='DiagnosisControl',]
+p = res[, 'Pr...t..']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests p < .05: %d', sum(p<.05)))
+print(sprintf('Tests p < .01: %d', sum(p<.01)))
+print(sprintf('Tests q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests q < .1: %d', sum(p2<.1)))
+```
+
+```
+> res = read.csv('res_ACC_pLT0.05_Diagnosis.csv')
+[1] "Tests p < .05: 2215"
+[1] "Tests p < .01: 581"
+[1] "Tests q < .05: 2"
+[1] "Tests q < .1: 2"
+> res = read.csv('res_ACC_pLT0.10_Diagnosis.csv')
+[1] "Tests p < .05: 2590"
+[1] "Tests p < .01: 696"
+[1] "Tests q < .05: 3"
+[1] "Tests q < .1: 3"
+> res = read.csv('res_Caudate_pLT0.05_Diagnosis.csv')
+[1] "Tests p < .05: 2619"
+[1] "Tests p < .01: 673"
+[1] "Tests q < .05: 0"
+[1] "Tests q < .1: 0"
+> res = read.csv('res_Caudate_pLT0.10_Diagnosis.csv')
+[1] "Tests p < .05: 2947"
+[1] "Tests p < .01: 779"
+[1] "Tests q < .05: 0"
+[1] "Tests q < .1: 1"
+```
+
+Caudate had more nominally significant tests in general than ACC where the gene
+expression differed by diagnosis. However, a few more in ACC were significant
+using FDR. Looking at the Excel spreadsheet, they have to be the 3 lowest
+p-values:
+
+![](images/2020-03-14-18-22-50.png)
+
+The top 2 are the same one in both p thresholds.
+
+Also, filtering at the less conservative p<.1 seemed to show more results.
+
+Maybe a different approach here would be to take some sort ofintersection list
+of nominally significant genes across the different model we ran, and so sort of
+gene set analysis?
+
+But for now let's look at some of the other interactions:
+
+```r
+res0 = read.csv('res_ACC_pLT0.05_DiagnosisAge.csv')
+res = res0[res0$predictor=='DiagnosisControl',]
+p = res[, 'Pr...t..']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with DX q < .1: %d', sum(p2<.1)))
+p1 = p
+res = res0[res0$predictor=='DiagnosisControl:Age',]
+p = res[, 'Pr...t..']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Age:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Age:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Age:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Age:DX q < .1: %d', sum(p2<.1)))
+print(sprintf('Tests with both DX and Age:DX p < .05: %d', sum(p<.05 & p1<.05)))
+print(sprintf('Tests with both DX and Age:DX p < .01: %d', sum(p<.01 & p1<.01)))
+```
+
+```
+> res0 = read.csv('res_ACC_pLT0.05_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 1867"
+[1] "Tests with DX p < .01: 378"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 1861"
+[1] "Tests with Age:DX p < .01: 353"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 0"
+[1] "Tests with both DX and Age:DX p < .05: 1215"
+[1] "Tests with both DX and Age:DX p < .01: 222"
+> res0 = read.csv('res_ACC_pLT0.10_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 2160"
+[1] "Tests with DX p < .01: 451"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 2143"
+[1] "Tests with Age:DX p < .01: 439"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 0"
+[1] "Tests with both DX and Age:DX p < .05: 1393"
+[1] "Tests with both DX and Age:DX p < .01: 261"
+> res0 = read.csv('res_Caudate_pLT0.05_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 2355"
+[1] "Tests with DX p < .01: 498"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 2834"
+[1] "Tests with Age:DX p < .01: 724"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 1"
+[1] "Tests with both DX and Age:DX p < .05: 1833"
+[1] "Tests with both DX and Age:DX p < .01: 381"
+> res0 = read.csv('res_Caudate_pLT0.10_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 2689"
+[1] "Tests with DX p < .01: 611"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 3260"
+[1] "Tests with Age:DX p < .01: 858"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 1"
+[1] "Tests with both DX and Age:DX p < .05: 2099"
+[1] "Tests with both DX and Age:DX p < .01: 465"
+```
+
+Like before, filtering covariates at p < .1 seemed to have more results than p <
+.05. In general, there were more gene expression variables significant for
+Age:DX than DX by itself. Again, the caudate seems to be a bit better in this
+model, especially because this no FDR adjusted terms came out of the ACC
+regressions. For reference, the single FDR result is:
+
+![](images/2020-03-14-18-35-37.png)
+
+The same in both p thresholds. 
+
+Let's take a look at the LME models:
+
+```r
+res0 = read.csv('res_pLT0.05_DiagnosisRegion.csv')
+res = res0[res0$predictor=='DiagnosisControl',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with DX q < .1: %d', sum(p2<.1)))
+p1 = p
+res = res0[res0$predictor=='DiagnosisControl:RegionCaudate',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Region:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Region:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Region:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Region:DX q < .1: %d', sum(p2<.1)))
+print(sprintf('Tests with both DX and Region:DX p < .05: %d', sum(p<.05 & p1<.05)))
+print(sprintf('Tests with both DX and Region:DX p < .01: %d', sum(p<.01 & p1<.01)))
+```
+
+```
+> res0 = read.csv('res_pLT0.05_DiagnosisRegion.csv')
+[1] "Tests with DX p < .05: 1681"
+[1] "Tests with DX p < .01: 373"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Region:DX p < .05: 1396"
+[1] "Tests with Region:DX p < .01: 269"
+[1] "Tests with Region:DX q < .05: 0"
+[1] "Tests with Region:DX q < .1: 0"
+[1] "Tests with both DX and Region:DX p < .05: 290"
+[1] "Tests with both DX and Region:DX p < .01: 36"
+> res0 = read.csv('res_pLT0.10_DiagnosisRegion.csv')
+[1] "Tests with DX p < .05: 1933"
+[1] "Tests with DX p < .01: 481"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Region:DX p < .05: 1425"
+[1] "Tests with Region:DX p < .01: 260"
+[1] "Tests with Region:DX q < .05: 0"
+[1] "Tests with Region:DX q < .1: 0"
+[1] "Tests with both DX and Region:DX p < .05: 292"
+[1] "Tests with both DX and Region:DX p < .01: 37"
+```
+
+Same patterns we were seeing before seem to hold here. Nothing for FDR though,
+but I'm not too worried as we might have other methods to analyze this.
+
+```r
+res0 = read.csv('res_pLT0.05_Diagnosis.csv')
+res = res0[res0$predictor=='DiagnosisControl',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with DX q < .1: %d', sum(p2<.1)))
+```
+
+```
+> res0 = read.csv('res_pLT0.05_Diagnosis.csv')
+[1] "Tests with DX p < .05: 2365"
+[1] "Tests with DX p < .01: 595"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+> res0 = read.csv('res_pLT0.10_Diagnosis.csv')
+[1] "Tests with DX p < .05: 2719"
+[1] "Tests with DX p < .01: 699"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+```
+
+Those results are for the model that holds Region fixed as an additive
+covariate. I didn't report how many tests had that as significant because, as
+expected, there were many of them. Same pattern for DX significant holds. Also,
+good to remember here that there are always 35917 tests.
+
+```r
+res0 = read.csv('res_pLT0.05_DiagnosisAge.csv')
+res = res0[res0$predictor=='DiagnosisControl',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with DX q < .1: %d', sum(p2<.1)))
+p1 = p
+res = res0[res0$predictor=='DiagnosisControl:Age',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Age:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Age:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Age:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Age:DX q < .1: %d', sum(p2<.1)))
+print(sprintf('Tests with both DX and Age:DX p < .05: %d', sum(p<.05 & p1<.05)))
+print(sprintf('Tests with both DX and Age:DX p < .01: %d', sum(p<.01 & p1<.01)))
+```
+
+```
+> res0 = read.csv('res_pLT0.05_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 1964"
+[1] "Tests with DX p < .01: 350"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 2028"
+[1] "Tests with Age:DX p < .01: 421"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 0"
+[1] "Tests with both DX and Age:DX p < .05: 1311"
+[1] "Tests with both DX and Age:DX p < .01: 229"
+> res0 = read.csv('res_pLT0.10_DiagnosisAge.csv')
+[1] "Tests with DX p < .05: 2082"
+[1] "Tests with DX p < .01: 388"
+[1] "Tests with DX q < .05: 0"
+[1] "Tests with DX q < .1: 0"
+[1] "Tests with Age:DX p < .05: 2180"
+[1] "Tests with Age:DX p < .01: 453"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 0"
+[1] "Tests with both DX and Age:DX p < .05: 1381"
+[1] "Tests with both DX and Age:DX p < .01: 239"
+```
+
+Those results were also holding Region as a fixed additive covariate. Same usual
+patterns we're seeing.
+
+```r
+res0 = read.csv('res_pLT0.05_DiagnosisAgeRegion.csv')
+res = res0[res0$predictor=='DiagnosisControl',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with DX q < .1: %d', sum(p2<.1)))
+p1 = p
+res = res0[res0$predictor=='DiagnosisControl:Age',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Age:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Age:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Age:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Age:DX q < .1: %d', sum(p2<.1)))
+p3 = p
+res = res0[res0$predictor=='DiagnosisControl:RegionCaudate',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Region:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Region:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Region:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Region:DX q < .1: %d', sum(p2<.1)))
+p4 = p
+res = res0[res0$predictor=='DiagnosisControl:Age:RegionCaudate',]
+p = res[, 'p.value']
+p2 = p.adjust(p, method='fdr')
+print(sprintf('Tests with Region:Age:DX p < .05: %d', sum(p<.05)))
+print(sprintf('Tests with Region:Age:DX p < .01: %d', sum(p<.01)))
+print(sprintf('Tests with Region:Age:DX q < .05: %d', sum(p2<.05)))
+print(sprintf('Tests with Region:Age:DX q < .1: %d', sum(p2<.1)))
+p5 = p
+```
+
+```
+> res0 = read.csv('res_pLT0.05_DiagnosisAgeRegion.csv')
+[1] "Tests with DX p < .05: 2130"
+[1] "Tests with DX p < .01: 425"
+[1] "Tests with DX q < .05: 1"
+[1] "Tests with DX q < .1: 1"
+[1] "Tests with Age:DX p < .05: 2068"
+[1] "Tests with Age:DX p < .01: 408"
+[1] "Tests with Age:DX q < .05: 1"
+[1] "Tests with Age:DX q < .1: 1"
+[1] "Tests with Region:DX p < .05: 2608"
+[1] "Tests with Region:DX p < .01: 671"
+[1] "Tests with Region:DX q < .05: 1"
+[1] "Tests with Region:DX q < .1: 1"
+[1] "Tests with Region:Age:DX p < .05: 2432"
+[1] "Tests with Region:Age:DX p < .01: 566"
+[1] "Tests with Region:Age:DX q < .05: 0"
+[1] "Tests with Region:Age:DX q < .1: 0"
+> res0 = read.csv('res_pLT0.10_DiagnosisAgeRegion.csv')
+[1] "Tests with DX p < .05: 2167"
+[1] "Tests with DX p < .01: 424"
+[1] "Tests with DX q < .05: 1"
+[1] "Tests with DX q < .1: 1"
+[1] "Tests with Age:DX p < .05: 2131"
+[1] "Tests with Age:DX p < .01: 431"
+[1] "Tests with Age:DX q < .05: 0"
+[1] "Tests with Age:DX q < .1: 0"
+[1] "Tests with Region:DX p < .05: 2606"
+[1] "Tests with Region:DX p < .01: 648"
+[1] "Tests with Region:DX q < .05: 0"
+[1] "Tests with Region:DX q < .1: 0"
+[1] "Tests with Region:Age:DX p < .05: 2439"
+[1] "Tests with Region:Age:DX p < .01: 561"
+[1] "Tests with Region:Age:DX q < .05: 0"
+[1] "Tests with Region:Age:DX q < .1: 0"
+```
+
 * play with adding the different covariate domains sequentially
