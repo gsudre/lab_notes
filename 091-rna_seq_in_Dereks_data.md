@@ -524,4 +524,218 @@ p5 = p
 [1] "Tests with Region:Age:DX q < .1: 0"
 ```
 
+Just for kicks, I ran Meff to see where we'd be. I did it withinACC, Caudate,
+and then using both:
+
+```r
+data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+data = data[data$Region=='ACC', 34:ncol(data)
+# some variables have zero sd after removing one of the regions
+sds = apply(data, 2, sd)
+keep_me = which(sds>0)
+data = data[, keep_me]
+cc = cor(data)
+svd = eigen(cc)
+absev = abs(svd$values)
+meff = (sum(sqrt(absev))^2)/sum(absev)
+cat(sprintf('Galwey Meff = %.2f\n', meff))
+```
+
+So, if I include both regions the divider is . For ACC it's, and for Caudate
+it's .
+
+Philip also liked that the p<.1 results gave a few more significant gene
+expression. So, let's stick with that for now, add in the population code (while
+we decide whether or not to use the population PCs from Chandra), and re-run
+everything. The other option would be to add the different domains sequentially,
+in blocks, to see what works best. Add them to the fixed variables, I mean.
+
+```r
+library(nlme)
+pthresh = .1
+keep_str = 'Diagnosis*Age'
+
+data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+data$substance_group = as.factor(data$substance_group)
+data$batch = as.factor(data$batch)
+data$hbcc_brain_id = as.factor(data$hbcc_brain_id)
+# no column names as numbers!
+grex_names = sapply(colnames(data)[34:ncol(data)],
+                    function(x) sprintf('grex%s', x))
+colnames(data)[34:ncol(data)] = grex_names
+
+pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
+data = merge(data, pop_code, by='hbcc_brain_id')
+
+# dependent
+dep_vars = colnames(data)[grepl(colnames(data), pattern='^grex')]
+# keep these regardless of significance
+keep_vars = c(keep_str, 'Region')
+# variables to be tested/screened
+test_vars = c(# brain-related
+              "bainbank", 'PMI', 'pH', 'Manner.of.Death',
+              # technical
+              'batch', 'RINe',
+              #clinical
+              'comorbid_group', 'substance_group',
+              # others
+              'Sex', 'POP_CODE')
+# spit out the results
+out_fname = sprintf('~/data/rnaseq_derek/resPOP_pLT%.02f_%s.csv', pthresh,
+                    gsub(pattern='\\*',replacement='',x=keep_str))
+
+hold = c()
+for (dp in 1:length(dep_vars)) {
+    if (dp %% 50 == 0) {
+        print(sprintf('%d of %d (%s)', dp, length(dep_vars), out_fname))
+    }
+
+    dep_var = dep_vars[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                   paste(test_vars, collapse='+'), sep="")
+    fit = try(lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data, na.action=na.omit))
+    if (length(fit) > 1) {
+        res = summary(fit)$tTable
+        # filtering variables
+        sig_vars = c()
+        for (v in 1:length(test_vars)) {
+            # rows in results table that correspond to the screened variable
+            var_rows = which(grepl(rownames(res),
+                            pattern=sprintf('^%s', test_vars[v])))
+            for (r in var_rows) {
+                if (res[r, 'p-value'] < pthresh) {
+                    sig_vars = c(sig_vars, test_vars[v])
+                }
+            }
+        }
+        # factors might get added several times, so here we clean it up
+        sig_vars = unique(sig_vars)
+        if (length(sig_vars) > 0) {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                        paste(sig_vars, collapse='+'), sep="")
+        } else {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
+        }
+        # new model
+        clean_fit = try(lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data,
+                        na.action=na.omit))
+        if (length(clean_fit) > 1) {
+            res = data.frame(summary(clean_fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = clean_fm_str
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        } else {
+            res = data.frame(summary(fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = NA
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        }
+        hold = rbind(hold, res)
+    }
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+I'll also try running WNH only, just in case:
+
+```r
+library(nlme)
+pthresh = .1
+keep_str = 'Diagnosis*Region'
+
+data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+data$substance_group = as.factor(data$substance_group)
+data$batch = as.factor(data$batch)
+data$hbcc_brain_id = as.factor(data$hbcc_brain_id)
+# no column names as numbers!
+grex_names = sapply(colnames(data)[34:ncol(data)],
+                    function(x) sprintf('grex%s', x))
+colnames(data)[34:ncol(data)] = grex_names
+
+pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
+data = merge(data, pop_code, by='hbcc_brain_id')
+data = data[data$POP_CODE=='WNH', ]
+
+# dependent
+dep_vars = colnames(data)[grepl(colnames(data), pattern='^grex')]
+# keep these regardless of significance
+keep_vars = c(keep_str)
+# variables to be tested/screened
+test_vars = c(# brain-related
+              "bainbank", 'PMI', 'pH', 'Manner.of.Death',
+              # technical
+              'batch', 'RINe',
+              #clinical
+              'comorbid_group', 'substance_group',
+              # others
+              'Sex', 'Age')
+# spit out the results
+out_fname = sprintf('~/data/rnaseq_derek/resWNH_pLT%.02f_%s.csv', pthresh,
+                    gsub(pattern='\\*',replacement='',x=keep_str))
+
+hold = c()
+for (dp in 1:length(dep_vars)) {
+    if (dp %% 50 == 0) {
+        print(sprintf('%d of %d (%s)', dp, length(dep_vars), out_fname))
+    }
+
+    dep_var = dep_vars[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                   paste(test_vars, collapse='+'), sep="")
+    fit = try(lme(as.formula(fm_str), ~1|hbcc_brain_id, data=data, na.action=na.omit))
+    if (length(fit) > 1) {
+        res = summary(fit)$tTable
+        # filtering variables
+        sig_vars = c()
+        for (v in 1:length(test_vars)) {
+            # rows in results table that correspond to the screened variable
+            var_rows = which(grepl(rownames(res),
+                            pattern=sprintf('^%s', test_vars[v])))
+            for (r in var_rows) {
+                if (res[r, 'p-value'] < pthresh) {
+                    sig_vars = c(sig_vars, test_vars[v])
+                }
+            }
+        }
+        # factors might get added several times, so here we clean it up
+        sig_vars = unique(sig_vars)
+        if (length(sig_vars) > 0) {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                        paste(sig_vars, collapse='+'), sep="")
+        } else {
+            clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
+        }
+        # new model
+        clean_fit = try(lme(as.formula(clean_fm_str), ~1|hbcc_brain_id, data=data,
+                        na.action=na.omit))
+        if (length(clean_fit) > 1) {
+            res = data.frame(summary(clean_fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = clean_fm_str
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        } else {
+            res = data.frame(summary(fit)$tTable)
+            # remove intercept
+            res = res[2:nrow(res),]
+            res$dep_var = dep_var
+            res$formula = NA
+            res$orig_formula = fm_str
+            res$predictor = rownames(res)
+        }
+        hold = rbind(hold, res)
+    }
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+
 * play with adding the different covariate domains sequentially
