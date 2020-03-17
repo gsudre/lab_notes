@@ -541,8 +541,9 @@ meff = (sum(sqrt(absev))^2)/sum(absev)
 cat(sprintf('Galwey Meff = %.2f\n', meff))
 ```
 
-So, if I include both regions the divider is . For ACC it's, and for Caudate
-it's .
+So, if I include both regions the divider is 77.70. For ACC it's 44.26, and for Caudate
+it's 47.54. Even for the biggest one, we're looing at 0.00064, which is not too
+bad. 
 
 Philip also liked that the p<.1 results gave a few more significant gene
 expression. So, let's stick with that for now, add in the population code (while
