@@ -737,5 +737,88 @@ for (dp in 1:length(dep_vars)) {
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
+And we can start playing with the lm models as well:
+
+```r
+myregion = 'ACC'
+pthresh = .1
+keep_str = 'Diagnosis'
+
+data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+data$substance_group = as.factor(data$substance_group)
+data$batch = as.factor(data$batch)
+# no column names as numbers!
+grex_names = sapply(colnames(data)[34:ncol(data)],
+                    function(x) sprintf('grex%s', x))
+colnames(data)[34:ncol(data)] = grex_names
+
+pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
+data = merge(data, pop_code, by='hbcc_brain_id')
+# data = data[data$POP_CODE=='WNH', ]
+
+data = data[data$Region==myregion, ]
+
+# dependent
+dep_vars = colnames(data)[grepl(colnames(data), pattern='^grex')]
+# keep these regardless of significance
+keep_vars = c(keep_str)
+# variables to be tested/screened
+test_vars = c(# brain-related
+              "bainbank", 'PMI', 'pH', 'Manner.of.Death',
+              # technical
+              'batch', 'RINe',
+              #clinical
+              'comorbid_group', 'substance_group',
+              # others
+              'Sex', 'POP_CODE', 'Age')
+# spit out the results
+out_fname = sprintf('~/data/rnaseq_derek/resPOP_%s_pLT%.02f_%s.csv', myregion, pthresh,
+                    gsub(pattern='\\*',replacement='',x=keep_str))
+
+hold = c()
+for (dp in 1:length(dep_vars)) {
+    if (dp %% 50 == 0) {
+        print(sprintf('%d of %d (%s)', dp, length(dep_vars), out_fname))
+    }
+
+    dep_var = dep_vars[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                   paste(test_vars, collapse='+'), sep="")
+    fit = lm(as.formula(fm_str), data=data)
+    res = summary(fit)$coefficients
+    # filtering variables
+    sig_vars = c()
+    for (v in 1:length(test_vars)) {
+        # rows in results table that correspond to the screened variable
+        var_rows = which(grepl(rownames(res),
+                         pattern=sprintf('^%s', test_vars[v])))
+        for (r in var_rows) {
+            if (res[r, 'Pr(>|t|)'] < pthresh) {
+                sig_vars = c(sig_vars, test_vars[v])
+            }
+        }
+    }
+    # factors might get added several times, so here we clean it up
+    sig_vars = unique(sig_vars)
+    if (length(sig_vars) > 0) {
+        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                       paste(sig_vars, collapse='+'), sep="")
+    } else {
+        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
+    }
+    # new model
+    clean_fit = lm(as.formula(clean_fm_str), data=data)
+    res = data.frame(summary(clean_fit)$coefficients)
+    # remove intercept
+    res = res[2:nrow(res),]
+    res$dep_var = dep_var
+    res$formula = clean_fm_str
+    res$orig_formula = fm_str
+    res$predictor = rownames(res)
+    hold = rbind(hold, res)
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
 
 * play with adding the different covariate domains sequentially
