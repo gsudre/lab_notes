@@ -100,3 +100,189 @@ done
 swarm -g 10 -t 1 --job-name interR2Slope --time 4:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
+
+# 2020-03-19 07:22:57
+
+```r
+res = read.csv('~/data/baseline_prediction/prs_start/residsFixed_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE', 'sdRMSE')
+res[which.min(res$meanRMSE),]
+```
+
+Our best hi result is using the dti data: 
+
+```
+> res[which.min(res$meanRMSE),]
+    sx          model
+537 hi blassoAveraged
+                                                                           fname
+537 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+537     10    10 0.459838     NA
+```
+
+For inatt it's a different on, but still dti:
+
+```
+> res2[which.min(res2$meanRMSE),]
+       sx      model
+614 inatt blackboost
+                                                                           fname
+614 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+614     10    10 0.562351      0
+```
+
+Can we check combined, both for anat and DTI datasets?
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/data/baseline_prediction/prs_start/residsFixed_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE', 'sdRMSE')
+for (reg in unique(res$model)) {
+    for (nf in unique(res$nfolds)) {
+        for (nr in unique(res$nreps)) {
+            for (fn in unique(res$fname)) {
+                idx = (res$model == reg &
+                        res$fname == fn & res$nfolds == nf &
+                        res$nreps == nr)
+                pos = which(idx)
+                if (length(pos) == 2) {
+                    my_str = paste(c(reg, fn, nf, nr), collapse='_')
+                    params = c(params, my_str)
+                    scores = c(scores, mean(res[pos, 'meanRMSE']))
+                }
+            }
+        }
+    }
+}
+a = sort(scores, decreasing=F, index.return=T)
+print(params[a$ix[1]])
+```
+
+So, for DTI blackboost did best:
+
+```
+> res[res$model=='blackboost' & res$nfolds==10 & res$nreps==10, c(1, 2, 4:6)]
+       sx      model nfolds nreps meanRMSE
+612 inatt blackboost     10    10 0.627078
+613    hi blackboost     10    10 0.527887
+614 inatt blackboost     10    10 0.562351
+615    hi blackboost     10    10 0.460291
+```
+
+The top two are anat, but our best result is just dti. What's the best anat
+result?
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/data/baseline_prediction/prs_start/residsFixed_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE', 'sdRMSE')
+for (reg in unique(res$model)) {
+    for (nf in unique(res$nfolds)) {
+        for (nr in unique(res$nreps)) {
+            idx = (res$model == reg & grepl(res$fname, pattern='anatomy') &
+                   res$nfolds == nf & res$nreps == nr)
+            pos = which(idx)
+            if (length(pos) == 2) {
+                my_str = paste(c(reg, nf, nr), collapse='_')
+                params = c(params, my_str)
+                scores = c(scores, mean(res[pos, 'meanRMSE']))
+            }
+        }
+    }
+}
+a = sort(scores, decreasing=F, index.return=T)
+print(params[a$ix[1]])
+```
+
+Then we're looking at conditional forest at 10x10:
+
+```
+> res[res$model=='cforest' & res$nfolds==10 & res$nreps==10, c(1:2, 4:7)]
+       sx   model nfolds nreps meanRMSE   sdRMSE
+414 inatt cforest     10    10 0.575755 0.006415
+416    hi cforest     10    10 0.468978 0.003739
+541 inatt cforest     10    10 0.619933 0.000505
+545    hi cforest     10    10 0.525780 0.000603
+```
+
+Result is the bottom 2 again. How do they change if we lok at R2?
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/data/baseline_prediction/prs_start/residsR2_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRsquared', 'sdRsquared')
+for (reg in unique(res$model)) {
+    for (nf in unique(res$nfolds)) {
+        for (nr in unique(res$nreps)) {
+            for (fn in unique(res$fname)) {
+                idx = (res$model == reg &
+                        res$fname == fn & res$nfolds == nf &
+                        res$nreps == nr)
+                pos = which(idx)
+                if (length(pos) == 2) {
+                    my_str = paste(c(reg, fn, nf, nr), collapse='_')
+                    params = c(params, my_str)
+                    scores = c(scores, mean(res[pos, 'meanRsquared']))
+                }
+            }
+        }
+    }
+}
+a = sort(scores, decreasing=T, index.return=T)
+print(params[a$ix[1]])
+```
+
+So, for DTI kernelpls did best:
+
+```
+> res[res$model=='kernelpls' & res$nfolds==10 & res$nreps==10,][c(2,4),c(1,2,4:7)]
+       sx     model nfolds nreps meanRsquared sdRsquared
+312 inatt kernelpls     10    10     0.081295   0.012537
+329    hi kernelpls     10    10     0.094364   0.011303
+```
+
+What's the best anat result?
+
+```r
+params = c()
+scores = c()
+res = read.csv('~/data/baseline_prediction/prs_start/residsR2_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRsquared', 'sdRsquared')
+for (reg in unique(res$model)) {
+    for (nf in unique(res$nfolds)) {
+        for (nr in unique(res$nreps)) {
+            idx = (res$model == reg & grepl(res$fname, pattern='anatomy') &
+                   res$nfolds == nf & res$nreps == nr)
+            pos = which(idx)
+            if (length(pos) == 2) {
+                my_str = paste(c(reg, nf, nr), collapse='_')
+                params = c(params, my_str)
+                scores = c(scores, mean(res[pos, 'meanRsquared']))
+            }
+        }
+    }
+}
+a = sort(scores, decreasing=T, index.return=T)
+print(params[a$ix[1]])
+```
+
+Then we're looking at bagEarth at 10x10:
+
+```
+> res[res$model=='bagEarth' & res$nfolds==10 & res$nreps==10, ][c(3,4),c(1,2,4:7)]
+       sx    model nfolds nreps meanRsquared sdRsquared
+571    hi bagEarth     10    10     0.093050   0.004943
+573 inatt bagEarth     10    10     0.060669   0.011501
+```
+
+But how do all of these compare with a simple prediction of the mean? Can we
+also check the feature weights?
+
+
+
+
