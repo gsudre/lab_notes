@@ -1035,5 +1035,28 @@ Rscript ~/research_code/compile_rnaseq_results.R resWNH_ACC_pLT0.10_DiagnosisAge
 [1] "Tests with DiagnosisControl and DiagnosisControl:Age and DiagnosisControl:RegionCaudate and DiagnosisControl:Age:RegionCaudate p < 0.01: 62"
 ```
 
+Then we can look for some intersections in the lists:
+
+```bash
+sort file1 file2 | uniq -d > out8
+```
+
+For example, the intersection of the main result and WNH only:
+
+```
+(base) HG-02035307-LM3:rnaseq_derek sudregp$ sort grexlist_resPOP_pLT0.10_DiagnosisRegionAge_DiagnosisControl:RegionCaudate:Age_Meff.txt grexlist_resWNH_pLT0.10_DiagnosisAgeRegion_DiagnosisControl:Age:RegionCaudate_Meff.txt | uniq -d
+grex13678
+grex26766
+grex4894
+grex9272
+(base) HG-02035307-LM3:rnaseq_derek sudregp$ sort grexlist_resPOP_pLT0.10_Diagnosis_DiagnosisControl_Meff.txt grexlist_resWNH_pLT0.10_Diagnosis_DiagnosisControl_Meff.txt | uniq -d
+grex13047
+grex1325
+grex21764
+grex2308
+grex3593
+grex6827
+```
+
 * play with adding the different covariate domains sequentially
 * can Meff be used here safely?
