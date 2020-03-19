@@ -283,6 +283,93 @@ Then we're looking at bagEarth at 10x10:
 But how do all of these compare with a simple prediction of the mean? Can we
 also check the feature weights?
 
+```r
+# DTI
+> actual = data[, phen]
+> preds = rep(mean(data[, phen]), nrow(data))
+> postResample(actual, preds)
+     RMSE  Rsquared       MAE 
+0.4726172        NA 0.3122671 
+```
 
+We cannot really compute R2 that way as one vector is constant... but I wonder
+how fair the RMSE metric actually is. Well, let's first get our variable
+importance, and then we can evaluate this:
 
+```
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_R2.R')
+  only 20 most important variables shown (out of 40)
 
+                                   Overall
+PS_RAW_IR_165                       100.00
+sex_numeric                          69.32
+SS_RAW_IR_165                        50.62
+OFCR_165                             49.91
+CC_ad_R                              47.37
+ADHD_PRS0.050000.origR               43.59
+ilf_adR                              42.87
+cerebellumR_165                      42.25
+FSIQ_IR_165                          41.56
+CC_rd_R                              40.01
+cing_adR                             36.62
+ADHD_PRS0.000100.origR               36.59
+ADHD_PRS0.000050.origR               31.97
+ilf_rdR                              31.26
+DS_RAW_IR_165                        26.80
+ADHD_PRS0.010000.origR               25.71
+cingulateR_165                       25.53
+slf_rdR                              24.12
+EstimatedTotalIntraCranialVolR_165   22.72
+lateral_PFCR_165                     22.65
+[1] "inatt,kernelpls,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.081295,0.012537"
+
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_R2.R')
+  only 20 most important variables shown (out of 40)
+
+                                   Overall
+unc_adR                             100.00
+striatumR_165                        95.38
+amygdalaR_165                        87.43
+VMI.beery_RAW_IR                     83.69
+cingulateR_165                       79.42
+slf_adR                              72.98
+slf_rdR                              68.00
+SES_group3_165                       55.47
+ilf_adR                              44.27
+ADHD_PRS0.050000.origR               44.16
+OFCR_165                             41.28
+ADHD_PRS0.000500.origR               40.54
+cerebellumR_165                      38.57
+EstimatedTotalIntraCranialVolR_165   38.20
+ilf_rdR                              36.74
+ADHD_PRS0.100000.origR               34.85
+DS_RAW_IR_165                        34.81
+ADHD_PRS0.000100.origR               33.01
+ADHD_PRS0.500000.origR               29.77
+thalamusR_165                        29.49
+[1] "hi,kernelpls,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.094364,0.011303"
+
+```
+
+And we run the same thing for the RMSE optimization script:
+
+```
+
+```
+
+Here's what we get if we just use the mean in predicting slopes:
+
+```
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_dummy.R')
+[1] "inatt,dummy,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.014030,0.006823"
+[1] "inatt,dummy,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.575597,0.000470"
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_dummy.R')
+[1] "hi,dummy,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.021220,0.005598"
+[1] "hi,dummy,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.473793,0.000312"
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_dummy.R')
+[1] "inatt,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.016953,0.008076"
+[1] "inatt,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.641928,0.000595"
+> source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_dummy.R')
+[1] "hi,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.009601,0.003542"
+[1] "hi,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.545485,0.000228"
+```
