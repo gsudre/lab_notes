@@ -78,3 +78,25 @@ res = read.csv('~/data/baseline_prediction/prs_start/residsFixed_slope_impInter.
 colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE', 'sdRMSE')
 res[which.min(res$meanRMSE),]
 ```
+
+And we can also look at R2:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/nonstacked_slope_dataImpute_R2.R;
+out_file=swarm.slope_impInterR2
+rm $out_file
+for clf in `cat all_reg.txt`; do
+    for sx in inatt hi; do
+        for fname in anatomy_272 dti_165; do 
+            for fold in "10 10" "5 5" "3 10"; do
+                echo "Rscript $my_script ${my_dir}/gf_impute_based_${fname}.csv $sx $clf $fold ~/tmp/residsR2_slope_impInter.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name interR2Slope --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
