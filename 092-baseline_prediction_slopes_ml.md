@@ -405,6 +405,29 @@ Our best RMSE result is for hi, using the dti data:
 537 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps meanRMSE sdRMSE
 537     10    10 0.459838     NA
+
+                       Overall
+striatumR_165           100.00
+OFCR_165                 89.81
+unc_adR                  86.02
+amygdalaR_165            66.71
+thalamusR_165            66.37
+ADHD_PRS0.050000.origR   57.52
+slf_rdR                  55.67
+ilf_adR                  43.52
+ADHD_PRS0.100000.origR   42.60
+slf_adR                  35.79
+cingulateR_165           34.90
+ADHD_PRS0.200000.origR   34.64
+CC_rd_R                  34.03
+cing_rdR                 32.92
+ADHD_PRS0.300000.origR   30.89
+CST_rdR                  29.96
+unc_rdR                  29.88
+VMI.beery_RAW_IR         28.70
+PS_RAW_IR_165            28.56
+CC_ad_R                  27.51
+[1] "hi,blassoAveraged,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.459838,NA"
 ```
 
 The inatt result for that model is:
@@ -416,6 +439,29 @@ The inatt result for that model is:
 533 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps meanRMSE sdRMSE
 533     10    10 0.562877     NA
+
+                       Overall
+FSIQ_IR_165             100.00
+PS_RAW_IR_165            71.41
+cerebellumR_165          64.31
+striatumR_165            61.78
+unc_adR                  56.15
+ADHD_PRS0.400000.origR   53.69
+ADHD_PRS0.500000.origR   49.13
+ADHD_PRS0.005000.origR   46.43
+amygdalaR_165            46.16
+OFCR_165                 44.94
+lateral_PFCR_165         41.58
+CC_ad_R                  41.45
+slf_rdR                  41.05
+ADHD_PRS0.010000.origR   39.29
+cing_adR                 38.55
+ilf_adR                  38.44
+ADHD_PRS0.300000.origR   36.67
+CC_rd_R                  35.80
+unc_rdR                  33.27
+SS_RAW_IR_165            32.81
+[1] "inatt,blassoAveraged,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.562877,NA"
 ```
 
 If we restrict it to the best inatt results in DTI, we get:
@@ -426,6 +472,31 @@ If we restrict it to the best inatt results in DTI, we get:
 614 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps meanRMSE sdRMSE
 614     10    10 0.562351      0
+
+  only 20 most important variables shown (out of 40)
+
+                       Overall
+FSIQ_IR_165             100.00
+PS_RAW_IR_165            71.41
+cerebellumR_165          64.31
+striatumR_165            61.78
+unc_adR                  56.15
+ADHD_PRS0.400000.origR   53.69
+ADHD_PRS0.500000.origR   49.13
+ADHD_PRS0.005000.origR   46.43
+amygdalaR_165            46.16
+OFCR_165                 44.94
+lateral_PFCR_165         41.58
+CC_ad_R                  41.45
+slf_rdR                  41.05
+ADHD_PRS0.010000.origR   39.29
+cing_adR                 38.55
+ilf_adR                  38.44
+ADHD_PRS0.300000.origR   36.67
+CC_rd_R                  35.80
+unc_rdR                  33.27
+SS_RAW_IR_165            32.81
+[1] "inatt,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.562351,0.000000"
 ```
 
 and the HI correspondent is:
@@ -437,6 +508,31 @@ and the HI correspondent is:
 615 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps meanRMSE sdRMSE
 615     10    10 0.460291      0
+
+  only 20 most important variables shown (out of 40)
+
+                       Overall
+striatumR_165           100.00
+OFCR_165                 89.81
+unc_adR                  86.02
+amygdalaR_165            66.71
+thalamusR_165            66.37
+ADHD_PRS0.050000.origR   57.52
+slf_rdR                  55.67
+ilf_adR                  43.52
+ADHD_PRS0.100000.origR   42.60
+slf_adR                  35.79
+cingulateR_165           34.90
+ADHD_PRS0.200000.origR   34.64
+CC_rd_R                  34.03
+cing_rdR                 32.92
+ADHD_PRS0.300000.origR   30.89
+CST_rdR                  29.96
+unc_rdR                  29.88
+VMI.beery_RAW_IR         28.70
+PS_RAW_IR_165            28.56
+CC_ad_R                  27.51
+[1] "hi,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.460291,0.000000"
 ```
 
 Switching now to the anatomy data, which is always worse than the DTI results,
@@ -449,6 +545,28 @@ we check the best model:
 513 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps meanRMSE sdRMSE
 513     10    10 0.522771     NA
+                               Overall
+OFCR                            100.00
+amygdalaR                        93.35
+striatumR                        91.60
+ADHD_PRS0.000050.origR           74.13
+VMI.beery_RAW_IR                 46.85
+ADHD_PRS0.000100.origR           38.24
+cingulateR                       34.17
+thalamusR                        30.30
+PS_RAW_IR                        30.14
+DS_RAW_IR                        29.04
+lateral_PFCR                     26.17
+cerebellumR                      19.51
+FSIQ_IR                          17.57
+EstimatedTotalIntraCranialVolR   17.34
+ADHD_PRS0.000500.origR           15.35
+ADHD_PRS0.001000.origR           15.28
+ADHD_PRS0.100000.origR           14.84
+ADHD_PRS0.500000.origR           14.39
+ADHD_PRS0.200000.origR           13.59
+ADHD_PRS0.050000.origR           12.09
+[1] "hi,svmLinear,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.522771,NA"
 ```
 
 That is for hi, and its counterpart in inatt is:
@@ -460,6 +578,28 @@ That is for hi, and its counterpart in inatt is:
 508 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps meanRMSE sdRMSE
 508     10    10  0.64174     NA
+
+FSIQ_IR                         100.00
+striatumR                        50.63
+amygdalaR                        50.43
+PS_RAW_IR                        44.79
+OFCR                             41.07
+ADHD_PRS0.000100.origR           36.09
+ADHD_PRS0.000050.origR           35.40
+ADHD_PRS0.500000.origR           29.34
+ADHD_PRS0.001000.origR           28.15
+ADHD_PRS0.005000.origR           27.78
+ADHD_PRS0.400000.origR           27.50
+EstimatedTotalIntraCranialVolR   26.43
+VMI.beery_RAW_IR                 23.84
+thalamusR                        23.63
+SS_RAW_IR                        23.04
+lateral_PFCR                     21.53
+ADHD_PRS0.300000.origR           19.91
+cingulateR                       17.69
+ADHD_PRS0.100000.origR           17.38
+ADHD_PRS0.000500.origR           17.10
+[1] "inatt,svmLinear,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.641740,NA"
 ```
 
 Conversely, the best inatt for is:
@@ -471,6 +611,29 @@ Conversely, the best inatt for is:
 541 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps meanRMSE   sdRMSE
 541     10    10 0.619933 0.000505
+
+                       Overall
+FSIQ_IR                100.000
+sex_numeric             47.797
+ADHD_PRS0.000100.origR  46.733
+PS_RAW_IR               46.726
+ADHD_PRS0.001000.origR  28.726
+ADHD_PRS0.005000.origR  25.707
+striatumR               20.324
+ADHD_PRS0.400000.origR  18.904
+thalamusR               18.021
+DS_RAW_IR               15.366
+ADHD_PRS0.200000.origR  15.126
+ADHD_PRS0.300000.origR  14.252
+VMI.beery_RAW_IR        14.008
+ADHD_PRS0.500000.origR  10.230
+lateral_PFCR             7.659
+ADHD_PRS0.010000.origR   7.592
+amygdalaR                7.002
+SES_group3               6.229
+ADHD_PRS0.050000.origR   5.844
+ADHD_PRS0.000500.origR   5.699
+[1] "inatt,cforest,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.619933,0.000505"
 ```
 
 and it's counterpart in hi is:
@@ -482,12 +645,36 @@ and it's counterpart in hi is:
 545 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps meanRMSE   sdRMSE
 545     10    10  0.52578 0.000603
+
+                       Overall
+striatumR               100.00
+OFCR                     96.78
+amygdalaR                93.80
+VMI.beery_RAW_IR         72.56
+ADHD_PRS0.000050.origR   38.74
+SES_group3               33.22
+FSIQ_IR                  32.10
+ADHD_PRS0.100000.origR   25.31
+ADHD_PRS0.400000.origR   25.18
+lateral_PFCR             24.98
+ADHD_PRS0.050000.origR   22.02
+ADHD_PRS0.000100.origR   19.93
+ADHD_PRS0.500000.origR   18.85
+ADHD_PRS0.300000.origR   18.32
+SS_RAW_IR                18.27
+sex_numeric              17.91
+ADHD_PRS0.001000.origR   17.51
+DS_RAW_IR                16.92
+ADHD_PRS0.200000.origR   16.57
+cerebellumR              16.03
+[1] "hi,cforest,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.525780,0.000603"
 ```
 
 Now, let's redo everything for R2. First, DTI dataset:
 
 Best hi:
 
+```
     sx     model
 510 hi rvmLinear
                                                                            fname
@@ -495,9 +682,56 @@ Best hi:
     nfolds nreps   meanR2 sdR2
 510     10    10 0.102126   NA
 
+                       Overall
+striatumR_165           100.00
+OFCR_165                 89.81
+unc_adR                  86.02
+amygdalaR_165            66.71
+thalamusR_165            66.37
+ADHD_PRS0.050000.origR   57.52
+slf_rdR                  55.67
+ilf_adR                  43.52
+ADHD_PRS0.100000.origR   42.60
+slf_adR                  35.79
+cingulateR_165           34.90
+ADHD_PRS0.200000.origR   34.64
+CC_rd_R                  34.03
+cing_rdR                 32.92
+ADHD_PRS0.300000.origR   30.89
+CST_rdR                  29.96
+unc_rdR                  29.88
+VMI.beery_RAW_IR         28.70
+PS_RAW_IR_165            28.56
+CC_ad_R                  27.51
+[1] "hi,rvmLinear,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.102126,NA"
+```
+
 Counterpart inatt:
 
-(need to calculate)
+```
+                       Overall
+FSIQ_IR_165             100.00
+PS_RAW_IR_165            71.41
+cerebellumR_165          64.31
+striatumR_165            61.78
+unc_adR                  56.15
+ADHD_PRS0.400000.origR   53.69
+ADHD_PRS0.500000.origR   49.13
+ADHD_PRS0.005000.origR   46.43
+amygdalaR_165            46.16
+OFCR_165                 44.94
+lateral_PFCR_165         41.58
+CC_ad_R                  41.45
+slf_rdR                  41.05
+ADHD_PRS0.010000.origR   39.29
+cing_adR                 38.55
+ilf_adR                  38.44
+ADHD_PRS0.300000.origR   36.67
+CC_rd_R                  35.80
+unc_rdR                  33.27
+SS_RAW_IR_165            32.81
+[1] "inatt,rvmLinear,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.067602,NA"
+```
 
 Best inatt:
 
@@ -532,6 +766,31 @@ Best hi:
 571 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps  meanR2     sdR2
 571     10    10 0.09305 0.004943
+
+  only 20 most important variables shown (out of 28)
+
+                               Overall
+OFCR                           100.000
+striatumR                       84.676
+ADHD_PRS0.000100.origR          74.440
+VMI.beery_RAW_IR                62.347
+cingulateR                      51.312
+DS_RAW_IR                       38.942
+ADHD_PRS0.100000.origR          25.506
+ADHD_PRS0.400000.origR          14.003
+lateral_PFCR                     8.521
+thalamusR                        2.293
+ADHD_PRS0.050000.origR           0.000
+ADHD_PRS0.001000.origR           0.000
+PS_RAW_IR                        0.000
+ADHD_PRS0.010000.origR           0.000
+ADHD_PRS0.200000.origR           0.000
+EstimatedTotalIntraCranialVolR   0.000
+amygdalaR                        0.000
+ADHD_PRS0.005000.origR           0.000
+cerebellumR                      0.000
+sex_numeric                      0.000
+[1] "hi,bagEarth,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.093050,0.004943"
 ```
 
 Counterpart inatt:
@@ -542,6 +801,30 @@ Counterpart inatt:
 573 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps   meanR2     sdR2
 573     10    10 0.060669 0.011501
+  only 20 most important variables shown (out of 28)
+
+                               Overall
+VMI.beery_RAW_IR                   100
+ADHD_PRS0.000100.origR               0
+population_self2                     0
+ADHD_PRS0.300000.origR               0
+striatumR                            0
+SS_RAW_IR                            0
+SES_group3                           0
+ADHD_PRS0.000500.origR               0
+thalamusR                            0
+ADHD_PRS0.100000.origR               0
+OFCR                                 0
+cingulateR                           0
+EstimatedTotalIntraCranialVolR       0
+lateral_PFCR                         0
+ADHD_PRS0.050000.origR               0
+PS_RAW_IR                            0
+ADHD_PRS0.000050.origR               0
+ADHD_PRS0.400000.origR               0
+FSIQ_IR                              0
+ADHD_PRS0.500000.origR               0
+[1] "inatt,bagEarth,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.060669,0.011501"
 ```
 
 Best inatt:
@@ -553,6 +836,29 @@ Best inatt:
 572 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps   meanR2     sdR2
 572     10    10 0.067843 0.000728
+
+                               Overall
+FSIQ_IR                         100.00
+striatumR                        50.63
+amygdalaR                        50.43
+PS_RAW_IR                        44.79
+OFCR                             41.07
+ADHD_PRS0.000100.origR           36.09
+ADHD_PRS0.000050.origR           35.40
+ADHD_PRS0.500000.origR           29.34
+ADHD_PRS0.001000.origR           28.15
+ADHD_PRS0.005000.origR           27.78
+ADHD_PRS0.400000.origR           27.50
+EstimatedTotalIntraCranialVolR   26.43
+VMI.beery_RAW_IR                 23.84
+thalamusR                        23.63
+SS_RAW_IR                        23.04
+lateral_PFCR                     21.53
+ADHD_PRS0.300000.origR           19.91
+cingulateR                       17.69
+ADHD_PRS0.100000.origR           17.38
+ADHD_PRS0.000500.origR           17.10
+[1] "inatt,evtree,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.067843,0.000728"
 ```
 
 Counterpart hi:
@@ -563,4 +869,27 @@ Counterpart hi:
 575 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
     nfolds nreps   meanR2     sdR2
 575     10    10 0.063882 0.000685
+
+                               Overall
+OFCR                            100.00
+amygdalaR                        93.35
+striatumR                        91.60
+ADHD_PRS0.000050.origR           74.13
+VMI.beery_RAW_IR                 46.85
+ADHD_PRS0.000100.origR           38.24
+cingulateR                       34.17
+thalamusR                        30.30
+PS_RAW_IR                        30.14
+DS_RAW_IR                        29.04
+lateral_PFCR                     26.17
+cerebellumR                      19.51
+FSIQ_IR                          17.57
+EstimatedTotalIntraCranialVolR   17.34
+ADHD_PRS0.000500.origR           15.35
+ADHD_PRS0.001000.origR           15.28
+ADHD_PRS0.100000.origR           14.84
+ADHD_PRS0.500000.origR           14.39
+ADHD_PRS0.200000.origR           13.59
+ADHD_PRS0.050000.origR           12.09
+[1] "hi,evtree,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.063882,0.000685"
 ```
