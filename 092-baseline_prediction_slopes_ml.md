@@ -348,13 +348,22 @@ ADHD_PRS0.000100.origR               33.01
 ADHD_PRS0.500000.origR               29.77
 thalamusR_165                        29.49
 [1] "hi,kernelpls,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.094364,0.011303"
+```
+
+And the anatomical dataset:
+
+```
 
 ```
 
 And we run the same thing for the RMSE optimization script:
 
 ```
+```
 
+And the anatomical dataset:
+
+```
 ```
 
 Here's what we get if we just use the mean in predicting slopes:
@@ -372,4 +381,186 @@ Here's what we get if we just use the mean in predicting slopes:
 > source('~/research_code/baseline_prediction/nonstacked_slope_dataImpute_dummy.R')
 [1] "hi,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.009601,0.003542"
 [1] "hi,dummy,~/Downloads/gf_impute_based_anatomy_272.csv,10,10,0.545485,0.000228"
+```
+
+# 2020-03-20 15:32:28
+
+I created a distribution using multiple reps there, so now we can access
+p-values for our results. But let's also check the best way of maximize the
+results:
+
+```r
+res = read.csv('~/data/baseline_prediction/prs_start/residsFixed_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE', 'sdRMSE')
+res[which.min(res$meanRMSE),]
+```
+
+Our best RMSE result is for hi, using the dti data: 
+
+```
+> res[which.min(res$meanRMSE),]
+    sx          model
+537 hi blassoAveraged
+                                                                           fname
+537 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+537     10    10 0.459838     NA
+```
+
+The inatt result for that model is:
+
+```
+       sx          model
+533 inatt blassoAveraged
+                                                                           fname
+533 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+533     10    10 0.562877     NA
+```
+
+If we restrict it to the best inatt results in DTI, we get:
+
+```
+614 inatt blackboost
+                                                                           fname
+614 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+614     10    10 0.562351      0
+```
+
+and the HI correspondent is:
+
+```
+    sx      model
+615 hi blackboost
+                                                                           fname
+615 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps meanRMSE sdRMSE
+615     10    10 0.460291      0
+```
+
+Switching now to the anatomy data, which is always worse than the DTI results,
+we check the best model:
+
+```
+    sx     model
+513 hi svmLinear
+                                                                               fname
+513 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps meanRMSE sdRMSE
+513     10    10 0.522771     NA
+```
+
+That is for hi, and its counterpart in inatt is:
+
+```
+       sx     model
+508 inatt svmLinear
+                                                                               fname
+508 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps meanRMSE sdRMSE
+508     10    10  0.64174     NA
+```
+
+Conversely, the best inatt for is:
+
+```
+       sx   model
+541 inatt cforest
+                                                                               fname
+541 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps meanRMSE   sdRMSE
+541     10    10 0.619933 0.000505
+```
+
+and it's counterpart in hi is:
+
+```
+    sx   model
+545 hi cforest
+                                                                               fname
+545 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps meanRMSE   sdRMSE
+545     10    10  0.52578 0.000603
+```
+
+Now, let's redo everything for R2. First, DTI dataset:
+
+Best hi:
+
+    sx     model
+510 hi rvmLinear
+                                                                           fname
+510 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps   meanR2 sdR2
+510     10    10 0.102126   NA
+
+Counterpart inatt:
+
+(need to calculate)
+
+Best inatt:
+
+```
+       sx     model
+312 inatt kernelpls
+                                                                           fname
+312 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps   meanR2     sdR2
+312     10    10 0.081295 0.012537
+```
+
+Counterpart hi:
+
+```
+    sx     model
+329 hi kernelpls
+                                                                           fname
+329 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
+    nfolds nreps   meanR2     sdR2
+329     10    10 0.094364 0.011303
+```
+
+Then, anatomy dataset:
+
+Best hi:
+
+```
+    sx    model
+571 hi bagEarth
+                                                                               fname
+571 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps  meanR2     sdR2
+571     10    10 0.09305 0.004943
+```
+
+Counterpart inatt:
+
+```
+573 inatt bagEarth
+                                                                               fname
+573 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps   meanR2     sdR2
+573     10    10 0.060669 0.011501
+```
+
+Best inatt:
+
+```
+       sx  model
+572 inatt evtree
+                                                                               fname
+572 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps   meanR2     sdR2
+572     10    10 0.067843 0.000728
+```
+
+Counterpart hi:
+
+```
+575 hi evtree
+                                                                               fname
+575 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv
+    nfolds nreps   meanR2     sdR2
+575     10    10 0.063882 0.000685
 ```
