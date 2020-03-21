@@ -742,6 +742,29 @@ Best inatt:
 312 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps   meanR2     sdR2
 312     10    10 0.081295 0.012537
+
+                                   Overall
+PS_RAW_IR_165                       100.00
+sex_numeric                          69.32
+SS_RAW_IR_165                        50.62
+OFCR_165                             49.91
+CC_ad_R                              47.37
+ADHD_PRS0.050000.origR               43.59
+ilf_adR                              42.87
+cerebellumR_165                      42.25
+FSIQ_IR_165                          41.56
+CC_rd_R                              40.01
+cing_adR                             36.62
+ADHD_PRS0.000100.origR               36.59
+ADHD_PRS0.000050.origR               31.97
+ilf_rdR                              31.26
+DS_RAW_IR_165                        26.80
+ADHD_PRS0.010000.origR               25.71
+cingulateR_165                       25.53
+slf_rdR                              24.12
+EstimatedTotalIntraCranialVolR_165   22.72
+lateral_PFCR_165                     22.65
+[1] "inatt,kernelpls,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.081295,0.012537"
 ```
 
 Counterpart hi:
@@ -753,6 +776,29 @@ Counterpart hi:
 329 /home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv
     nfolds nreps   meanR2     sdR2
 329     10    10 0.094364 0.011303
+
+                                   Overall
+unc_adR                             100.00
+striatumR_165                        95.38
+amygdalaR_165                        87.43
+VMI.beery_RAW_IR                     83.69
+cingulateR_165                       79.42
+slf_adR                              72.98
+slf_rdR                              68.00
+SES_group3_165                       55.47
+ilf_adR                              44.27
+ADHD_PRS0.050000.origR               44.16
+OFCR_165                             41.28
+ADHD_PRS0.000500.origR               40.54
+cerebellumR_165                      38.57
+EstimatedTotalIntraCranialVolR_165   38.20
+ilf_rdR                              36.74
+ADHD_PRS0.100000.origR               34.85
+DS_RAW_IR_165                        34.81
+ADHD_PRS0.000100.origR               33.01
+ADHD_PRS0.500000.origR               29.77
+thalamusR_165                        29.49
+[1] "hi,kernelpls,~/Downloads/gf_impute_based_dti_165.csv,10,10,0.094364,0.011303"
 ```
 
 Then, anatomy dataset:
@@ -893,3 +939,30 @@ ADHD_PRS0.200000.origR           13.59
 ADHD_PRS0.050000.origR           12.09
 [1] "hi,evtree,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.063882,0.000685"
 ```
+
+Not much preference here... best to visualize it in Excel. I'll also add
+p-values there.
+
+![](images/2020-03-20-20-02-01.png)
+
+I used 1000 perms there (well, 999), but the null distributions are quite tight, so
+it makes sense that the results are quite significant.
+
+![](images/2020-03-20-20-06-12.png)
+![](images/2020-03-20-20-02-33.png)
+![](images/2020-03-20-20-10-55.png)
+![](images/2020-03-20-20-11-57.png)
+
+I think it makes sense to go with the blackboost results in the DTI set. They're
+quite significant and the variable distribution looks interesting.
+
+If maximizing R2, then the kernelpls results would be the ones to use. The R2 is
+not too impressive though. 
+
+If the goal is to maximize subject instead, and go with the anatomical dataset,
+we could only use the conditional forest results because svmLinear isnot
+significant for inatt. And the R2 results, although significant, are quite
+pathetic.
+
+I just left it computing the R2 for the blackboost models, just so we can report
+those as well if needed.
