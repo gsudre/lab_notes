@@ -1172,7 +1172,96 @@ For comparison, these are the variable importances for blackboost, both
 datasets, both sx. They are both equally good models when selecting using RMSE:
 
 ```
+                       Overall
+FSIQ_IR_165             100.00
+PS_RAW_IR_165            71.41
+cerebellumR_165          64.31
+striatumR_165            61.78
+unc_adR                  56.15
+ADHD_PRS0.400000.origR   53.69
+ADHD_PRS0.500000.origR   49.13
+ADHD_PRS0.005000.origR   46.43
+amygdalaR_165            46.16
+OFCR_165                 44.94
+lateral_PFCR_165         41.58
+CC_ad_R                  41.45
+slf_rdR                  41.05
+ADHD_PRS0.010000.origR   39.29
+cing_adR                 38.55
+ilf_adR                  38.44
+ADHD_PRS0.300000.origR   36.67
+CC_rd_R                  35.80
+unc_rdR                  33.27
+SS_RAW_IR_165            32.81
+[1] "inatt,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.562351,0.000000"
 
+                       Overall
+striatumR_165           100.00
+OFCR_165                 89.81
+unc_adR                  86.02
+amygdalaR_165            66.71
+thalamusR_165            66.37
+ADHD_PRS0.050000.origR   57.52
+slf_rdR                  55.67
+ilf_adR                  43.52
+ADHD_PRS0.100000.origR   42.60
+slf_adR                  35.79
+cingulateR_165           34.90
+ADHD_PRS0.200000.origR   34.64
+CC_rd_R                  34.03
+cing_rdR                 32.92
+ADHD_PRS0.300000.origR   30.89
+CST_rdR                  29.96
+unc_rdR                  29.88
+VMI.beery_RAW_IR         28.70
+PS_RAW_IR_165            28.56
+CC_ad_R                  27.51
+[1] "hi,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_dti_165.csv,10,10,0.460291,0.000000"
+
+FSIQ_IR                         100.00
+striatumR                        50.63
+amygdalaR                        50.43
+PS_RAW_IR                        44.79
+OFCR                             41.07
+ADHD_PRS0.000100.origR           36.09
+ADHD_PRS0.000050.origR           35.40
+ADHD_PRS0.500000.origR           29.34
+ADHD_PRS0.001000.origR           28.15
+ADHD_PRS0.005000.origR           27.78
+ADHD_PRS0.400000.origR           27.50
+EstimatedTotalIntraCranialVolR   26.43
+VMI.beery_RAW_IR                 23.84
+thalamusR                        23.63
+SS_RAW_IR                        23.04
+lateral_PFCR                     21.53
+ADHD_PRS0.300000.origR           19.91
+cingulateR                       17.69
+ADHD_PRS0.100000.origR           17.38
+ADHD_PRS0.000500.origR           17.10
+[1] "inatt,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.627078,0.000000"
+
+                               Overall
+OFCR                            100.00
+amygdalaR                        93.35
+striatumR                        91.60
+ADHD_PRS0.000050.origR           74.13
+VMI.beery_RAW_IR                 46.85
+ADHD_PRS0.000100.origR           38.24
+cingulateR                       34.17
+thalamusR                        30.30
+PS_RAW_IR                        30.14
+DS_RAW_IR                        29.04
+lateral_PFCR                     26.17
+cerebellumR                      19.51
+FSIQ_IR                          17.57
+EstimatedTotalIntraCranialVolR   17.34
+ADHD_PRS0.000500.origR           15.35
+ADHD_PRS0.001000.origR           15.28
+ADHD_PRS0.100000.origR           14.84
+ADHD_PRS0.500000.origR           14.39
+ADHD_PRS0.200000.origR           13.59
+ADHD_PRS0.050000.origR           12.09
+[1] "hi,blackboost,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.527887,0.000000"
 ```
 
 These are the variable importances for kernelpls, both datasets, both sx. This

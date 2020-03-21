@@ -1339,5 +1339,20 @@ for (dp in 1:length(dep_vars)) {
 write.csv(hold, file=out_fname, row.names=F)
 ```
 
+# 2020-03-21 08:44:03
+
+I'm trying to calculate Meff in Python instead, since it's not quite working in
+R. It's giving an awnfully low number there.
+
+```python
+# bw
+import rpy2.robjects as robjects
+from rpy2.robjects import pandas2ri
+pandas2ri.activate()
+readRDS = robjects.r['readRDS']
+df = readRDS('/home/sudregp/data/rnaseq_derek/data_from_philip.rds')
+a = df.iloc[:, 33:len(df.columns)].corr()
+```
+
 * play with adding the different covariate domains sequentially
 * can Meff be used here safely?
