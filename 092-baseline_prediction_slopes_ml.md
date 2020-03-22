@@ -1356,3 +1356,10 @@ ADHD_PRS0.050000.origR   15.37
 thalamusR                15.29
 [1] "hi,kernelpls,/home/sudregp/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv,10,10,0.074217,0.011465"
 ```
+
+To export all variable importances, it's easy:
+
+```r
+a = varImp(fit)
+write.csv(a$importance, file='~/data/baseline_prediction/prs_start/blassoAveraged_dti_inatt.csv')
+```
