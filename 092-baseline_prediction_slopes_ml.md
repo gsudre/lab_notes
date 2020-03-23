@@ -1363,3 +1363,163 @@ To export all variable importances, it's easy:
 a = varImp(fit)
 write.csv(a$importance, file='~/data/baseline_prediction/prs_start/blassoAveraged_dti_inatt.csv')
 ```
+
+# 2020-03-23 13:12:39
+
+Let's rerun our scripts, but now saving the fits and both RMSE and R2:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/nonstacked_slope_dataImpute.R;
+out_file=swarm.slope_impInterRMSE
+rm $out_file
+for clf in `cat all_reg.txt`; do
+    for sx in inatt hi; do
+        for fname in anatomy_272 dti_165; do 
+            for fold in "10 10" "5 5" "3 10"; do
+                echo "Rscript $my_script ${my_dir}/gf_impute_based_${fname}.csv $sx $clf $fold ~/tmp/residsRMSE_slope_impInter.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name RMSEinterSlope --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And we can also look at R2:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/nonstacked_slope_dataImpute_R2.R;
+out_file=swarm.slope_impInterR2
+rm $out_file
+for clf in `cat all_reg.txt`; do
+    for sx in inatt hi; do
+        for fname in anatomy_272 dti_165; do 
+            for fold in "10 10" "5 5" "3 10"; do
+                echo "Rscript $my_script ${my_dir}/gf_impute_based_${fname}.csv $sx $clf $fold ~/tmp/residsR2v2_slope_impInter.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name R2interSlope --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Are there any models we know to have wrapped varImps that we are not running?
+
+```bash
+cd ~/tmp/
+git clone https://github.com/topepo/caret.git
+cd caret/models/files
+grep "varImp = fun" * -l > ~/tmp/varimp_models.txt
+for f in `cat ~/tmp/varimp_models.txt`; do
+    if grep -q \"Regression\" $f; then
+        echo $f >> ~/tmp/varimp_regression_models.txt;
+    fi;
+done
+for m in `cat ~/tmp/varimp_regression_models.txt`; do
+    mymodel=`echo $m | sed "s/\.R//"`;
+    if ! grep -q $mymodel ~/data/baseline_prediction/prs_start/all_reg.txt; then
+        echo $mymodel;
+    fi;
+done
+```
+
+Now we just need to make sure we're not forgetting to run any of the models with
+varImp implemented, just in case. I added them to more_reg.txt, and ran the new
+loop:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/nonstacked_slope_dataImpute.R;
+out_file=swarm.slope_impInterRMSE2
+rm $out_file
+for clf in `cat more_reg.txt`; do
+    for sx in inatt hi; do
+        for fname in anatomy_272 dti_165; do 
+            for fold in "10 10" "5 5" "3 10"; do
+                echo "Rscript $my_script ${my_dir}/gf_impute_based_${fname}.csv $sx $clf $fold ~/tmp/residsRMSE_slope_impInter.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name mRMSEinterSlope --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And for R2:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/nonstacked_slope_dataImpute_R2.R;
+out_file=swarm.slope_impInterR22
+rm $out_file
+for clf in `cat more_reg.txt`; do
+    for sx in inatt hi; do
+        for fname in anatomy_272 dti_165; do 
+            for fold in "10 10" "5 5" "3 10"; do
+                echo "Rscript $my_script ${my_dir}/gf_impute_based_${fname}.csv $sx $clf $fold ~/tmp/residsR2v2_slope_impInter.csv;" >> $out_file;
+            done
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name mR2interSlope --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Then, to generate one master spreadsheet with everything, we can just do:
+
+```r
+res1 = read.csv('~/data/baseline_prediction/prs_start/residsR2v2_slope_impInter.csv', header=F)
+colnames(res1) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE',
+                  'sdRMSE', 'meanR2', 'sdR2')
+res1$optimization = 'R2'
+res1$sdR2 = as.numeric(as.character(res1$sdR2))
+res2 = read.csv('~/data/baseline_prediction/prs_start/residsRMSE_slope_impInter.csv', header=F)
+colnames(res2) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE',
+                  'sdRMSE', 'meanR2', 'sdR2')
+res2$optimization = 'RMSE'
+res2$sdR2 = as.numeric(as.character(res2$sdR2))
+res = rbind(res1, res2)
+vi = read.table('~/tmp/varimp_models.txt')[,1]
+varimp_models = gsub(pattern=".R", replacement="", vi)
+res$hasVarImp = res$model %in% varimp_models
+```
+
+So, the results I'm getting are exactly the same regardless of optimization
+metric, so I'll just go with RMSE because thats the standard. I'll also add in
+the p-values since I already constructed the distributions and saved them a
+priori:
+
+```r
+res = read.csv('~/data/baseline_prediction/prs_start/residsRMSE_slope_impInter.csv', header=F)
+colnames(res) = c('sx', 'model', 'fname', 'nfolds', 'nreps', 'meanRMSE',
+                  'sdRMSE', 'meanR2', 'sdR2')
+vi = read.table('~/tmp/varimp_models.txt')[,1]
+varimp_models = gsub(pattern=".R", replacement="", vi)
+res$hasVarImp = res$model %in% varimp_models
+
+res$RMSE_pval = NA
+res$R2_pval = NA
+dummy = readRDS('~/data/baseline_prediction/prs_start/slope_dummies.rds')
+for (sx in c('inatt', 'hi')) {
+    for (fn in ('anat', 'dti')) {
+        mydummy = dummy[dummy$fname==fn & dummy$sx==sx,]
+        nreps = nrow(mydummy)
+        rows = which(res$sx==sx & res$fname==fn)
+        for (r in rows) {
+            res[r, 'R2_pval'] = sum(mydummy[,'Rsquared'] > res[r, 'R2'])/nreps)
+            res[r, 'RMSE_pval'] = sum(mydummy[,'RMSE'] < res[r, 'RMSE'])/nreps)
+        }
+    }
+}
+```
