@@ -1512,13 +1512,13 @@ res$RMSE_pval = NA
 res$R2_pval = NA
 dummy = readRDS('~/data/baseline_prediction/prs_start/slope_dummies.rds')
 for (sx in c('inatt', 'hi')) {
-    for (fn in ('anat', 'dti')) {
+    for (fn in c('anat', 'dti')) {
         mydummy = dummy[dummy$fname==fn & dummy$sx==sx,]
         nreps = nrow(mydummy)
         rows = which(res$sx==sx & res$fname==fn)
         for (r in rows) {
-            res[r, 'R2_pval'] = sum(mydummy[,'Rsquared'] > res[r, 'R2'])/nreps)
-            res[r, 'RMSE_pval'] = sum(mydummy[,'RMSE'] < res[r, 'RMSE'])/nreps)
+            res[r, 'R2_pval'] = sum(mydummy[,'Rsquared'] > res[r, 'meanR2'])/nreps
+            res[r, 'RMSE_pval'] = sum(mydummy[,'RMSE'] < res[r, 'meanRMSE'])/nreps
         }
     }
 }
