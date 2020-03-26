@@ -885,3 +885,258 @@ I could try PCA or ICA within domain? Worth trying... maybe with the normalized
 and the regular slope? No need to normalize the predictors before that... just
 the output form PCA or ICA should be enough.
 
+# 2020-03-26 07:26:04
+
+```r
+fname = '~/data/baseline_prediction/prs_start/gf_impute_based_anatomy_272.csv'
+my_sx = 'hi'
+
+nfolds = 10
+nreps = 10
+
+library(caret)
+data = read.csv(fname)
+# so they don't get rescaled
+if (grepl(x=fname, pattern='anat')) {
+    mymod = 'anat'
+    data$sex_numeric = as.factor(data$sex_numeric)
+    data$SES_group3 = as.factor(data$SES_group3)
+    var_names = colnames(data)[c(10:17, 18:29, 30:34, 4:6)]
+    phen = sprintf("slope_%s_res_trim.x", my_sx)
+} else {
+    mymod = 'dti'
+    data$sex_numeric = as.factor(data$sex_numeric)
+    data$SES_group3_165 = as.factor(data$SES_group3_165)
+    var_names = colnames(data)[c(21:28, 29:40, 41:45, 5:6, 95, 9:20)]
+    phen = sprintf("slope_%s_res_trim", my_sx)
+}
+
+library(caret)
+# anat only!
+pp = preProcess(data[, var_names[1:8]], method = c('center', 'scale', 'pca'))
+tmp_data = predict(pp, data[, var_names[1:8]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('struct_%s', x))
+colnames(tmp_data) = cnames
+data2 = tmp_data
+pp = preProcess(data[, var_names[9:20]], method = c('center', 'scale', 'pca'))
+tmp_data = predict(pp, data[, var_names[9:20]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('PRS_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, tmp_data)
+pp = preProcess(data[, var_names[21:25]], method = c('center', 'scale', 'pca'))
+tmp_data = predict(pp, data[, var_names[21:25]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('cog_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, tmp_data)
+data2 = cbind(data2, data[, var_names[26:28]])
+
+library(bestNormalize)
+bn = bestNormalize(data[, phen])
+data2$phen = bn$x.t
+dummies = dummyVars(phen ~ ., data = data2)
+data3 = predict(dummies, newdata = data2)
+
+# split traing and test between members of the same family
+train_rows = c()
+for (fam in unique(data$FAMID)) {
+    fam_rows = which(data$FAMID == fam)
+    if (length(fam_rows) == 1) {
+        train_rows = c(train_rows, fam_rows[1])
+    } else {
+        # choose the youngest kid in the family for training
+        train_rows = c(train_rows,
+                       fam_rows[which.min(data[fam_rows, 'base_age'])])
+    }
+}
+# data3 doesn't have the target column!
+X_train <- data3[train_rows, ]
+X_test <- data3[-train_rows, ]
+y_train <- data2[train_rows,]$phen
+y_test <- data2[-train_rows,]$phen
+```
+
+Now, let's try everything:
+
+```r
+library(caretEnsemble)
+library(doParallel)
+registerDoParallel(31)
+getDoParWorkers()
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE)
+
+model_list <- caretList(X_train,
+                        y_train,
+                        trControl = fitControl,
+                        methodList = c('cforest', 'svmRadial', 'rf', 'svmLinear',
+                                       'blackboost', 'blassoAveraged', 'glmboost',
+                                       'kernelpls'),
+                        tuneList = NULL,
+                        continue_on_fail = FALSE)
+null_fit <- train(x=X_train, y=y_train, method = 'null', trControl = fitControl)
+
+set.seed(42)
+ensemble_1 <- caretEnsemble(model_list,
+                            metric = 'RMSE',
+                            trControl = fitControl)
+
+set.seed(42)
+ensemble_2 <- caretStack(model_list, 
+                         method = 'glmnet',
+                         metric = 'RMSE',
+                         trControl = fitControl)
+
+options(digits = 3)
+model_results <- data.frame(
+ cforest = min(model_list$cforest$results$RMSE),
+ SVMr = min(model_list$svmRadial$results$RMSE),
+ RF = min(model_list$rf$results$RMSE),
+ SVMl = min(model_list$svmLinear$results$RMSE),
+ boostedTree = min(model_list$blackboost$results$RMSE),
+ bLassoAveraged = min(model_list$blassoAveraged$results$RMSE),
+ glmBoost = min(model_list$glmboost$results$RMSE),
+ PLS = min(model_list$kernelpls$results$RMSE),
+ ens_1 = ensemble_1$ens_model$results$RMSE,
+ ens2 = min(ensemble_2$ens_model$results$RMSE),
+ null_model = null_fit$results$RMSE
+ )
+
+resamples <- resamples(model_list)
+modelCor(resamples)
+
+# PREDICTIONS
+pred_cforest <- predict.train(model_list$cforest, newdata = X_test)
+pred_SVMr <- predict.train(model_list$svmRadial, newdata = X_test)
+pred_RF <- predict.train(model_list$rf, newdata = X_test)
+pred_svmL <- predict.train(model_list$svmLinear, newdata = X_test)
+pred_boostedTree <- predict.train(model_list$blackboost, newdata = X_test)
+pred_bLassoAveraged <- predict(model_list$blassoAveraged, newdata = X_test)
+pred_glmBoost <- predict(model_list$glmboost, newdata = X_test)
+pred_pls <- predict(model_list$kernelpls, newdata = X_test)
+pred_ens1 <- predict(ensemble_1, newdata = X_test)
+pred_ens2 <- predict(ensemble_2, newdata = X_test)
+pred_null = predict(null_fit, newdata = X_test)
+# RMSE
+pred_RMSE <- data.frame(cforest = RMSE(pred_cforest, y_test),
+                        SVMr = RMSE(pred_SVMr, y_test),
+                        RF = RMSE(pred_RF, y_test),
+                        SVMl = RMSE(pred_svmL, y_test),
+                        boostedTrees = RMSE(pred_boostedTree, y_test),
+                        blassoAveraged = RMSE(pred_bLassoAveraged, y_test),
+                        glmBoost = RMSE(pred_glmBoost, y_test),
+                        kernelpls = RMSE(pred_pls, y_test),
+                        ensemble_1 = RMSE(pred_ens1, y_test),
+                        ensemble_2 = RMSE(pred_ens2, y_test),
+                        null = RMSE(pred_null, y_test))
+print(model_results)
+print(pred_RMSE)
+```
+
+```
+anat; inatt:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost   PLS ens_1  ens2 null_model
+1       1 1.01 1.01 1.04           1          0.999     0.98 0.991 0.919 0.919      0.998
+> print(pred_RMSE)
+  cforest  SVMr   RF SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.971 0.984 0.98 1.05        0.973          0.969    0.974     0.978       1.02       1.02 0.973
+
+anat; hi:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost  PLS ens_1 ens2 null_model
+1    1.04 1.04 1.05 1.13        1.04           1.04     1.03 1.04  1.01 1.01       1.04
+> print(pred_RMSE)
+  cforest SVMr    RF  SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.878 0.89 0.901 0.946        0.882          0.879     0.89     0.897      0.932      0.925 0.882
+```
+
+I can also try to reduce my PCA variance to decrease the number of variables...
+now, using 80%:
+
+```r
+# anat only!
+pp = preProcess(data[, var_names[1:8]], method = c('center', 'scale', 'ica'), n.comp=4)
+tmp_data = predict(pp, data[, var_names[1:8]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('struct_%s', x))
+colnames(tmp_data) = cnames
+data2 = tmp_data
+pp = preProcess(data[, var_names[9:20]], method = c('center', 'scale', 'ica'), n.comp=5)
+tmp_data = predict(pp, data[, var_names[9:20]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('PRS_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, tmp_data)
+pp = preProcess(data[, var_names[21:25]], method = c('center', 'scale', 'ica'), n.comp=2)
+tmp_data = predict(pp, data[, var_names[21:25]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('cog_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, tmp_data)
+data2 = cbind(data2, data[, var_names[26:28]])
+
+library(bestNormalize)
+bn = bestNormalize(data[, phen])
+data2$phen = bn$x.t
+dummies = dummyVars(phen ~ ., data = data2)
+data3 = predict(dummies, newdata = data2)
+
+# split traing and test between members of the same family
+train_rows = c()
+for (fam in unique(data$FAMID)) {
+    fam_rows = which(data$FAMID == fam)
+    if (length(fam_rows) == 1) {
+        train_rows = c(train_rows, fam_rows[1])
+    } else {
+        # choose the youngest kid in the family for training
+        train_rows = c(train_rows,
+                       fam_rows[which.min(data[fam_rows, 'base_age'])])
+    }
+}
+# data3 doesn't have the target column!
+X_train <- data3[train_rows, ]
+X_test <- data3[-train_rows, ]
+y_train <- data2[train_rows,]$phen
+y_test <- data2[-train_rows,]$phen
+```
+
+```
+anat; inatt:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost   PLS ens_1  ens2 null_model
+1       1 1.02 1.01 1.07           1              1        1 0.991 0.961 0.961      0.999
+> print(pred_RMSE)
+  cforest  SVMr    RF  SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.964 0.965 0.948 0.972        0.973          0.969    0.959     0.975      0.987      0.987 0.973
+
+anat; hi:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost  PLS ens_1 ens2 null_model
+1    1.04 1.04 1.05 1.09        1.04           1.04     1.02 1.04  0.98 0.98       1.04
+> print(pred_RMSE)
+  cforest  SVMr    RF SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.876 0.917 0.912 0.97        0.882          0.879    0.891     0.895       1.02       1.02 0.882
+```
+
+How about ICA?
+
+```
+anat; inatt:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost  PLS ens_1  ens2 null_model
+1       1 1.01 1.01 1.05           1              1     1.01 1.01 0.936 0.936      0.999
+> print(pred_RMSE)
+  cforest  SVMr    RF SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.966 0.967 0.962 1.01        0.973          0.969    0.958     0.975       1.01       1.01 0.973
+
+anat; hi:
+> print(model_results)
+  cforest SVMr   RF SVMl boostedTree bLassoAveraged glmBoost  PLS ens_1 ens2 null_model
+1    1.04 1.04 1.05  1.1        1.04           1.04     1.05 1.05  1.02 1.02       1.04
+> print(pred_RMSE)
+  cforest  SVMr  RF  SVMl boostedTrees blassoAveraged glmBoost kernelpls ensemble_1 ensemble_2  null
+1   0.881 0.909 0.9 0.979        0.882          0.878    0.877     0.899      0.903      0.901 0.882
+```
+
+Nothing...
