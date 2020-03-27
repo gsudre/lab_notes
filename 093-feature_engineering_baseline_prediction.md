@@ -1139,4 +1139,50 @@ anat; hi:
 1   0.881 0.909 0.9 0.979        0.882          0.878    0.877     0.899      0.903      0.901 0.882
 ```
 
-Nothing...
+Nothing... last resort... spatial sign.
+
+```r
+# anat only!
+pp = preProcess(data[, var_names[1:8]], method = c('center', 'scale', 'pca'), thresh=.8)
+tmp_data = predict(pp, data[, var_names[1:8]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('struct_%s', x))
+colnames(tmp_data) = cnames
+data2 = as.data.frame(spatialSign(tmp_data))
+pp = preProcess(data[, var_names[9:20]], method = c('center', 'scale', 'pca'), thresh=.8)
+tmp_data = predict(pp, data[, var_names[9:20]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('PRS_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, as.data.frame(spatialSign(tmp_data)))
+pp = preProcess(data[, var_names[21:25]], method = c('center', 'scale', 'pca'), thresh=.8)
+tmp_data = predict(pp, data[, var_names[21:25]])
+cnames = sapply(colnames(tmp_data), function(x) sprintf('cog_%s', x))
+colnames(tmp_data) = cnames
+data2 = cbind(data2, as.data.frame(spatialSign(tmp_data)))
+data2 = cbind(data2, data[, var_names[26:28]])
+
+library(bestNormalize)
+bn = bestNormalize(data[, phen])
+data2$phen = bn$x.t
+dummies = dummyVars(phen ~ ., data = data2)
+data3 = predict(dummies, newdata = data2)
+
+# split traing and test between members of the same family
+train_rows = c()
+for (fam in unique(data$FAMID)) {
+    fam_rows = which(data$FAMID == fam)
+    if (length(fam_rows) == 1) {
+        train_rows = c(train_rows, fam_rows[1])
+    } else {
+        # choose the youngest kid in the family for training
+        train_rows = c(train_rows,
+                       fam_rows[which.min(data[fam_rows, 'base_age'])])
+    }
+}
+# data3 doesn't have the target column!
+X_train <- data3[train_rows, ]
+X_test <- data3[-train_rows, ]
+y_train <- data2[train_rows,]$phen
+y_test <- data2[-train_rows,]$phen
+```
+
+Nothing good either. Will need to go back to categories.
