@@ -109,7 +109,7 @@ model_list <- caretList(X_train,
                                        'treebag', 'ada',
                                        'null'),
                         tuneList = NULL,
-                        continue_on_fail = FALSE,
+                        continue_on_fail = TRUE,
                         metric='AUC')
 
 options(digits = 3)
@@ -131,6 +131,43 @@ names(test_results) = names(model_list)
 print(train_results)
 print(test_results)
 ```
+
+# 2020-03-28 07:25:18
+
+Using all possible classifiers that can handle missing data crashed overnight,
+so I changed the code to continue after fails. In any case, it's wise to get
+ready for having to deal with imputations and multiple classifiers. I'll keep
+the same framework though, so it's easy to do feature engineering later if
+needed. Also, it'll be easy to come up with ensembles later if needed, probably
+based on the best models.
+
+Note that caretEnsemble doesn't work for multiclass, so we'd have to do it
+manually. Or, do it only for the pairwise comparisons.
+
+So, I created modelList_multiClass.R for that. Now it's just a matter of
+scripting it:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_multiClass.R;
+out_file=swarm.multiClass
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for sx in categ_inatt3 categ_hi3; do
+        for imp in anat dti; do
+            for cov in T F; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03272020.csv $sx $clf $imp 10 10 8 $cov ${my_dir}/multiClassAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name mcAUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+
 
 # TODO
 
