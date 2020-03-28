@@ -131,3 +131,12 @@ names(test_results) = names(model_list)
 print(train_results)
 print(test_results)
 ```
+
+# TODO
+
+* if results are poor, impute dti 165 dataset using the directions Philip gave.
+  I'd do it on the training set and then impute the test. this will allow for a
+  whole bunch of classifiers to be tried, so remember to export lots of stuff
+* do it for the anat set as well, which doesn't include DTI
+* if no good, do some feature engineering for some subset of classifiers
+* if none of that works, try to tease out pairs of classes.
