@@ -344,6 +344,8 @@ for (m in names(model_list)) {
 names(train_results) = names(model_list)
 names(test_results) = names(model_list)
 
+print(phen)
+print(use_covs)
 print(train_results)
 print(test_results)
 
@@ -487,6 +489,7 @@ names(test_results) = names(model_list)
 print(c1)
 print(c2)
 print(phen)
+print(use_covs)
 print(train_results)
 print(test_results)
 
@@ -506,3 +509,4 @@ save(model_list, file=fname)
 * if no good, do some feature engineering for some subset of classifiers
 * if none of that works, try to tease out pairs of classes.
 * pick the best model so far and try running it for categ_inatt2
+* re-run the no-imputation models without transformations to the predictors?
