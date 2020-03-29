@@ -363,14 +363,14 @@ library(caretEnsemble)
 library(doParallel)
 
 fname = '~/data/baseline_prediction/prs_start/gf_philip_03282020.csv'
+nfolds = 10
+nreps = 10
+ncores = 5
+use_covs = FALSE
 phen = 'categ_inatt3'
 c1 = 'emerge_stable'
 c2 = 'group_0_0'
 # c1 = 'improvers'
-nfolds = 10
-nreps = 10
-ncores = 10
-use_covs = FALSE
 
 data = read.csv(fname)
 data$sex_numeric = as.factor(data$sex_numeric)
