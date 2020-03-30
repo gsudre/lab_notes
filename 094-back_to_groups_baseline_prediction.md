@@ -652,9 +652,43 @@ swarm -g 20 -t 8 --job-name tc2AUC --time 4:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
 
-And while we wait for these to run, let's compile the comb results:
+And while we wait for these to run, let's compile the comb results...
 
+# 2020-03-30 08:01:12
 
+I just noticed that I was reporting the results for the mean over parameters,
+instead of the max, which would be the max over parameters. The other option is
+to report the mean and other parameters for the resampling, which uses the best
+parameter anyways. Let's do that.
+
+The function do to the multiclass is ready, but it'll need to be swarmed:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/resample_multiClass.R;
+out_file=swarm.resample_mc
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for sx in categ_hi3 categ_inatt3 categ_inatt2 categ_all.3 categ_all.4; do
+        for imp in anat dti; do
+            for cov in T F; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $clf $imp 10 10 8 $cov ${my_dir}/resamp_multiClassEldestAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 10 -t 1 --job-name resampMC --time 20:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+We had lots of racing conditions... let me see if I run parallel it wouldn't be
+better.
+
+```bash
+cat swarm.resample_mc | parallel --max-args=1 -j 32 {1};
+```
 
 # TODO
 * investigate these two class results:
