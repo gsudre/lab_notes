@@ -369,7 +369,7 @@ nfolds = 10
 nreps = 10
 ncores = 5
 use_covs = FALSE
-phen = 'categ_inatt3'
+phen = 'categ_hi3'
 c1 = 'emerge_stable'
 c2 = 'group_0_0'
 # c1 = 'improvers'
@@ -500,13 +500,167 @@ fname = sprintf('%s/noImp_modelList_%s_%s_%s_%s_%d_%d.RData',
 save(model_list, file=fname)
 ```
 
-# TODO
+# 2020-03-29 07:40:57
 
-* if results are poor, impute dti 165 dataset using the directions Philip gave.
-  I'd do it on the training set and then impute the test. this will allow for a
-  whole bunch of classifiers to be tried, so remember to export lots of stuff
-* do it for the anat set as well, which doesn't include DTI
-* if no good, do some feature engineering for some subset of classifiers
-* if none of that works, try to tease out pairs of classes.
-* pick the best model so far and try running it for categ_inatt2
+For the 3-class non-imputation results, I get:
+
+```
+> print(phen)
+[1] "categ_inatt3"
+> print(use_covs)
+[1] FALSE
+> print(train_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.607       0.612       0.610       0.530       0.550       0.537       0.539       0.562       0.500 
+> print(test_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.625       0.595       0.574       0.496       0.502       0.612       0.648       0.589       0.500 
+> print(phen)
+[1] "categ_inatt3"
+> print(use_covs)
+[1] TRUE
+> print(train_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.587       0.607       0.594       0.512       0.525       0.535       0.545       0.547       0.500 
+> print(test_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.623       0.556       0.561       0.566       0.492       0.590       0.608       0.571       0.500 
+> print(phen)
+[1] "categ_hi3"
+> print(use_covs)
+[1] FALSE
+> print(train_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.590       0.661       0.640       0.573       0.596       0.577       0.568       0.592       0.500 
+> print(test_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.516       0.500       0.501       0.519       0.489       0.573       0.583       0.508       0.500 
+> print(phen)
+[1] "categ_hi3"
+> print(use_covs)
+[1] TRUE
+> print(train_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.595       0.664       0.654       0.579       0.589       0.564       0.551       0.606       0.500 
+> print(test_results)
+       C5.0    rpart1SE      rpart2    C5.0Tree   C5.0Rules AdaBoost.M1      AdaBag     treebag        null 
+      0.546       0.463       0.511       0.528       0.507       0.573       0.578       0.506       0.500 
+```
+
+And let's start evaluating the compiled results in twoClassEldestAUC.csv and
+multiClassEldestAUC.csv.
+
+Philip also sent out a new gf today with two new categories combining the inatt
+and hi:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_multiClass.R;
+out_file=swarm.multiClassComb
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for sx in categ_all.3 categ_all.4; do
+        for imp in anat dti; do
+            for cov in T F; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $clf $imp 10 10 8 $cov ${my_dir}/multiClassCombEldestAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name mcCombAUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And similar idea for 2 class, but because classes are different I'll need to
+split the loop:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+out_file=swarm.twoClassComb
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            sx="categ_all.3";
+            for cs in "improvers never_affected" "improvers symptomatic" \
+                "never_affected symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/twoClassCombEldestAUC.csv;" >> $out_file;
+            done;
+            sx="categ_all.4";
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/twoClassCombEldestAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcCombAUC --time 4:00:00 -f $out_file \
+    -m R --partition norm --logdir trash
+```
+
+# 2020-03-29 20:36:00
+
+I forgot to run categ_inatt2, which has 4 classes. Here is goes:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_multiClass.R;
+out_file=swarm.multiClassComb
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    sx='categ_inatt2';
+    for imp in anat dti; do
+        for cov in T F; do
+            echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $clf $imp 10 10 8 $cov ${my_dir}/multiClassInatt2EldestAUC.csv;" >> $out_file;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name mc2AUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And similar idea for 2 class, but we have 4 classes:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+out_file=swarm.twoClassComb
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            sx="categ_inatt2";
+            for cs in "emergent improvers" "emergent group_0_0" \
+                "emergent group_2_2" "improvers group_0_0" \
+                "improvers group_2_2" "group_0_0 group_2_2"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/twoClassInatt2EldestAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tc2AUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And while we wait for these to run, let's compile the comb results:
+
+
+
+# TODO
+* investigate these two class results:
+  categ_hi3 emerge_stable   improvers   bagEarthGCV dti FALSE   10  10  0.371875
+  NA  0.5 0.84    0.5
+* what if I report the max and median AUC in training?
+* need to run non-impute machines in the combined categories and inatt2
 * re-run the no-imputation models without transformations to the predictors?
+* maybe report MCC and/or F1?
