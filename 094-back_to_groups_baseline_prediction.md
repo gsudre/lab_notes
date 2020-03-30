@@ -690,6 +690,50 @@ better.
 cat swarm.resample_mc | parallel --max-args=1 -j 32 {1};
 ```
 
+Now, time to do the same thing for the 2-class situation:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/resample_twoClass.R;
+out_file=swarm.resample_tc
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            sx="categ_inatt2";
+            for cs in "emergent improvers" "emergent group_0_0" \
+                "emergent group_2_2" "improvers group_0_0" \
+                "improvers group_2_2" "group_0_0 group_2_2"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/resamp_twoClassEldestAUC.csv;" >> $out_file;
+            done;
+            sx="categ_all.3";
+            for cs in "improvers never_affected" "improvers symptomatic" \
+                "never_affected symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/resamp_twoClassEldestAUC.csv;" >> $out_file;
+            done;
+            sx="categ_all.4";
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/resamp_twoClassEldestAUC.csv;" >> $out_file;
+            done;
+            for sx in categ_inatt3 categ_hi3; do
+                for cs in "emerge_stable group_0_0" "emerge_stable improvers" \
+                    "group_0_0 improvers"; do
+                    echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/resamp_twoClassEldestAUC.csv;" >> $out_file;
+                done;
+            done;
+        done;
+    done;
+done
+```
+
+Just had a chat with PHilip and we should focus on the all class, and the two
+group comparisons. Pick 2-3 models but only one for main text, other for
+comparison in supplement. Focus on test set but make sure it's OK for training. 
+
+
 # TODO
 * investigate these two class results:
   categ_hi3 emerge_stable   improvers   bagEarthGCV dti FALSE   10  10  0.371875
