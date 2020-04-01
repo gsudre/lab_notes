@@ -733,11 +733,215 @@ Just had a chat with PHilip and we should focus on the all class, and the two
 group comparisons. Pick 2-3 models but only one for main text, other for
 comparison in supplement. Focus on test set but make sure it's OK for training. 
 
+# 2020-03-30 20:47:10
+
+I just noticed by looking at varImp that the dummy variables are superfluous.
+For example, there are 2 for sex. I don't think the results will change much,
+but there is no reason to inflate the number of total variables, especially in
+the varImps. Let's re-run everything, after saving the old directories as old.
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+out_file=swarm.tcNL
+res_file=${my_dir}/results_twoClassEldestAUC.csv
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            sx="categ_inatt2";
+            for cs in "emergent improvers" "emergent group_0_0" \
+                "emergent group_2_2" "improvers group_0_0" \
+                "improvers group_2_2" "group_0_0 group_2_2"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+            sx="categ_all.3";
+            for cs in "improvers never_affected" "improvers symptomatic" \
+                "never_affected symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+            sx="categ_all.4";
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+            for sx in categ_inatt3 categ_hi3; do
+                for cs in "emerge_stable group_0_0" "emerge_stable improvers" \
+                    "group_0_0 improvers"; do
+                    echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+                done;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcNLAUC --time 4:00:00 -f $out_file \
+    -m R --partition norm --logdir trash
+```
+
+And we do the same thing for the multiclass case:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_multiClass.R;
+out_file=swarm.mcNL
+rm $out_file
+for clf in `cat multi_clf.txt`; do
+    for sx in categ_hi3 categ_inatt3 categ_inatt2 categ_all.3 categ_all.4; do
+        for imp in anat dti; do
+            for cov in T F; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $clf $imp 10 10 8 $cov ${my_dir}/results_multiClassEldestAUC.csv;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name mcNLAUC --time 4:00:00 -f $out_file \
+    -m R --partition quick,norm --logdir trash
+```
+
+# 2020-03-31 07:47:09
+
+So, starting with the multi list (just because it's ready and I'm waiting on the
+two pair results). If looking at all.4, sorted by test.AUC in the FALSE covs,
+it'd make sense to pick sLDA (more impressive training than stepLDA),
+AdaBoost.M1 as a good example for boosting/trees; simpls or spls (the latter has
+a better sen/spec ratio), and maybe gcvEart as an example of nonlinear
+regression. All of those are in the DTI dataset, which is consistently better
+than anat. The results using covariates are similar, except that stepLDA looks a
+bit stronger than sLDA.
+
+In fact, I think it makes sense to use the results with covariates, and then
+show that results are similar without covariates. This way no one can complain
+that results are being driven by covariates? Or, the other way the argument
+would be to not assign varIMp to covariates, and show the use_covs==TRUE is
+similar in supplemental.
+
+Looking at the old pairwise results (before removing colinearities), in all.4,
+both LogitBoost and the kernelpls/pls/simpls do a good job separting emergent
+and never affected. sda/slda also do well, then we have cforest/AdaBoost.M1
+(with slight preference to the latter given spec/sen ratio), and then maybe
+earth. That was all cov=F. The results with cov=T are actually stronger, so
+we'll need to check varImp. But there we start with LogitBoost and rf head to
+head, then xgbLinear and cforest. We also have slda and kernelpls somewhere on
+the top. 
+
+Another important category is improvers VS stable_symptomatic. In that case, the
+cov=FALSE are a bit more impressive. We start with gcvEarth but could easily go
+with one of the pls bunch. Then we see some of the LDA variants, but then we
+plunge into .5 territory. 
+
+So, although not as high, we should probably go with cov=FALSE because the
+results are more consistent across comparisons. If we do that, we're picking
+between these:
+
+![](images/2020-03-31-08-28-07.png)
+
+# Re-running failed models
+
+I had to re-run some failed models. But let's to it in a big machine:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+res_file=${my_dir}/results_twoClassEldestAUC.csv
+clf=svmRadial;
+sx="categ_all.4";
+for imp in anat dti; do
+    for cov in T F; do
+        for cs in "emergent improvers" "emergent never_affected" \
+            "emergent stable_symptomatic" "improvers never_affected" \
+            "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+            Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 32 $cov $res_file;
+        done;
+    done;
+done
+```
+
+Then I'll just re-reun resampling for those 4 models because it takes a long
+time:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/resample_twoClass.R;
+sx="categ_all.4";
+for clf in slda sda simpls spls kernelpls svmLinear svmRadial; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov ${my_dir}/resamp_twoClassEldestAUC_extra.csv;
+            done;
+        done;
+    done;
+done
+```
+
+Also, I ran some experiments and for ROC it doesn't matter what class is
+poisitve, only for sens and spec. According to the help pages, the first level
+is the positive class:
+
+```
+> head(dat)
+              obs          pred emerge_stable group_0_0
+10      group_0_0     group_0_0         0.371     0.629
+88      group_0_0 emerge_stable         0.585     0.415
+92      group_0_0     group_0_0         0.493     0.507
+102     group_0_0     group_0_0         0.380     0.620
+137 emerge_stable emerge_stable         0.668     0.332
+140 emerge_stable emerge_stable         0.563     0.437
+> dat2 = dat
+> dat2$obs = relevel(dat2$obs, ref='group_0_0')
+> dat2$pred = relevel(dat2$pred, ref='group_0_0')
+> twoClassSummary(dat, lev=colnames(preds_probs))
+  ROC  Sens  Spec 
+0.818 1.000 0.429 
+> twoClassSummary(dat2, lev=c('group_0_0', 'emerge_stable'))
+  ROC  Sens  Spec 
+0.818 0.429 1.000 
+```
+
+Just for kicks I coded a new function that optmizes and reports balanced
+accuracy(the average of sens and spec). Let's see what we get. Also, we don't
+need to resample this one, because it's built in the results!
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA.R;
+out_file=swarm.tcBA
+res_file=${my_dir}/results_twoClassEldestBA.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcBA --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+CAREFUL HERE! I wasn;t paying attention and overwrote all my fit and varimps
+because I was writing to the same folder! I did same MOST varimps as I sent them
+to Philip earlier today. But I do need to re-run the original script to confirm
+the values and models! Just all.4 though...
+
 
 # TODO
-* investigate these two class results:
-  categ_hi3 emerge_stable   improvers   bagEarthGCV dti FALSE   10  10  0.371875
-  NA  0.5 0.84    0.5
 * what if I report the max and median AUC in training?
 * need to run non-impute machines in the combined categories and inatt2
 * re-run the no-imputation models without transformations to the predictors?
