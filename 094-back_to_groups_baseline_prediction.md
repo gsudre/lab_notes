@@ -940,9 +940,93 @@ because I was writing to the same folder! I did same MOST varimps as I sent them
 to Philip earlier today. But I do need to re-run the original script to confirm
 the values and models! Just all.4 though...
 
+# 2020-04-01 07:06:52
+
+Because of that screw up last night, let's re-run all.4 for the AUC results. But
+now I changed the script to do the resampling within, so that's better:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+out_file=swarm.tcBiAUC
+res_file=${my_dir}/results_builtinResamp_twoClassEldestAUC.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcBiAUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+I also noticed that AdaBoost.M1 and LMT are always the models that hang the
+analysis. Either run them by themselves if they're informative or just drop
+them. (removed LMT)
+
+Also, I realized I should fix the seed before imputation to always have the same
+results! Here's another run:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+out_file=swarm.tcBiAUC
+res_file=${my_dir}/results_builtinResampFixImp_twoClassEldestAUC.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcBiAUC --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA.R;
+out_file=swarm.tcBiBA
+res_file=${my_dir}/results_builtinResampFixImp_twoClassEldestBA.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcBiBA --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
 
 # TODO
-* what if I report the max and median AUC in training?
-* need to run non-impute machines in the combined categories and inatt2
-* re-run the no-imputation models without transformations to the predictors?
-* maybe report MCC and/or F1?
+* finish re-tuning our best models
+* send final results file and varImps to Philip
+* start writing. Write more than less and Philip will transfer stuff to
+  supplemental. 
