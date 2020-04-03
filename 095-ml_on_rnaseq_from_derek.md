@@ -65,35 +65,16 @@ wanted. It's not crucial, but it might save a few minutes in the future.
 
 ```r
 library(caret)
+library(doParallel)
 
 X = readRDS('~/data/rnaseq_derek/X_ACCnoPH_zv_nzv_center_scale.rds')
 myregion = 'ACC'
+ncores = 32
+nfolds = 10
+nreps = 10
+clf_model = 'kernelpls'
 just_target = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
-y = data[data$Region==myregion, 'Diagnosis']
-
-# let's then do a repeated 10 fold CV within LOOCV. We save the test predictions
-# to later compute the overall result.
-
-
-
-
-
-
-
-
-
-
-
-X_train <- data3[train_rows, ]
-X_test <- data3[-train_rows, ]
-y_train <- factor(data2[train_rows,]$phen)
-y_test <- factor(data2[-train_rows,]$phen)
-
-# imputation and feature engineering
-
-registerDoParallel(ncores)
-getDoParWorkers()
-set.seed(42)
+y = just_target[just_target$Region==myregion, 'Diagnosis']
 
 my_summary = function(data, lev = NULL, model = NULL) {
     tcs = twoClassSummary(data, lev=lev)
@@ -102,6 +83,10 @@ my_summary = function(data, lev = NULL, model = NULL) {
     return(a)
 }
 
+registerDoParallel(ncores)
+getDoParWorkers()
+
+set.seed(42)
 fitControl <- trainControl(method = "repeatedcv",
                            number = nfolds,
                            repeats = nreps,
@@ -110,14 +95,31 @@ fitControl <- trainControl(method = "repeatedcv",
                            classProbs = TRUE,
                            summaryFunction=my_summary)
 
-set.seed(42)
-model_list <- caretList(X_train,
-                        y_train,
-                        trControl = fitControl,
-                        methodList = c(clf_model, 'null'),
-                        tuneList = NULL,
-                        continue_on_fail = TRUE,
-                        metric='BalancedAccuracy')
+# let's then do a repeated 10 fold CV within LOOCV. We save the test predictions
+# to later compute the overall result.
+varimps = X
+varimps[,] = NA
+test_preds = c()
+for (test_rows in 1:length(y)) {
+    print(sprintf('Hold out %d / %d', train_rows, length(y)))
+    X_train <- X[-test_rows, ]
+    X_test <- X[test_rows, ]
+    y_train <- factor(y[-test_rows])
+    y_test <- factor(y[test_rows])
+
+    set.seed(42)
+    fit <- train(X_train, y_train, trControl = fitControl, method = clf_model,
+                 metric='BalancedAccuracy')
+
+    preds_class = predict.train(fit, newdata=X_test)
+    preds_probs = predict.train(fit, newdata=X_test, type='prob')
+    dat = cbind(data.frame(obs = y_test, pred = preds_class), preds_probs)
+    test_preds = rbind(test_preds, dat)
+
+    tmp = varImp(fit, useModel=T)$importance
+    varimps[test_rows,] = tmp
+}
+
 
 fit = model_list[[clf_model]]
 resamps = resamples(list(fit=fit, tmp=fit))
