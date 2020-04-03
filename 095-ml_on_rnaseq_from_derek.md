@@ -150,19 +150,51 @@ res_file=${my_dir}/results_LOOCV.csv
 rm $out_file
 for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt`; do
     for r in ACC Caudate; do
-      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale.rds $r $clf 10 10 32 $res_file;" >> $out_file;
     done;
 done
 
-swarm -g 30 -t 8 --job-name loocv --time 4:00:00 -f $out_file \
-    -m R --partition quick --logdir trash
+swarm -g 200 -t 32 --job-name loocv --time 72:00:00 -f $out_file \
+    -m R --logdir trash
 ```
 
 Removed some classifiers that failed due to lack of memory (protect stack
 overflow). Many more interesting things to try before getting bigger machine for
 those. For example, 2vs2 and feature engineering!
 
+I had lots of failures, so I'll run everything again but using 32 core machines
+and giving them 3 days as we have a weekend coming up and cluster might be more
+free. Let's see what happens.
 
+But I also want to try some classifiers that are known for being regularized.
+Some of them don't implement probabilities, so I'll need a new script that
+doesn't look at ROC.
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV_noProbs.R;
+out_file=swarm.loocvNP
+res_file=${my_dir}/results_LOOCV_NP.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t 8 --job-name loocvNP --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+I'm now firing up a jupyter notebook to try some feature engineering while I
+have the regularized and feature selection models running.
+
+```bash
+cd ~/lab_notes/
+module load jupyter
+jupyter notebook --ip localhost --port $PORT1 --no-browser
+```
 
 # TODO
 * check for linearities again after preprocessing?
@@ -173,9 +205,6 @@ those. For example, 2vs2 and feature engineering!
   there!
 * this would be a good task for 2vs2 decoding, since all we want to know is
   which genes to best in differnetiating the par of DX... worth trying
-* try some of the penalized classifiers that don't spit out probabilities (like
-  PenalizedLDA). All we need is the classes to compute sens/spec, so we don't
-  need probabilities for AUC.
 * I had to remove the pH variable because it had 23 NAs, and it was the only
   variable with NAs. So, probably good to test if our results change at all with
   it later.
