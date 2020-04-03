@@ -58,6 +58,23 @@ set.seed(42)
 pp_order = c('zv', 'nzv', 'center', 'scale')
 pp = preProcess(data4, method = pp_order)
 X = predict(pp, data4)
+```
+
+OK, at this point I saved the data because the preprocessing took longer than I
+wanted. It's not crucial, but it might save a few minutes in the future.
+
+```r
+library(caret)
+
+X = readRDS('~/data/rnaseq_derek/X_ACCnoPH_zv_nzv_center_scale.rds')
+myregion = 'ACC'
+just_target = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+y = data[data$Region==myregion, 'Diagnosis']
+
+# let's then do a repeated 10 fold CV within LOOCV. We save the test predictions
+# to later compute the overall result.
+
+
 
 
 
