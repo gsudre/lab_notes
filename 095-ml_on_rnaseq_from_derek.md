@@ -97,11 +97,10 @@ fitControl <- trainControl(method = "repeatedcv",
 
 # let's then do a repeated 10 fold CV within LOOCV. We save the test predictions
 # to later compute the overall result.
-varimps = X
-varimps[,] = NA
+varimps = matrix(nrow=ncol(X), ncol=nrow(X))
 test_preds = c()
-for (test_rows in 1:length(y)) {
-    print(sprintf('Hold out %d / %d', train_rows, length(y)))
+for (test_rows in 1:20){ #length(y)) {
+    print(sprintf('Hold out %d / %d', test_rows, length(y)))
     X_train <- X[-test_rows, ]
     X_test <- X[test_rows, ]
     y_train <- factor(y[-test_rows])
@@ -117,54 +116,53 @@ for (test_rows in 1:length(y)) {
     test_preds = rbind(test_preds, dat)
 
     tmp = varImp(fit, useModel=T)$importance
-    varimps[test_rows,] = tmp
+    varimps[, test_rows] = tmp[,1]
 }
 
-
-fit = model_list[[clf_model]]
-resamps = resamples(list(fit=fit, tmp=fit))
-bacc_stats = summary(resamps)$statistics$BalancedAccuracy['fit',]
-cnames = sapply(names(bacc_stats), function(x) sprintf('BalancedAccuracy_%s', x))
-names(bacc_stats) = cnames
-auc_stats = summary(resamps)$statistics$ROC['fit',]
-cnames = sapply(names(auc_stats), function(x) sprintf('AUC_%s', x))
-names(auc_stats) = cnames
-sens_stats = summary(resamps)$statistics$Sens['fit',]
-cnames = sapply(names(sens_stats), function(x) sprintf('Sens_%s', x))
-names(sens_stats) = cnames
-spec_stats = summary(resamps)$statistics$Spec['fit',]
-cnames = sapply(names(spec_stats), function(x) sprintf('Spec_%s', x))
-names(spec_stats) = cnames
-
-preds_class = predict.train(fit, newdata=X_test)
-preds_probs = predict.train(fit, newdata=X_test, type='prob')
-dat = cbind(data.frame(obs = y_test, pred = preds_class), preds_probs)
-mcs = my_summary(dat, lev=colnames(preds_probs))
+mcs = my_summary(test_preds, lev=levels(y))
 test_results = c(mcs['BalancedAccuracy'], mcs['ROC'], mcs['Sens'], mcs['Spec'])
 names(test_results) = c('test_BalancedAccuracy', 'test_AUC', 'test_Sens',
                         'test_Spec')
 
-res = c(phen, clf_model, c1, c2, impute, use_covs, nfolds, nreps,
-        auc_stats, sens_stats, spec_stats, bacc_stats, test_results)
+res = c(myregion, clf_model, nfolds, nreps, test_results)
 line_res = paste(res,collapse=',')
 write(line_res, file=out_file, append=TRUE)
 print(line_res)
 
 # export variable importance
-a = varImp(fit, useModel=T)
-b = varImp(fit, useModel=F)
-out_dir = '~/data/baseline_prediction/prs_start/twoClassBA/'
-fname = sprintf('%s/varimp_%s_%s_%s_%s_%s_%s_%d_%d.csv',
-                out_dir, clf_model, phen, c1, c2, impute, use_covs, nfolds, nreps)
-# careful here because for non-linear models the rows of the importance matrix
-# are not aligned!!!
-write.csv(cbind(a$importance, b$importance), file=fname)
-
-# export fit
-fname = sprintf('%s/fit_%s_%s_%s_%s_%s_%s_%d_%d.RData',
-                out_dir, clf_model, phen, c1, c2, impute, use_covs, nfolds, nreps)
-save(fit, file=fname)
+a = rowMeans(varimps, na.rm=T)
+names(a) = rownames(tmp)
+out_dir = '~/data/rnaseq_derek/LOOCV/'
+fname = sprintf('%s/varimp_%s_%s_%d_%d.csv',
+                out_dir, myregion, clf_model, nfolds, nreps)
+write.csv(a, file=fname)
 ```
+
+The code above was working, so I wrote it into a function (rnaseq_LOOCV.R) and
+we can fire it up in Biowulf:
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV.R;
+out_file=swarm.loocv
+res_file=${my_dir}/results_LOOCV.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t 8 --job-name loocv --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Removed some classifiers that failed due to lack of memory (protect stack
+overflow). Many more interesting things to try before getting bigger machine for
+those. For example, 2vs2 and feature engineering!
+
+
 
 # TODO
 * check for linearities again after preprocessing?
@@ -174,7 +172,10 @@ save(fit, file=fname)
   range at first to run some models with built in feature selection, and go from
   there!
 * this would be a good task for 2vs2 decoding, since all we want to know is
-  which genes to best in differnetiating the par of DX... worth trying 
+  which genes to best in differnetiating the par of DX... worth trying
+* try some of the penalized classifiers that don't spit out probabilities (like
+  PenalizedLDA). All we need is the classes to compute sens/spec, so we don't
+  need probabilities for AUC.
 * I had to remove the pH variable because it had 23 NAs, and it was the only
   variable with NAs. So, probably good to test if our results change at all with
   it later.
