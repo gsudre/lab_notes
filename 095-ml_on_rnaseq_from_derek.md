@@ -196,16 +196,144 @@ module load jupyter
 jupyter notebook --ip localhost --port $PORT1 --no-browser
 ```
 
+But before I do that a bit more, I finished the 2vs2 code, so let's run our
+classifiers there too. It needs class probabilities, so a bunch of classifiers
+will fail, but we'll see what sticks while I engineer some features:
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_2vs2.R;
+out_file=swarm.2vs2
+res_file=${my_dir}/results_2vs2.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt \
+  ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale.rds $r $clf 10 10 32 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 200 -t 32 --job-name twoVtwo --time 72:00:00 -f $out_file \
+    -m R --logdir trash
+```
+
+I also finished a PCA version of the data. Let's give it a try:
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_2vs2.R;
+out_file=swarm.2vs2PCA
+res_file=${my_dir}/results_2vs2_PCA.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt \
+  ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_PCA.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t 8 --job-name twoVtwoPCA --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV_noProbs.R;
+out_file=swarm.loocvNPPCA
+res_file=${my_dir}/results_LOOCV_NP_PCA.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_PCA.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t 8 --job-name loocvNPPCA --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV.R;
+out_file=swarm.loocv
+res_file=${my_dir}/results_LOOCV_PCA.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_PCA.rds $r $clf 10 10 8 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t 8 --job-name loocv --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Similarly, I made a version of the file that removes all variables correlated at
+above abs(.75). Let's see how those perform:
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_2vs2.R;
+out_file=swarm.2vs2NC
+res_file=${my_dir}/results_2vs2_noCorr.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt \
+  ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_noCorr75.rds $r $clf 10 10 32 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 200 -t 32 --job-name twoVtwoNC --time 48:00:00 -f $out_file \
+    -m R --logdir trash
+```
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV_noProbs.R;
+out_file=swarm.loocvNPNC
+res_file=${my_dir}/results_LOOCV_NP_NC.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_regularized.txt ~/research_code/clf_L1.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_noCorr75.rds $r $clf 10 10 32 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 200 -t 32 --job-name loocvNPNC --time 48:00:00 -f $out_file \
+    -m R --logdir trash
+```
+
+```bash
+my_dir=~/data/rnaseq_derek
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV.R;
+out_file=swarm.loocvNC
+res_file=${my_dir}/results_LOOCV_NC.csv
+rm $out_file
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt`; do
+    for r in ACC Caudate; do
+      echo "Rscript $my_script ${my_dir}/X_${r}noPH_zv_nzv_center_scale_noCorr75.rds $r $clf 10 10 32 $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 200 -t 32 --job-name loocvNC --time 48:00:00 -f $out_file \
+    -m R --logdir trash
+```
+
 # TODO
-* check for linearities again after preprocessing?
-* might need to do most of the prepocessing and save the file for later? Also,
-  might need some extra visualizations of the data and do it outside of caret.
-  Especially for correlations, PCA, etc. But maybe just try some scaling and
-  range at first to run some models with built in feature selection, and go from
-  there!
-* this would be a good task for 2vs2 decoding, since all we want to know is
-  which genes to best in differnetiating the par of DX... worth trying
+* check for normality and outliers, possibly even winsorize?
 * I had to remove the pH variable because it had 23 NAs, and it was the only
   variable with NAs. So, probably good to test if our results change at all with
   it later.
-
+* maybe try some nonlinear dimensionality reduction?
+* we might need to really play with regularization here, as the default values
+  from caret will likely be far from a decent range. Still, they might be a good
+  indication of what runs and what doesn't.
+* try running ICASSO because caret's ica broke down
