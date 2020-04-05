@@ -327,6 +327,90 @@ swarm -g 200 -t 32 --job-name loocvNC --time 48:00:00 -f $out_file \
     -m R --logdir trash
 ```
 
+# 2020-04-05 09:21:17
+
+Looking at the preliminary results so far, ACC does generally better. The
+no-correlation pipeline is also the best, so we might need to check if there is
+a better correlation threshold to play with. Also, would it just be a matter of
+playing with the regularization parameters a bit more, and get the entire set
+there?
+
+![](images/2020-04-05-09-23-29.png)
+
+How about 2vs2?
+
+![](images/2020-04-05-09-28-04.png)
+
+ACC does better as well. But the results are not as good as the regular
+classifier, so we should probably stick with that for now. Also interesting tha
+PCA and NC do better, leading me to believe that our parameters being tested
+acould be improved.
+
+So, my preferred approach here would be to optimize the classifiers doing best
+with the regular set and see if that helps. If not, then find the best NC
+threshold and go from there. In that case, I could try multiple NC threhsolds,
+or try to find some sort of cut-off empirically?
+
+My difficulty with the NC pipeline is how the variables that were kept were
+chosen. If we remove variable X and not variable Y, we might be losing on model
+intepretation. Maybe X was an important gene? I could also run a PCA pipeline
+where we keep all possible components? Should be about 50 or so. Then maybe the
+results would somewhat approach the NC pipeline?
+
+For nodeHarvest there isn't muc else to do. In fact, maybe I could run it
+forcing the paramaters to 1 and outbag, and see if not overfitting to the trian
+set does better? 
+
+```r
+clf_model = 'nodeHarvest'
+fitControl <- trainControl(method = "none", classProbs = TRUE,
+                           allowParallel = TRUE)
+mygrid = data.frame(maxinter=1, mode='mean')
+varimps = matrix(nrow=ncol(X), ncol=nrow(X))
+test_preds = c()
+for (test_rows in 1:length(y)) {
+    print(sprintf('Hold out %d / %d', test_rows, length(y)))
+    X_train <- X[-test_rows, ]
+    X_test <- X[test_rows, ]
+    y_train <- factor(y[-test_rows])
+    y_test <- factor(y[test_rows])
+
+    set.seed(42)
+    fit <- train(X_train, y_train, trControl = fitControl, method = clf_model,
+                 metric='BalancedAccuracy', tuneGrid=mygrid)
+
+    preds_class = predict.train(fit, newdata=X_test)
+    preds_probs = predict.train(fit, newdata=X_test, type='prob')
+    dat = cbind(data.frame(obs = y_test, pred = preds_class), preds_probs)
+    test_preds = rbind(test_preds, dat)
+
+    tmp = varImp(fit, useModel=T)$importance
+    varimps[, test_rows] = tmp[,1]
+}
+mcs = my_summary(test_preds, lev=levels(y))
+test_results = c(mcs['BalancedAccuracy'], mcs['ROC'], mcs['Sens'], mcs['Spec'])
+names(test_results) = c('test_BalancedAccuracy', 'test_AUC', 'test_Sens',
+                        'test_Spec')
+```
+
+But if we're going to go with dimensionality reduction, this could be a good way
+to go about it:
+https://cran.r-project.org/web/packages/dimRed/vignettes/dimensionality-reduction.pdf
+
+I just need to remember to only use methods that have a inverse transform so I
+can get back to the original results...
+
+Maybe try all PCs from PCA, and if that doesn't work (or whle that's computing),
+try some of these methods to see what works best?
+
+I also need to play with the xgbLinear parameters, because some of that might
+make the results using all predictors a bit more palatable.
+
+Before I do any of that, maybe look for outliers inside each gene and set them
+to max? Just to make sure no outlier is driving the variance...
+
+
+
 # TODO
 * check for normality and outliers, possibly even winsorize?
 * I had to remove the pH variable because it had 23 NAs, and it was the only
@@ -337,3 +421,6 @@ swarm -g 200 -t 32 --job-name loocvNC --time 48:00:00 -f $out_file \
   from caret will likely be far from a decent range. Still, they might be a good
   indication of what runs and what doesn't.
 * try running ICASSO because caret's ica broke down
+* try MDS?
+* try TPOT MDS pipeline?
+* try TPOT and select best model across LOOCV?
