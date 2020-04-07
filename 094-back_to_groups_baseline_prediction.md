@@ -1024,8 +1024,76 @@ swarm -g 20 -t 8 --job-name tcBiBA --time 4:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
 
+# 2020-04-06 13:14:17
+
+I'll re-run the analysis by fixing the families first, imputing, and then
+splitting the groups. Let's see how that goes.
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_splitFirst.R;
+out_file=swarm.tcSF
+res_file=${my_dir}/results_builtinResampFixImp_splitFirstTwoClassEldestBA.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcSF --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+Results weren't great. I changed the script to do pre-processing after removign
+subjects, like we had before. It's just the trani-test data that happens first
+now. 
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_splitFirst.R;
+out_file=swarm.tcSF
+res_file=${my_dir}/results_builtinResampFixImp_splitFirstTwoClassEldestBA_v2.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat multi_clf.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcSF --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+In the meanwhile, I'll try to do xgbTree using missing data... does it work?
+
+It works well for the train data, and I can fit it up to .672 AUC in training using
+5-fold CV, but it only generalizes to .541 in testing. That's improvers VS
+symptomatic using all data without imputation.
+
+So, how do the imputed results look now?
+
+
 
 # TODO
+* if we push the xgbTree front, as it handles missing data, could we try this
+  again without imputing data?
 * finish re-tuning our best models
 * send final results file and varImps to Philip
 * start writing. Write more than less and Philip will transfer stuff to

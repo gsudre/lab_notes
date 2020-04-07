@@ -363,9 +363,10 @@ set does better?
 
 ```r
 clf_model = 'nodeHarvest'
+mygrid = data.frame(maxinter=1, mode='mean')
+
 fitControl <- trainControl(method = "none", classProbs = TRUE,
                            allowParallel = TRUE)
-mygrid = data.frame(maxinter=1, mode='mean')
 varimps = matrix(nrow=ncol(X), ncol=nrow(X))
 test_preds = c()
 for (test_rows in 1:length(y)) {
@@ -391,6 +392,7 @@ mcs = my_summary(test_preds, lev=levels(y))
 test_results = c(mcs['BalancedAccuracy'], mcs['ROC'], mcs['Sens'], mcs['Spec'])
 names(test_results) = c('test_BalancedAccuracy', 'test_AUC', 'test_Sens',
                         'test_Spec')
+print(test_results)
 ```
 
 But if we're going to go with dimensionality reduction, this could be a good way
@@ -409,7 +411,100 @@ make the results using all predictors a bit more palatable.
 Before I do any of that, maybe look for outliers inside each gene and set them
 to max? Just to make sure no outlier is driving the variance...
 
+So, going back to the regular pipeline, I get this with using no tuning in
+nodeHarvest:
 
+```
+test_BalancedAccuracy              test_AUC             test_Sens             test_Spec 
+            0.6670968             0.7264516             0.5600000             0.7741935 
+```
+
+That was using maxinter=1 and outbag method. It's a step up from what we had
+before, but I wonder if I can do better with other algorithms. For example, how
+about xgbLinear? I could also try kernelpls or spls?
+
+```r
+clf_model = 'kernelpls'
+mygrid = data.frame(ncomp=1)
+```
+
+```
+> print(test_results)
+test_BalancedAccuracy              test_AUC             test_Sens             test_Spec 
+            0.6187097             0.6374194             0.5600000             0.6774194 
+```
+
+Not great... if I actually tune it in a 10-fold and evaluate a in LOOCV, liek
+the other models I tested, it improves a bit:
+
+```
+test_BalancedAccuracy              test_AUC             test_Sens             test_Spec 
+            0.6670968             0.6387097             0.5600000             0.7741935 
+
+```
+
+How about xgbLinear? (spls is taking forever...)
+
+```r
+clf_model = 'xgbLinear'
+len=10
+mygrid = expand.grid(nrounds=100,
+                     lambda=c(0, 10 ^ seq(-1, -4, length = len - 1)),
+                     alpha=c(0, 10 ^ seq(-1, -4, length = len - 1)),
+                     eta=.3)
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=my_summary)
+set.seed(42)
+fit <- train(X_train, y_train, trControl = fitControl, method = clf_model,
+              metric='BalancedAccuracy', tuneGrid=mygrid)
+```
+
+I'm running several experiments with xgTree, and I'm getting very good results
+if I really tune it!
+
+```r
+set.seed(42)
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.005, gamma=1, max_depth=1, min_child_weight=2, subsample=1, colsample_bytree=1, alpha=0, lambda=1)
+xgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 200, nfold = 5, showsd = T, stratified = T, print_maximize = F, every_n = 10, early_stop_round = 20, eval_metric='auc')
+```
+
+That is pushing my test set AUC to .8! But there still might be some
+overfitting, so I think I can squeeze more out of it. These have been quite
+helpful:
+
+https://xgboost.readthedocs.io/en/latest/parameter.html
+https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html
+https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
+https://www.kaggle.com/pelkoja/visual-xgboost-tuning-with-caret
+https://blog.cambridgespark.com/hyperparameter-tuning-in-xgboost-4ff9100a3b2f
+https://stackoverflow.com/questions/35050846/xgboost-in-r-how-does-xgb-cv-pass-the-optimal-parameters-into-xgb-train
+
+I was even able to get it to .83 like this:
+
+```r
+set.seed(42)
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.002, gamma=5, max_depth=1, min_child_weight=2, subsample=.75, colsample_bytree=.75, alpha=.1, lambda=15)xxgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 400, nfold = 5, showsd = T, stratified = T, print_maximize = T, every_n = 10, early_stopping_rounds = 40, eval_metric='auc')
+> xgbcv$evaluation_log[which.max(xgbcv$evaluation_log$test_auc_mean),]
+   iter train_auc_mean train_auc_std test_auc_mean test_auc_std
+1:  239      0.9781282    0.02274277     0.8381748    0.1543327
+
+```
+
+# 2020-04-06 07:58:48
+
+So, let's do this tuning using caret. This way we can visualize some of the
+model parameters, like that article I was looking at. I'm going to use the
+entire sample as an optimistic estimator, but the final results will be on
+LOOCV. This first test will have the purpose to establishing the ranges of
+parameters for the future CV.
+
+Will do it in a Jupyer notebook to get the plots nicely.
 
 # TODO
 * check for normality and outliers, possibly even winsorize?
