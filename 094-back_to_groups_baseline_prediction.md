@@ -1087,8 +1087,80 @@ It works well for the train data, and I can fit it up to .672 AUC in training us
 5-fold CV, but it only generalizes to .541 in testing. That's improvers VS
 symptomatic using all data without imputation.
 
-So, how do the imputed results look now?
+So, how do the imputed results look now? slda looks best... but training not
+doing great. To be fair, there isn't much training in slda, because it learns no
+parameters. In fact, that estimate doesn't mean much, as we're just holding out
+data we don't need to. If that's the case, can we try all other methods don't
+need to learn any parameters, and see if not only there is one that does better,
+but at least some other model to better compare to LDA?
 
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_splitFirst_noProbs.R;
+out_file=swarm.tcNoParam
+res_file=${my_dir}/results_builtinResampFixImp_splitFirstTwoClassEldestBA_noParams.csv
+rm $out_file
+sx="categ_all.4";
+for clf in `cat ~/research_code/clf_no_params.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcNP --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+# 2020-04-07 07:47:29
+
+Going to run kernelpls with fixed parameters really quick:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_splitFirst_fixedParams.R;
+res_file=${my_dir}/results_newSplit_withROC.csv
+sx="categ_all.4";
+for clf in slda kernelpls; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 2 $cov $res_file;
+            done;
+        done;
+    done;
+done
+```
+
+And do the same thing for kernelpls and slda under the old split for comparison:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_fixedParams.R;
+res_file=${my_dir}/results_oldSplit_withROC.csv
+sx="categ_all.4";
+for clf in slda kernelpls; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 2 $cov $res_file;
+            done;
+        done;
+    done;
+done
+```
 
 
 # TODO
