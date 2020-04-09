@@ -5,7 +5,6 @@ Let's see if we can narrow down a parameter using Bayesian optimization.
 ```r
 library(caret)
 library(xgboost)
-library(rBayesianOptimization)
 
 fname = '~/data/baseline_prediction/prs_start/gf_philip_03292020.csv'
 phen = 'categ_all.4'
@@ -59,10 +58,11 @@ dtest <- xgb.DMatrix(data = t(as.matrix(X_test)), label = as.numeric(y_test)-1, 
 ```
 
 ```r
+library(rBayesianOptimization)
 set.seed(42)
 cv_folds = createFolds(y, k = 10)
 xgb_cv_bayes <- function(nround, max.depth, min_child_weight, subsample, eta,
-                         gamma,colsample_bytree,max_delta_step) {
+                         gamma,colsample_bytree,max_delta_step,verbose) {
     param<-list(booster = "gbtree",
                 max_depth = max.depth,
                 min_child_weight = min_child_weight,
@@ -75,7 +75,7 @@ xgb_cv_bayes <- function(nround, max.depth, min_child_weight, subsample, eta,
                 eval_metric = "auc")
     cv <- xgb.cv(params = param, data = dtrain, folds = cv_folds,
                  nrounds = 1000, early_stopping_rounds = 10, maximize = TRUE,
-                 verbose = verbose)
+                 verbose = T)
     list(Score = cv$evaluation_log$test_auc_mean[cv$best_iteration],
          Pred=cv$best_iteration)
     # we don't need cross-validation prediction and we need the number of rounds.
@@ -92,7 +92,7 @@ OPT_Res <- BayesianOptimization(xgb_cv_bayes,
                                 max_delta_step=c(1L,10L)),
                                 init_grid_dt = NULL, init_points = 10,
                                 n_iter = 10, acq = "ucb", kappa = 2.576,
-                                eps = 0.0, verbose = verbose)
+                                eps = 0.0)
 
 best_param <- list(
     booster = "gbtree",
@@ -109,3 +109,85 @@ best_param <- list(
 nrounds=OPT_Res$Pred[[which.max(OPT_Res$History$Value)]]
 xgb_model <- xgb.train (params = best_param, data = dtrain, nrounds = nrounds)
 ```
+
+Nahh... this code is broken. 
+
+Let's try this one instead: https://www.simoncoulombe.com/2019/01/bayesian/
+
+```r
+library(mlrMBO)
+
+set.seed(42)
+cv_folds = createFolds(y_train, k = 10)
+obj.fun  <- smoof::makeSingleObjectiveFunction(
+  name = "xgb_cv_bayes",
+  fn =   function(x){
+    set.seed(12345)
+    cv <- xgb.cv(params = list(
+      booster          = "gbtree",
+      eta              = x["eta"],
+      max_depth        = x["max_depth"],
+      min_child_weight = x["min_child_weight"],
+      gamma            = x["gamma"],
+      subsample        = x["subsample"],
+      colsample_bytree = x["colsample_bytree"],
+      objective        = 'binary:logistic', 
+      eval_metric     = "auc"),
+      data = dtrain,
+      nround = 30,
+      folds=  cv_folds,
+      prediction = FALSE,
+      showsd = TRUE,
+      early_stopping_rounds = 10,
+      verbose = 0)
+    cv$evaluation_log[, max(test_auc_mean)]
+  },
+  par.set = makeParamSet(
+    makeNumericParam("eta",              lower = 0.001, upper = 0.05),
+    makeNumericParam("gamma",            lower = 0,     upper = 5),
+    makeIntegerParam("max_depth",        lower= 1,      upper = 10),
+    makeIntegerParam("min_child_weight", lower= 1,      upper = 10),
+    makeNumericParam("subsample",        lower = 0.2,   upper = 1),
+    makeNumericParam("colsample_bytree", lower = 0.2,   upper = 1)
+  ),
+  minimize = FALSE
+)
+
+# generate an optimal design with only 10  points
+des = generateDesign(n=100,
+                     par.set = getParamSet(obj.fun), 
+                     fun = lhs::randomLHS)  ## . If no design is given by the user, mlrMBO will generate a maximin Latin Hypercube Design of size 4 times the number of the black-box function’s parameters.
+
+# bayes will have 10 additional iterations
+control = makeMBOControl()
+control = setMBOControlTermination(control, iters = 10)
+
+# run this!
+run = mbo(fun = obj.fun, 
+          design = des,  
+          control = control, 
+          show.info = TRUE)
+
+run <- read_rds( "temp_files/run.rds")
+# print a summary with run
+#run
+# return  best model hyperparameters using run$x
+# return best log likelihood using run$y
+# return all results using run$opt.path$env$path
+run$opt.path$env$path  %>% 
+  mutate(Round = row_number()) %>%
+  mutate(type = case_when(
+    Round==1  ~ "1- hardcoded",
+    Round<= 11 ~ "2 -design ",
+    TRUE ~ "3 - mlrMBO optimization")) %>%
+  ggplot(aes(x= Round, y= y, color= type)) + 
+  geom_point() +
+  labs(title = "mlrMBO optimization")+
+  ylab("loglikelihood")
+```
+
+OK, the error was that I was KFolding y, instead of y_train!
+
+In any case, this is working. It's just a matter of giving it a good enough
+range of parameters, and figuring out a bit how to best use this package, in
+terms of multicore and other parameters.

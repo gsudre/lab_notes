@@ -1162,6 +1162,61 @@ for clf in slda kernelpls; do
 done
 ```
 
+# 2020-04-08 20:15:57
+
+Let's run the models that don't need parameters again, now with code that does
+it without the unneeded CV:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_splitFirst_fixedParams.R;
+res_file=${my_dir}/results_noParams_withROC.csv
+out_file=swarm.NP;
+rm $out_file;
+sx="categ_all.4";
+for clf in `cat ~/research_code/clf_no_params.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcNP2 --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
+And we run the old split as well, just because:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_BA_fixedParams.R;
+res_file=${my_dir}/results_oldSplit_noParams_withROC.csv
+out_file=swarm.NP;
+rm $out_file;
+sx="categ_all.4";
+for clf in `cat ~/research_code/clf_no_params.txt`; do
+    for imp in anat dti; do
+        for cov in T F; do
+            for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "never_affected stable_symptomatic"; do
+                echo "Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 8 $cov $res_file;" >> $out_file;
+            done;
+        done;
+    done;
+done
+
+swarm -g 20 -t 8 --job-name tcNP2 --time 4:00:00 -f $out_file \
+    -m R --partition quick --logdir trash
+```
+
 
 # TODO
 * if we push the xgbTree front, as it handles missing data, could we try this
