@@ -480,8 +480,14 @@ twoClassSummary(dat, lev=levels(y_test))
 Certainly the way I as running before isn't practical. It did use all 32 cores
 some times, but after 12h it had only done 12 tests out of 170. This is running
 much faster... I've had 3 iterations in 10 minutes! So, I can definitely use
-something like that for the RNAseq data. But how doe sit compare to the imputed
-dataset we're using with LDA?
+something like that for the RNAseq data. 
+
+As for using it in baseline_prediction, it crashed on iteration 14 because of
+unmapped memory again. This time it cannnot be the same reason, so I'm guessigng
+it's something related to the NAs... but hard to tell. The results up until that
+point weren't fantastic either, so I won't push it.
+
+How does it compare to the imputed dataset we're using with LDA?
 
 ```r
 library(caret)
@@ -623,9 +629,37 @@ colnames(dat)[3] = c1
 twoClassSummary(dat, lev=levels(y_test))
 ```
 
+```
+> confusionMatrix(y_preds, y)
+Confusion Matrix and Statistics
 
+                    Reference
+Prediction           improvers stable_symptomatic
+  improvers                 18                 28
+  stable_symptomatic        19                  8
+                                          
+               Accuracy : 0.3562          
+                 95% CI : (0.2475, 0.4769)
+    No Information Rate : 0.5068          
+    P-Value [Acc > NIR] : 0.9966          
+                                          
+                  Kappa : -0.2923         
+                                          
+ Mcnemar's Test P-Value : 0.2432          
+                                          
+            Sensitivity : 0.4865          
+            Specificity : 0.2222          
+         Pos Pred Value : 0.3913          
+         Neg Pred Value : 0.2963          
+             Prevalence : 0.5068          
+         Detection Rate : 0.2466          
+   Detection Prevalence : 0.6301          
+      Balanced Accuracy : 0.3544          
+                                          
+       'Positive' Class : improvers       
+```
 
-
+Not great either... aborting.
 
 
 # TODO
