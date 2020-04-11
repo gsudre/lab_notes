@@ -1217,6 +1217,26 @@ swarm -g 20 -t 8 --job-name tcNP2 --time 4:00:00 -f $out_file \
     -m R --partition quick --logdir trash
 ```
 
+# 2020-04-11 12:52:27
+
+Just a few runs on specific classifiers for the paper:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass.R;
+res_file=/dev/null
+sx="categ_all.4";
+clf='svmRadialCost';
+imp='dti';
+cov='F';
+for cs in "emergent improvers" "emergent never_affected" \
+          "emergent stable_symptomatic" "improvers never_affected" \
+          "improvers stable_symptomatic" "stable_symptomatic never_affected"; do
+    Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 2 $cov $res_file;
+done
+```
+
 
 # TODO
 * if we push the xgbTree front, as it handles missing data, could we try this

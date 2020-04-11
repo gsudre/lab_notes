@@ -270,20 +270,54 @@ it again:
 ```bash
 my_dir=~/data/rnaseq_derek/
 cd $my_dir
-my_script=~/research_code/rnaseq_LOOCV_MBO_v2.R;
+my_script=~/research_code/rnaseq_LOOCV_MBO.R;
 out_file=swarm.loocv
 ncores=32;
 rm $out_file
 for r in ACC Caudate both; do
     for m in auc error; do
-        res_file=$my_dir/loocv_${r}_${m}.RData;
+        res_file=$my_dir/loocv_${r}_${m}_v2.RData;
         echo "Rscript $my_script $r $ncores $m $res_file;" >> $out_file;
     done;
 done
 
-swarm -g 30 -t $ncores --job-name loocv --time 24:00:00 -f $out_file \
+swarm -g 30 -t $ncores --job-name loocv2 --time 24:00:00 -f $out_file \
     -m R --partition norm --logdir trash
 ```
 
+The last two are still running, but we can take a look at what we found so far.
+
+```r
+> library(caret)
+Loading required package: lattice
+Loading required package: ggplot2
+> load('loocv_ACC_auc_v2.RData')
+> dat$Case = 1-dat$Control
+> print(twoClassSummary(dat, lev=levels(dat$obs)))
+      ROC      Sens      Spec 
+0.4787097 0.3600000 0.6129032 
+> load('loocv_ACC_error_v2.RData')
+> dat$Case = 1-dat$Control
+> print(twoClassSummary(dat, lev=levels(dat$obs)))
+      ROC      Sens      Spec 
+0.4541935 0.3200000 0.6451613 
+> load('loocv_Caudate_auc_v2.RData')
+> dat$Case = 1-dat$Control
+> print(twoClassSummary(dat, lev=levels(dat$obs)))
+      ROC      Sens      Spec 
+0.4860140 0.3461538 0.5757576 
+> load('loocv_Caudate_error_v2.RData')
+> dat$Case = 1-dat$Control
+> print(twoClassSummary(dat, lev=levels(dat$obs)))
+      ROC      Sens      Spec 
+0.5093240 0.4615385 0.6060606 
+>
+```
+
+not doing great, even though our training AUC is getting around .8...
+
+We might need to try simpler classifiers.
+
+
+
 # TODO
- * try other learning metrics? maybe the default, instead of AUC?
