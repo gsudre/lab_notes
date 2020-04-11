@@ -489,7 +489,7 @@ I was even able to get it to .83 like this:
 
 ```r
 set.seed(42)
-params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.002, gamma=5, max_depth=1, min_child_weight=2, subsample=.75, colsample_bytree=.75, alpha=.1, lambda=15)xxgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 400, nfold = 5, showsd = T, stratified = T, print_maximize = T, every_n = 10, early_stopping_rounds = 40, eval_metric='auc')
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.002, gamma=5, max_depth=1, min_child_weight=2, subsample=.75, colsample_bytree=.75, alpha=.1, lambda=15)xgbcv <- xgb.cv( params = params, data = dtrain, nrounds = 400, nfold = 5, showsd = T, stratified = T, print_maximize = T, every_n = 10, early_stopping_rounds = 40, eval_metric='auc')
 > xgbcv$evaluation_log[which.max(xgbcv$evaluation_log$test_auc_mean),]
    iter train_auc_mean train_auc_std test_auc_mean test_auc_std
 1:  239      0.9781282    0.02274277     0.8381748    0.1543327

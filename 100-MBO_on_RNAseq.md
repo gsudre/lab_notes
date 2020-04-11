@@ -240,5 +240,50 @@ just_target = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
 y = just_target[, 'Diagnosis']
 ```
 
+Maybe I should script that out so I'm not running it in interactive mode all the
+time?
+
+```bash
+my_dir=~/data/rnaseq_derek/
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV_MBO.R;
+out_file=swarm.loocv
+ncores=32;
+rm $out_file
+for r in ACC Caudate both; do
+    for m in auc error; do
+        res_file=$my_dir/loocv_${r}_${m}.RData;
+        echo "Rscript $my_script $r $ncores $m $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t $ncores --job-name loocv --time 24:00:00 -f $out_file \
+    -m R --partition norm --logdir trash
+```
+
+# 2020-04-11 09:30:58
+
+I noticed I wasn't setting the metric and objective explicitly in the final
+model before using test data, and also I wasn't optimizing nrounds. So, let's run
+it again:
+
+```bash
+my_dir=~/data/rnaseq_derek/
+cd $my_dir
+my_script=~/research_code/rnaseq_LOOCV_MBO_v2.R;
+out_file=swarm.loocv
+ncores=32;
+rm $out_file
+for r in ACC Caudate both; do
+    for m in auc error; do
+        res_file=$my_dir/loocv_${r}_${m}.RData;
+        echo "Rscript $my_script $r $ncores $m $res_file;" >> $out_file;
+    done;
+done
+
+swarm -g 30 -t $ncores --job-name loocv --time 24:00:00 -f $out_file \
+    -m R --partition norm --logdir trash
+```
+
 # TODO
  * try other learning metrics? maybe the default, instead of AUC?
