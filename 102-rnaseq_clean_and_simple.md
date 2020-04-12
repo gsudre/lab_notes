@@ -285,7 +285,7 @@ fit <- train(X, y,
 ```
 
 I should also play with some of the Naive Bayes variants: manb, naive_bayes,
-nbDiscrete. But manb had lots of errors...
+nbDiscrete. But manb had lots of errors... nbDiscrete also didn't run...
 
 ```r
 nfolds = 5
@@ -299,8 +299,9 @@ fitControl <- trainControl(method = "repeatedcv",
                            allowParallel = TRUE,
                            classProbs = TRUE,
                            summaryFunction=twoClassSummary)
-mygrid = NULL #expand.grid(mfinal=c(1, 2, 3, 5, 10, 15, 20),
-                #     maxdepth=c(1, 2, 3))
+mygrid = expand.grid(usekernel=c(FALSE, TRUE),
+                     laplace=c(0, .5, 1),
+                     adjust=c(0, .1, 1, 10))
 set.seed(42)
 fit <- train(X, y,
                  trControl = fitControl,
@@ -309,26 +310,13 @@ fit <- train(X, y,
                  metric='ROC')
 ```
 
-```r
-nfolds = 5
-nreps = 10
-clf = 'nbDiscrete'
-set.seed(42)
-fitControl <- trainControl(method = "repeatedcv",
-                           number = nfolds,
-                           repeats = nreps,
-                           savePredictions = 'final',
-                           allowParallel = TRUE,
-                           classProbs = TRUE,
-                           summaryFunction=twoClassSummary)
-mygrid = NULL #expand.grid(mfinal=c(1, 2, 3, 5, 10, 15, 20),
-                #     maxdepth=c(1, 2, 3))
-set.seed(42)
-fit <- train(X, y,
-                 trControl = fitControl,
-                 method = clf,
-                 tuneGrid=mygrid,
-                 metric='ROC')
+```
+  usekernel  ROC        Sens   Spec     
+  FALSE      0.5804286  0.752  0.4028571
+   TRUE      0.5562381  0.580  0.5180952
+
+Tuning parameter 'laplace' was held constant at a value of 0
+Tuning parameter 'adjust' was held constant at a value of 1
 ```
 
 ## Univariate filter
@@ -348,7 +336,6 @@ rfWithFilter
 ```
 
 # TODO
-* see if functions dying with errors can handle probabilities
 * try
   http://topepo.github.io/caret/miscellaneous-model-functions.html#partial-least-squares-discriminant-analysis
   ?
