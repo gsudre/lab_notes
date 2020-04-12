@@ -46,8 +46,8 @@ for (v in 1:ncol(X[, 1:20])) {
 # variables, in case some classifiers need that (looking at you, LDA)
 X2 = scale(X, center=T, scale=T)
 fname = sprintf('~/data/rnaseq_derek/X_%snoPH_zv_nzv_center_scale_SDT%d_normal.rds',
-                myregion, SDT)
-writeRDS(X2, fname=fname)
+                myregion, abs(SDT))
+saveRDS(X2, file=fname)
 ```
 
 ## Simple models
@@ -56,12 +56,11 @@ Now that the data is cleaner, let's run some simple models:
 
 ```r
 library(caret)
-library(caretEnsemble)
 library(doParallel)
 
-ncores = 2
+ncores = 32
 myseed = 42
-clf = 'slda'
+clf = 'gaussprLinear'
 registerDoParallel(ncores)
 getDoParWorkers()
 
@@ -69,10 +68,10 @@ getDoParWorkers()
 myregion='ACC'
 just_target = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
 if (myregion == 'both') {
-    fname = '~/data/rnaseq_derek/X_noPH_zv_nzv_center_scale.rds'
+    fname = '~/data/rnaseq_derek/X_noPH_zv_nzv_center_scale_SDT5_normal.rds'
     y = just_target[, 'Diagnosis']
 } else {
-    fname = sprintf('~/data/rnaseq_derek/X_%snoPH_zv_nzv_center_scale.rds',
+    fname = sprintf('~/data/rnaseq_derek/X_%snoPH_zv_nzv_center_scale_SDT5_normal.rds',
                     myregion)
     y = just_target[just_target$Region==myregion, 'Diagnosis']
 }
@@ -108,3 +107,249 @@ for (test_row in 1:nrow(X)) {
     print(twoClassSummary(dat, lev=levels(y)))
 }
 ```
+
+slda failed due to protection for stack overflow. How about treebag? Same
+error... bayesglm too. That's becomeing a big problem. I might need to go
+straight for regularized models, or at least with some sort of FS. even
+glmStepAIC got protected. Oh well. Let me try doing some tuning with the entire
+dataset first. Going for logistic regression and cranking up lambda. Maybe there's a nice interplay of alpha and lambda here?
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'glmnet'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(lambda=c(1, 5, 10, 50, 100),
+                     alpha=c(0, .25, .75, 1))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+```
+  alpha  lambda  ROC        Sens   Spec     
+  0.00     1     0.6552381  0.516  0.7033333
+  0.00     5     0.6533333  0.520  0.7033333
+  0.00    10     0.6582857  0.508  0.7000000
+  0.00    50     0.6722857  0.504  0.7066667
+  0.00   100     0.6717143  0.492  0.7104762
+```
+
+How about SVM?
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'svmLinear'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(C=c(.001, .1, 1, 5, 10, 100, 200, 500, 1000))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+```
+  C      ROC        Sens   Spec     
+  1e-03  0.6060000  0.384  0.7714286
+  1e-01  0.6206667  0.368  0.7704762
+  1e+00  0.5886667  0.288  0.7909524
+  5e+00  0.6326667  0.380  0.7738095
+  1e+01  0.5993333  0.336  0.7871429
+  1e+02  0.5783810  0.300  0.8033333
+  2e+02  0.6010476  0.328  0.7942857
+  5e+02  0.6170476  0.356  0.7485714
+  1e+03  0.5806667  0.292  0.7947619
+```
+
+I could also try some veeery shallow trees? For example, rf fixing mtry, or
+'RRFglobal' fixing mtry but learning the regularization?
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'rf'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(mtry=c(3, 5, 10, 15, 20))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+```
+  mtry  ROC        Sens   Spec     
+   3    0.6586190  0.396  0.8085714
+   5    0.6491905  0.436  0.7552381
+  10    0.6499524  0.444  0.7661905
+  15    0.6360000  0.428  0.7423810
+  20    0.6446667  0.464  0.7695238
+```
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'RRFglobal'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(mtry=c(1, 3, 5, 10, 15, 20, 30),
+                     coefReg=c(.01, .1, 1))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+Another option is to try some other bagged models: AdaBag, LogicBag, cforest...
+logicBag had lots of errors. AdaBag also failed... can they not handle
+probabilities?
+
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'cforest'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(mtry=c(1, 2, 3, 5, 10, 15, 20))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'AdaBag'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = expand.grid(mfinal=c(1, 2, 3, 5, 10, 15, 20),
+                     maxdepth=c(1, 2, 3))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+I should also play with some of the Naive Bayes variants: manb, naive_bayes,
+nbDiscrete. But manb had lots of errors...
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'naive_bayes'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = NULL #expand.grid(mfinal=c(1, 2, 3, 5, 10, 15, 20),
+                #     maxdepth=c(1, 2, 3))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'nbDiscrete'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = nfolds,
+                           repeats = nreps,
+                           savePredictions = 'final',
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           summaryFunction=twoClassSummary)
+mygrid = NULL #expand.grid(mfinal=c(1, 2, 3, 5, 10, 15, 20),
+                #     maxdepth=c(1, 2, 3))
+set.seed(42)
+fit <- train(X, y,
+                 trControl = fitControl,
+                 method = clf,
+                 tuneGrid=mygrid,
+                 metric='ROC')
+```
+
+## Univariate filter
+
+Why not use some univariate filtering?
+
+```r
+nfolds = 5
+nreps = 10
+
+set.seed(42)
+filterCtrl <- sbfControl(functions = rfSBF, method = "repeatedcv",
+                         repeats = nreps, number=nfolds)
+set.seed(42)
+rfWithFilter <- sbf(X, y, sbfControl = filterCtrl)
+rfWithFilter
+```
+
+# TODO
+* see if functions dying with errors can handle probabilities
+* try
+  http://topepo.github.io/caret/miscellaneous-model-functions.html#partial-least-squares-discriminant-analysis
+  ?
+* crank up MBO
