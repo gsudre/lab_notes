@@ -75,7 +75,8 @@ for (p in 1:nperms) {
     eig_vecs[, p] = pc$Yrot[, 1]
 }
 v_err = apply(eig_vecs, 1, sd)
-vz = S$v/v_err
+vz = S$v[, 1]/v_err
+var_names = colnames(X)
 
 > summary(vz[, 1])
      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
@@ -85,7 +86,7 @@ vz = S$v/v_err
 I'm gonna save those results so we can plot and investigate them later:
 
 ```r
-save(S, eig_vals, vz,
+save(S, vz, var_names,
      file='~/data/rnaseq_derek/PLS_ACC_noPH_zv_nzv_center_scale_SDT5_normal.RData')
 ```
 
@@ -249,13 +250,28 @@ there:
 
 ```r
 load('PLS_ACC_noPH_zv_nzv_center_scale_SDT5_normal.RData')
-plot(sort(abs(vz), decreasing=T), main='Stable variables', ylab='abs(Z)', xlab='variables')
+svz = sort(abs(vz), decreasing=T)
+plot(svz, main='Stable variables', ylab='abs(Z)', xlab='variables')
 ```
 
-![](images/2020-04-13-07-32-19.png)
+![](images/2020-04-13-08-28-41.png)
 
 We could split that solely based on Z, but it should be easy enough to get the
 elbow of that curve:
+
+```r
+source('~/research_code/get_elbow.R')
+x=1:length(vz)
+dists = vector()
+for (i in x) {
+    dists = c(dists, distancePointSegment(i, svz[i], x[1], svz[1], max(x), min(svz)))
+}
+pos = which.max(dists)
+svz[pos]
+```
+
+3.8K genes (Z=6.6) seems a bit too much. How about we start with the top 100, and go from
+there?
 
 
 # TODO
