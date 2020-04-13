@@ -650,7 +650,4 @@ This might work... we have lots of different genes with good Z:
 Sounds good then. Let's run with this.
 
 # TODO
-* try
-  
-  ?
 * crank up MBO
