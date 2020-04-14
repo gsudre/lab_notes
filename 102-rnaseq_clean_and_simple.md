@@ -478,8 +478,9 @@ What if I let mtry vary a bit?
 ```r
 nfolds = 5
 nreps = 10
-clf = 'rf'
 p_thresh = .05
+
+clf = 'rf'
 set.seed(42)
 fitControl <- trainControl(method = "repeatedcv",
                            number = nfolds,
@@ -506,6 +507,7 @@ for (test_row in 1:nrow(X)) {
                                               X_train[y_train=='Control', v])$p.value)
     good_vars = ps < p_thresh
     X_train2 = X_train[, good_vars]
+    print(dim(X_train2))
     X_test2 = t(as.matrix(t(as.matrix(X_test))[, good_vars]))
     mygrid = data.frame(mtry=1)
 
@@ -544,7 +546,7 @@ And for p < .05:
 0.6483871 0.4800000 0.7419355 
 ```
 
-It's clear no generalizing well. Let me try a method that is less needy of
+It's clear not generalizing well. Let me try a method that is less needy of
 generalization, and then I can also try plugging in the population PCs and see
 if they help.
 
@@ -648,6 +650,208 @@ This might work... we have lots of different genes with good Z:
 ```
 
 Sounds good then. Let's run with this.
+
+# 2020-04-13 19:19:47
+
+I noticed a few genes with some very weird data distributions. Something like
+this, before I scaled from 0-1:
+
+![](images/2020-04-13-19-20-13.png)
+
+and those were breaking the normalization. Despite that, should I even be using
+them (at least, as a non-categorical variable)? Let me see how many genes look
+like that:
+
+```r
+pp = preProcess(data[, grex_names], method=c('range'), rangeBounds=c(0,1))
+a = predict(pp, data[, grex_names])
+n0 = colSums(a==0)
+plot(sort(n0))
+```
+
+![](images/2020-04-13-19-26-30.png)
+
+So, it actually looks quite funky. I can be more conservative, and I could even
+binarize those variable that have X% of subjects with zero. For now, I'll just
+remove those genes. I'll still have 23.4K genes to play with.
+
+## another try with cleaner data
+
+Let's see what we can get with cleaner data:
+
+```r
+library(caret)
+library(doParallel)
+
+ncores = 8
+myseed = 42
+registerDoParallel(ncores)
+getDoParWorkers()
+
+# change later to clean data!
+myregion='ACC'
+just_target = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+if (myregion == 'both') {
+    fname = '~/data/rnaseq_derek/X_noPH_zv_nzv_no0_center_scale_SDT5_normal.rds'
+    y = just_target[, 'Diagnosis']
+} else {
+    fname = sprintf('~/data/rnaseq_derek/X_%snoPH_zv_nzv_no0_center_scale_SDT5_normal.rds',
+                    myregion)
+    y = just_target[just_target$Region==myregion, 'Diagnosis']
+}
+X = readRDS(fname)
+```
+
+So, I tried the same classifiers as above. For glmnet:
+
+```
+  alpha  lambda  ROC        Sens   Spec     
+  0.00     1     0.6665714  0.516  0.7090476
+  0.00     5     0.6660000  0.512  0.7090476
+  0.00    10     0.6641905  0.512  0.7123810
+  0.00    50     0.6708571  0.528  0.7219048
+  0.00   100     0.6718095  0.496  0.7361905
+  0.25     1     0.5447619  0.016  1.0000000
+  0.25     5     0.5000000  0.000  1.0000000
+  0.25    10     0.5000000  0.000  1.0000000
+  0.25    50     0.5000000  0.000  1.0000000
+  0.25   100     0.5000000  0.000  1.0000000
+  0.75     1     0.5000000  0.000  1.0000000
+  0.75     5     0.5000000  0.000  1.0000000
+  0.75    10     0.5000000  0.000  1.0000000
+  0.75    50     0.5000000  0.000  1.0000000
+  0.75   100     0.5000000  0.000  1.0000000
+  1.00     1     0.5000000  0.000  1.0000000
+  1.00     5     0.5000000  0.000  1.0000000
+  1.00    10     0.5000000  0.000  1.0000000
+  1.00    50     0.5000000  0.000  1.0000000
+  1.00   100     0.5000000  0.000  1.0000000
+```
+
+SVM:
+
+```
+  C      ROC        Sens   Spec     
+  1e-03  0.5681905  0.320  0.7866667
+  1e-01  0.5897143  0.340  0.7847619
+  1e+00  0.6499048  0.360  0.7652381
+  5e+00  0.5809524  0.316  0.7642857
+  1e+01  0.6085714  0.368  0.7895238
+  1e+02  0.5984762  0.252  0.8195238
+  2e+02  0.5649524  0.340  0.7571429
+  5e+02  0.6104762  0.312  0.8033333
+  1e+03  0.5691429  0.296  0.7876190
+```
+
+Random forests are still doing well though. And that makes me think... what if I
+just run RF with mtry=1, doing a CV to check what's in the heldout set? We don't
+have much data, but should be enough for some interesting findings... won't
+work. The only good results are using univariate selection. But even at p<.05 we
+have about 3K variables... let's crank it up then.
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+ntop = 100
+clf = 'rf'
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = t(as.matrix(t(as.matrix(X_test))[, good_vars$ix[1:ntop]]))
+    mygrid = data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+How about glmnet in LOOCV?
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'glmnet'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                          number = nfolds,
+                          repeats = nreps,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = expand.grid(lambda=c(1, 5, 10, 50, 100, 200),
+                    alpha=0)
+ntop = 200
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = t(as.matrix(t(as.matrix(X_test))[, good_vars$ix[1:ntop]]))
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    print(fit)
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+It's always choosing lambda=1 for ntop=1000 or ntop=3K. It can go up to ROC .66
+using ntop=200. Would the WNH results generalize better?
+
+
 
 # TODO
 * crank up MBO
