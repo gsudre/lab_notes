@@ -1593,3 +1593,139 @@ check if the self-described population is working out fine.
 * play with adding the different covariate domains sequentially
 * maybe add PRS?
 * add population covariates?
+
+# 2020-04-14 12:38:06
+
+Philip asked for a summary sheet:
+
+```
+could you send me a summary sheet that has these results all aligned by gene (with the p and q values).  And could you add in (2) the p value (and beta) of the region (ACC/caudate)* diagnosis interaction term- WNH and ALL; (3) the p value (and beta) for the region*diagnosis*age term - WNH and ALL; (4) the pvalue (and beta) for region*age; (5) the pvalues for ACC*age; (6) the pvalue for caudate*age- WNH/ALL.   In the file could you also include a column that indicates which GREX have the unusual distribution?
+```
+
+So, in R:
+
+```r
+a = read.csv('~/data/rnaseq_derek/resPOPnoPH_ACC_pLT0.10_Diagnosis.csv')
+a = a[a$predictor=='DiagnosisControl',]
+a$q = p.adjust(a[,'Pr...t..'], method='fdr')
+a$predictor=NULL;
+colnames(a) = sapply(colnames(a), function(x) sprintf('%s.%s', x, 'ACC_all_DX'))
+b = read.csv('~/data/rnaseq_derek/resWNHnoPH_ACC_pLT0.10_Diagnosis.csv')
+b = b[b$predictor=='DiagnosisControl',]
+b$q = p.adjust(b[,'Pr...t..'], method='fdr')
+b$predictor=NULL;
+colnames(b) = sapply(colnames(b), function(x) sprintf('%s.%s', x, 'ACC_WNH_DX'))
+m = merge(a, b, by=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_Caudate_pLT0.10_Diagnosis.csv')
+d = d[d$predictor=='DiagnosisControl',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'Caudate_all_DX'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_Caudate_pLT0.10_Diagnosis.csv')
+d = d[d$predictor=='DiagnosisControl',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'Caudate_WNH_DX'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_ACC_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'ACC_all_DX:Age'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_ACC_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'ACC_WNH_DX:Age'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_Caudate_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'Caudate_all_DX:Age'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_Caudate_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'Pr...t..'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'Caudate_WNH_DX:Age'))
+m = merge(m, d, by.x=1, by.y=5, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_pLT0.10_Diagnosis.csv')
+d = d[d$predictor=='DiagnosisControl',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'all_DX'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_pLT0.10_Diagnosis.csv')
+d = d[d$predictor=='DiagnosisControl',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'WNH_DX'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'all_DX:Age'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_pLT0.10_DiagnosisAge.csv')
+d = d[d$predictor=='DiagnosisControl:Age',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'WNH_DX:Age'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_pLT0.10_DiagnosisRegion.csv')
+d = d[d$predictor=='DiagnosisControl:RegionCaudate',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'all_DX:Region'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_pLT0.10_DiagnosisRegion.csv')
+d = d[d$predictor=='DiagnosisControl:RegionCaudate',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'WNH_DX:Region'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resPOPnoPH_pLT0.10_DiagnosisRegionAge.csv')
+d = d[d$predictor=='DiagnosisControl:RegionCaudate:Age',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'all_DX:Region:Age'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+d = read.csv('~/data/rnaseq_derek/resWNHnoPH_pLT0.10_DiagnosisRegionAge.csv')
+d = d[d$predictor=='DiagnosisControl:RegionCaudate:Age',]
+d$q = p.adjust(d[,'p.value'], method='fdr')
+d$predictor=NULL;
+colnames(d) = sapply(colnames(d), function(x) sprintf('%s.%s', x, 'WNH_DX:Region:Age'))
+m = merge(m, d, by.x=1, by.y=6, all.x=T, all.y=F)
+
+# just mark which variables are weird
+m$imweird = F
+data = readRDS('~/data/rnaseq_derek/data_from_philip.rds')
+grex_names = sapply(colnames(data)[34:ncol(data)], function(x) sprintf('grex%s', x))
+colnames(data)[34:ncol(data)] = grex_names
+library(caret)
+pp = preProcess(data[, grex_names], method=c('range'), rangeBounds=c(0,1))
+a = predict(pp, data[, grex_names])
+n0 = colSums(a==0)
+imbad = names(n0)[n0>1]
+m[m[, 1] %in% imbad, 'imweird'] = T
+
+write.csv(m, file='~/data/rnaseq_derek/compiled_univariate.csv', row.names=F)
+```
