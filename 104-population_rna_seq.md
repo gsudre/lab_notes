@@ -744,6 +744,525 @@ for (f in names(folds)) {
 }
 ```
 
+I'm back at .6...
+
+# 2020-04-15 06:30:50
+
+A couple other thoughts I had:
+
+* what if I use a nonparametric test instead? would it be more stable?
+* could I come up with a metric for X to keep just those variables, but not be
+  dependent on y?
+
+Let's try it.
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(lambda=1, alpha=0)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v],
+                                              var.equal=T)$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'glmnet',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+Might as well try it for rf and kernelpls as well while I wait:
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(ncomp=1)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v],
+                                              var.equal=T)$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'kernelpls',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(mtry=1)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v],
+                                              var.equal=T)$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'rf',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+Pooled variance didn't help much...
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(lambda=1, alpha=0)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) wilcox.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v]
+                                              )$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'glmnet',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(ncomp=1)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) wilcox.test(X_train[y_train=='Case', v],
+                                                   X_train[y_train=='Control', v]
+                                                   )$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'kernelpls',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+What if I assign a stability based on bootstrap? It's somewhat in between
+cropping at the beginning, and what I'm doing now... I can later assess if it'd
+help doing the CV inside, but let's first see if this stability metric helps.
+
+```r
+grex_only = colnames(X)[grepl(colnames(X), pattern='^grex')]
+fscores = rep(0, length(grex_only))
+X2 = X[, grex_only]
+nboot = 100
+set.seed(42)
+for (b in 1:nboot) {
+    print(b)
+    idx = sample(1:nrow(X2), nrow(X2), replace=T)
+    X_train = X2[idx, ]
+    y_train = y[idx]
+
+    ps = sapply(1:ncol(X2), function(v) wilcox.test(X_train[y_train=='Case', v],
+                                                   X_train[y_train=='Control', v]
+                                                   )$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+}
+```
+
+```r
+grex_only = colnames(X)[grepl(colnames(X), pattern='^grex')]
+fscores = rep(0, length(grex_only))
+X2 = X[, grex_only]
+nboot = 100
+set.seed(42)
+for (b in 1:nboot) {
+    print(b)
+    idx = sample(1:nrow(X2), nrow(X2), replace=T)
+    X_train = X2[idx, ]
+    y_train = y[idx]
+
+    ps = sapply(1:ncol(X2), function(v) t.test(X_train[y_train=='Case', v],
+                                               X_train[y_train=='Control', v],
+                                               var.equal=T)$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+}
+```
+
+What if I go back to the idea of running LOOCV with the p-value threshold,
+instead of ntop? I know the variables shouldn't be varying that much...
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+clf = 'rf'
+
+fscores = rep(0, ncol(X))
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v],
+                                              var.pool=T)$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+    X_train2 = X_train[, good_vars]
+    X_test2 = X_test[, good_vars]
+    mygrid = data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+Results still crappy... but it looks like I have 99 variables that are chosen in
+every single LOOCV iteration:
+
+```
+> sum(fscores>30)
+[1] 99
+> colnames(X)[fscores>30]
+ [1] "grex18"            "grex1194"          "grex2744"          "grex2860"          "grex3062"          "grex3214"          "grex4044"         
+ [8] "grex4915"          "grex5165"          "grex5262"          "grex5464"          "grex5622"          "grex5770"          "grex6464"         
+[15] "grex6923"          "grex7289"          "grex7291"          "grex7420"          "grex9132"          "grex9142"          "grex10483"        
+[22] "grex11354"         "grex11638"         "grex11711"         "grex12258"         "grex12638"         "grex12954"         "grex13047"        
+[29] "grex13327"         "grex14009"         "grex14195"         "grex14436"         "grex14969"         "grex14976"         "grex16143"        
+[36] "grex16535"         "grex17130"         "grex17284"         "grex17458"         "grex17532"         "grex17702"         "grex17877"        
+[43] "grex19101"         "grex19677"         "grex20219"         "grex20311"         "grex20909"         "grex21212"         "grex21316"        
+[50] "grex21339"         "grex21447"         "grex21457"         "grex22242"         "grex23251"         "grex23295"         "grex23467"        
+[57] "grex23789"         "grex24022"         "grex24113"         "grex24331"         "grex24395"         "grex24669"         "grex24704"        
+[64] "grex24889"         "grex25158"         "grex25524"         "grex25657"         "grex26257"         "grex26273"         "grex26627"        
+[71] "grex27610"         "grex28202"         "grex28270"         "grex28668"         "grex28732"         "grex28885"         "grex29076"        
+[78] "grex29134"         "grex29354"         "grex29691"         "grex30050"         "grex30255"         "grex30784"         "grex31095"        
+[85] "grex31317"         "grex31504"         "grex31802"         "grex31937"         "grex32721"         "grex32798"         "grex33100"        
+[92] "grex33396"         "grex34315"         "grex35227"         "grex35512"         "grex35515"         "grex35869"         "comorbid_group.no"
+[99] "substance_group.0"
+```
+
+Let's look at some of them:
+
+How does it look if I only use the grex variables?
+
+```r
+grex_only = colnames(X)[grepl(colnames(X), pattern='^grex')]
+fscores = rep(0, length(grex_only))
+X2 = X[, grex_only]
+
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+clf = 'rf'
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X2)) {
+    train_rows = setdiff(1:nrow(X2), test_row)
+    X_train <- X2[train_rows, ]
+    X_test <- X2[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X_train), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v],
+                                              var.pool=T)$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+    X_train2 = X_train[, good_vars]
+    X_test2 = X_test[, good_vars]
+    mygrid = data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+No luck.. .52.
+
+So, I have a better idea of what's going on. Just using variables significant at
+p<.01 won't work, because they could just be noise, but I know that noise works
+for that sample, so even if I do CV inside that, it will still work. But if I
+select stability first, then it should remediate that, as noise shouldn't be as
+stable. In fact, I could establish what is stable based on noise or permuted
+data. Then, hopefully that set of variables with good scores will work out.
+
+But let's first see what the stable variables look like, and if those results
+are good. If they are, I'll fire up some permutations in an optimized version of
+the code.
+
+```
+> summary(fscores)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  0.000   2.000   4.000   7.496   9.000 100.000 
+# and for another
+> summary(fscores)
+  n. 1st Qu.  Median    Mean 3rd Qu.    Max.
+0.000   1.000   4.000   7.236   9.000  99.000
+```
+
+![](images/2020-04-15-09-10-40.png)
+
+![](images/2020-04-15-09-11-38.png)
+
+I can do it more quantitatively next time, but how about just take 60 for now?
+
+```r
+use60 = grex_only[fscores>60]
+write.csv(use60, file='~/data/rnaseq_derek/ttest60.csv', row.names=F)
+```
+
+There's about 100 in each set. Now, let's see if this improves our results:
+
+```r
+useme = read.csv('~/data/rnaseq_derek/ttest80.csv')[, 1]
+X2 = X[, useme]
+
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+clf = 'rf'
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X2)) {
+    train_rows = setdiff(1:nrow(X2), test_row)
+    X_train <- X2[train_rows, ]
+    X_test <- X2[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    # ps = sapply(1:ncol(X_train), function(v) t.test(X_train[y_train=='Case', v],
+    #                                           X_train[y_train=='Control', v],
+    #                                           var.pool=T)$p.value)
+    # good_vars = which(ps < .01)
+    # X_train2 = X_train[, good_vars]
+    # X_test2 = X_test[, good_vars]
+    X_train2 = X_train
+    X_test2 = X_test
+    mygrid = data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+Not much improement... around .62. But what if I do the regular CV, no LOOCV?
+
+```r
+useme = read.csv('~/data/rnaseq_derek/ttest80.csv')[, 1]
+X2 = X[, useme]
+
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(mtry=1)
+set.seed(42)
+fit_rf <- train(X2, y,
+             trControl = fitControl,
+             method = 'rf',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_rf)
+
+mygrid = data.frame(ncomp=1)
+set.seed(42)
+fit_pls <- train(X2, y,
+             trControl = fitControl,
+             method = 'kernelpls',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_pls)
+
+mygrid = data.frame(lambda=1, alpha=0)
+set.seed(42)
+fit_logreg <- train(X2, y,
+             trControl = fitControl,
+             method = 'glmnet',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_logreg)
+rs = resamples(list(rf=fit_rf, logreg=fit_logreg, pls=fit_pls))
+summary(rs)
+```
+
+It goes up to .67, which is not bad considering it all. Maybe ROC can improve if
+we balance the classes? No better if using ttest60. Results for wilcox60 are
+better than ttest60, but about the same as wilcox80.
 
 # TODO
+ * remove covariates for now?
  * might need to artificially balance the classes, as now I'm at 18 against 13
+ * would variables be more stable if I normalize all of them first?
