@@ -116,3 +116,634 @@ ggplot(m, aes(x=C1, y=C2, col=POP_CODE)) + geom_point()
 I think we can probably set up the WNH cut offs at C1 > 0 and C2 < -.075. Note
 that 2842 didn't have PCs. They self-declared WNH, so we can decide later
 whether to include or not. 
+
+# 2020-04-14 18:46:12
+
+Now, let's see if this makes any difference. I'll run one of our prediction
+LOOCV using only the good variables, and only WNH:
+
+```r
+data = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+data = data[data$Region=='ACC',]
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+
+covar_names = c(# brain-related
+                "bainbank", 'PMI', 'Manner.of.Death',
+                # technical
+                'batch', 'RINe',
+                # clinical
+                'comorbid_group', 'substance_group',
+                # others
+                'Sex', 'Age')
+
+# only covariates can be binary, and I'm getting stack overflow errors sending
+# everything to dummyvars...
+data2 = data[, c(covar_names, 'Diagnosis')]
+library(caret)
+dummies = dummyVars(Diagnosis ~ ., data = data2)
+data3 = predict(dummies, newdata = data2)
+# remove linear combination variables
+comboInfo <- findLinearCombos(data3)
+data3 = data3[, -comboInfo$remove]
+
+# remove weird variables
+grex_names = colnames(data)[grepl(colnames(data), pattern='^grex')]
+pp = preProcess(data[, grex_names], method=c('zv', 'nzv', 'range'),
+                rangeBounds=c(0,1))
+a = predict(pp, data[, grex_names])
+n0 = colSums(a==0)
+imbad = names(n0)[n0>1]
+good_grex = grex_names[!(grex_names %in% imbad)]
+
+data4 = cbind(data[, good_grex], data3)
+
+# I'll go ahead and do the pre-processing here because it'll be very costly to
+# to it inside LOOCV
+set.seed(42)
+# data4 doesn't even have Diagnosis, and no NAs
+pp_order = c('zv', 'nzv', 'center', 'scale')
+pp = preProcess(data4, method = pp_order)
+X = predict(pp, data4)
+y = data2$Diagnosis
+```
+
+Now, we try LOOCV:
+
+```r
+nfolds = 5
+nreps = 10
+clf = 'glmnet'
+set.seed(42)
+fitControl <- trainControl(method = "repeatedcv",
+                          number = nfolds,
+                          repeats = nreps,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = expand.grid(lambda=c(1, 5, 10, 50, 100, 200),
+                    alpha=0)
+ntop = 200
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = X_test[, good_vars$ix[1:ntop]]
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    print(fit)
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+I'll also try rf, just in case:
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+ntop = 100
+clf = 'rf'
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = X_test[, good_vars$ix[1:ntop]]
+    mygrid = data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid,
+                    metric='ROC')
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+Close to .5 in both...  what's my result if I just run a K-foldX10 CV?
+
+```r
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(lambda=1,
+                    alpha=0)
+set.seed(42)
+fit <- train(X, y,
+             trControl = fitControl,
+             method = 'glmnet',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit)
+```
+
+or, for RF:
+
+```r
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(mtry=1)
+set.seed(42)
+fit <- train(X, y,
+             trControl = fitControl,
+             method = 'rf',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit)
+```
+
+Is it true that univariate results are becoming insignificant just by adding
+another subject? 
+
+```r
+pvals = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    pvals = cbind(pvals, ps)
+}
+colnames(pvals) = sapply(1:nrow(X), function(x) sprintf('LOOCV%d', x))
+ps = sapply(1:ncol(X), function(v) t.test(X[y=='Case', v],
+                                          X[y=='Control', v])$p.value)
+pvals = cbind(pvals, ps)
+colnames(pvals)[ncol(pvals)] = 'all'
+rownames(pvals) = colnames(X)
+```
+
+No, that's not true at all... they all show similar pattern. So, why can't we
+use that? Let's pick even softer models...
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+ntop = 10
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = X_test[, good_vars$ix[1:ntop]]
+    clf = 'svmLinear'
+    mygrid = NULL #data.frame(mtry=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid)
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+ntop = 100
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = X_test[, good_vars$ix[1:ntop]]
+    clf = 'kernelpls'
+    mygrid = data.frame(ncomp=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid)
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+What if we try some resampling?
+
+```r
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE,
+                           sampling='smote')
+ntop = 100
+
+y_probs = c()
+y_preds = c()
+best_params = c()
+for (test_row in 1:nrow(X)) {
+    train_rows = setdiff(1:nrow(X), test_row)
+    X_train <- X[train_rows, ]
+    X_test <- X[-train_rows, ]
+    y_train <- y[train_rows]
+    y_test <- y[-train_rows]
+
+    print(sprintf('LOOCV %d / %d', test_row, nrow(X)))
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    good_vars = sort(ps, index.return=T)
+    X_train2 = X_train[, good_vars$ix[1:ntop]]
+    X_test2 = X_test[, good_vars$ix[1:ntop]]
+    clf = 'treebag'
+    mygrid = NULL #data.frame(ncomp=1)
+
+    set.seed(42)
+    fit <- train(X_train2, y_train,
+                    trControl = fitControl,
+                    method = clf,
+                    tuneGrid=mygrid)
+    # updated LOOCV predictions
+    y_probs = rbind(y_probs, predict(fit, X_test2, type='prob'))
+    y_preds = c(y_preds, levels(y)[predict(fit, X_test2)])
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y[1:nrow(y_probs)],
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    print(twoClassSummary(dat, lev=levels(y)))
+}
+```
+
+```r
+ps = sapply(1:ncol(X), function(v) t.test(X[y=='Case', v],
+                                          X[y=='Control', v])$p.value)
+good_vars = sort(ps, index.return=T)
+X2 = X[, good_vars$ix[1:1000]]
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(mtry=c(1:5))
+set.seed(42)
+fit <- train(X2, y,
+             trControl = fitControl,
+             method = 'rf',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit)
+```
+
+```
+Random Forest 
+
+  31 samples
+1000 predictors
+   2 classes: 'Case', 'Control' 
+
+No pre-processing
+Resampling: Cross-Validated (5 fold, repeated 10 times) 
+Summary of sample sizes: 24, 25, 24, 26, 25, 24, ... 
+Resampling results across tuning parameters:
+
+  mtry  ROC        Sens       Spec     
+  1     0.9302778  0.9400000  0.7566667
+  2     0.9172222  0.9350000  0.7700000
+  3     0.9008333  0.9166667  0.7500000
+  4     0.9068056  0.9283333  0.7533333
+  5     0.8931944  0.9100000  0.7533333
+
+ROC was used to select the optimal model using the largest value.
+The final value used for the model was mtry = 1.
+```
+
+So why can't I get this in LOOCV????? I don't know... well, maybe we can use it
+as a filtering step? Say, we'll only use the variables with p < .01?
+
+```r
+X2 = X[, ps < .01]
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(mtry=1)
+set.seed(42)
+fit_rf <- train(X2, y,
+             trControl = fitControl,
+             method = 'rf',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_rf)
+
+mygrid = data.frame(ncomp=1)
+set.seed(42)
+fit_pls <- train(X2, y,
+             trControl = fitControl,
+             method = 'kernelpls',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_pls)
+
+mygrid = data.frame(lambda=1, alpha=0)
+set.seed(42)
+fit_logreg <- train(X2, y,
+             trControl = fitControl,
+             method = 'glmnet',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_logreg)
+> rs = resamples(list(rf=fit_rf, logreg=fit_logreg, pls=fit_pls))
+> summary(rs)
+
+Call:
+summary.resamples(object = rs)
+
+Models: rf, logreg, pls 
+Number of resamples: 50 
+
+ROC 
+        Min.   1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf     0.625 0.9166667      1 0.9591667       1    1    0
+logreg 0.750 1.0000000      1 0.9852778       1    1    0
+pls    0.750 0.9166667      1 0.9616667       1    1    0
+
+Sens 
+            Min. 1st Qu. Median  Mean 3rd Qu. Max. NA's
+rf     0.6666667       1      1 0.945       1    1    0
+logreg 0.6666667       1      1 0.945       1    1    0
+pls    0.6666667       1      1 0.945       1    1    0
+
+Spec 
+            Min.   1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf     0.3333333 0.6666667      1 0.8333333       1    1    0
+logreg 0.5000000 0.6666667      1 0.8466667       1    1    0
+pls    0.5000000 0.6666667      1 0.8466667       1    1    0
+```
+
+OK, so these are solid results, even though using univariate as filtering is
+quite unusual. Just making sure I can reproduce the results:
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(lambda=1, alpha=0)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X2[folds[[f]],]
+    X_test = X2[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'glmnet',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+```r
+> summary(all_res)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.6667  1.0000  1.0000  0.9806  1.0000  1.0000 
+```
+
+So, the only question is the effect of doing the split first thing...
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(lambda=1, alpha=0)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'glmnet',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+Might as well try it for rf and kernelpls as well while I wait:
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(ncomp=1)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'kernelpls',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+```r
+set.seed(42)
+folds = createMultiFolds(y=y, k=5, times=10)
+mygrid = data.frame(mtry=1)
+fitControl <- trainControl(method = "none",
+                           allowParallel = TRUE,
+                           classProbs = TRUE)
+all_res = c()
+for (f in names(folds)) {
+    print(f)
+    X_train = X[folds[[f]],]
+    X_test = X[-folds[[f]],]
+    y_train = y[folds[[f]]]
+    y_test = y[-folds[[f]]]
+
+    ps = sapply(1:ncol(X), function(v) t.test(X_train[y_train=='Case', v],
+                                              X_train[y_train=='Control', v])$p.value)
+    X_train = X_train[, ps < .01]
+    X_test = X_test[, ps < .01]
+
+    set.seed(42)
+    fit <- train(X_train, y_train,
+                trControl = fitControl,
+                method = 'rf',
+                tuneGrid=mygrid,
+                metric='ROC')
+    y_probs = predict(fit, X_test, type='prob')
+    y_preds = predict(fit, X_test)
+
+    # just some ongoing summary
+    dat = cbind(data.frame(obs = y_test,
+                           pred = factor(y_preds, levels=levels(y))),
+                y_probs)
+    res = twoClassSummary(dat, lev=levels(y))
+    print(res)
+    all_res = c(all_res, res['ROC'])
+}
+```
+
+
+# TODO
+ * might need to artificially balance the classes, as now I'm at 18 against 13
