@@ -1422,6 +1422,172 @@ for (b in 1:nboot) {
 }
 ```
 
+Using our data, I get:
+
+```
+"ttest_all: p=.05: 32, p=.01: 4"
+"ttest_WNH: p=.05: 28, p=.01: 2"
+"wilcox_all: p=.05: 699, p=.01: 864"
+"wilcox_WNH: p=.05: 686, p=.01: 843"
+```
+
+Let's then try to run some of those models:
+
+```r
+fscores = read.csv('~/data/rnaseq_derek/data_ttest_all_1000boot.csv')[, 1]
+X2 = Xgrex[, fscores > 723]
+
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 5,
+                          repeats = 10,
+                          savePredictions = 'final',
+                          allowParallel = TRUE,
+                          classProbs = TRUE,
+                          summaryFunction=twoClassSummary)
+mygrid = data.frame(mtry=1)
+set.seed(42)
+fit_rf <- train(X2, y,
+             trControl = fitControl,
+             method = 'rf',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_rf)
+
+mygrid = data.frame(ncomp=1)
+set.seed(42)
+fit_pls <- train(X2, y,
+             trControl = fitControl,
+             method = 'kernelpls',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_pls)
+
+mygrid = data.frame(lambda=1, alpha=0)
+set.seed(42)
+fit_logreg <- train(X2, y,
+             trControl = fitControl,
+             method = 'glmnet',
+             tuneGrid=mygrid,
+             metric='ROC')
+print(fit_logreg)
+rs = resamples(list(rf=fit_rf, logreg=fit_logreg, pls=fit_pls))
+summary(rs)
+```
+
+For WNH, ttest:
+
+```
+ROC 
+            Min. 1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf     0.8333333       1      1 0.9813889       1    1    0
+logreg 0.8333333       1      1 0.9863889       1    1    0
+pls    0.8333333       1      1 0.9847222       1    1    0
+
+Sens 
+            Min. 1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf     0.6666667       1      1 0.9483333       1    1    0
+logreg 0.7500000       1      1 0.9950000       1    1    0
+pls    0.6666667       1      1 0.9416667       1    1    0
+
+Spec 
+       Min.   1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf      0.0 0.6666667      1 0.8033333       1    1    0
+logreg  0.0 0.6666667      1 0.8100000       1    1    0
+pls     0.5 1.0000000      1 0.9333333       1    1    0
+```
+
+All, ttest:
+
+```
+ROC 
+            Min.   1st Qu.    Median      Mean 3rd Qu. Max. NA's
+rf     0.8285714 0.9333333 1.0000000 0.9652381       1    1    0
+logreg 0.9000000 0.9488095 1.0000000 0.9755238       1    1    0
+pls    0.8857143 0.9333333 0.9857143 0.9674286       1    1    0
+
+Sens 
+       Min. 1st Qu. Median  Mean 3rd Qu. Max. NA's
+rf      0.4     0.8    0.8 0.824       1    1    0
+logreg  0.4     0.8    0.8 0.860       1    1    0
+pls     0.6     0.8    0.8 0.868       1    1    0
+
+Spec 
+            Min.   1st Qu. Median      Mean 3rd Qu. Max. NA's
+rf     0.6666667 0.8392857      1 0.9300000       1    1    0
+logreg 0.7142857 0.8571429      1 0.9433333       1    1    0
+pls    0.5000000 0.8333333      1 0.9014286       1    1    0
+```
+
+Just note that note of those results include covariates, or the funky looking
+variables from Derek. Also, I think the random test needs ot be a bit more
+rigorous. I need actually 1000 random samples, bootstrapped 1000 times. Then,
+the question is how often I get a variable with this high stability score...
+
+```r
+library(doParallel)
+cl = makeCluster(16)
+
+set.seed(42)
+nperm = 1000
+nboot = 1000
+for (p in 1:nperm) {
+    Xrand = Xgrex
+    for (v in 1:ncol(Xrand)) {
+        Xrand[, v] = rnorm(nrow(Xrand))
+    }
+    fscores = matrix(nrow=nboot, ncol=ncol(Xrand))
+    set.seed(42)
+    for (b in 1:nboot) {
+        print(sprintf('perm %d, boot %d', p, b))
+        idx = sample(1:nrow(Xrand), nrow(Xrand), replace=T)
+        X_train = Xrand[idx, ]
+        y_train = y[idx]
+
+        clusterExport(cl, c("X_train", 'y_train'))
+        # ps = parSapply(cl, 1:ncol(Xrand), function(v) wilcox.test(X_train[y_train=='Case', v],
+        #                                                X_train[y_train=='Control', v]
+        #                                                )$p.value)
+        ps = parSapply(cl, 1:ncol(Xrand), function(v) t.test(X_train[y_train=='Case', v],
+                                                       X_train[y_train=='Control', v],
+                                                       var.pool=T,
+                                                       )$p.value)
+        fscores[b, ] = ps
+    }
+    fout = sprintf('~/data/rnaseq_derek/perms/rnd_ttest_all_1000boot_p%04d.rds', p)
+    saveRDS(fscores, file=fout, compress=T)
+}
+```
+
+The code above works, but it won't run overnight. Let me script it. Then, it's
+just a matter of swarming it:
+
+```bash
+cd ~/data/rnaseq_derek/
+job_name=stab;
+swarm_file=swarm.${job_name};
+rm -rf $swarm_file;
+for t in ttest wilcox; do
+    for w in T F; do
+        for i in {1..1000}; do
+            myseed=$RANDOM;
+            echo "Rscript --vanilla ~/research_code/permute_stability.R $myseed $w 1000 $t" >> $swarm_file;
+        done;
+    done;
+done
+split -l 1000 $swarm_file ${job_name}_split;
+for f in `/bin/ls ${job_name}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -f $f -g 30 -t 32 --time 3:00:00 --partition quick,norm --logdir trash_${job_name} --job-name ${job_name} -m R 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
 # TODO
  * remove covariates for now?
  * might need to artificially balance the classes, as now I'm at 18 against 13
