@@ -1262,6 +1262,166 @@ It goes up to .67, which is not bad considering it all. Maybe ROC can improve if
 we balance the classes? No better if using ttest60. Results for wilcox60 are
 better than ttest60, but about the same as wilcox80.
 
+So, it turns our that using just the WNH doesn't help much. What if I normalize
+all grex variables using inorm, then check what's the best I can do with random
+data in terms of stability? Not permutation, just random noise. I can stablish a
+threshold there, and use my data that way?
+
+```r
+grex_only = colnames(X)[grepl(colnames(X), pattern='^grex')]
+library(bestNormalize)
+Xgrex = X[, grex_only]
+for (v in 1:ncol(Xgrex)) {
+    if ((v %% 100)==0) {
+        print(sprintf('%d / %d', v, ncol(Xgrex)))
+    }
+    bn = orderNorm(Xgrex[, v])
+    Xgrex[, v] = bn$x.t
+}
+pp_order = c('center', 'scale')
+pp = preProcess(Xgrex, method = pp_order)
+Xgrex = predict(pp, Xgrex)
+```
+
+At this point we have Xgrex, which has all good grex variables, after removing the
+ones with zero or near zero variance, and normalized. Also, re-scaled after
+that. They all have mean zero and sd 1. So, let's create some random data with
+the same characteristics to test our stability metric:
+
+```r
+set.seed(42)
+Xrand = Xgrex
+for (v in 1:ncol(Xrand)) {
+    if ((v %% 100)==0) {
+        print(sprintf('%d / %d', v, ncol(Xgrex)))
+    }
+    Xrand[, v] = rnorm(nrow(Xrand))
+}
+library(doParallel)
+cl = makeCluster(16)
+fscores = rep(0, ncol(Xrand))
+nboot = 1000
+set.seed(42)
+for (b in 1:nboot) {
+    print(b)
+    idx = sample(1:nrow(Xrand), nrow(Xrand), replace=T)
+    X_train = Xrand[idx, ]
+    y_train = y[idx]
+
+    clusterExport(cl, c("X_train", 'y_train'))
+    # ps = parSapply(cl, 1:ncol(Xrand), function(v) wilcox.test(X_train[y_train=='Case', v],
+    #                                                X_train[y_train=='Control', v]
+    #                                                )$p.value)
+    ps = parSapply(cl, 1:ncol(Xrand), function(v) t.test(X_train[y_train=='Case', v],
+                                                   X_train[y_train=='Control', v],
+                                                   var.pool=T,
+                                                   )$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+}
+```
+
+But the idea is to do that with the original data as well, as reducing it to WNH
+only didn't seem to do me much good...
+
+```r
+data = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+data = data[data$Region=='ACC',]
+
+covar_names = c(# brain-related
+                "bainbank", 'PMI', 'Manner.of.Death',
+                # technical
+                'batch', 'RINe',
+                # clinical
+                'comorbid_group', 'substance_group',
+                # others
+                'Sex', 'Age')
+
+# only covariates can be binary, and I'm getting stack overflow errors sending
+# everything to dummyvars...
+data2 = data[, c(covar_names, 'Diagnosis')]
+library(caret)
+dummies = dummyVars(Diagnosis ~ ., data = data2)
+data3 = predict(dummies, newdata = data2)
+# remove linear combination variables
+comboInfo <- findLinearCombos(data3)
+data3 = data3[, -comboInfo$remove]
+
+# remove weird variables
+grex_names = colnames(data)[grepl(colnames(data), pattern='^grex')]
+pp = preProcess(data[, grex_names], method=c('zv', 'nzv', 'range'),
+                rangeBounds=c(0,1))
+a = predict(pp, data[, grex_names])
+n0 = colSums(a==0)
+imbad = names(n0)[n0>1]
+good_grex = grex_names[!(grex_names %in% imbad)]
+
+data4 = cbind(data[, good_grex], data3)
+
+# I'll go ahead and do the pre-processing here because it'll be very costly to
+# to it inside LOOCV
+set.seed(42)
+# data4 doesn't even have Diagnosis, and no NAs
+pp_order = c('zv', 'nzv', 'center', 'scale')
+pp = preProcess(data4, method = pp_order)
+X = predict(pp, data4)
+y = data2$Diagnosis
+```
+
+So, let's evaluate how the random grex data looks in terms of stability:
+
+```r
+par(mfrow=c(2,2))
+for (t in c('ttest', 'wilcox')) {
+    for (p in c('all', 'WNH')) {
+        fname = sprintf('~/data/rnaseq_derek/random_%s_%s_1000boot.csv', t, p)
+        fscores = read.csv(fname)[,1]
+        plot(1:length(fscores), fscores, main=sprintf('%s_%s', t, p))
+        sf = sort(fscores, decreasing=T)
+        print(sprintf('%s_%s: p=.05: %d, p=.01: %d', t, p, sf[50], sf[10]))
+    }
+}
+```
+
+![](images/2020-04-15-20-01-57.png)
+
+It won't be easy to beat these numbers, but let's see what we can get with real
+data. We can actually calculate the empirical thresholds for p<.05 and p<.01. 
+
+```
+[1] "ttest_all: p=.05: 723, p=.01: 878"
+[1] "ttest_WNH: p=.05: 812, p=.01: 975"
+[1] "wilcox_all: p=.05: 699, p=.01: 864"
+[1] "wilcox_WNH: p=.05: 686, p=.01: 843"
+```
+
+Let's recompute the stability scores for the actual data:
+
+```r
+library(doParallel)
+cl = makeCluster(16)
+fscores = rep(0, ncol(Xgrex))
+nboot = 1000
+set.seed(42)
+for (b in 1:nboot) {
+    print(b)
+    idx = sample(1:nrow(Xgrex), nrow(Xgrex), replace=T)
+    X_train = Xgrex[idx, ]
+    y_train = y[idx]
+
+    clusterExport(cl, c("X_train", 'y_train'))
+    # ps = parSapply(cl, 1:ncol(Xrand), function(v) wilcox.test(X_train[y_train=='Case', v],
+    #                                                X_train[y_train=='Control', v]
+    #                                                )$p.value)
+    ps = parSapply(cl, 1:ncol(Xrand), function(v) t.test(X_train[y_train=='Case', v],
+                                                   X_train[y_train=='Control', v],
+                                                   var.pool=T,
+                                                   )$p.value)
+    good_vars = which(ps < .01)
+    fscores[good_vars] = fscores[good_vars] + 1
+}
+```
+
 # TODO
  * remove covariates for now?
  * might need to artificially balance the classes, as now I'm at 18 against 13
