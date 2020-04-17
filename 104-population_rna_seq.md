@@ -1588,7 +1588,44 @@ for f in `/bin/ls ${job_name}_split??`; do
 done
 ```
 
+# 2020-04-16 07:22:41
+
+Now I have several perms. So I can ask a better question. For example, how many
+perms have at least one gene with stability X?
+
+```r
+p_thresh = .01
+mytest = 'ttest'
+nboots = 1000
+wnh='FALSE'
+mydir = '~/data/rnaseq_derek/perms/'
+
+fnames = list.files(mydir, pattern=sprintf('rnd_%s_%s_%dboot_p*',
+                                            mytest, wnh, nboots))
+nperms = length(fnames)
+stab_max = vector(length=nperms)
+cnt = 0
+for (p in 1:nperms) {
+    print(sprintf('%d / %d', p, nperms))
+    boots = readRDS(sprintf('%s/%s', mydir, fnames[p]))
+    fscores = rep(0, ncol(boots))
+    for (b in 1:nboots) {
+        good_vars = which(boots[b, ] < p_thresh)
+        fscores[good_vars] = fscores[good_vars] + 1
+    }
+    stab_max[p] = max(fscores)
+}
+print(cnt / nperms)
+```
+
+No, this didn't go anywhere... maybe this is just not the right stats. I do need
+to remove some of these variables though... and it needs to be done from looking
+only at X.
+
 # TODO
  * remove covariates for now?
  * might need to artificially balance the classes, as now I'm at 18 against 13
- * would variables be more stable if I normalize all of them first?
+ * how about plot the remove correlation preprocess function against number of
+   left variables?
+* use RFE or GA?
+*  how about restricting to genes that are neuro-related?
