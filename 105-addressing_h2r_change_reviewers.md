@@ -665,6 +665,8 @@ mean of x mean of y
 0.3155604 0.6589060
 ```
 
+Didn't work for all of them, and wilcox didn't help either.
+
 ## Testing AD/RD variable normality
 
 Let's run some test of normality in our AD/RD variables like ENIGMA:
@@ -682,6 +684,122 @@ which is fine. There are no huge outliers either, and the ENIGMA protocol has no
 formal test of normality. Only visual inspection of the histograms, which we
 did.
 
+# 2020-04-18 07:41:32
+
+Let's see how the results look like if we combine left and right hemispheres for
+DTI. That's already done for rsFMRI. I'll try it before and after QC to see the
+impacts. Let's do after first, which is easier.
+
+But for the record, I don't agree with the reviewer that the results are
+symetric... just looking at eTable2 at the h2r one can tell that... but maybe it
+will reduce our number of comparison, and we would be able to do FDR differently
+and therefore address the FDR .1 question?
+
+Here's the map of connections to numbers again:
+
+```
+1. Anterior thalamic radiation L
+2. Anterior thalamic radiation R
+3. Corticospinal tract L
+4. Corticospinal tract R
+5. Cingulum (cingulate gyrus) L
+6. Cingulum (cingulate gyrus) R
+7. Cingulum (hippocampus) L
+8. Cingulum (hippocampus) R
+9. Forceps major
+10. Forceps minor
+11. Inferior fronto-occipital fasciculus L
+12. Inferior fronto-occipital fasciculus R
+13. Inferior longitudinal fasciculus L
+14. Inferior longitudinal fasciculus R
+15. Superior longitudinal fasciculus L
+16. Superior longitudinal fasciculus R
+17. Uncinate fasciculus L
+18. Uncinate fasciculus R
+19. Superior longitudinal fasciculus (temporal part) L
+20. Superior longitudinal fasciculus (temporal part) R
+```
+
+```bash
+# local
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/heritability_change_rev
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts $phen ${m}_${t};
+    done;
+done;
+mv $phen ~/data/tmp/
+cd ~/data/tmp/$phen
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py $phen
+```
+
+The code above matches the results in the paper. Let's combine the tracts and
+see how it goes.
+
+```r
+brain_data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+for (p in c('ad', 'rd')) {
+    brain_data[, sprintf('ATR_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_1', p),
+                                                                 sprintf('%s_2', p))])
+    brain_data[, sprintf('CST_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_3', p),
+                                                                 sprintf('%s_4', p))])
+    brain_data[, sprintf('CIN_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_5', p),
+                                                                 sprintf('%s_6', p),
+                                                                 sprintf('%s_7', p),
+                                                                 sprintf('%s_8', p))])
+    brain_data[, sprintf('CC_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_9', p),
+                                                                 sprintf('%s_10', p))])
+    brain_data[, sprintf('IFO_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_11', p),
+                                                                 sprintf('%s_12', p))])
+    brain_data[, sprintf('ILF_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_13', p),
+                                                                 sprintf('%s_14', p))])
+    brain_data[, sprintf('SLF_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_15', p),
+                                                                 sprintf('%s_16', p),
+                                                                 sprintf('%s_19', p),
+                                                                 sprintf('%s_20', p))])
+    brain_data[, sprintf('UNC_%s', p)] = rowMeans(brain_data[, c(sprintf('%s_17', p),
+                                                                 sprintf('%s_18', p))])
+}
+write.csv(brain_data, file='~/data/heritability_change_rev/dti_JHUtractsCollapsed_ADRDonly_OD0.95.csv', row.names=F)
+```
+
+```bash
+# local
+phen=dti_JHUtractsCollapsed_ADRDonly_OD0.95
+cd ~/data/heritability_change_rev
+for m in ad rd; do
+    for t in ATR CST CIN CC IFO ILF SLF UNC; do
+        solar run_phen_var_OD_tracts $phen ${t}_${m};
+    done;
+done;
+mv $phen ~/data/tmp/
+cd ~/data/tmp/$phen
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py $phen
+cp ~/data/tmp/polygen_results_${phen}.csv .
+```
+
+Our main results are still there. But what survives FDR?
+
+```r
+> a = read.csv('~/data/heritability_change_rev/polygen_results_dti_JHUtractsCollapsed_ADRDonly_OD0.95.csv')
+> p2 = p.adjust(a$h_pval, method='fdr')
+> as.character(a[p2<.05, 'phen'])
+[1] "ATR_ad" "ATR_rd" "CIN_rd" "UNC_rd"
+> as.character(a[p2<.1, 'phen'])
+[1] "ATR_ad" "ATR_rd" "CIN_rd" "IFO_rd" "SLF_rd" "UNC_rd"
+```
+
+We lose the SLF result at q<.05 and forceps minor (CC now) completely. We gain
+IFO at q<.1. The dominance of RD over AD is still obvious. We need to check if
+the regressions results still hold (likely will). I'll also try collapsing
+before QC, and checking if these results impact fMRI FDR in any way.
+
 
 # TODO
  * make table comparing good scans to bad scans in terms of QC variables
+ * laterality 
+ * sudo rm /Library/Preferences/com.apple.AppleFileServer.plist
+ * sudo rm -r /Library/Preferences/OpenDirectory
