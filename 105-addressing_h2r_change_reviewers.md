@@ -1203,6 +1203,252 @@ DTI and FMRI:
 I do gain SLF back at .05, so that's nice. Need to check regression results
 still.
 
+# 2020-04-20 06:50:20
+
+Next step is to retrieve the regression equations so we can reproduce the
+results, check the values with the collapsed DTI dataset (for supplemental), and
+add the other covariates the reviewers are asking for.
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ad_10', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_11', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_12', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_13', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_14', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('ad_15', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_16', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_17', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_18', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_19', '%s ~ %s + meanX.trans + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_1', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_20', '%s ~ %s + meanX.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_2', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_3', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_4', '%s ~ %s + meanY.trans + goodVolumes'))
+formulas = rbind(formulas, c('ad_5', '%s ~ %s'))
+formulas = rbind(formulas, c('ad_6', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('ad_7', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ad_8', '%s ~ %s + meanX.trans'))
+formulas = rbind(formulas, c('ad_9', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_10', '%s ~ %s + meanZ.trans'))
+formulas = rbind(formulas, c('rd_11', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_12', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_13', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('rd_14', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('rd_15', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_16', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_17', '%s ~ %s + meanZ.rot'))
+formulas = rbind(formulas, c('rd_18', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_19', '%s ~ %s + meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_1', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_20', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_2', '%s ~ %s + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_3', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_4', '%s ~ %s + meanY.trans + meanY.rot + goodVolumes'))
+formulas = rbind(formulas, c('rd_5', '%s ~ %s + meanY.trans + meanZ.trans + meanY.rot'))
+formulas = rbind(formulas, c('rd_6', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('rd_7', '%s ~ %s'))
+formulas = rbind(formulas, c('rd_8', '%s ~ %s + meanX.trans + meanX.rot'))
+formulas = rbind(formulas, c('rd_9', '%s ~ %s + meanX.trans + meanY.rot'))
+
+out_fname = '~/data/heritability_change_rev/assoc_all_dti_JHUtracts.csv'
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx2.csv')
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And similarly, we work on fMRI:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+formulas = c()
+formulas = rbind(formulas, c('conn_ContTODefault', '%s ~ %s + meanDV + pctSpikesDV'))
+formulas = rbind(formulas, c('conn_ContTOCont', '%s ~ %s'))
+formulas = rbind(formulas, c('conn_DefaultTODefault',
+                             '%s ~ %s + sex + normCoverage + meanDV + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_DorsAttnTOCont',
+                            '%s ~ %s + meanDV + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODefault', '%s ~ %s + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_DorsAttnTODorsAttn',
+                             '%s ~ %s + motionDVCorrInit + pctSpikesRMS'))
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ %s + normCoverage+ motionDVCorrFinal + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOCont',
+                             '%s ~ %s + sex + pctSpikesDV + motionDVCorrInit + relMeanRMSMotion'))
+formulas = rbind(formulas, c('conn_SalVentAttnTODefault',
+                             '%s ~ %s + sex + pctSpikesDV + motionDVCorrInit'))
+formulas = rbind(formulas, c('conn_SalVentAttnTOSalVentAttn', '%s ~ %s + sex'))
+
+out_fname = '~/data/heritability_change_rev/assoc_all_rsfmri.csv'
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx2.csv')
+
+data2 = data[data$DX2=='ADHD', ]
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+    for (j in predictors) {
+        fm_str = sprintf(fm_root, i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+# 2020-04-21 06:44:50
+
+Let's answer some question about other possible covariates. I have actually
+already run those regressions, so I'll just refer to the results files for
+those. 
+
+The issue is that when baseline brain is the target we will need to screen the
+variables again like SOLAR does. And that data will need to be filtered from the twoTimePoints files.
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+
+diff_data = c()
+for (s in unique(data$Medical.Record...MRN...Subjects)) {
+    sdata = data[data$Medical.Record...MRN...Subjects == s,]
+    # make sure second row is later than first
+    if (sdata[1, 'age_at_scan...Scan...Subjects'] >
+        sdata[2, 'age_at_scan...Scan...Subjects']) {
+        sdata = sdata[c(2, 1), ]
+    }
+    # grab baseline data
+    diff_data = rbind(diff_data, sdata[1, ])
+    last = nrow(diff_data)
+    # change SX to be the rate
+    deltaT = diff(sdata[, 'age_at_scan...Scan...Subjects'])
+    diff_data[last, 'SX_inatt'] = diff(sdata[, "SX_inatt"]) / deltaT
+    diff_data[last, 'SX_hi'] = diff(sdata[, "SX_hi"]) / deltaT
+}
+colnames(diff_data)[1] = 'ID'
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(diff_data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# Use Diff file to restrict it to DX2 only!!!
+dx_data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+dx_data = dx_data[dx_data$DX2 == 'ADHD', ]
+data = data[data$ID %in% dx_data$ID, ]
+
+# screen using same criteria as SOLAR
+pthresh = .1
+
+# keep these regardless of significance
+keep_vars = colnames(data)[grepl(colnames(data), pattern='^ad_') |
+                           grepl(colnames(data), pattern='^rd_')]
+# variables to be tested/screened
+test_vars = c('Sex...Subjects', 'meanX.trans', 'meanY.trans', 'meanZ.trans',
+              'meanX.rot', 'meanY.rot', 'meanZ.rot', 'goodVolumes')
+# spit out the results
+out_fname = '~/data/heritability_change_rev/assoc_changeSXBaseBrain_dti.csv'
+
+hold = c()
+for (dep_var in c('SX_inatt', 'SX_hi')) {
+    for (keep_var in keep_vars) {
+        fm_str = paste(dep_var, ' ~ ', keep_var, ' + ',
+                       paste(test_vars, collapse='+'), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=data, na.action=na.omit))
+        if (length(fit) > 1) {
+            res = summary(fit)$tTable
+            # filtering variables
+            sig_vars = c()
+            for (v in 1:length(test_vars)) {
+                # rows in results table that correspond to the screened variable
+                var_rows = which(grepl(rownames(res),
+                                pattern=sprintf('^%s', test_vars[v])))
+                for (r in var_rows) {
+                    if (res[r, 'p-value'] < pthresh) {
+                        sig_vars = c(sig_vars, test_vars[v])
+                    }
+                }
+            }
+            # factors might get added several times, so here we clean it up
+            sig_vars = unique(sig_vars)
+            if (length(sig_vars) > 0) {
+                clean_fm_str = paste(dep_var, ' ~ ', keep_var, ' + ',
+                            paste(sig_vars, collapse='+'), sep="")
+            } else {
+                clean_fm_str = paste(dep_var, ' ~ ', keep_var, sep="")
+            }
+            # new model
+            clean_fit = try(lme(as.formula(clean_fm_str), ~1|FAMID, data=data,
+                            na.action=na.omit))
+            if (length(clean_fit) > 1) {
+                res = data.frame(summary(clean_fit)$tTable)
+                # remove intercept
+                res = res[2:nrow(res),]
+                res$dep_var = dep_var
+                res$formula = clean_fm_str
+                res$orig_formula = fm_str
+                res$predictor = rownames(res)
+            } else {
+                res = data.frame(summary(fit)$tTable)
+                # remove intercept
+                res = res[2:nrow(res),]
+                res$dep_var = dep_var
+                res$formula = NA
+                res$orig_formula = fm_str
+                res$predictor = rownames(res)
+            }
+            hold = rbind(hold, res)
+        }
+    }
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+OK, so this works. We just need to repeat it for rsFMRI:
+
+
 # TODO
  * make table comparing good scans to bad scans in terms of QC variables
  * laterality regression
