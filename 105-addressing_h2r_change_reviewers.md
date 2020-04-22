@@ -1389,7 +1389,7 @@ keep_vars = colnames(data)[grepl(colnames(data), pattern='^ad_') |
 test_vars = c('Sex...Subjects', 'meanX.trans', 'meanY.trans', 'meanZ.trans',
               'meanX.rot', 'meanY.rot', 'meanZ.rot', 'goodVolumes')
 # spit out the results
-out_fname = '~/data/heritability_change_rev/assoc_changeSXBaseBrain_dti.csv'
+out_fname = '~/data/heritability_change_rev/assoc_changeSXBaseBrain_dti_dx2.csv'
 
 hold = c()
 for (dep_var in c('SX_inatt', 'SX_hi')) {
@@ -1448,8 +1448,152 @@ write.csv(hold, file=out_fname, row.names=F)
 
 OK, so this works. We just need to repeat it for rsFMRI:
 
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+
+diff_data = c()
+for (s in unique(data$Medical.Record...MRN)) {
+    sdata = data[data$Medical.Record...MRN == s,]
+    # make sure second row is later than first
+    if (sdata[1, 'age_at_scan'] >
+        sdata[2, 'age_at_scan']) {
+        sdata = sdata[c(2, 1), ]
+    }
+    # grab baseline data
+    diff_data = rbind(diff_data, sdata[1, ])
+    last = nrow(diff_data)
+    # change SX to be the rate
+    deltaT = diff(sdata[, 'age_at_scan'])
+    diff_data[last, 'SX_inatt'] = diff(sdata[, "SX_inatt"]) / deltaT
+    diff_data[last, 'SX_hi'] = diff(sdata[, "SX_hi"]) / deltaT
+}
+colnames(diff_data)[1] = 'ID'
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(diff_data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# Use Diff file to restrict it to DX2 only!!!
+dx_data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+dx_data = dx_data[dx_data$DX2 == 'ADHD', ]
+data = data[data$ID %in% dx_data$ID, ]
+
+# screen using same criteria as SOLAR
+pthresh = .1
+
+# keep these regardless of significance
+keep_vars = c('conn_DorsAttnTOCont', 'conn_SalVentAttnTOSalVentAttn',
+              'conn_DorsAttnTODefault', 'conn_DorsAttnTOSalVentAttn',
+              'conn_SalVentAttnTODefault', 'conn_ContTOCont',
+              'conn_SalVentAttnTOCont', 'conn_DorsAttnTODorsAttn',
+              'conn_ContTODefault', 'conn_DefaultTODefault')
+
+# variables to be tested/screened
+test_vars = c('Sex', 'normCoverage', 'meanDV', 'pctSpikesDV',
+              'motionDVCorrInit', 'motionDVCorrFinal', 'pctSpikesRMS',
+              'relMeanRMSMotion')
+# spit out the results
+out_fname = '~/data/heritability_change_rev/assoc_changeSXBaseBrain_rsfmri_dx2.csv'
+
+hold = c()
+for (dep_var in c('SX_inatt', 'SX_hi')) {
+    for (keep_var in keep_vars) {
+        fm_str = paste(dep_var, ' ~ ', keep_var, ' + ',
+                       paste(test_vars, collapse='+'), sep="")
+        fit = try(lme(as.formula(fm_str), ~1|FAMID, data=data, na.action=na.omit))
+        if (length(fit) > 1) {
+            res = summary(fit)$tTable
+            # filtering variables
+            sig_vars = c()
+            for (v in 1:length(test_vars)) {
+                # rows in results table that correspond to the screened variable
+                var_rows = which(grepl(rownames(res),
+                                pattern=sprintf('^%s', test_vars[v])))
+                for (r in var_rows) {
+                    if (res[r, 'p-value'] < pthresh) {
+                        sig_vars = c(sig_vars, test_vars[v])
+                    }
+                }
+            }
+            # factors might get added several times, so here we clean it up
+            sig_vars = unique(sig_vars)
+            if (length(sig_vars) > 0) {
+                clean_fm_str = paste(dep_var, ' ~ ', keep_var, ' + ',
+                            paste(sig_vars, collapse='+'), sep="")
+            } else {
+                clean_fm_str = paste(dep_var, ' ~ ', keep_var, sep="")
+            }
+            # new model
+            clean_fit = try(lme(as.formula(clean_fm_str), ~1|FAMID, data=data,
+                            na.action=na.omit))
+            if (length(clean_fit) > 1) {
+                res = data.frame(summary(clean_fit)$tTable)
+                # remove intercept
+                res = res[2:nrow(res),]
+                res$dep_var = dep_var
+                res$formula = clean_fm_str
+                res$orig_formula = fm_str
+                res$predictor = rownames(res)
+            } else {
+                res = data.frame(summary(fit)$tTable)
+                # remove intercept
+                res = res[2:nrow(res),]
+                res$dep_var = dep_var
+                res$formula = NA
+                res$orig_formula = fm_str
+                res$predictor = rownames(res)
+            }
+            hold = rbind(hold, res)
+        }
+    }
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+## Including IQ and SES
+
+To add IQ and SES I'll go back to Labmatrix.
+
+```r
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+library(gdata)
+ses = read.xls('~/data/heritability_change_rev/ses.xlsx')
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+d2 = mergeOnClosestDate(data, ses, unique(data$Medical.Record...MRN),
+                        x.date='record.date.collected...Scan',
+                        y.date='record.date.collected...SES',
+                        x.id='Medical.Record...MRN',
+                        y.id='Medical.Record...MRN')
+iq = read.xls('~/data/heritability_change_rev/iq.xlsx')
+d3 = mergeOnClosestDate(d2, iq, unique(data$Medical.Record...MRN),
+                        x.date='record.date.collected...Scan',
+                        y.date='record.date.collected...WASI.I',
+                        x.id='Medical.Record...MRN',
+                        y.id='Medical.Record...MRN')
+# just choosing the baseline IQ and SES for this. Note that some subjects won't have SES or IQ, so our sample is not as complete
+diff_data = c()
+for (s in unique(data$Medical.Record...MRN)) {
+    sdata = d3[d3$Medical.Record...MRN == s,]
+    if (nrow(sdata) > 0) {
+        # make sure second row is later than first
+        if (sdata[1, 'age_at_scan'] >
+            sdata[2, 'age_at_scan']) {
+            diff_data = rbind(diff_data, sdata[2, ])
+        } else {
+            diff_data = rbind(diff_data, sdata[1, ])
+        }
+    }
+}
+dx_data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+d4 = merge(dx_data, diff_data[, c('Medical.Record...MRN', 'Status...SES',
+                                  'FSIQ')], by.x=1, by.y=1, all.X=T, all.y=F)
+colnames(d4)[72] = 'SES'
+write.csv(d4, file='~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ.csv', row.names=F)
+```
 
 # TODO
+ * contruct the file above for DTI
+ * check whether SES should be continuous or binary
+ * run SOLAR and regressions
  * make table comparing good scans to bad scans in terms of QC variables
  * laterality regression
  * recompute t-test values comparing scans before and after QC, using the
