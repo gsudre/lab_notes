@@ -344,14 +344,6 @@ cat(sprintf('Starting from %d scans\n', nrow(demo)))
 # keeping it to kids only to make sure everyone has been processed
 demo = demo[demo$age_at_scan < 18, ]
 cat(sprintf('Down to %d to keep < 18 only\n', nrow(demo)))
-
-print(sprintf('Start with < 18 scans: %d scans, %d subjects',
-              nrow(demo), length(unique(demo$Medical.Record...MRN))))
-```
-
-[1] "Start with < 18 scans: 1306 scans, 497 subjects"
-
-```r
 mydir = '/Volumes/Shaw/rsfmri_36P/xcpengine_output_fc-36p_despike/'
 qc_data = c()
 for (s in demo$Mask.ID) {
@@ -363,7 +355,17 @@ for (s in demo$Mask.ID) {
         qc_data = rbind(qc_data, subj_data)
     }
 }
+qc_data$mask.id = as.numeric(gsub(qc_data$id0,
+                                  pattern='sub-', replacement=''))
+df = merge(qc_data, demo, by.x='mask.id', by.y='Mask.ID', all.x=T, all.y=F)
 
+print(sprintf('Start with < 18 scans: %d scans, %d subjects',
+              nrow(df), length(unique(df$Medical.Record...MRN))))
+```
+
+[1] "Start with < 18 scans: 726 scans, 303 subjects"
+
+```r
 # have some higly correlated qc variables, so let's remove the worse offenders (anything above abs(.8))
 qc_vars = c('normCoverage', 'meanDV', 'pctSpikesDV',
             'motionDVCorrInit',
@@ -384,8 +386,6 @@ thresh_if = quantile(scores_if, qtile)
 idx = scores_lof < thresh_lof & scores_if < thresh_if
 
 qc_data_clean = qc_data[idx, ]
-qc_data_clean$mask.id = as.numeric(gsub(qc_data_clean$id0,
-                                        pattern='sub-', replacement=''))
 
 df = merge(qc_data_clean, demo, by.x='mask.id', by.y='Mask.ID', all.x=T, all.y=F)
 
@@ -1817,8 +1817,6 @@ write.csv(hold, out_fname, row.names=F)
 
 
 # TODO
- * comment on DTI results in Word document
- * start separating files to send to Philip
  * make table comparing good scans to bad scans in terms of QC variables
  * laterality regression
  * recompute t-test values comparing scans before and after QC, using the
