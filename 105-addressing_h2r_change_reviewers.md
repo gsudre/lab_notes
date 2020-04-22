@@ -1590,6 +1590,145 @@ colnames(d4)[72] = 'SES'
 write.csv(d4, file='~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ.csv', row.names=F)
 ```
 
+# 2020-04-22 06:47:35
+
+And now the DTI version.
+
+```r
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+library(gdata)
+ses = read.xls('~/data/heritability_change_rev/ses.xlsx')
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+d2 = mergeOnClosestDate(data, ses, unique(data$Medical.Record...MRN...Subjects),
+                        x.date='record.date.collected...Scan',
+                        y.date='record.date.collected...SES',
+                        x.id='Medical.Record...MRN...Subjects',
+                        y.id='Medical.Record...MRN')
+iq = read.xls('~/data/heritability_change_rev/iq.xlsx')
+d3 = mergeOnClosestDate(d2, iq, unique(data$Medical.Record...MRN...Subjects),
+                        x.date='record.date.collected...Scan',
+                        y.date='record.date.collected...WASI.I',
+                        x.id='Medical.Record...MRN...Subjects',
+                        y.id='Medical.Record...MRN')
+# just choosing the baseline IQ and SES for this. Note that some subjects won't have SES or IQ, so our sample is not as complete
+diff_data = c()
+for (s in unique(data$Medical.Record...MRN...Subjects)) {
+    sdata = d3[d3$Medical.Record...MRN...Subjects == s,]
+    if (nrow(sdata) > 0) {
+        # make sure second row is later than first
+        if (sdata[1, 'age_at_scan...Scan...Subjects'] >
+            sdata[2, 'age_at_scan...Scan...Subjects']) {
+            diff_data = rbind(diff_data, sdata[2, ])
+        } else {
+            diff_data = rbind(diff_data, sdata[1, ])
+        }
+    }
+}
+dx_data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+d4 = merge(dx_data, diff_data[, c('Medical.Record...MRN...Subjects', 'Status...SES',
+                                  'FSIQ')], by.x=1, by.y=1, all.X=T, all.y=F)
+colnames(d4)[96] = 'SES'
+write.csv(d4, file='~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_SESandIQ.csv', row.names=F)
+```
+
+Now, let's plot SES in both cohorts to see how it should be treated:
+
+![](images/2020-04-22-06-58-05.png)
+
+The issue is that SOLAR doesn't deal with more than 2 categories. One option is
+to dummify the categories. But for this analysis we can just go with the actual
+value and see what happens. Then I replaced the NAs by blanks in Excel, which I
+had to do anyways to convert the .csv.
+
+Now, let's run SOLAR and check the selected covariates:
+
+```bash
+# local
+phen=dti_JHUtracts_ADRDonly_OD0.95_SESandIQ
+cd ~/data/heritability_change_rev
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts_SESandIQ $phen ${m}_${t};
+    done;
+done;
+mv $phen ~/data/tmp/
+cd ~/data/tmp/$phen
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py $phen
+```
+
+```bash
+# local
+cd ~/data/heritability_change_rev
+phen=rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ;
+for t in "conn_DorsAttnTODorsAttn" \
+    "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOCont" \
+    "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault" \
+    "conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp_SESandIQ ${phen} ${t};
+done;
+mv ${phen} ~/data/tmp/
+cd ~/data/tmp/${phen}
+for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+python ~/research_code/compile_solar_multivar_results.py ${phen}
+```
+
+Note that even for traits that didn't have SES or FSIQ as significant
+covariates, the heritability estimates won't be the same as before because we
+lost subjects that didn't have one of those two new variables. But let's check
+which traits had one of those two as significant:
+
+```bash
+cd ~/data/tmp/dti_JHUtracts_ADRDonly_OD0.95_SESandIQ/
+grep "(Significant)" *_polygenic.out | grep SES
+grep "(Significant)" *_polygenic.out | grep FSIQ
+```
+
+```
+ad_11_polygenic.out:                                      SES  p = 0.0600095  (Significant)
+ad_15_polygenic.out:                                      SES  p = 0.0941429  (Significant)
+ad_2_polygenic.out:                                      SES  p = 0.0710717  (Significant)
+ad_6_polygenic.out:                                      SES  p = 0.0905935  (Significant)
+rd_11_polygenic.out:                                      SES  p = 0.0070307  (Significant)
+rd_12_polygenic.out:                                      SES  p = 0.0939229  (Significant)
+rd_17_polygenic.out:                                      SES  p = 0.0065868  (Significant)
+rd_18_polygenic.out:                                      SES  p = 0.0925530  (Significant)
+rd_2_polygenic.out:                                      SES  p = 0.0731047  (Significant)
+rd_5_polygenic.out:                                      SES  p = 0.0205409  (Significant)
+rd_6_polygenic.out:                                      SES  p = 0.0384632  (Significant)
+ad_8_polygenic.out:                                     FSIQ  p = 0.0934378  (Significant)
+ad_9_polygenic.out:                                     FSIQ  p = 0.0891604  (Significant)
+rd_1_polygenic.out:                                     FSIQ  p = 0.0691207  (Significant)
+rd_9_polygenic.out:                                     FSIQ  p = 0.0229397  (Significant)
+```
+
+ad_2, rd_12, rd_17, rd_18, rd_2, rd_5, ad_8 are now significant p<.05. Comparing
+to the results from before, 
+
+```bash
+cd ~/data/tmp/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ
+grep "(Significant)" *_polygenic.out | grep SES
+grep "(Significant)" *_polygenic.out | grep FSIQ
+```
+
+```
+conn_ContTODefault_polygenic.out:                                      SES  p = 0.0080693  (Significant)
+conn_DorsAttnTODefault_polygenic.out:                                      SES  p = 0.0009460  (Significant)
+conn_DorsAttnTOSalVentAttn_polygenic.out:                                     FSIQ  p = 0.0266972  (Significant)
+```
+
+conn_DorsAttnTOSalVentAttn_polygenic, which was already significant before
+(h2=.55, p<.015), not is significant at h2=.78 and p<.001). I wonder if now it
+would survive FDR at .05? Better not, as we're losing subjects by doing this and
+would have to change a whole bunch of things...
+
+How about the SX regressions?
+
+
+
+
+
 # TODO
  * contruct the file above for DTI
  * check whether SES should be continuous or binary
