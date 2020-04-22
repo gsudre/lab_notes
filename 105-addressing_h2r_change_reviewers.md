@@ -1704,7 +1704,57 @@ rd_9_polygenic.out:                                     FSIQ  p = 0.0229397  (Si
 ```
 
 ad_2, rd_12, rd_17, rd_18, rd_2, rd_5, ad_8 are now significant p<.05. Comparing
-to the results from before, 
+to the results from before, only ad_8 wasn't significant before and now is
+(barely). We didn't lose any significant tracts from before by adding the new
+covariates.
+
+Let's look at the regressions:
+
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_SESandIQ.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ad_2', '%s ~ %s + meanX.rot + goodVolumes + SES'))
+formulas = rbind(formulas, c('ad_8', '%s ~ %s + meanX.trans + meanY.trans + FSIQ'))
+formulas = rbind(formulas, c('rd_12', '%s ~ %s + meanX.rot + SES'))
+formulas = rbind(formulas, c('rd_17', '%s ~ %s + meanZ.rot + SES'))
+formulas = rbind(formulas, c('rd_18', '%s ~ %s + meanX.rot + meanZ.trans + FSIQ'))
+formulas = rbind(formulas, c('rd_2', '%s ~ %s + meanY.trans + meanY.rot + SES'))
+formulas = rbind(formulas, c('rd_5', '%s ~ %s + meanY.trans + meanZ.trans + meanY.rot + SES'))
+
+out_fname = '~/data/heritability_change_rev/assoc_all_dti_JHUtracts_SESandIQ.csv'
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx2.csv')
+predictors = c('SX_inatt', 'SX_HI')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And similarly, we work on fMRI:
 
 ```bash
 cd ~/data/tmp/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ
@@ -1719,20 +1769,56 @@ conn_DorsAttnTOSalVentAttn_polygenic.out:                                     FS
 ```
 
 conn_DorsAttnTOSalVentAttn_polygenic, which was already significant before
-(h2=.55, p<.015), not is significant at h2=.78 and p<.001). I wonder if now it
+(h2=.55, p<.015), now is significant at h2=.78 and p<.001). I wonder if now it
 would survive FDR at .05? Better not, as we're losing subjects by doing this and
 would have to change a whole bunch of things...
 
 How about the SX regressions?
 
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+formulas = c()
+formulas = rbind(formulas, c('conn_DorsAttnTOSalVentAttn',
+                             '%s ~ %s + normCoverage + motionDVCorrFinal + relMeanRMSMotion + FSIQ'))
+
+out_fname = '~/data/heritability_change_rev/assoc_all_rsfmri_SESandIQ.csv'
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx2.csv')
+
+data2 = data[data$DX2=='ADHD', ]
+predictors = c('SX_inatt', 'SX_HI', 'inatt_baseline', 'HI_baseline')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+    for (j in predictors) {
+        fm_str = sprintf(fm_root, i, j)
+        model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+        if (length(model1) > 1) {
+            temp<-summary(model1)$tTable
+            a<-as.data.frame(temp)
+            a$formula<-fm_str
+            a$target = i
+            a$predictor = j
+            a$term = rownames(temp)
+            hold=rbind(hold,a)
+        } else {
+            hold=rbind(hold, NA)
+        }
+    }
+}
+write.csv(hold, out_fname, row.names=F)
+```
 
 
 
 
 # TODO
- * contruct the file above for DTI
- * check whether SES should be continuous or binary
- * run SOLAR and regressions
+ * comment on DTI results in Word document
+ * start separating files to send to Philip
  * make table comparing good scans to bad scans in terms of QC variables
  * laterality regression
  * recompute t-test values comparing scans before and after QC, using the
