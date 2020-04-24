@@ -567,6 +567,10 @@ qc_data$kept = F
 qc_data[qc_data$mask.id %in% filtered_data$mask.id, 'kept'] = T
 for (v in qc_vars) {
     print(v)
+    print(sprintf('%.03f (%.03f)', mean(qc_data[qc_data$kept==T,v]),
+                  sd(qc_data[qc_data$kept==T,v])))
+    print(sprintf('%.03f (%.03f)', mean(qc_data[qc_data$kept==F,v]),
+                  sd(qc_data[qc_data$kept==F,v])))
     print(t.test(qc_data[qc_data$kept==T,v],
                  qc_data[qc_data$kept==F,v]))
 }
@@ -1813,11 +1817,111 @@ for (r in 1:nrow(formulas)) {
 write.csv(hold, out_fname, row.names=F)
 ```
 
+# 2020-04-23 06:42:29
 
+Let's run the regressions for the collapsed DTI data.
 
+```r
+library(nlme)
+data = read.csv('~/data/heritability_change_rev/dti_JHUtractsCollapsed_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+
+# MANUALLY grabbing significant covariates form SOLAR results
+formulas = c()
+formulas = rbind(formulas, c('ATR_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ATR_rd', '%s ~ %s'))
+formulas = rbind(formulas, c('CC_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('CC_rd', '%s ~ %s + meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('CIN_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('CIN_rd', '%s ~ %s + meanY.trans + meanX.rot'))
+formulas = rbind(formulas, c('CST_ad', '%s ~ %s + goodVolumes'))
+formulas = rbind(formulas, c('CST_rd', '%s ~ %s + meanY.trans + meanY.rot'))
+formulas = rbind(formulas, c('IFO_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('IFO_rd', '%s ~ %s + meanY.trans'))
+formulas = rbind(formulas, c('ILF_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ILF_rd', '%s ~ %s + meanX.rot'))
+formulas = rbind(formulas, c('SLF_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('SLF_rd', '%s ~ %s + meanY.rot'))
+formulas = rbind(formulas, c('UNC_ad', '%s ~ %s + meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('UNC_rd', '%s ~ %s + meanZ.trans + meanX.rot'))
+
+out_fname = '~/data/heritability_change_rev/assoc_all_dti_JHUtractsCollapsed.csv'
+
+data2 = data[data$DX2=='ADHD', ]
+out_fname = gsub(x=out_fname, pattern='.csv', '_dx2.csv')
+predictors = c('SX_inatt', 'SX_HI')
+hold=NULL
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   for (j in predictors) {
+       fm_str = sprintf(fm_root, i, j)
+       model1<-try(lme(as.formula(fm_str), data2, ~1|FAMID, na.action=na.omit))
+       if (length(model1) > 1) {
+           temp<-summary(model1)$tTable
+           a<-as.data.frame(temp)
+           a$formula<-fm_str
+           a$target = i
+           a$predictor = j
+           a$term = rownames(temp)
+           hold=rbind(hold,a)
+       } else {
+           hold=rbind(hold, NA)
+       }
+   }
+}
+write.csv(hold, out_fname, row.names=F)
+```
+
+And we also need to run the regressions for rate of change:
+
+```r
+formulas = c()
+formulas = rbind(formulas, c('ATR_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ATR_rd', '%s ~ 1'))
+formulas = rbind(formulas, c('CC_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('CC_rd', '%s ~ meanX.trans + meanY.rot'))
+formulas = rbind(formulas, c('CIN_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('CIN_rd', '%s ~ meanY.trans + meanX.rot'))
+formulas = rbind(formulas, c('CST_ad', '%s ~ goodVolumes'))
+formulas = rbind(formulas, c('CST_rd', '%s ~ meanY.trans + meanY.rot'))
+formulas = rbind(formulas, c('IFO_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('IFO_rd', '%s ~ meanY.trans'))
+formulas = rbind(formulas, c('ILF_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('ILF_rd', '%s ~ meanX.rot'))
+formulas = rbind(formulas, c('SLF_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('SLF_rd', '%s ~ meanY.rot'))
+formulas = rbind(formulas, c('UNC_ad', '%s ~ meanX.rot + goodVolumes'))
+formulas = rbind(formulas, c('UNC_rd', '%s ~ meanZ.trans + meanX.rot'))
+
+for (r in 1:nrow(formulas)) {
+   i = formulas[r, 1]
+   fm_root = formulas[r, 2]
+   fm_str = sprintf(fm_root, i)
+   model1<-try(lme(as.formula(fm_str), data, ~1|FAMID, na.action=na.omit))
+   temp<-summary(model1)$tTable[1, ]  # grab just the intercept
+   print(sprintf('%s, %.1f +- %.1f (%.1e)', i, temp[1]*1000, temp[2]*1000, temp[5]))
+}
+```
+
+```
+[1] "ATR_ad, -6.8 +- 0.9 (9.9e-12)"
+[1] "ATR_rd, -7.2 +- 0.7 (1.1e-19)"
+[1] "CC_ad, -10.3 +- 1.1 (1.4e-17)"
+[1] "CC_rd, -6.8 +- 0.7 (2.9e-17)"
+[1] "CIN_ad, -9.8 +- 0.9 (1.0e-21)"
+[1] "CIN_rd, -6.4 +- 0.8 (6.8e-15)"
+[1] "CST_ad, -9.4 +- 0.9 (3.9e-21)"
+[1] "CST_rd, -5.7 +- 0.6 (5.6e-16)"
+[1] "IFO_ad, -10.7 +- 0.9 (6.2e-26)"
+[1] "IFO_rd, -7.0 +- 0.6 (6.1e-25)"
+[1] "ILF_ad, -9.5 +- 0.7 (1.0e-30)"
+[1] "ILF_rd, -6.9 +- 0.5 (4.9e-30)"
+[1] "SLF_ad, -10.9 +- 0.8 (6.1e-29)"
+[1] "SLF_rd, -7.5 +- 0.6 (2.0e-24)"
+[1] "UNC_ad, -9.2 +- 1.1 (2.9e-15)"
+[1] "UNC_rd, -5.8 +- 0.8 (1.7e-11)"
+```
 
 # TODO
- * make table comparing good scans to bad scans in terms of QC variables
- * laterality regression
- * recompute t-test values comparing scans before and after QC, using the
-   current numbers for DTI
