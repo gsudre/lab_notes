@@ -1924,4 +1924,27 @@ for (r in 1:nrow(formulas)) {
 [1] "UNC_rd, -5.8 +- 0.8 (1.7e-11)"
 ```
 
+# 2020-04-27 14:54:08
+
+I made two CSV spreadsheets with the status of each possible scan by hacking the
+QC code above and adding a column called status.
+
+Then, we needed to equate the X axis in Fig 4:
+
+```r
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+data2 = data[data$DX2=='ADHD', ]
+fit = lm('ad_10 ~ SX_HI + meanX.rot + goodVolumes', data2, na.action=na.omit)
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + geom_point() + stat_smooth(method = "lm", col = "red") + xlim(-4, 2.52)
+
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ.csv')
+tmp = read.csv('~/data/heritability_change_rev/pedigree.csv')
+data = merge(data, tmp[, c('ID', 'FAMID')], by='ID', all.x=T, all.y=F)
+data2 = data[data$DX2=='ADHD', ]
+fit = lm('conn_SalVentAttnTOCont ~ SX_HI + sex + pctSpikesDV + motionDVCorrInit + relMeanRMSMotion', data2, na.action=na.omit)
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + geom_point() + stat_smooth(method = "lm", col = "red") + xlim(-4, 2.52)
+```
+
 # TODO

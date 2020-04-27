@@ -1622,6 +1622,16 @@ No, this didn't go anywhere... maybe this is just not the right stats. I do need
 to remove some of these variables though... and it needs to be done from looking
 only at X.
 
+
+# 2020-04-24 14:24:44
+
+If I were to stick to genes from the Demontis GWAS paper, I'd use these:
+
+ST3GAL3, KDM4A, KDM4A-AS1, PTPRF, SLC6A9, ARTN, DPH2, ATP6V0B, B4GALT2, CCDC24,
+IPO13, SPAG16, PCDH7, LINC02497, LINC00461, MIR9-2, LINC02060, TMEM161B-AS1,
+FOXP2, MIR3666, LINC01288, SORCS3, DUSP6, POC1B, SEMA6D, LINC01572
+
+
 # TODO
  * remove covariates for now?
  * might need to artificially balance the classes, as now I'm at 18 against 13
@@ -1629,3 +1639,6 @@ only at X.
    left variables?
 * use RFE or GA?
 *  how about restricting to genes that are neuro-related?
+*  some sort of binomial test to exclude genes not expressed?
+*  try different dimensionality reduction methods with a fixed number of
+   components? say, nsubjs - 1, and leave it to ML to select the best variables?
