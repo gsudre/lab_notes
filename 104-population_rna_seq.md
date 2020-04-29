@@ -1642,3 +1642,5 @@ FOXP2, MIR3666, LINC01288, SORCS3, DUSP6, POC1B, SEMA6D, LINC01572
 *  some sort of binomial test to exclude genes not expressed?
 *  try different dimensionality reduction methods with a fixed number of
    components? say, nsubjs - 1, and leave it to ML to select the best variables?
+* or try different random starts for methods like tSNE, and choose the best seed
+  to separate groups? maybe even in a CV fashion?

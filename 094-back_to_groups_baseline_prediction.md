@@ -1237,6 +1237,29 @@ for cs in "emergent improvers" "emergent never_affected" \
 done
 ```
 
+# 2020-04-28 19:46:52
+
+Philip asked me to run the splits with the youngest kid instead, just to have
+those results in case someone asks:
+
+```bash
+my_dir=~/data/baseline_prediction/prs_start
+cd $my_dir
+my_script=~/research_code/baseline_prediction/modelList_twoClass_youngest.R;
+res_file=youngest.csv
+sx="categ_all.4";
+imp='dti';
+for cov in F T; do
+    for clf in slda treebag svmRadialCost; do
+        for cs in "emergent improvers" "emergent never_affected" \
+                "emergent stable_symptomatic" "improvers never_affected" \
+                "improvers stable_symptomatic" "stable_symptomatic never_affected"; do
+            Rscript $my_script ${my_dir}/gf_philip_03292020.csv $sx $cs $clf $imp 10 10 2 $cov $res_file;
+        done;
+    done;
+done
+```
+
 
 # TODO
 * if we push the xgbTree front, as it handles missing data, could we try this

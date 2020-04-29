@@ -1947,4 +1947,157 @@ fit = lm('conn_SalVentAttnTOCont ~ SX_HI + sex + pctSpikesDV + motionDVCorrInit 
 ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + geom_point() + stat_smooth(method = "lm", col = "red") + xlim(-4, 2.52)
 ```
 
+# 2020-04-28 20:03:59
+
+Philip asked for a few more analysis to put this paper to bed...
+
+```
+Rerun h2r analysis:
+- adjusted for average age
+- adjusting for base age + base sx + baseline value of the metric
+```
+
+So, the main difficutly here will be to generate the files. Not really, but
+still not straight-forward.
+
+```r
+data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+base_data = c()
+for (s in unique(data$Medical.Record...MRN)) {
+    sdata = data[data$Medical.Record...MRN == s,]
+    sdata$avgAge = mean(sdata[, 'age_at_scan'])
+    # make sure second row is later than first
+    if (sdata[1, 'age_at_scan'] >
+        sdata[2, 'age_at_scan']) {
+        base_data = rbind(base_data, sdata[2, ])
+    } else {
+        base_data = rbind(base_data, sdata[1, ])
+    }
+}
+base_data$age_baseline = base_data$age_at_scan
+dx_data = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean.csv')
+d4 = merge(dx_data, base_data[, c('Medical.Record...MRN', 'avgAge',
+                                  'age_baseline')],
+                                  by.x=1, by.y=1, all.X=T, all.y=F)
+write.csv(d4, file='~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_moreBaseline.csv', row.names=F)
+```
+
+```bash
+# local
+cd ~/data/heritability_change_rev
+phen=rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_moreBaseline;
+for t in "conn_DorsAttnTODorsAttn" \
+    "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOCont" \
+    "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault" \
+    "conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp_avgAge ${phen} ${t};
+        solar run_phen_var_OD_xcp_baseAge_baseVar ${phen} ${t};
+        for sx in inatt HI; do
+            solar run_phen_var_OD_xcp_baseAge_baseVar_baseSX ${phen} ${t} $sx;
+        done;
+done;
+mv ${phen}_* ~/data/tmp/
+for suf in avgAge baseAge_baseVar baseAge_baseVar_baseinatt \
+    baseAge_baseVar_basehi; do
+    cd ~/data/tmp/${phen}_${suf}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}_${suf};
+done
+cp ~/data/tmp/polygen_results_${phen}*csv ~/data/heritability_change_rev/
+```
+
+And now the DTI version.
+
+```r
+data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+base_data = c()
+for (s in unique(data$Medical.Record...MRN...Subjects)) {
+    sdata = data[data$Medical.Record...MRN...Subjects == s,]
+    sdata$avgAge = mean(sdata[, 'age_at_scan...Scan...Subjects'])
+    # make sure second row is later than first
+    if (sdata[1, 'age_at_scan...Scan...Subjects'] >
+        sdata[2, 'age_at_scan...Scan...Subjects']) {
+        base_data = rbind(base_data, sdata[2, ])
+    } else {
+        base_data = rbind(base_data, sdata[1, ])
+    }
+}
+base_data$age_baseline = base_data$age_at_scan...Scan...Subjects
+dx_data = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95.csv')
+d4 = merge(dx_data, base_data[, c('Medical.Record...MRN...Subjects',
+                                  'avgAge', 'age_baseline')],
+                                  by.x=1, by.y=1, all.X=T, all.y=F)
+write.csv(d4, file='~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_moreBaseline.csv', row.names=F)
+```
+
+And the SOLAR part:
+
+```bash
+phen=dti_JHUtracts_ADRDonly_OD0.95_moreBaseline
+cd ~/data/heritability_change_rev
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts_avgAge $phen ${m}_${t};
+        solar run_phen_var_OD_tracts_baseAge_baseVar ${phen} ${m}_${t};
+        for sx in inatt HI; do
+            solar run_phen_var_OD_tracts_baseAge_baseVar_baseSX ${phen} ${m}_${t} $sx;
+        done;
+    done;
+done;
+mv ${phen}_* ~/data/tmp/
+for suf in avgAge baseAge_baseVar baseAge_baseVar_baseinatt \
+    baseAge_baseVar_basehi; do
+    cd ~/data/tmp/${phen}_${suf}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}_${suf};
+done
+cp ~/data/tmp/polygen_results_${phen}*csv ~/data/heritability_change_rev/
+```
+
+# 2020-04-29 07:29:23
+
+Philip asked me to force SES, IQ, and avgAge. Here is goes:
+
+```bash
+# local
+cd ~/data/heritability_change_rev
+phen=rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean;
+for t in "conn_DorsAttnTODorsAttn" \
+    "conn_DorsAttnTOSalVentAttn" "conn_DorsAttnTOCont" \
+    "conn_DorsAttnTODefault" "conn_SalVentAttnTOSalVentAttn" \
+    "conn_SalVentAttnTOCont" "conn_SalVentAttnTODefault" \
+    "conn_ContTOCont" "conn_ContTODefault" "conn_DefaultTODefault"; do
+        solar run_phen_var_OD_xcp_avgAgeForced ${phen}_moreBaseline ${t};
+        solar run_phen_var_OD_xcp_SESandIQForced ${phen}_SESandIQ ${t};
+done;
+
+mv ${phen}_* ~/data/tmp/
+for suf in moreBaseline_avgAgeForced SESandIQ_SESandIQForced; do
+    cd ~/data/tmp/${phen}_${suf}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}_${suf};
+done
+cp ~/data/tmp/polygen_results_${phen}*csv ~/data/heritability_change_rev/
+```
+
+```bash
+phen=dti_JHUtracts_ADRDonly_OD0.95
+cd ~/data/heritability_change_rev
+for m in ad rd; do
+    for t in {1..20}; do
+        solar run_phen_var_OD_tracts_avgAgeForced ${phen}_moreBaseline ${m}_${t};
+        solar run_phen_var_OD_tracts_SESandIQForced ${phen}_SESandIQ ${m}_${t};
+    done;
+done;
+
+mv ${phen}_* ~/data/tmp/
+for suf in moreBaseline_avgAgeForced SESandIQ_SESandIQForced; do
+    cd ~/data/tmp/${phen}_${suf}
+    for p in `/bin/ls`; do cp $p/polygenic.out ${p}_polygenic.out; done
+    python ~/research_code/compile_solar_multivar_results.py ${phen}_${suf};
+done
+cp ~/data/tmp/polygen_results_${phen}*csv ~/data/heritability_change_rev/
+```
+
 # TODO
