@@ -165,6 +165,134 @@ So, 10 should be alright here as well.
 Let me run a series of dimensionality reduction methods and check if anything
 looks good.
 
+I got an interesting plots with t-SNE, but the biggest issue is that it doesn't
+provide any sort of variable weights, so it'd be hard to assgign back importance
+to each gene. But there are other methods that could do that, so the idea itself
+is not bad.
+
+So, I started playing with this package:
+https://cran.r-project.org/web/packages/dimRed/vignettes/dimensionality-reduction.pdf
+
+And I could see right away hat there was something funky with the first PC:
+
+![](images/2020-04-29-20-33-09.png)
+
+and I got that both using PCA and Isomaps. So, before I try getting fancy with
+the methods, I need to see if there isn't something funky witht the data that's
+carrying all this variance.
+
+But the code I used was:
+
+```r
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_04292020.rds')
+library(Rtsne)
+X = normalize_input(as.matrix(data))
+library(dimRed)
+data_emb <- lapply(embed_methods, function(x) embed(X, x))
+names(data_emb) <- embed_methods
+plot_R_NX(data_emb)
+plot(data_emb[[2]], type='2vars')
+```
+
+The R_NX plot was very similar for Isomap and PCA. If I were to optimize the
+parameter for Isomap, then this would work:
+
+```r
+kk <- floor(seq(5, 40, length.out = 20))
+emb <- lapply(kk, function(x) embed(X, "Isomap", knn = x))
+qual <- sapply(emb, function(x) quality(x, "Q_local"))
+ind_max <- which.max(qual)
+k_max <- kk[ind_max]
+```
+
+which gives me about 23. And we could run all available models this way:
+
+```r
+embed_methods <- dimRedMethodList()
+embed_methods = embed_methods[-c(1, 4, 11)] # remove AutoEncoder, ICA, PCAL1 
+quality_methods <- c("Q_local", "Q_global", "AUC_lnK_R_NX",
+                     "cophenetic_correlation")
+quality_results <- matrix(
+  NA, length(embed_methods), length(quality_methods),
+  dimnames = list(embed_methods, quality_methods)
+)
+embedded_data <- list()
+for (em in embed_methods) {
+    print(sprintf('Trying %s', em))
+    embedded_data[[em]] <- embed(X, em)
+    for (q in quality_methods) {
+        print(sprintf('%s (%s)', em, q))
+        try(quality_results[em, q] <- quality(embedded_data[[em]], q))
+    }
+}
+```
+
+AutoEncoder needed tensorflow and I didn't want to install in my MacAir. ICA was
+taking forever. PCA_L1 did nt compile. NNMF requires matrix with only non-negative
+entries! UMAP was having issues installing in the MacbookAir... maybe all of
+these will be options in the cluster. We'll see. For now, we need to optimize
+the paremeters anyways. So
+
+But of course we should optimize eahc one individually before running this! Each
+model has its own set of parameters, and it maybe the same parameter maximizes
+one quality metric but not others? Ideally, I could keep the number of
+dimensions constant, and make bar graphs for varying Ks. Each group of bars
+would be a K, and four bars per group, one per metric. I could add more
+dimensions later, but I think staring with 2 is a good one for now, and we can
+run some classifiers or visualizations on that. If I script it, it'll be trivial
+to increase the number of dimensions later.
+
+So, before we go any further, let's see if that weird PC1 by PC2 plot was
+indicative of something I should pay attention to...
+
+# 2020-05-01 08:10:20
+
+So, let's start with Isomaps, because we can optimize knn and dimensions.
+
+```r
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_04292020.rds')
+library(Rtsne)
+X = normalize_input(as.matrix(data))
+library(dimRed)
+nd = 2
+kk <- floor(seq(5, 40, length.out = 20))
+emb <- lapply(kk, function(x) embed(X, "Isomap", knn = x, ndim= nd))
+names(emb) = kk
+quality_methods <- c("Q_local", "Q_global", "AUC_lnK_R_NX",
+                     "cophenetic_correlation")
+quality_results <- matrix(
+  NA, length(kk), length(quality_methods),
+  dimnames = list(kk, quality_methods)
+)
+for (k in kk) {
+    print(sprintf('Evaluating k=%d',k))
+    kname = as.character(k)
+    for (q in quality_methods) {
+        try(quality_results[kname, q] <- quality(emb[[kname]], q))
+    }
+}
+
+#plotting
+library(ggplot2)
+nneighbors = c()
+qual_metric = c()
+value = c()
+for (i in 1:nrow(quality_results)) {
+    for (j in 1:ncol(quality_results)) {
+        nneighbors = c(nneighbors, as.numeric(rownames(quality_results)[i]))
+        qual_metric = c(qual_metric, colnames(quality_results)[j])
+        value = c(value, quality_results[i, j])
+    }
+}
+plot_data <- data.frame(qual_metric,nneighbors,value)
+ggplot(plot_data, aes(fill=qual_metric, y=value, x=nneighbors)) +
+    geom_bar(position="dodge", stat="identity")
+```
+
 # TODO
+
+* keep it to only metrics that give an inverse transform! (i.e. no tsne)
+* rank average the different metrics to choose best combination, including
+  number of dimensions
 * add covariates... do they help?
 * play with Caudate
