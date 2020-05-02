@@ -289,6 +289,62 @@ ggplot(plot_data, aes(fill=qual_metric, y=value, x=nneighbors)) +
     geom_bar(position="dodge", stat="identity")
 ```
 
+# 2020-05-01 19:19:41
+
+OK, but it's only worth testing the methods that will give me an inverse
+transform. 
+
+I also found this interesting R package (Rdimtools), which implements hundreds
+of dimensionality reduction and even dimensionality estimation algorithms.
+Still, from what I've been reading only the linear methods will give me some
+sort of feature score. To be fair, with only 50 subjects or so we might be
+stretching to think that we'll be able to go for nonlinear methods. So, maybe we
+can explore the linear ones first?
+
+Rdimtools returns that in the projection variable. So, we could try a few of
+those and see what we get.
+
+All algorithms that have featidx returned also have projections. Maybe I could
+also explore supervised algorithms and bootstrap the data for confidence
+intervals of the findings?
+
+For example, can we use bayesian optimization to get good numbers for lambda and
+alpha in enet, and then bootstrap that?
+
+I should also try a cscale, decorrelated and whitened version of the data, just
+in case it matters. So, whihch methods to use? In the documentation, these are
+supervised and give a nice view of which features are being used:
+
+ammc
+lpfda
+lqmi
+lsda
+mfa
+mlie
+mmc
+mmp
+mmsd
+msd
+mvp
+odp
+pls
+save
+sir
+slpe
+slpp
+spc
+specs
+splapeig
+
+I don't think splapeig returns projections though. 
+
+They all still have other parameters like ndim and others, which would still
+need to be optimized.
+
+Of course I could also use an unsupervised method to bring my dimensions down to
+20 or so, and then use a supervised one to finsih the job. But let's do that
+only if we face 100% accuracy doing supervised from the get go.
+
 # TODO
 
 * keep it to only metrics that give an inverse transform! (i.e. no tsne)
