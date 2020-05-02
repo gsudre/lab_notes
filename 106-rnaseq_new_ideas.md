@@ -141,15 +141,15 @@ pp = preProcess(data[, grex_names],
                 method=c('zv', 'nzv', 'range'), rangeBounds=c(0,1))
 a = predict(pp, data[, grex_names])
 n0 = colSums(a==0)
-imbad = names(n0)[n0> 15]  # ACC
-imbad = names(n0)[n0> 18]  # Caudate
-good_grex = grex_names[!(grex_names %in% imbad)]
+imbad = n0 > 15  # ACC
+imbad = n0> 18  # Caudate
+good_grex = names(n0)[!imbad]
 res.pca <- prcomp(data[, good_grex])
 library(factoextra)
 fviz_eig(res.pca, ncp=40)
 
 saveRDS(data[, good_grex],
-        file='~/data/rnaseq_derek/goodgrexACC_binp01_04292020.rds')
+        file='~/data/rnaseq_derek/goodgrexACC_binp01_05022020.rds')
 ```
 
 ![](images/2020-04-29-14-50-45.png)
@@ -322,7 +322,7 @@ lsda
 mfa
 mlie
 mmc
-mmp
+mmpm
 mmsd
 msd
 mvp
@@ -343,7 +343,127 @@ need to be optimized.
 
 Of course I could also use an unsupervised method to bring my dimensions down to
 20 or so, and then use a supervised one to finsih the job. But let's do that
-only if we face 100% accuracy doing supervised from the get go.
+only if we face 100% accuracy doing supervised from the get go. Maybe doing PCA
+or ICASSO in the initial set and doing ML (or just plain old stats with
+bootstrapping) from there.
+
+# 2020-05-02 07:21:03
+
+So, let's start with a standard PCA analysis. 
+
+```r
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_05022020.rds')
+library(factoextra)
+res.pca <- prcomp(data, scale = TRUE)
+fviz_eig(res.pca, ncp=40)
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+![](images/2020-05-02-07-42-48.png)
+
+We knew already that on individual looked like an outlier already. How does the
+PCA change if we exclude that individual?
+
+```r
+data2 = data[-c(which(rownames(data)=='57')), ]
+res.pca2 <- prcomp(data2, scale = TRUE)
+fviz_eig(res.pca2, ncp=40)
+fviz_pca_ind(res.pca2,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+The first 2 PCs are much more important than the others:
+
+![](images/2020-05-02-07-46-58.png)
+
+And at least our first 2 dimensions are more homogeneous:
+
+![](images/2020-05-02-07-48-04.png)
+
+Let me explore a bit the enet idea, after removing this character.
+
+```r
+junk = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+label = junk[junk$Region=='ACC', 'Diagnosis']
+label = label[-c(which(rownames(data)=='57'))]
+library(Rdimtools)
+# mvp = do.mvp(data2, label, ndim=1)
+enet = do.enet(as.matrix(data2), as.numeric(label))
+```
+
+This toolbox takes forever to run... I'll need to do it in BW.
+
+Let me see if Caudate has outliers as well.
+
+![](images/2020-05-02-08-20-51.png)
+
+No, caudate seems a bit more well behaved. I just aved the CSV (see below) with
+the same suffix to make things easier in the future, but there were no outliers removed.
+
+## ICASSO
+
+I also want to retrieve my notes on ICASSO and try it for this dataset:
+
+```r
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_05022020.rds')
+data2 = data[-c(which(rownames(data)=='57')), ]
+write.csv(data2,
+          file='~/data/rnaseq_derek/goodgrexACC_binp01_05022020_noOutlier.csv',
+          row.names=F)
+```
+
+For future reference, here's how much cumulative variance explained in each
+dataset (summary(res.pca)). In Caudate we'd need 49 PCs, and in ACC 46. Maybe
+not a great way to do it. Probably looking at the elbow would be best, or using
+some of the other parametric methods.
+
+```r
+library(nFactors)
+eigs <- res.pca$sdev^2
+nS = nScree(x=eigs)
+print(nS$Components$nkaiser)
+```
+
+I get 11 for Caudate and 12 for ACC. So, 15 should be a good number for both.
+Or, if we check the other values:
+
+```
+> nS$Components
+  noc naf nparallel nkaiser
+1  16   2        54      12
+> eigs <- res.pca$sdev^2
+> nS = nScree(x=eigs)
+> nS$Components
+  noc naf nparallel nkaiser
+1  12   1        57      11
+```
+
+The first is for ACC. So, maybe 16 and 12, to make sure we get noc? And it'd
+include kaiser too. We can do feature selection later for ML.
+
+Then, in Matlab we do:
+
+```matlab
+# interactive
+
+addpath('/data/NCR_SBRB/FastICA_25/')
+addpath('/data/NCR_SBRB/icasso122/')
+addpath('/data/NCR_SBRB/')
+Ydd = dlmread(['~/data/rnaseq_derek/goodgrexACC_binp01_05022020_noOutlier.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd, 10, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['~/data/rnaseq_derek/ica_results_ACC_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')  
+```
+
 
 # TODO
 
