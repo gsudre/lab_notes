@@ -2426,4 +2426,192 @@ Adding tables to Word document.
 
 Not needed... only needed changes to the text. Sent by Slack.
 
+# 2020-05-03 09:36:25
+
+More numbers for the revision. Basically, recalculating everything above but
+using ever ADHD DX instead.
+
+```r
+dti = read.csv('~/data/heritability_change_rev/dti_all_scans_status.csv')
+fmri = read.csv('~/data/heritability_change_rev/fmri_all_scans_status.csv')
+a = dti[, c(1,2,4,9,36,37,34)]
+b = fmri[, c(1,2,27,31, 38, 39, 36)]
+colnames(a) = c('MRN', 'maskid', 'sex', 'age', 'inatt', 'hi', 'status')
+colnames(b) = c('MRN', 'maskid', 'sex', 'age', 'inatt', 'hi', 'status')
+data = rbind(a, b)
+
+dused = dti$status=='final_set'
+fused = fmri$status=='final_set'
+used = data$status=='final_set'
+
+dti$used = F
+dti[dused, 'used'] = T
+fmri$used = F
+fmri[fused, 'used'] = T
+data$used = F
+data[used, 'used'] = T
+
+add_DX = function(mres, age_var) {
+    mres$DX = NA
+    for (r in 1:nrow(mres)) {
+        if (mres[r, age_var] < 16) {
+            if ((mres[r, 'SX_HI'] >= 6) || (mres[r, 'SX_inatt'] >= 6)) {
+                mres[r, 'DX'] = 'ADHD'
+            } else {
+                mres[r, 'DX'] = 'NV'
+            }
+        } else {
+            if ((mres[r, 'SX_HI'] >= 5) || (mres[r, 'SX_inatt'] >= 5)) {
+                mres[r, 'DX'] = 'ADHD'
+            } else {
+                mres[r, 'DX'] = 'NV'
+            }
+        }
+    }
+    # making DX ever ADHD
+    for (m in mres[, 1]) {
+        subj_rows = which(mres[, 1] == m)
+        if (any(mres[subj_rows, 'DX'] == 'ADHD')) {
+            mres[subj_rows, 'DX'] = 'ADHD'
+        }
+    }
+    mres$DX = factor(mres$DX)
+    return(mres)
+}
+dti2 = add_DX(dti, 'age_at_scan...Scan...Subjects')
+fmri2 = add_DX(fmri, 'age_at_scan')
+data$SX_HI = data$hi
+data$SX_inatt = data$inatt
+data2 = add_DX(data, 'age')
+```
+
+```
+> t = table(dti2$used, dti2$DX)
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 5.9558, df = 1, p-value = 0.01467
+
+> print(t)
+       
+        ADHD  NV
+  FALSE  272 178
+  TRUE   264 240
+> t = table(fmri2$used, fmri2$DX)
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 0.58854, df = 1, p-value = 0.443
+
+> print(t)
+       
+        ADHD  NV
+  FALSE  133 141
+  TRUE   234 218
+> t = table(data2$used, data2$DX)
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 2.1276, df = 1, p-value = 0.1447
+
+> print(t)
+       
+        ADHD  NV
+  FALSE  413 311
+  TRUE   510 446
+```
+
+```r
+dti = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+fmri = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+cnames = c('ID', 'sex', 'race', 'ethn', 'age', 'SX_inatt', 'SX_HI')
+a = dti[, c(1, 4:6, 9, 96:97)]
+b = fmri[, c(1, 41, 44, 43, 45, 52:53)]
+colnames(a) = cnames
+colnames(b) = cnames
+data = rbind(a,b)
+data2 = add_DX(data, 'age')
+data2 = data2[!duplicated(data2$ID), ]
+
+dti = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_SESandIQ.csv')
+colnames(dti)[1] = 'ID'
+fmri = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_clean_SESandIQ.csv')
+colnames(fmri)[1] = 'ID'
+ses_iq = rbind(dti[, c('ID', 'SES', 'FSIQ')], fmri[, c('ID', 'SES', 'FSIQ')])
+ses_iq = ses_iq[!duplicated(ses_iq$ID), ]
+m = merge(data2, ses_iq, by='ID', all.x=T, all.y=F)
+```
+
+```
+> table(m$DX)
+
+ADHD   NV 
+ 150  138 
+> table(m$DX, m$sex)
+      
+       Female Male
+  ADHD     47  103
+  NV       53   85
+> t.test(m[m$DX=='NV', 'SES'], m[m$DX=='ADHD', 'SES'])
+
+	Welch Two Sample t-test
+
+data:  m[m$DX == "NV", "SES"] and m[m$DX == "ADHD", "SES"]
+t = -1.3432, df = 278.96, p-value = 0.1803
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -6.403468  1.209032
+sample estimates:
+mean of x mean of y 
+ 31.47761  34.07483 
+
+> t.test(m[m$DX=='NV', 'FSIQ'], m[m$DX=='ADHD', 'FSIQ'])
+
+	Welch Two Sample t-test
+
+data:  m[m$DX == "NV", "FSIQ"] and m[m$DX == "ADHD", "FSIQ"]
+t = 2.6923, df = 245.53, p-value = 0.007585
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ 1.479050 9.542328
+sample estimates:
+mean of x mean of y 
+ 114.8258  109.3151 
+
+> table(m$DX, m$race)
+      
+       [American Indian or Alaska Native] [Asian] [Black or African American]
+  ADHD                                  1       4                          17
+  NV                                    0      11                          14
+      
+       [Mixed] [White]
+  ADHD      13     115
+  NV        13     100
+> table(m$DX, m$eth)
+      
+       Hispanic or Latino Not Hispanic or Latino
+  ADHD                 18                    132
+  NV                    9                    129
+> t = table(m$DX, m$eth)
+> print(t)
+      
+       Hispanic or Latino Not Hispanic or Latino
+  ADHD                 18                    132
+  NV                    9                    129
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 1.935, df = 1, p-value = 0.1642
+```
+
+And I calculated the other values in eTable1 opening the twoTimePoints CSV in Excel.
+
 # TODO

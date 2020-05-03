@@ -405,7 +405,23 @@ Let me see if Caudate has outliers as well.
 ![](images/2020-05-02-08-20-51.png)
 
 No, caudate seems a bit more well behaved. I just aved the CSV (see below) with
-the same suffix to make things easier in the future, but there were no outliers removed.
+the same suffix to make things easier in the future, but there were no outliers
+removed.
+
+Well, Rdimtools is not compiling in BW, so there's that. Let me keep going with
+the PCa and ICA approaches first, and then I'll try to investigate this
+further... maybe I can run some stuff in my desktop?
+
+```r
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_05022020.rds')
+data2 = data[-c(which(rownames(data)=='57')), ]
+junk = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+label = junk[junk$Region=='ACC', 'Diagnosis']
+label = label[-c(which(rownames(data)=='57'))]
+library(Rdimtools)
+# mvp = do.mvp(data2, label, ndim=1)
+enet = do.enet(as.matrix(data2), as.numeric(label))
+```
 
 ## ICASSO
 
@@ -453,21 +469,158 @@ Then, in Matlab we do:
 ```matlab
 # interactive
 
-addpath('/data/NCR_SBRB/FastICA_25/')
-addpath('/data/NCR_SBRB/icasso122/')
-addpath('/data/NCR_SBRB/')
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
 Ydd = dlmread(['~/data/rnaseq_derek/goodgrexACC_binp01_05022020_noOutlier.csv'], ',', 1, 0);
 
-sR=icassoEst('both', Ydd, 10, 'lastEig', 15, 'g', 'pow3', 'approach', 'defl');
+sR=icassoEst('both', Ydd, 1000, 'lastEig', 16, 'g', 'pow3', 'approach', 'defl');
 sR=icassoExp(sR);
 [iq,A,W,S]=icassoResult(sR);
-save(['~/data/rnaseq_derek/ica_results_ACC_1Kperms_15ics.mat'],'A','S','W','iq','sR','-v7.3')  
+save(['~/data/rnaseq_derek/ica_results_ACC_1Kperms.mat'],'A','S','W','iq','sR','-v7.3')  
 ```
+
+```matlab
+# interactive
+
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+Ydd = dlmread(['~/data/rnaseq_derek/goodgrexCaudate_binp01_05022020_noOutlier.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd, 1000, 'lastEig', 12, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['~/data/rnaseq_derek/ica_results_Caudate_1Kperms.mat'],'A','S','W','iq','sR','-v7.3')  
+```
+
+This tutorial https://urszulaczerwinska.github.io/DeconICA/Icasso.html and https://urszulaczerwinska.github.io/DeconICA/DeconICA_introduction.html have been
+very useful!
+
+# 2020-05-02 20:47:12
+
+Wow, after A LOT of work, I got this toolbox to work. Here's the pipeline:
+
+```bash
+# interactive
+module load matlab
+module load R
+```
+
+```r
+library(deconica)
+data = readRDS('~/data/rnaseq_derek/goodgrexACC_binp01_05022020.rds')
+data2 = data[-c(which(rownames(data)=='57')), ]
+X = t(data2)
+res <-
+  run_fastica(
+    X = X,
+    row.center = TRUE,
+    n.comp = 5,
+    overdecompose = FALSE,
+    R = FALSE,
+    matlbpth = "/usr/local/apps/Matlab/R2020a/bin"
+  )
+```
+
+That gives me A as nsamples by ICs, and S as ngrex by ICs, just like this
+picture from
+https://github.com/LabBandSB/BIODICA/blob/master/doc/ICA_pipeline_general_description_v0.9.pdf
+
+![](images/2020-05-02-20-50-15.png)
+
+Now, let's play with it more.
+
+```r
+res <-
+  run_fastica(
+    X = X,
+    row.center = TRUE,
+    n.comp = 5,
+    overdecompose = TRUE,
+    gene_names = rownames(X),
+    samples = colnames(X),
+    R = FALSE,
+    matlbpth = "/usr/local/apps/Matlab/R2020a/bin"
+  )
+```
+
+And repeat the same thing for Caudate:
+
+```r
+library(deconica)
+data = readRDS('~/data/rnaseq_derek/goodgrexCaudate_binp01_05022020.rds')
+X = t(data)
+res <-
+  run_fastica(
+    X = X,
+    row.center = TRUE,
+    n.comp = 5,
+    overdecompose = TRUE,
+    gene_names = rownames(X),
+    samples = colnames(X),
+    R = FALSE,
+    matlbpth = "/usr/local/apps/Matlab/R2020a/bin"
+  )
+```
+
+At this point I'm not too confident this is much better than just running what
+I'm used to in ICASSO, Matlab directly. Here's the output for a single run:
+
+```
+Randomization using FastICA: Round 100/100
+
+Number of signals: 55
+Number of samples: 30933
+Calculating covariance...
+Reducing dimension...
+Selected [ 41 ] dimensions.
+Smallest remaining (non-zero) eigenvalue [ 0.1303 ]
+Largest remaining (non-zero) eigenvalue [ 1.68859 ]
+Sum of removed eigenvalues [ 1.37483 ]
+[ 90.2097 ] % of (non-zero) eigenvalues retained.
+Whitening...
+Check: covariance differs from identity by [ 2.22045e-15 ].
+Number of signals: 55
+Number of samples: 30933
+Whitened signal and corresponding matrises supplied.
+PCA calculations not needed.
+Whitening not needed.
+Used approach [ symm ].
+Used nonlinearity [ pow3 ].
+Starting ICA calculation...
+Step no. 1
+Step no. 2, change in value of estimate: 0.108
+Step no. 3, change in value of estimate: 0.233
+Step no. 4, change in value of estimate: 0.12
+Step no. 5, change in value of estimate: 0.0844
+Step no. 6, change in value of estimate: 0.0637
+Step no. 7, change in value of estimate: 0.0387
+Step no. 8, change in value of estimate: 0.0345
+Step no. 9, change in value of estimate: 0.0154
+Step no. 10, change in value of estimate: 0.0145
+Step no. 11, change in value of estimate: 0.0205
+Step no. 12, change in value of estimate: 0.0186
+Step no. 13, change in value of estimate: 0.00964
+Step no. 14, change in value of estimate: 0.00581
+Step no. 15, change in value of estimate: 0.00621
+[...]
+Step no. 100, change in value of estimate: 0.000471
+No convergence after 100 steps
+Note that the plots are probably wrong.
+Adding the mean back to the data.
+Computing R-index...
+Projection, using CCA
+75 iterations, error 3.662057
+```
+
+So, that kind of stuff I can do by myself in MATLAB and have more control over
+stuff...
 
 
 # TODO
 
 * keep it to only metrics that give an inverse transform! (i.e. no tsne)
+* maybe there are databases out there of human postmortem data just to give us a
+  better basis for the ICs?
 * rank average the different metrics to choose best combination, including
   number of dimensions
 * add covariates... do they help?
