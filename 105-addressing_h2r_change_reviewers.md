@@ -2546,6 +2546,8 @@ colnames(fmri)[1] = 'ID'
 ses_iq = rbind(dti[, c('ID', 'SES', 'FSIQ')], fmri[, c('ID', 'SES', 'FSIQ')])
 ses_iq = ses_iq[!duplicated(ses_iq$ID), ]
 m = merge(data2, ses_iq, by='ID', all.x=T, all.y=F)
+m$race2 = as.character(m$race)
+m[m$race != '[White]', 'race2'] = 'Other'
 ```
 
 ```
@@ -2610,8 +2612,211 @@ mean of x mean of y
 
 data:  t
 X-squared = 1.935, df = 1, p-value = 0.1642
+
+> t = table(m$DX, m$race2)
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 0.46723, df = 1, p-value = 0.4943
+
+> print(t)
+      
+       [White] Other
+  ADHD     115    35
+  NV       100    38
+
 ```
 
-And I calculated the other values in eTable1 opening the twoTimePoints CSV in Excel.
+```r
+> m$race2 = 'other'
+> m[m$race=='[White]' & m$ethn=='Not Hispanic or Latino', 'race2'] = 'WNH'
+> table(m$race2)
+
+other   WNH 
+   91   197 
+> t = table(m$DX, m$race2)
+> chisq.test(t)
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  t
+X-squared = 2.2231e-30, df = 1, p-value = 1
+
+> print(t)
+      
+       other WNH
+  ADHD    47 103
+  NV      44  94
+```
+
+Now, for within modality ages and number of scans:
+
+```r
+dti = read.csv('~/data/heritability_change_rev/dti_JHUtracts_ADRDonly_OD0.95_twoTimePoints_noOtherDX.csv')
+fmri = read.csv('~/data/heritability_change_rev/rsfmri_7by7from100_4nets_p05SigSum_OD0.95_12052019_twoTimePoints.csv')
+cnames = c('ID', 'sex', 'race', 'ethn', 'age', 'SX_inatt', 'SX_HI')
+a = dti[, c(1, 4:6, 9, 96:97)]
+b = fmri[, c(1, 41, 44, 43, 45, 52:53)]
+colnames(a) = cnames
+colnames(b) = cnames
+dti2 = add_DX(a, 'age')
+fmri2 = add_DX(b, 'age')
+```
+
+```
+> table(dti2$DX)
+
+ADHD   NV 
+ 250  254
+> table(fmri2$DX)
+
+ADHD   NV 
+ 226  226 
+```
+
+```r
+add_baseline = function(df) {
+    df$is_baseline = T
+    for (m in df$ID) {
+        subj_rows = which(df$ID==m)
+        last = which.max(df[subj_rows, 'age'])
+        df[subj_rows[last], 'is_baseline'] = F
+    }
+    return(df)
+}
+dti3 = add_baseline(dti2)
+fmri3 = add_baseline(fmri2)
+```
+
+```
+> idx = fmri3$DX=='NV' & fmri3$is_baseline
+> mean(fmri3[idx,'age'])
+[1] 10.45529
+> sd(fmri3[idx,'age'])
+[1] 2.562922
+> min(fmri3[idx,'age'])
+[1] 4.492813
+> max(fmri3[idx,'age'])
+[1] 16.71458
+> idx = fmri3$DX=='ADHD' & fmri3$is_baseline
+> mean(fmri3[idx,'age'])
+[1] 10.31923
+> sd(fmri3[idx,'age'])
+[1] 2.474852
+> min(fmri3[idx,'age'])
+[1] 4.867899
+> max(fmri3[idx,'age'])
+[1] 16.0219
+> idx = fmri3$DX=='NV' & !fmri3$is_baseline
+> mean(fmri3[idx,'age'])
+[1] 12.56024
+> sd(fmri3[idx,'age'])
+[1] 2.470571
+> min(fmri3[idx,'age'])
+[1] 8.095825
+> max(fmri3[idx,'age'])
+[1] 17.84531
+> idx = fmri3$DX=='ADHD' & !fmri3$is_baseline
+> mean(fmri3[idx,'age'])
+[1] 12.92944
+> sd(fmri3[idx,'age'])
+[1] 2.449058
+> min(fmri3[idx,'age'])
+[1] 6.847365
+> max(fmri3[idx,'age'])
+[1] 17.46201
+> t.test(fmri3[fmri3$DX=='ADHD' & !fmri3$is_baseline, 'age'], fmri3[fmri3$DX=='NV' & !fmri3$is_baseline, 'age'])
+
+	Welch Two Sample t-test
+
+data:  fmri3[fmri3$DX == "ADHD" & !fmri3$is_baseline, "age"] and fmri3[fmri3$DX == "NV" & !fmri3$is_baseline, "age"]
+t = 1.1282, df = 223.98, p-value = 0.2605
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.2756887  1.0140846
+sample estimates:
+mean of x mean of y 
+ 12.92944  12.56024 
+
+> t.test(fmri3[fmri3$DX=='ADHD' & fmri3$is_baseline, 'age'], fmri3[fmri3$DX=='NV' & fmri3$is_baseline, 'age'])
+
+	Welch Two Sample t-test
+
+data:  fmri3[fmri3$DX == "ADHD" & fmri3$is_baseline, "age"] and fmri3[fmri3$DX == "NV" & fmri3$is_baseline, "age"]
+t = -0.40598, df = 223.73, p-value = 0.6851
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.7965411  0.5244035
+sample estimates:
+mean of x mean of y 
+ 10.31923  10.45529 
+
+
+> idx = dti3$DX=='ADHD' & !dti3$is_baseline
+> mean(dti3[idx,'age'])
+[1] 11.51936
+> sd(dti3[idx,'age'])
+[1] 2.295731
+> min(dti3[idx,'age'])
+[1] 6.7
+> max(dti3[idx,'age'])
+[1] 16.99
+> idx = dti3$DX=='NV' & !dti3$is_baseline
+> mean(dti3[idx,'age'])
+[1] 11.19315
+> sd(dti3[idx,'age'])
+[1] 2.51356
+> min(dti3[idx,'age'])
+[1] 5.14
+> max(dti3[idx,'age'])
+[1] 17.91
+> idx = dti3$DX=='NV' & dti3$is_baseline
+> mean(dti3[idx,'age'])
+[1] 9.43252
+> sd(dti3[idx,'age'])
+[1] 2.404655
+> min(dti3[idx,'age'])
+[1] 4.14
+> max(dti3[idx,'age'])
+[1] 16.49
+> idx = dti3$DX=='ADHD' & dti3$is_baseline
+> mean(dti3[idx,'age'])
+[1] 9.23264
+> sd(dti3[idx,'age'])
+[1] 2.052029
+> min(dti3[idx,'age'])
+[1] 5.19
+> max(dti3[idx,'age'])
+[1] 14.9
+
+> t.test(dti3[dti3$DX=='ADHD' & dti3$is_baseline, 'age'], dti3[dti3$DX=='NV' & dti3$is_baseline, 'age'])
+
+	Welch Two Sample t-test
+
+data:  dti3[dti3$DX == "ADHD" & dti3$is_baseline, "age"] and dti3[dti3$DX == "NV" & dti3$is_baseline, "age"]
+t = -0.71017, df = 245.09, p-value = 0.4783
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.7542593  0.3544999
+sample estimates:
+mean of x mean of y 
+  9.23264   9.43252 
+
+> t.test(dti3[dti3$DX=='ADHD' & !dti3$is_baseline, 'age'], dti3[dti3$DX=='NV' & !dti3$is_baseline, 'age'])
+
+	Welch Two Sample t-test
+
+data:  dti3[dti3$DX == "ADHD" & !dti3$is_baseline, "age"] and dti3[dti3$DX == "NV" & !dti3$is_baseline, "age"]
+t = 1.076, df = 248.62, p-value = 0.283
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.2708949  0.9233157
+sample estimates:
+mean of x mean of y 
+ 11.51936  11.19315 
+
+```
 
 # TODO

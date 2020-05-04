@@ -615,13 +615,292 @@ Projection, using CCA
 So, that kind of stuff I can do by myself in MATLAB and have more control over
 stuff...
 
+# 2020-05-04 07:18:42
+
+I'm also going to run a few more ICs, with less perms just so it's somewhat
+manageable in time (that toolbox only ran 100 anyways), while I analyze what I
+have so far. 
+
+Then, the idea will be to just run some t-tests or logistic regressions with the
+variables we have, and see what we get (no ML for now)!
+
+```matlab
+# interactive
+
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+Ydd = dlmread(['~/data/rnaseq_derek/goodgrexACC_binp01_05022020_noOutlier.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd, 500, 'lastEig', 30, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['~/data/rnaseq_derek/ica_results_ACC_500perms.mat'],'A','S','W','iq','-v6')  
+```
+
+```matlab
+# interactive
+
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+Ydd = dlmread(['~/data/rnaseq_derek/goodgrexCaudate_binp01_05022020_noOutlier.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd, 500, 'lastEig', 30, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['~/data/rnaseq_derek/ica_results_Caudate_500perms.mat'],'A','S','W','iq','-v6')  
+```
+
+# 2020-05-04 12:54:40
+
+Let's see if there is anything interesting in those first ICs:
+
+```r
+library(R.matlab)
+res = readMat('~/data/rnaseq_derek/ica_results_ACC_1Kperms_V6.mat')
+junk = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+junk2 = junk[-c(which(rownames(junk)=='57')), ]
+label = junk2[junk2$Region=='ACC', 'Diagnosis']
+idx = label=='Control'
+ps = c()
+for (ic in 1:ncol(res$A)) {
+  ps = c(ps, t.test(res$A[idx, ic], res$A[!idx, ic])$p.value)
+}
+```
+
+```
+> cbind(ps, res$iq)
+               ps          
+ [1,] 0.514380220 0.9565599
+ [2,] 0.092682676 0.9748425
+ [3,] 0.851121526 0.8877827
+ [4,] 0.171107630 0.8794904
+ [5,] 0.185856802 0.5259735
+ [6,] 0.912537435 0.4970935
+ [7,] 0.084318433 0.6751500
+ [8,] 0.490249546 0.8305464
+ [9,] 0.009897427 0.5907455
+[10,] 0.052204511 0.5699875
+[11,] 0.376009086 0.4875891
+[12,] 0.697389676 0.4451301
+[13,] 0.708775508 0.6143861
+[14,] 0.046392682 0.3688214
+[15,] 0.595266381 0.6090429
+[16,] 0.673757340 0.4811849
+```
+
+Nothing surprising. But I wonder what it'd look like if we did the covariate
+screening on these variables?
+
+```r
+library(R.matlab)
+myregion = 'ACC'
+pthresh = .1
+keep_str = 'Diagnosis'
+
+ica = readMat(sprintf('~/data/rnaseq_derek/ica_results_%s_1Kperms_V6.mat', myregion))
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ]
+data = data[data$Region==myregion, ]
+
+data$batch = as.factor(data$batch)
+# no column names as numbers!
+ic_names = sapply(1:ncol(ica$A), function(x) sprintf('IC%s', x))
+colnames(ica$A) = ic_names
+
+# dependent
+dep_vars = ic_names
+# keep these regardless of significance
+keep_vars = c(keep_str)
+# variables to be tested/screened
+test_vars = c(# brain-related
+              "bainbank", 'PMI', 'Manner.of.Death',
+              # technical
+              'batch', 'RINe',
+              #clinical
+              # 'comorbid_group', 'substance_group',
+              # others
+              'Sex', 'Age', sapply(1:10, function(x) sprintf('C%s', x)))
+
+# spit out the results
+out_fname = sprintf('~/data/rnaseq_derek/ICA_%s_pLT%.02f_%s.csv',
+                    myregion, pthresh,
+                    gsub(pattern='\\*',replacement='',x=keep_str))
+
+mydata = cbind(ica$A, data[, c(keep_vars, test_vars)])
+hold = c()
+for (dp in 1:length(dep_vars)) {
+    dep_var = dep_vars[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                   paste(test_vars, collapse='+'), sep="")
+    fit = lm(as.formula(fm_str), data=mydata)
+    res = summary(fit)$coefficients
+    # filtering variables
+    sig_vars = c()
+    for (v in 1:length(test_vars)) {
+        # rows in results table that correspond to the screened variable
+        var_rows = which(grepl(rownames(res),
+                         pattern=sprintf('^%s', test_vars[v])))
+        for (r in var_rows) {
+            if (res[r, 'Pr(>|t|)'] < pthresh) {
+                sig_vars = c(sig_vars, test_vars[v])
+            }
+        }
+    }
+    # factors might get added several times, so here we clean it up
+    sig_vars = unique(sig_vars)
+    if (length(sig_vars) > 0) {
+        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), ' + ',
+                       paste(sig_vars, collapse='+'), sep="")
+    } else {
+        clean_fm_str = paste(dep_var, ' ~ ', paste(keep_vars, collapse='+'), sep="")
+    }
+    # new model
+    clean_fit = lm(as.formula(clean_fm_str), data=mydata)
+    res = data.frame(summary(clean_fit)$coefficients)
+    # remove intercept
+    res = res[2:nrow(res),]
+    res$dep_var = dep_var
+    res$formula = clean_fm_str
+    res$orig_formula = fm_str
+    res$predictor = rownames(res)
+    hold = rbind(hold, res)
+}
+write.csv(hold, file=out_fname, row.names=F)
+```
+
+![](images/2020-05-04-13-32-45.png)
+
+That didn't help. Best ICs still have some quite poor iqs. How about a logistic
+regression model?
+
+```r
+library(MASS)
+model <- glm(Diagnosis ~., data = mydata, family = binomial)
+dim(mydata)
+model2 = stepAIC(model)
+```
+
+Also nothing... values too weird in the summary, almost constant. Before I go
+for other alternatives, how does the Caudate look? Nope, weird too.
+
+How about doing some RFE on the ICA results?
+
+```r
+library(caret)
+x = cbind(ica$A, data[, c('Age', sapply(1:10, function(x) sprintf('C%s', x)))])
+keep_me = which(!is.na(x$C1))  # remove the IDs without population PC
+x = x[keep_me,]
+y = data[keep_me,]$Diagnosis
+normalization <- preProcess(x)
+x <- predict(normalization, x)
+x <- as.data.frame(x)
+subsets <- c(1:5, 10, 15, 20)
+set.seed(10)
+ctrl <- rfeControl(functions = treebagFuncs,
+                   method = "repeatedcv",
+                   repeats = 5,
+                   verbose = FALSE)
+rfProfile <- rfe(x, y,
+                 sizes = subsets,
+                 rfeControl = ctrl)
+```
+
+Without any covariates, I have this for the caudate:
+
+```r
+fit = glm(Diagnosis ~ IC1+IC2+IC3+IC4+IC5+IC6+IC7+IC8+IC9+IC10+IC11+IC12,
+          data = mydata, family = binomial)
+fit2 = stepAIC(fit)
+summary(fit2)
+```
+
+```
+Deviance Residuals: 
+    Min       1Q   Median       3Q      Max  
+-1.9678  -1.1046   0.6432   1.0326   1.5976  
+
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)  
+(Intercept)   0.3184     0.5264   0.605   0.5453  
+IC5           2.7996     1.8816   1.488   0.1368  
+IC9          -3.7571     2.1632  -1.737   0.0824 .
+IC10          7.7945     3.5604   2.189   0.0286 *
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 79.298  on 57  degrees of freedom
+Residual deviance: 71.019  on 54  degrees of freedom
+AIC: 79.019
+
+Number of Fisher Scoring iterations: 4
+```
+
+And IC10 has a .74 iq. For ACC:
+
+```
+> summary(fit2)
+
+Call:
+glm(formula = Diagnosis ~ IC2 + IC4 + IC7 + IC9 + IC10 + IC11, 
+    family = binomial, data = mydata)
+
+Deviance Residuals: 
+     Min        1Q    Median        3Q       Max  
+-1.98800  -0.45008   0.06457   0.58830   1.89023  
+
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)   
+(Intercept)  -0.2377     0.6607  -0.360  0.71906   
+IC2         -21.6077    11.7560  -1.838  0.06606 . 
+IC4          17.4041     8.3495   2.084  0.03712 * 
+IC7          12.6059     4.7206   2.670  0.00758 **
+IC9          26.7854     9.2622   2.892  0.00383 **
+IC10        -23.6006     8.4513  -2.793  0.00523 **
+IC11         10.6312     6.0758   1.750  0.08016 . 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 74.192  on 53  degrees of freedom
+Residual deviance: 38.422  on 47  degrees of freedom
+AIC: 52.422
+
+Number of Fisher Scoring iterations: 7
+```
+
+Much better. But many of those are not too stable:
+
+```
+> ica$iq
+           [,1]
+ [1,] 0.9565599
+ [2,] 0.9748425
+ [3,] 0.8877827
+ [4,] 0.8794904
+ [5,] 0.5259735
+ [6,] 0.4970935
+ [7,] 0.6751500
+ [8,] 0.8305464
+ [9,] 0.5907455
+[10,] 0.5699875
+[11,] 0.4875891
+[12,] 0.4451301
+[13,] 0.6143861
+[14,] 0.3688214
+[15,] 0.6090429
+[16,] 0.4811849
+```
 
 # TODO
 
+* logistic regression only using ICs with good IQ?
+* add covariates and see if screening works better
+* start evaluating the logistic model and what the ICs mean
+* ICA within WNH only?
+* supervised PCA?
 * keep it to only metrics that give an inverse transform! (i.e. no tsne)
 * maybe there are databases out there of human postmortem data just to give us a
   better basis for the ICs?
-* rank average the different metrics to choose best combination, including
-  number of dimensions
-* add covariates... do they help?
-* play with Caudate
