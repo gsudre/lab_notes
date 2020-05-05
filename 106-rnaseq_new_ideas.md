@@ -894,6 +894,107 @@ Much better. But many of those are not too stable:
 [16,] 0.4811849
 ```
 
+But maybe we don't need to pull covariates here, as the ICs shouldn't be related
+to any specific covariates. Or, we could residualize all genes before running
+the ICA...
+
+Let's give that a try... if anything, it'll take care of the population PCs as
+well.
+
+
+## Adding covariates
+
+```r
+myregion = 'ACC'
+pthresh = .1
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ]
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[, c('hbcc_brain_id', 'comorbid_group', 'substance_group')]
+more = more[!duplicated(more$hbcc_brain_id), ]
+data = merge(data, more[, ], by='hbcc_brain_id',
+             all.x=F, all.y=F)
+
+data$batch = as.factor(data$batch)
+
+test_vars = c(# brain-related
+              "bainbank", 'PMI', 'Manner.of.Death',
+              # technical
+              'batch', 'RINe',
+              #clinical
+              'comorbid_group', 'substance_group',
+              # others
+              'Sex', 'Age', sapply(1:10, function(x) sprintf('C%s', x)))
+
+ens_names = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+res_data = data[, ens_names]
+
+for (dp in 1:length(ens_names)) {
+    if (dp %% 50 == 0) {
+        print(sprintf('%d of %d', dp, length(ens_names)))
+    }
+
+    dep_var = ens_names[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(test_vars, collapse='+'), sep="")
+    fit = lm(as.formula(fm_str), data=data)
+    res = summary(fit)$coefficients
+    # filtering variables
+    sig_vars = c()
+    for (v in 1:length(test_vars)) {
+        # rows in results table that correspond to the screened variable
+        var_rows = which(grepl(rownames(res),
+                         pattern=sprintf('^%s', test_vars[v])))
+        for (r in var_rows) {
+            if (res[r, 'Pr(>|t|)'] < pthresh) {
+                sig_vars = c(sig_vars, test_vars[v])
+            }
+        }
+    }
+    # factors might get added several times, so here we clean it up
+    sig_vars = unique(sig_vars)
+    if (length(sig_vars) > 0) {
+        clean_fm_str = paste(dep_var, ' ~ ', paste(sig_vars, collapse='+'), sep="")
+    } else {
+        clean_fm_str = paste(dep_var, ' ~ 1', sep="")
+    }
+    # new model
+    clean_fit = lm(as.formula(clean_fm_str), data=data)
+    res_data[, dep_var] = residuals(clean_fit)
+}
+
+# had some variables with almost perfect fit, so better remove zero r close to xero variance again...
+library(caret)
+pp = preProcess(res_data, method=c('zv', 'nzv', 'center', 'scale'))
+res_data2 = predict(pp, res_data)
+
+out_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_resids.csv', myregion)
+write.csv(res_data2, file=out_fname, row.names=F)
+```
+
+And re-run the ICA:
+
+```matlab
+# interactive
+
+r='ACC'
+addpath('/data/NCR_SBRB/software/FastICA_25/')
+addpath('/data/NCR_SBRB/software/icasso122/')
+Ydd = dlmread(['~/data/rnaseq_derek/goodgrex', r, '_binp01_resids.csv'], ',', 1, 0);
+
+sR=icassoEst('both', Ydd, 250, 'lastEig', 30, 'g', 'pow3', 'approach', 'defl');
+sR=icassoExp(sR);
+[iq,A,W,S]=icassoResult(sR);
+save(['~/data/rnaseq_derek/ica_results_', r, '_resids_250perms.mat'],'A','S','W','iq','-v6')  
+```
+
+I'm not getting many ICs here, so I'm not terribly looking forward to those
+results. Probably residualizing removed lots of variance. Well, we'll see.
+
+
 # TODO
 
 * logistic regression only using ICs with good IQ?
