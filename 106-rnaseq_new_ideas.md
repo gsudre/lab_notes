@@ -1164,7 +1164,7 @@ for (loo in 1:nrow(ens_data)) {
                                   return(summary(fit)$coefficients[2,
                                                                    'z value'])})
     # setting up a linear search space from two bounds of z scale
-    bounds = quantile(abs(zscores), c(.75, .95))
+    bounds = quantile(abs(zscores), c(.95, .99))
     thresholds = seq(from=bounds[1], to=bounds[2], len=10)
     thresholds = my_thresholds
     print('Evaluating thresholds')
@@ -1173,7 +1173,8 @@ for (loo in 1:nrow(ens_data)) {
         probs = c()
         for (inloo in 1:nrow(Xtrain)) {
             # compute PCA in innet train data, selected variables
-            my.pca = prcomp(Xtrain[-inloo, abs(zscores) > t])
+            good_grex = colnames(ens_data)[abs(zscores) > t]
+            my.pca = prcomp(Xtrain[-inloo, good_grex])
             # use PCs to create model
             tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
                              my.pca$x[, 1])
@@ -1181,7 +1182,7 @@ for (loo in 1:nrow(ens_data)) {
             fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
             cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
             # transform inner test data to PC space
-            inloo_data = predict(my.pca, Xtrain[inloo, abs(zscores) > t])
+            inloo_data = predict(my.pca, Xtrain[inloo, good_grex])
             tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
                              inloo_data[, 1])
             colnames(tmp) = c('y', my_covs, 'PC1')
@@ -1203,14 +1204,15 @@ for (loo in 1:nrow(ens_data)) {
     best_thresh = c(best_thresh, my_thresh)
 
     # predicting outer CV
-    my.pca = prcomp(Xtrain[, abs(zscores) > my_thresh])
+    good_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    my.pca = prcomp(Xtrain[, good_grex])
     # use PCs to create model
     tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], my.pca$x[, 1])
     colnames(tmp) = c('y', my_covs, 'PC1')
     fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
     cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
     # transform inner test data to PC space
-    loo_data = predict(my.pca, Xtrain[loo, abs(zscores) > my_thresh])
+    loo_data = predict(my.pca, Xtrain[loo, good_grex])
     tmp = data.frame(Xtrain[loo, c('Diagnosis', my_covs)], loo_data[, 1])
     colnames(tmp) = c('y', my_covs, 'PC1')
     prob = predict(cv.fit, newdata=tmp, type='response')
