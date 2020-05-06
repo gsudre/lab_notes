@@ -1141,7 +1141,7 @@ pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
 ens_data = predict(pp, data[, ens_names])
 
 library(doParallel)
-cl = makeCluster(2)
+cl = makeCluster(32)
 
 my_covs = c('Sex', 'Age')
 best_thresh = c()
@@ -1151,6 +1151,7 @@ feature_scores = c()
 for (loo in 1:nrow(ens_data)) {
     print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
     Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
+    Xtest = cbind(ens_data[loo, ], data[loo, c('Diagnosis', my_covs)])
     clusterExport(cl, c("Xtrain", 'my_covs'))
     zscores = parSapply(cl, colnames(ens_data),
                         function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
@@ -1212,8 +1213,8 @@ for (loo in 1:nrow(ens_data)) {
     fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
     cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
     # transform inner test data to PC space
-    loo_data = predict(my.pca, Xtrain[loo, good_grex])
-    tmp = data.frame(Xtrain[loo, c('Diagnosis', my_covs)], loo_data[, 1])
+    loo_data = predict(my.pca, Xtest[, good_grex])
+    tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
     colnames(tmp) = c('y', my_covs, 'PC1')
     prob = predict(cv.fit, newdata=tmp, type='response')
     pred_class = ifelse(prob > 0.5, levels(Xtrain$Diagnosis)[2],
@@ -1225,7 +1226,9 @@ for (loo in 1:nrow(ens_data)) {
     a = cor(my.pca$x[,1], Xtrain[, colnames(ens_data)])
     feature_scores = rbind(feature_scores, a)
 }
-# save(feature_scores, all_preds, all_probs, best_thresh, file='~/data/rnaseq_derek/LOOCV_ACC_rawCount_sPCA_heuZ.RData')
+save(feature_scores, all_preds, all_probs, best_thresh,
+     file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_heuZ.RData',
+                  myregion))
 # save(feature_scores, all_preds, all_probs, best_thresh, file='~/data/rnaseq_derek/LOOCV_ACC_rawCount_sPCA_qtileZ.RData')
 ```
 
