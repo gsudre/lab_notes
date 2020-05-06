@@ -994,10 +994,129 @@ save(['~/data/rnaseq_derek/ica_results_', r, '_resids_250perms.mat'],'A','S','W'
 I'm not getting many ICs here, so I'm not terribly looking forward to those
 results. Probably residualizing removed lots of variance. Well, we'll see.
 
+# *2020-05-05 12:45:13*
+
+Yeah, that gave me variables with very low IQ... like, most of them around .3.
+Would it be any different if I used stepAIC instead? Philip also suggested using
+only the RNA-releated covariates, leaving clinical stuff for later.
+
+```r
+library(MASS)
+myregion = 'ACC'
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ]
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+
+data$batch = as.factor(data$batch)
+
+test_vars = c(# brain-related
+              "bainbank", 'PMI',
+              # technical
+              'batch', 'RINe',
+              # others
+              sapply(1:10, function(x) sprintf('C%s', x)))
+
+ens_names = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+res_data = data[, ens_names]
+
+for (dp in 1:length(ens_names)) {
+    if (dp %% 50 == 0) {
+        print(sprintf('%d of %d', dp, length(ens_names)))
+    }
+    dep_var = ens_names[dp]
+    fm_str = paste(dep_var, ' ~ ', paste(test_vars, collapse='+'), sep="")
+    fit = lm(as.formula(fm_str), data=data)
+    clean_fit = stepAIC(fit, trace=0)
+    res_data[, dep_var] = residuals(clean_fit)
+}
+
+# had some variables with almost perfect fit, so better remove zero r close to xero variance again...
+library(caret)
+pp = preProcess(res_data, method=c('zv', 'nzv', 'center', 'scale'))
+res_data2 = predict(pp, res_data)
+
+out_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_stepAIC_resids.csv', myregion)
+write.csv(res_data2, file=out_fname, row.names=F)
+```
+
+I could also just try to implement the supervised PC steps, which are quite easy
+by looking at http://statweb.stanford.edu/~tibs/superpc/tutorial.html. And do it
+in a logistic regression fashion (the one package I found in github is not good)
+
+```r
+library(MASS)
+myregion = 'ACC'
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ]
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+ens_names = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+zscores = apply(ens_data, 2,
+                function(x) summary(glm(data$Diagnosis ~ x,
+                                        family = binomial))$coefficients[2, 'z value'])
+z_thresh = 2
+library(factoextra)
+res.pca<-prcomp(ens_data[, abs(zscores) > z_thresh])
+fviz_eig(res.pca, ncp=40)
+```
+
+![](images/2020-05-05-21-43-25.png)
+
+We could try just the first one, but I imagine the first 6 could be significant.
+The package actually only lets you use the first 3, with the only the first one
+being the default... interesting. But this ran so fast that I could even do the
+whole thing within LOOCV, selecting the first component all the time, and still
+do a CV to select the best threshold?
+
+```r
+thresholds = c(1.5, 2, 2.5, 3)
+all_preds = c()
+for (t in thresholds) {
+    preds = c()
+    for (loo in 1:nrow(data)) {
+        my.pca = prcomp(ens_data[-loo, abs(zscores) > t])
+        tmp = data.frame(y = data[-loo, 'Diagnosis'], PC1=my.pca$x[, 1])
+        cv.fit = glm(y ~ PC1, data=tmp, family = binomial)
+        loo_data = predict(my.pca, ens_data[loo, abs(zscores) > t])
+        tmp = data.frame(y = data[loo, 'Diagnosis'], PC1=loo_data[, 1])
+        pred = predict(cv.fit, newdata=tmp, type='response')
+        preds = c(preds, pred)
+    }
+    all_preds = rbind(all_preds, preds)
+}
+```
+
+And we could use ROC or ACC here... doesn't matter much.
+
+```r
+predicted.classes <- ifelse(all_preds > 0.5, "Control", "Case")
+best_thresh = which.max(rowSums(predicted.classes==data$Diagnosis))
+```
+
+We can further add other predictors here... we'll see. But now the idea is to
+add other covariates and see if the model improves even further. Either adding
+them to the glm, or residualizing them from the gene expression. Also, I can do
+the whole thing in a LOOCV if needed later, including obtaining the initial
+scores. The whole operation doesn't take that long. The biggest hurdle would be
+combining all the models later, but then I could just train on the entire data
+for interpretation.
+
 
 # TODO
-
+* could potentially use the residuals instead, like the decorrelate function in superpc
+* could run CV to check the best z_thresh
 * logistic regression only using ICs with good IQ?
+* do we need ICA? why not just PCA?
 * add covariates and see if screening works better
 * start evaluating the logistic model and what the ICs mean
 * ICA within WNH only?
