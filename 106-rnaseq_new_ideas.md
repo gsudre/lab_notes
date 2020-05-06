@@ -1101,6 +1101,8 @@ And we could use ROC or ACC here... doesn't matter much.
 ```r
 predicted.classes <- ifelse(all_preds > 0.5, "Control", "Case")
 best_thresh = which.max(rowSums(predicted.classes==data$Diagnosis))
+# or
+auc(roc(as.numeric(as.factor(predicted.classes[4,])),as.numeric(data$Diagnosis)))
 ```
 
 We can further add other predictors here... we'll see. But now the idea is to
@@ -1111,6 +1113,98 @@ scores. The whole operation doesn't take that long. The biggest hurdle would be
 combining all the models later, but then I could just train on the entire data
 for interpretation.
 
+# 2020-05-06 06:31:36
+
+Let's put together the entire pipeline then. First, using the non-residualized
+version of the data, but I can later easily switch to any of our residualized
+approaches:
+
+```r
+library(MASS)
+myregion = 'ACC'
+thresholds = c(1.5, 2, 2.5, 3)
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ]
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+ens_names = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+my_covs = c('Sex', 'Age')
+best_thresh = c()
+all_preds = c()
+all_probs = c()
+for (loo in 1:nrow(ens_data)) {
+    print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
+    Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
+    zscores = sapply(colnames(ens_data),
+                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                   paste(my_covs,
+                                                         collapse='+'))
+                                  fit = glm(as.formula(fm_str),
+                                            data=Xtrain, family = binomial)
+                                  return(summary(fit)$coefficients[2,
+                                                                   'z value'])})
+    print('Evaluating thresholds')
+    eval_results = c()
+    for (t in thresholds) {
+        probs = c()
+        for (inloo in 1:nrow(Xtrain)) {
+            # compute PCA in innet train data, selected variables
+            my.pca = prcomp(Xtrain[-inloo, abs(zscores) > t])
+            # use PCs to create model
+            tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
+                             my.pca$x[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+            cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+            # transform inner test data to PC space
+            inloo_data = predict(my.pca, Xtrain[inloo, abs(zscores) > t])
+            tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
+                             inloo_data[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            prob = predict(cv.fit, newdata=tmp, type='response')
+            probs = c(probs, prob)
+        }
+        preds_class = ifelse(probs > 0.5, levels(Xtrain$Diagnosis)[2],
+                             levels(Xtrain$Diagnosis)[1])
+        preds_probs = probs
+        dat = cbind(data.frame(obs = Xtrain$Diagnosis, pred = preds_class),
+                    preds_probs)
+        mcs = confusionMatrix(dat$pred, dat$obs)
+        test_results = c(mcs$byClass['Balanced Accuracy'],
+                         mcs$byClass['Sensitivity'],
+                         mcs$byClass['Specificity'])
+        eval_results = rbind(eval_results, test_results)
+    }
+    my_thresh = thresholds[which.max(eval_results[, 'Balanced Accuracy'])]
+    best_thresh = c(best_thresh, my_thresh)
+
+    # predicting outer CV
+    my.pca = prcomp(Xtrain[, abs(zscores) > my_thresh])
+    # use PCs to create model
+    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], my.pca$x[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+    cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    # transform inner test data to PC space
+    loo_data = predict(my.pca, Xtrain[loo, abs(zscores) > my_thresh])
+    tmp = data.frame(Xtrain[loo, c('Diagnosis', my_covs)], loo_data[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    prob = predict(cv.fit, newdata=tmp, type='response')
+    pred_class = ifelse(prob > 0.5, levels(Xtrain$Diagnosis)[2],
+                         levels(Xtrain$Diagnosis)[1])
+    all_probs = c(all_probs, prob)
+    all_preds = c(all_preds, pred_class)
+}
+```
+
+We can even make it faster later using parSapply.
 
 # TODO
 * could potentially use the residuals instead, like the decorrelate function in superpc
