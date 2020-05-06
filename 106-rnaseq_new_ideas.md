@@ -1135,6 +1135,9 @@ library(caret)
 pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
 ens_data = predict(pp, data[, ens_names])
 
+library(doParallel)
+cl = makeCluster(2)
+
 my_covs = c('Sex', 'Age')
 best_thresh = c()
 all_preds = c()
@@ -1142,14 +1145,24 @@ all_probs = c()
 for (loo in 1:nrow(ens_data)) {
     print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
     Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
-    zscores = sapply(colnames(ens_data),
-                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+    # zscores = sapply(colnames(ens_data),
+    #                 function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+    #                                                paste(my_covs,
+    #                                                      collapse='+'))
+    #                               fit = glm(as.formula(fm_str),
+    #                                         data=Xtrain, family = binomial)
+    #                               return(summary(fit)$coefficients[2,
+    #                                                                'z value'])})
+    clusterExport(cl, c("Xtrain", 'my_covs'))
+    zscores = parSapply(cl, colnames(ens_data),
+                        function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
                                                    paste(my_covs,
                                                          collapse='+'))
                                   fit = glm(as.formula(fm_str),
                                             data=Xtrain, family = binomial)
                                   return(summary(fit)$coefficients[2,
                                                                    'z value'])})
+
     print('Evaluating thresholds')
     eval_results = c()
     for (t in thresholds) {
@@ -1204,7 +1217,6 @@ for (loo in 1:nrow(ens_data)) {
 }
 ```
 
-We can even make it faster later using parSapply.
 
 # TODO
 * could potentially use the residuals instead, like the decorrelate function in superpc
