@@ -1162,7 +1162,11 @@ for (loo in 1:nrow(ens_data)) {
                                                                    'z value'])})
     # setting up a linear search space from two bounds of z scale
     bounds = quantile(abs(zscores), c(.95, .99))
-    thresholds = ifelse(length(my_thresholds)>0, my_thresholds, bounds)
+    if (length(my_thresholds)>0) {
+        thresholds = my_thresholds
+    } else {
+        thresholds = seq(from=bounds[1], to=bounds[2], len=10)
+    }
     print('Evaluating thresholds')
     eval_results = c()
     for (t in thresholds) {
