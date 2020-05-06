@@ -1122,7 +1122,7 @@ approaches:
 ```r
 library(MASS)
 myregion = 'ACC'
-thresholds = c(1.5, 2, 2.5, 3)
+my_thresholds = c(1.5, 2, 2.5, 3)
 
 data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
 data = data[-c(which(rownames(data)=='57')), ]
@@ -1142,6 +1142,7 @@ my_covs = c('Sex', 'Age')
 best_thresh = c()
 all_preds = c()
 all_probs = c()
+feature_scores = c()
 for (loo in 1:nrow(ens_data)) {
     print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
     Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
@@ -1162,7 +1163,10 @@ for (loo in 1:nrow(ens_data)) {
                                             data=Xtrain, family = binomial)
                                   return(summary(fit)$coefficients[2,
                                                                    'z value'])})
-
+    # setting up a linear search space from two bounds of z scale
+    bounds = quantile(abs(zscores), c(.75, .95))
+    thresholds = seq(from=bounds[1], to=bounds[2], len=10)
+    thresholds = my_thresholds
     print('Evaluating thresholds')
     eval_results = c()
     for (t in thresholds) {
@@ -1214,6 +1218,10 @@ for (loo in 1:nrow(ens_data)) {
                          levels(Xtrain$Diagnosis)[1])
     all_probs = c(all_probs, prob)
     all_preds = c(all_preds, pred_class)
+
+    # computing all feature scores
+    a = cor(my.pca$x[,1], Xtrain[, colnames(ens_data)])
+    feature_scores = rbind(feature_scores, a)
 }
 ```
 
