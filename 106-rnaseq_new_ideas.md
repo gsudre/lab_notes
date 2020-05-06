@@ -1122,14 +1122,19 @@ approaches:
 ```r
 library(MASS)
 myregion = 'ACC'
+my_thresholds = c()
 my_thresholds = c(1.5, 2, 2.5, 3)
 
 data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
-data = data[-c(which(rownames(data)=='57')), ]
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
 data = data[data$Region==myregion, ]
 keep_me = which(!is.na(data$C1))  # only keep people with population PCs
 data = data[keep_me, ]
-ens_names = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
 
 library(caret)
 pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
@@ -1146,14 +1151,6 @@ feature_scores = c()
 for (loo in 1:nrow(ens_data)) {
     print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
     Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
-    # zscores = sapply(colnames(ens_data),
-    #                 function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
-    #                                                paste(my_covs,
-    #                                                      collapse='+'))
-    #                               fit = glm(as.formula(fm_str),
-    #                                         data=Xtrain, family = binomial)
-    #                               return(summary(fit)$coefficients[2,
-    #                                                                'z value'])})
     clusterExport(cl, c("Xtrain", 'my_covs'))
     zscores = parSapply(cl, colnames(ens_data),
                         function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
@@ -1165,8 +1162,7 @@ for (loo in 1:nrow(ens_data)) {
                                                                    'z value'])})
     # setting up a linear search space from two bounds of z scale
     bounds = quantile(abs(zscores), c(.95, .99))
-    thresholds = seq(from=bounds[1], to=bounds[2], len=10)
-    thresholds = my_thresholds
+    thresholds = ifelse(length(my_thresholds)>0, my_thresholds, bounds)
     print('Evaluating thresholds')
     eval_results = c()
     for (t in thresholds) {
@@ -1225,8 +1221,31 @@ for (loo in 1:nrow(ens_data)) {
     a = cor(my.pca$x[,1], Xtrain[, colnames(ens_data)])
     feature_scores = rbind(feature_scores, a)
 }
+# save(feature_scores, all_preds, all_probs, best_thresh, file='~/data/rnaseq_derek/LOOCV_ACC_rawCount_sPCA_heuZ.RData')
+# save(feature_scores, all_preds, all_probs, best_thresh, file='~/data/rnaseq_derek/LOOCV_ACC_rawCount_sPCA_qtileZ.RData')
 ```
 
+If I used the residualized version, it'd be more like this:
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_thresholds = c()
+my_thresholds = c(1.5, 2, 2.5, 3)
+
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_stepAIC_resids.csv',
+                     myregion)
+grex_data = read.csv(grex_fname)
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+ens_names = colnames(grex_data)
+data[, ens_names] = grex_data
+
+# and the rest is the same
+```
 
 # TODO
 * could potentially use the residuals instead, like the decorrelate function in superpc
