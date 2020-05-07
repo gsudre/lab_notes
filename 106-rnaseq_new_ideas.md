@@ -1123,7 +1123,7 @@ approaches:
 library(MASS)
 myregion = 'ACC'
 my_thresholds = c()
-my_thresholds = c(1.5, 2, 2.5, 3)
+# my_thresholds = c(1.5, 2, 2.5, 3)
 
 data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
 data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
@@ -1141,7 +1141,7 @@ pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
 ens_data = predict(pp, data[, ens_names])
 
 library(doParallel)
-cl = makeCluster(32)
+cl = makeCluster(10)
 
 my_covs = c('Sex', 'Age')
 best_thresh = c()
@@ -1226,10 +1226,18 @@ for (loo in 1:nrow(ens_data)) {
     a = cor(my.pca$x[,1], Xtrain[, colnames(ens_data)])
     feature_scores = rbind(feature_scores, a)
 }
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_heuZ.RData',
+#                   myregion))
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_qtileZ.RData',
+#                   myregion))
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_stepAICresids_sPCA_heuZ.RData',
+#                   myregion))
 save(feature_scores, all_preds, all_probs, best_thresh,
-     file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_heuZ.RData',
+     file=sprintf('~/data/rnaseq_derek/LOOCV_%s_stepAICresids_sPCA_qtileZ.RData',
                   myregion))
-# save(feature_scores, all_preds, all_probs, best_thresh, file='~/data/rnaseq_derek/LOOCV_ACC_rawCount_sPCA_qtileZ.RData')
 ```
 
 If I used the residualized version, it'd be more like this:
@@ -1254,15 +1262,60 @@ data[, ens_names] = grex_data
 # and the rest is the same
 ```
 
+# 2020-05-07 05:49:44
+
+Checking the end results would be something like this:
+
+```r
+mcs = confusionMatrix(all_preds, data$Diagnosis)
+print(mcs)
+```
+
+I'm getting great results. Somewhere in the neighborhood of .85 accuracy and
+higher. Could this be just a fluke? What if I used purely random data? I'll do
+one for ACC and one for Caudate. Or, maybe even run permutations to check the
+significance of the feature weights?
+
+```r
+set.seed(42)
+for (v in ens_names) {
+    data[, v] = rnorm(nrow(data))
+}
+# and run the sPCA code as above
+```
+
+While I wait on those results, here's how the feature importance looks like
+(mean over subjects):
+
+```r
+a = colMeans(feature_scores)
+plot(a)
+```
+
+![](images/2020-05-07-06-14-41.png)
+
+So, we could try deriving thresholds from random or permuted data, or even
+checking which ones are significantly different than zero, as they're actual
+distributions over the number of subjects.
+
+If the random data results hold, then this could actually work. For example,
+this is the feature importance data for the highest correlation grex:
+
+![](images/2020-05-07-06-25-28.png)
+
+And this is for the lowest:
+
+![](images/2020-05-07-06-25-03.png)
+
+So, pretty constant across samples. And this is just a randomly chosen grex:
+
+![](images/2020-05-07-06-26-13.png)
+
+
 # TODO
-* could potentially use the residuals instead, like the decorrelate function in superpc
-* could run CV to check the best z_thresh
-* logistic regression only using ICs with good IQ?
-* do we need ICA? why not just PCA?
-* add covariates and see if screening works better
-* start evaluating the logistic model and what the ICs mean
+* check results with random data
+* check results with permuted data
+* evaluate feature importances
+* check with Philip what other covariates I should try
+* WNH-only analysis?
 * ICA within WNH only?
-* supervised PCA?
-* keep it to only metrics that give an inverse transform! (i.e. no tsne)
-* maybe there are databases out there of human postmortem data just to give us a
-  better basis for the ICs?
