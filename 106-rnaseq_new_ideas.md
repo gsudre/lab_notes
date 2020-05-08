@@ -1738,8 +1738,11 @@ confusionMatrix(factor(all_preds, levels=levels(X$Diagnosis)), X$Diagnosis)
 ```
 
 To be safe, my results with random data only work in the CV version, because the
-correlation between zscores in each CV shouldn't be high (I didn't test it). I
-also need to test the permutations. But with random data I'm back to .458, and
+correlation between zscores in each CV shouldn't be high (I didn't test it).
+
+And that's actually untrue after I tested it...
+
+With random data I'm back to .458, and
 running the CV code for ACC I'm at .529... that's weird. Are the z-scores not as
 correlated as I thought?
 
@@ -1775,10 +1778,10 @@ pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
 ens_data = predict(pp, data[, ens_names])
 
 library(doParallel)
-cl = makeCluster(2)
+cl = makeCluster(32)
 X = cbind(ens_data, data[, c('Diagnosis', my_covs)])
-Xtrain = X[X$bainbank!='pitt',]
-Xtrain = X[X$bainbank=='pitt',]
+Xtrain = X[data$bainbank!='pitt',]
+Xtest = X[data$bainbank=='pitt',]
 clusterExport(cl, c("Xtrain", 'my_covs'))
 zscores = parSapply(cl, colnames(ens_data),
                     function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
@@ -1797,13 +1800,12 @@ tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
 colnames(tmp) = c('y', my_covs, 'PC1')
 fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
 res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
-train_prob = predict(res.fit, newdata=tmp, type='response')
+train_probs = predict(res.fit, newdata=tmp, type='response')
 # transform inner test data to PC space
 loo_data = predict(res.pca, Xtest[, use_grex])
 tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
 colnames(tmp) = c('y', my_covs, 'PC1')
-test_prob = predict(res.fit, newdata=tmp, type='response')
-all_probs = c(all_probs, prob)
+test_probs = predict(res.fit, newdata=tmp, type='response')
 feature_scores = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
 train_preds = ifelse(train_probs > 0.5, levels(data$Diagnosis)[2],
                      levels(data$Diagnosis)[1])
@@ -1813,16 +1815,25 @@ confusionMatrix(factor(train_preds, levels=levels(X$Diagnosis)), Xtrain$Diagnosi
 confusionMatrix(factor(test_preds, levels=levels(X$Diagnosis)), Xtest$Diagnosis)
 ```
 
-If this prediction framework doesn't work I can run the same thing in both
-discovery and replication and see if my top X genes are the same?
+Very poor... .35 BA. If this prediction framework doesn't work I can run the
+same thing in both discovery and replication and see if my top X genes are the same?
 
 
 # TODO
-* try residualized data again.
+* see if any of those descriptors describe ADHD? 
+* is the sPCA code correct?
+* clustering (ICASSO) with and without removing PCS first (and maybe RNei or
+  somoether index of raw RNA. postmortem, mode of death, age?, gender).
+* plot z scores by different thresholds of gene removal. Are there siginficnace DX differences in removed genes?
+* brain region by diagnosis regression in clean data? redo the univariate at
+  different levels of dropping zeros
+* try using combat https://rdrr.io/bioc/sva/man/ComBat.html, and also look into
+  BatchQC (Bioconductor package, https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2263-6#Sec26)
 * check results with random data
 * check results with permuted data
 * try 2 or 3 PCs in sPCA?
 * evaluate feature importances
+* try residualized data again.
 * check with Philip what other covariates I should try
 * WNH-only analysis?
 * ICA within WNH only?
