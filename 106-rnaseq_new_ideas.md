@@ -1123,7 +1123,7 @@ approaches:
 library(MASS)
 myregion = 'ACC'
 my_thresholds = c()
-# my_thresholds = c(1.5, 2, 2.5, 3)
+my_thresholds = c(1.5, 2, 2.5, 3)
 
 data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
 data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
@@ -1141,14 +1141,15 @@ pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
 ens_data = predict(pp, data[, ens_names])
 
 library(doParallel)
-cl = makeCluster(10)
+cl = makeCluster(32)
 
-my_covs = c('Sex', 'Age')
+my_covs = c('Age')
 best_thresh = c()
 all_preds = c()
 all_probs = c()
 feature_scores = c()
-for (loo in 1:nrow(ens_data)) {
+all_zs = c()
+for (loo in 1:10) { #nrow(ens_data)) {
     print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
     Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
     Xtest = cbind(ens_data[loo, ], data[loo, c('Diagnosis', my_covs)])
@@ -1161,71 +1162,73 @@ for (loo in 1:nrow(ens_data)) {
                                             data=Xtrain, family = binomial)
                                   return(summary(fit)$coefficients[2,
                                                                    'z value'])})
-    # setting up a linear search space from two bounds of z scale
-    bounds = quantile(abs(zscores), c(.95, .99))
-    if (length(my_thresholds)>0) {
-        thresholds = my_thresholds
-    } else {
-        thresholds = seq(from=bounds[1], to=bounds[2], len=10)
-    }
-    print('Evaluating thresholds')
-    eval_results = c()
-    for (t in thresholds) {
-        probs = c()
-        for (inloo in 1:nrow(Xtrain)) {
-            # compute PCA in innet train data, selected variables
-            good_grex = colnames(ens_data)[abs(zscores) > t]
-            my.pca = prcomp(Xtrain[-inloo, good_grex])
-            # use PCs to create model
-            tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
-                             my.pca$x[, 1])
-            colnames(tmp) = c('y', my_covs, 'PC1')
-            fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
-            cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
-            # transform inner test data to PC space
-            inloo_data = predict(my.pca, Xtrain[inloo, good_grex])
-            tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
-                             inloo_data[, 1])
-            colnames(tmp) = c('y', my_covs, 'PC1')
-            prob = predict(cv.fit, newdata=tmp, type='response')
-            probs = c(probs, prob)
-        }
-        preds_class = ifelse(probs > 0.5, levels(Xtrain$Diagnosis)[2],
-                             levels(Xtrain$Diagnosis)[1])
-        preds_probs = probs
-        dat = cbind(data.frame(obs = Xtrain$Diagnosis, pred = preds_class),
-                    preds_probs)
-        mcs = confusionMatrix(dat$pred, dat$obs)
-        test_results = c(mcs$byClass['Balanced Accuracy'],
-                         mcs$byClass['Sensitivity'],
-                         mcs$byClass['Specificity'])
-        eval_results = rbind(eval_results, test_results)
-    }
-    my_thresh = thresholds[which.max(eval_results[, 'Balanced Accuracy'])]
-    best_thresh = c(best_thresh, my_thresh)
+    all_zs = rbind(all_zs, zscores)
+    # # setting up a linear search space from two bounds of z scale
+    # bounds = quantile(abs(zscores), c(.95, .99))
+    # if (length(my_thresholds)>0) {
+    #     thresholds = my_thresholds
+    # } else {
+    #     thresholds = seq(from=bounds[1], to=bounds[2], len=10)
+    # }
+    # print('Evaluating thresholds')
+    # eval_results = c()
+    # for (t in thresholds) {
+    #     probs = c()
+    #     for (inloo in 1:nrow(Xtrain)) {
+    #         # compute PCA in innet train data, selected variables
+    #         good_grex = colnames(ens_data)[abs(zscores) > t]
+    #         my.pca = prcomp(Xtrain[-inloo, good_grex])
+    #         # use PCs to create model
+    #         tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
+    #                          my.pca$x[, 1])
+    #         colnames(tmp) = c('y', my_covs, 'PC1')
+    #         fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+    #         cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    #         # transform inner test data to PC space
+    #         inloo_data = predict(my.pca, Xtrain[inloo, good_grex])
+    #         tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
+    #                          inloo_data[, 1])
+    #         colnames(tmp) = c('y', my_covs, 'PC1')
+    #         prob = predict(cv.fit, newdata=tmp, type='response')
+    #         probs = c(probs, prob)
+    #     }
+    #     preds_class = ifelse(probs > 0.5, levels(Xtrain$Diagnosis)[2],
+    #                          levels(Xtrain$Diagnosis)[1])
+    #     preds_probs = probs
+    #     dat = cbind(data.frame(obs = Xtrain$Diagnosis, pred = preds_class),
+    #                 preds_probs)
+    #     mcs = confusionMatrix(dat$pred, dat$obs)
+    #     test_results = c(mcs$byClass['Balanced Accuracy'],
+    #                      mcs$byClass['Sensitivity'],
+    #                      mcs$byClass['Specificity'])
+    #     eval_results = rbind(eval_results, test_results)
+    # }
+    # my_thresh = thresholds[which.max(eval_results[, 'Balanced Accuracy'])]
+    # best_thresh = c(best_thresh, my_thresh)
 
+    my_thresh = 3
     # predicting outer CV
-    good_grex = colnames(ens_data)[abs(zscores) > my_thresh]
-    my.pca = prcomp(Xtrain[, good_grex])
+    use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    res.pca = prcomp(Xtrain[, use_grex])
     # use PCs to create model
-    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], my.pca$x[, 1])
+    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
     colnames(tmp) = c('y', my_covs, 'PC1')
     fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
-    cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
     # transform inner test data to PC space
-    loo_data = predict(my.pca, Xtest[, good_grex])
+    loo_data = predict(res.pca, Xtest[, use_grex])
     tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
     colnames(tmp) = c('y', my_covs, 'PC1')
-    prob = predict(cv.fit, newdata=tmp, type='response')
-    pred_class = ifelse(prob > 0.5, levels(Xtrain$Diagnosis)[2],
-                         levels(Xtrain$Diagnosis)[1])
+    prob = predict(res.fit, newdata=tmp, type='response')
     all_probs = c(all_probs, prob)
-    all_preds = c(all_preds, pred_class)
 
     # computing all feature scores
-    a = cor(my.pca$x[,1], Xtrain[, colnames(ens_data)])
+    a = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
     feature_scores = rbind(feature_scores, a)
 }
+all_preds = ifelse(all_probs > 0.5, levels(data$Diagnosis)[2],
+                   levels(data$Diagnosis)[1])
+
 # save(feature_scores, all_preds, all_probs, best_thresh,
 #      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_heuZ.RData',
 #                   myregion))
@@ -1311,10 +1314,514 @@ So, pretty constant across samples. And this is just a randomly chosen grex:
 
 ![](images/2020-05-07-06-26-13.png)
 
+Nice! confusion matrix for both ACC and Caudate is very random! I'll also try a
+few permuted datasets, but this is loking quite promising!
+
+```r
+set.seed(42)
+idx = sample.int(nrow(data), replace = FALSE)
+data$Diagnosis = data[idx, 'Diagnosis']
+```
+
+So, after I decide on the covariates to use with Philip, I can run a whole
+series of permutations to assess significance of the cfeature importance.
+
+# 2020-05-07 20:32:11
+
+All the results are gone... maybe I was using some faulty code before when I was
+getting the good results? Maybe faulty when calculating the confusion matrix?
+
+In any case, let's try other things. How about more than 1 PC?
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_thresholds = c()
+my_thresholds = c(1.5, 2, 2.5, 3)
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+library(doParallel)
+cl = makeCluster(32)
+
+my_covs = c('Age')
+best_thresh = c()
+all_preds = c()
+all_probs = c()
+feature_scores = c()
+all_zs = c()
+for (loo in 1:10) { #nrow(ens_data)) {
+    print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
+    Xtrain = cbind(ens_data[-loo, ], data[-loo, c('Diagnosis', my_covs)])
+    Xtest = cbind(ens_data[loo, ], data[loo, c('Diagnosis', my_covs)])
+    clusterExport(cl, c("Xtrain", 'my_covs'))
+    zscores = parSapply(cl, colnames(ens_data),
+                        function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                   paste(my_covs,
+                                                         collapse='+'))
+                                  fit = glm(as.formula(fm_str),
+                                            data=Xtrain, family = binomial)
+                                  return(summary(fit)$coefficients[2,
+                                                                   'z value'])})
+    all_zs = rbind(all_zs, zscores)
+
+    my_thresh = 3
+    # predicting outer CV
+    use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    res.pca = prcomp(Xtrain[, use_grex])
+    # use PCs to create model
+    tmp = cbind(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1:3])
+    colnames(tmp) = c('y', my_covs, 'PC1', 'PC2', 'PC3')
+    fm_str = sprintf('y~PC1+PC2+PC3+%s', paste(my_covs, collapse='+'))
+    res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    # transform inner test data to PC space
+    loo_data = predict(res.pca, Xtest[, use_grex])
+    tmp = cbind(data.frame(Xtest[, c('Diagnosis', my_covs)]), loo_data[, 1:3])
+    colnames(tmp) = c('y', my_covs, 'PC1', 'PC2', 'PC3')
+    prob = predict(res.fit, newdata=tmp, type='response')
+    all_probs = c(all_probs, prob)
+
+    # computing all feature scores
+    a = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
+    feature_scores = rbind(feature_scores, a)
+}
+all_preds = ifelse(all_probs > 0.5, levels(data$Diagnosis)[2],
+                   levels(data$Diagnosis)[1])
+
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_heuZ.RData',
+#                   myregion))
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_rawCount_sPCA_qtileZ.RData',
+#                   myregion))
+# save(feature_scores, all_preds, all_probs, best_thresh,
+#      file=sprintf('~/data/rnaseq_derek/LOOCV_%s_stepAICresids_sPCA_heuZ.RData',
+#                   myregion))
+save(feature_scores, all_preds, all_probs, best_thresh,
+     file=sprintf('~/data/rnaseq_derek/LOOCV_%s_stepAICresids_sPCA_qtileZ.RData',
+                  myregion))
+```
+
+I was doing some testing and the most expensive operation is calculating the
+zscores. Yes, I'd need to do that in a cross-validation (even though I'm not
+sure he package does it). Still, at least for the first 10 samples in ACC the
+values were correlated at about .98, in LOOCV. So, for now while we're testing
+parameters, let's keep zscores constant.
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_covs = c('Age')
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+library(doParallel)
+cl = makeCluster(32)
+X = cbind(ens_data, data[, c('Diagnosis', my_covs)])
+clusterExport(cl, c("X", 'my_covs'))
+zscores = parSapply(cl, colnames(ens_data),
+                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                paste(my_covs,
+                                                        collapse='+'))
+                                fit = glm(as.formula(fm_str),
+                                        data=X, family = binomial)
+                                return(summary(fit)$coefficients[2,
+                                                                'z value'])})
+
+best_thresh = c()
+all_preds = c()
+all_probs = c()
+feature_scores = c()
+for (loo in 1:nrow(ens_data)) {
+    print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
+    
+    Xtrain = X[-loo,]
+    Xtest = X[loo, ]
+    
+    my_thresh = 3
+    # predicting outer CV
+    use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    res.pca = prcomp(Xtrain[, use_grex])
+    # use PCs to create model
+    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+    res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    # transform inner test data to PC space
+    loo_data = predict(res.pca, Xtest[, use_grex])
+    tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    prob = predict(res.fit, newdata=tmp, type='response')
+    all_probs = c(all_probs, prob)
+
+    # computing all feature scores
+    a = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
+    feature_scores = rbind(feature_scores, a)
+}
+all_preds = ifelse(all_probs > 0.5, levels(data$Diagnosis)[2],
+                   levels(data$Diagnosis)[1])
+confusionMatrix(factor(all_preds, levels=levels(X$Diagnosis)), X$Diagnosis)
+```
+
+Seems like the results are back. I'm going to re-run it in a fresh R, just to be
+safe, as it runs quite fast. Both times I got balanced accuracy around .85. For
+caudate I got .87.
+
+Maybe it was related to Sex? It's quite unbalanced and it was throwing off some
+of the models. If those are bad predictions, we're screwed.
+
+Now, let's optimize the threshold, which is quite fast too:
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_covs = c('Age')
+numCores=32
+my_thresholds = c()
+my_thresholds = c(1.5, 2, 2.5, 3)
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+library(doParallel)
+library(foreach)
+cl = makeCluster(numCores)
+X = cbind(ens_data, data[, c('Diagnosis', my_covs)])
+clusterExport(cl, c("X", 'my_covs'))
+zscores = parSapply(cl, colnames(ens_data),
+                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                paste(my_covs,
+                                                        collapse='+'))
+                                fit = glm(as.formula(fm_str),
+                                        data=X, family = binomial)
+                                return(summary(fit)$coefficients[2,
+                                                                'z value'])})
+registerDoParallel(numCores)
+
+best_thresh = c()
+all_preds = c()
+all_probs = c()
+feature_scores = c()
+for (loo in 1:nrow(ens_data)) {
+    print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
+
+    Xtrain = X[-loo,]
+    Xtest = X[loo, ]
+
+    # setting up a linear search space from two bounds of z scale
+    bounds = quantile(abs(zscores), c(.95, .99))
+    if (length(my_thresholds)>0) {
+        thresholds = my_thresholds
+    } else {
+        thresholds = seq(from=bounds[1], to=bounds[2], len=10)
+    }
+    print('Evaluating thresholds')
+    eval_results = c()
+    for (t in thresholds) {
+        probs = foreach (inloo=1:nrow(Xtrain), .combine=c) %dopar% {
+            # compute PCA in innet train data, selected variables
+            good_grex = colnames(ens_data)[abs(zscores) > t]
+            my.pca = prcomp(Xtrain[-inloo, good_grex])
+            # use PCs to create model
+            tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
+                             my.pca$x[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+            cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+            # transform inner test data to PC space
+            inloo_data = predict(my.pca, Xtrain[inloo, good_grex])
+            tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
+                             inloo_data[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            predict(cv.fit, newdata=tmp, type='response')
+        }
+        preds_class = ifelse(probs > 0.5, levels(Xtrain$Diagnosis)[2],
+                             levels(Xtrain$Diagnosis)[1])
+        preds_probs = probs
+        dat = cbind(data.frame(obs = Xtrain$Diagnosis, pred = preds_class),
+                    preds_probs)
+        mcs = confusionMatrix(dat$pred, dat$obs)
+        test_results = c(mcs$byClass['Balanced Accuracy'],
+                         mcs$byClass['Sensitivity'],
+                         mcs$byClass['Specificity'])
+        eval_results = rbind(eval_results, test_results)
+    }
+    my_thresh = thresholds[which.max(eval_results[, 'Balanced Accuracy'])]
+    best_thresh = c(best_thresh, my_thresh)
+
+    # predicting outer CV
+    use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    res.pca = prcomp(Xtrain[, use_grex])
+    # use PCs to create model
+    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+    res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    # transform inner test data to PC space
+    loo_data = predict(res.pca, Xtest[, use_grex])
+    tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    prob = predict(res.fit, newdata=tmp, type='response')
+    all_probs = c(all_probs, prob)
+
+    # computing all feature scores
+    a = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
+    feature_scores = rbind(feature_scores, a)
+}
+all_preds = ifelse(all_probs > 0.5, levels(data$Diagnosis)[2],
+                   levels(data$Diagnosis)[1])
+confusionMatrix(factor(all_preds, levels=levels(X$Diagnosis)), X$Diagnosis)
+```
+
+By adding that CV step actually decreased my ACC accuracy to .829 using qtiles,
+but I go up to .89 in Caudate. Using the heuristic options I go up to .829 again
+in ACC, and .928 in Caudate!
+
+To test covariates, it might actually be better to use the code above that,
+because it runs much faster. Then, we can use the threshold CV and even finally
+the one below for the nested LOOCV, just to be squeaky clean. Same thing for
+testing the residualized data.
+
+The squeaky clean code would be:
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_covs = c('Age')
+numCores=32
+my_thresholds = c()
+my_thresholds = c(1.5, 2, 2.5, 3)
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+library(doParallel)
+library(foreach)
+X = cbind(ens_data, data[, c('Diagnosis', my_covs)])
+registerDoParallel(numCores)
+cl = makeCluster(numCores)
+
+best_thresh = c()
+all_preds = c()
+all_probs = c()
+feature_scores = c()
+all_zs = c()
+for (loo in 1:nrow(ens_data)) {
+    print(sprintf('Trying sample %s of %s', loo, nrow(ens_data)))
+
+    Xtrain = X[-loo,]
+    Xtest = X[loo, ]
+
+    clusterExport(cl, c("Xtrain", 'my_covs'))
+    zscores = parSapply(cl, colnames(ens_data),
+                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                paste(my_covs,
+                                                        collapse='+'))
+                                fit = glm(as.formula(fm_str),
+                                        data=Xtrain, family = binomial)
+                                return(summary(fit)$coefficients[2,
+                                                                'z value'])})
+    all_zs = rbind(all_zs, zscores)
+    # setting up a linear search space from two bounds of z scale
+    bounds = quantile(abs(zscores), c(.95, .99))
+    if (length(my_thresholds)>0) {
+        thresholds = my_thresholds
+    } else {
+        thresholds = seq(from=bounds[1], to=bounds[2], len=10)
+    }
+    print('Evaluating thresholds')
+    eval_results = c()
+    for (t in thresholds) {
+        probs = foreach (inloo=1:nrow(Xtrain), .combine=c) %dopar% {
+            # compute PCA in innet train data, selected variables
+            good_grex = colnames(ens_data)[abs(zscores) > t]
+            my.pca = prcomp(Xtrain[-inloo, good_grex])
+            # use PCs to create model
+            tmp = data.frame(Xtrain[-inloo, c('Diagnosis', my_covs)],
+                             my.pca$x[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+            cv.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+            # transform inner test data to PC space
+            inloo_data = predict(my.pca, Xtrain[inloo, good_grex])
+            tmp = data.frame(Xtrain[inloo, c('Diagnosis', my_covs)],
+                             inloo_data[, 1])
+            colnames(tmp) = c('y', my_covs, 'PC1')
+            predict(cv.fit, newdata=tmp, type='response')
+        }
+        preds_class = ifelse(probs > 0.5, levels(Xtrain$Diagnosis)[2],
+                             levels(Xtrain$Diagnosis)[1])
+        preds_probs = probs
+        dat = cbind(data.frame(obs = Xtrain$Diagnosis, pred = preds_class),
+                    preds_probs)
+        mcs = confusionMatrix(dat$pred, dat$obs)
+        test_results = c(mcs$byClass['Balanced Accuracy'],
+                         mcs$byClass['Sensitivity'],
+                         mcs$byClass['Specificity'])
+        eval_results = rbind(eval_results, test_results)
+    }
+    my_thresh = thresholds[which.max(eval_results[, 'Balanced Accuracy'])]
+    best_thresh = c(best_thresh, my_thresh)
+
+    # predicting outer CV
+    use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+    res.pca = prcomp(Xtrain[, use_grex])
+    # use PCs to create model
+    tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+    res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+    # transform inner test data to PC space
+    loo_data = predict(res.pca, Xtest[, use_grex])
+    tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
+    colnames(tmp) = c('y', my_covs, 'PC1')
+    prob = predict(res.fit, newdata=tmp, type='response')
+    all_probs = c(all_probs, prob)
+
+    # computing all feature scores
+    a = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
+    feature_scores = rbind(feature_scores, a)
+}
+all_preds = ifelse(all_probs > 0.5, levels(data$Diagnosis)[2],
+                   levels(data$Diagnosis)[1])
+confusionMatrix(factor(all_preds, levels=levels(X$Diagnosis)), X$Diagnosis)
+```
+
+To be safe, my results with random data only work in the CV version, because the
+correlation between zscores in each CV shouldn't be high (I didn't test it). I
+also need to test the permutations. But with random data I'm back to .458, and
+running the CV code for ACC I'm at .529... that's weird. Are the z-scores not as
+correlated as I thought?
+
+What if I split by bainbank?
+
+```
+> table(data$bainbank)
+
+nimh_hbcc      pitt      umbn 
+       24         9        22 
+```
+
+Maybe use pitt or umbn as replication set?
+
+```r
+library(MASS)
+myregion = 'ACC'
+my_covs = c('Age')
+
+data = readRDS('~/data/rnaseq_derek/complete_data_04292020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region==myregion, ]
+keep_me = which(!is.na(data$C1))  # only keep people with population PCs
+data = data[keep_me, ]
+grex_fname = sprintf('~/data/rnaseq_derek/goodgrex%s_binp01_05022020.rds',
+                     myregion)
+grex_data = readRDS(grex_fname)
+# only look at pre-selected grex
+ens_names = colnames(grex_data)
+
+library(caret)
+pp = preProcess(data[, ens_names], method=c('zv', 'nzv', 'center', 'scale'))
+ens_data = predict(pp, data[, ens_names])
+
+library(doParallel)
+cl = makeCluster(2)
+X = cbind(ens_data, data[, c('Diagnosis', my_covs)])
+Xtrain = X[X$bainbank!='pitt',]
+Xtrain = X[X$bainbank=='pitt',]
+clusterExport(cl, c("Xtrain", 'my_covs'))
+zscores = parSapply(cl, colnames(ens_data),
+                    function(x) { fm_str = sprintf('Diagnosis~%s+%s', x,
+                                                paste(my_covs,
+                                                        collapse='+'))
+                                fit = glm(as.formula(fm_str),
+                                        data=Xtrain, family = binomial)
+                                return(summary(fit)$coefficients[2,
+                                                                'z value'])})
+my_thresh = 3
+# predicting outer CV
+use_grex = colnames(ens_data)[abs(zscores) > my_thresh]
+res.pca = prcomp(Xtrain[, use_grex])
+# use PCs to create model
+tmp = data.frame(Xtrain[, c('Diagnosis', my_covs)], res.pca$x[, 1])
+colnames(tmp) = c('y', my_covs, 'PC1')
+fm_str = sprintf('y~PC1+%s', paste(my_covs, collapse='+'))
+res.fit = glm(as.formula(fm_str), data=tmp, family = binomial)
+train_prob = predict(res.fit, newdata=tmp, type='response')
+# transform inner test data to PC space
+loo_data = predict(res.pca, Xtest[, use_grex])
+tmp = data.frame(Xtest[, c('Diagnosis', my_covs)], loo_data[, 1])
+colnames(tmp) = c('y', my_covs, 'PC1')
+test_prob = predict(res.fit, newdata=tmp, type='response')
+all_probs = c(all_probs, prob)
+feature_scores = cor(res.pca$x[,1], Xtrain[, colnames(ens_data)])
+train_preds = ifelse(train_probs > 0.5, levels(data$Diagnosis)[2],
+                     levels(data$Diagnosis)[1])
+test_preds = ifelse(test_probs > 0.5, levels(data$Diagnosis)[2],
+                     levels(data$Diagnosis)[1])
+confusionMatrix(factor(train_preds, levels=levels(X$Diagnosis)), Xtrain$Diagnosis)
+confusionMatrix(factor(test_preds, levels=levels(X$Diagnosis)), Xtest$Diagnosis)
+```
+
+If this prediction framework doesn't work I can run the same thing in both
+discovery and replication and see if my top X genes are the same?
+
 
 # TODO
+* try residualized data again.
 * check results with random data
 * check results with permuted data
+* try 2 or 3 PCs in sPCA?
 * evaluate feature importances
 * check with Philip what other covariates I should try
 * WNH-only analysis?
