@@ -599,10 +599,94 @@ pp = preProcess(data[, grex_names],
                 method=c('zv', 'nzv', 'range'), rangeBounds=c(0,1))
 a = predict(pp, data[, grex_names])
 n0 = colSums(a==0)
-imbad = n0 > 15  # ACC
-imbad = n0> 18  # Caudate
-good_grex = names(n0)[!imbad]
+nobad = n0 == 1
+some_bad_grex = names(n0)[!nobad]
+
+# how many of the genes with at least 1 bad subject, this subject is the bad one
+data$bad_grex = rowSums(a[, some_bad_grex]==0)
+idx = data$Diagnosis =='Case'
+wilcox.test(data[idx, 'bad_grex'], data[!idx, 'bad_grex'])
 ```
+
+Not really significant. What if we make it more stringent what we consider to be
+a bad gene?
+
+```r
+idx = data$Diagnosis =='Case'
+pvals = c()
+for (i in 2:30) {
+	nobad = n0 < i
+	some_bad_grex = names(n0)[!nobad]
+	data$bad_grex = rowSums(a[, some_bad_grex]==0)
+	pvals = c(pvals,
+			  wilcox.test(data[idx, 'bad_grex'], data[!idx, 'bad_grex'])$p.value)
+}
+```
+
+```
+> pvals
+ [1] 0.7604294 0.7169008 0.6803029 0.6706853 0.6444429 0.6706853 0.6236354
+ [8] 0.6236354 0.6236354 0.5978993 0.5921902 0.5921902 0.5921649 0.5752084
+[15] 0.5640274 0.5257175 0.4887694 0.4991846 0.4815368 0.4683246 0.5044323
+[22] 0.5097089 0.4939660 0.4288569 0.4336811 0.4052167 0.3690341 0.3308329
+[29] 0.3474464
+```
+
+Nothing really there. In other words, the ADHD group doesn't have a different
+number of removed grex than NVs.
+
+But what if we do this in a per gene basis? Say we
+consider a gene to be bad after we remove X subjects. Is X equally distributed
+between Case and Control?
+
+```r
+n0 = colSums(a==0)
+prop_sig = c()
+for (bad_subjs in 2:(max(n0)-1)) {
+	print(bad_subjs)
+	imbad = n0 > bad_subjs
+	bad_grex = names(n0)[imbad]
+	pvals = c()
+	for (g in bad_grex) {
+		tmp = rep('bad', length=nrow(data))
+		tmp[a[, g] > 0] = 'good'
+		# is the proportion of good and bad samples different between ADHD and NV?
+		pvals = c(pvals, chisq.test(table(data$Diagnosis, tmp))$p.value)
+	}
+	# record the percentage of genes, out of all bad ones, with a different 
+	# proportion between ADHD and NV p < .05
+	prop_sig = c(prop_sig, sum(pvals<.05)/length(pvals))
+	print(prop_sig)
+}
+```
+
+```
+ [1] 0.017691063 0.019127774 0.020294561 0.020695567 0.021669031 0.021645022
+ [7] 0.021340162 0.022059920 0.022155877 0.022008936 0.022505234 0.022597832
+[13] 0.022656855 0.022974359 0.022173913 0.021839080 0.021057786 0.021099245
+[19] 0.020827548 0.020703934 0.020641473 0.019849418 0.020817844 0.020824990
+[25] 0.020319931 0.021942110 0.022773279 0.023127753 0.024009604 0.022875817
+[31] 0.022873481 0.023052464 0.022827041 0.022094140 0.021074816 0.022538553
+[37] 0.020000000 0.021084337 0.018518519 0.017307692 0.017316017 0.009828010
+[43] 0.008746356 0.006944444 0.004366812 0.006329114 0.000000000 0.000000000
+[49] 0.000000000
+```
+
+And let's repeat the same analysis for the Caudate:
+
+```
+ [1] 0.02069385 0.02204214 0.02326377 0.02423806 0.02544304 0.02439024
+ [7] 0.02433628 0.02527233 0.02527021 0.02534268 0.02600867 0.02587413
+[13] 0.02595251 0.02692233 0.02668568 0.02695764 0.02708804 0.02631579
+[19] 0.02634913 0.02777778 0.02761795 0.02887865 0.02926669 0.02917399
+[25] 0.03070508 0.03062474 0.03138815 0.02939782 0.02962206 0.02734375
+[31] 0.02766085 0.02803129 0.02642857 0.02852737 0.03022670 0.03266788
+[37] 0.03174603 0.03459459 0.03444181 0.03434610 0.03106509 0.02662230
+[43] 0.02651515 0.01766004 0.01842105 0.02208202 0.01145038 0.01492537
+[49] 0.02068966 0.01960784 0.01886792
+```
+
+Nothing really there...
 
 # TODO
 * maybe subgroup in the ADHD_type variables?
