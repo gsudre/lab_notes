@@ -1827,6 +1827,8 @@ same thing in both discovery and replication and see if my top X genes are the s
 * plot z scores by different thresholds of gene removal. Are there siginficnace DX differences in removed genes?
 * brain region by diagnosis regression in clean data? redo the univariate at
   different levels of dropping zeros
+* does the distribution of the counts matter? e.g. Poisson?
+* maybe do more lit search on what people normally use for RNAseq analysis?
 * try using combat https://rdrr.io/bioc/sva/man/ComBat.html, and also look into
   BatchQC (Bioconductor package, https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2263-6#Sec26)
 * check results with random data
