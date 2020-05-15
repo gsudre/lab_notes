@@ -179,6 +179,7 @@ these might also become useful:
 * https://ucdavis-bioinformatics-training.github.io/2018-June-RNA-Seq-Workshop/thursday/DE.html
 * https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4937821/
 * https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4934518/
+* https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4983442/
   
 # TODO:
  * does the distribution shape matter? what if we inverse transform it? should
