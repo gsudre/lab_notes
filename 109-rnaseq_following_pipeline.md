@@ -179,8 +179,31 @@ cannot run more than 1 continuous variable in the model matrix? It's giving me
 errors. Let's focus on the WNH only then.
 
 ```r
-mm <- model.matrix(~0 + Diagnosis + RINe + C1 + C2 + C3 + C4 + C5 + C6 + C7 + C8 + C9 + C10, data=data)
-mm <- model.matrix(~0 + Diagnosis + RINe + C1, data=data)
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+count_matrix = t(data[, grex_vars])
+batch = as.numeric(data$run_date)
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+adjusted_counts2 <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+d0 <- DGEList(adjusted_counts2)
+d0 <- calcNormFactors(d0)
+cutoff <- 1  # subjective... play with this
+drop <- which(apply(cpm(d0), 1, max) < cutoff)
+d <- d0[-drop,]
+group = data[, 'Diagnosis']
+plotMDS(d, col = as.numeric(group))
+```
+
+![](images/2020-05-15-09-34-35.png)
+
+There's some interesting separation there.
+
+```r
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data)
 y <- voom(d, mm, plot = F)
 fit <- lmFit(y, mm)
 contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
@@ -191,13 +214,110 @@ top.table <- topTable(tmp, sort.by = "P", n = Inf)
 head(top.table, 20)
 ```
 
+![](images/2020-05-15-09-37-15.png)
 
+Now we're talking!
 
+```
+> length(which(top.table$adj.P.Val < 0.05))
+[1] 33
+> rownames(top.table[top.table$adj.P.Val < 0.05, ])
+ [1] "ENSG00000198692.10" "ENSG00000099725.14" "ENSG00000067048.17"
+ [4] "ENSG00000206159.11" "ENSG00000067646.12" "ENSG00000129824.16"
+ [7] "ENSG00000154620.6"  "ENSG00000099715.14" "ENSG00000228411.1" 
+[10] "ENSG00000165246.14" "ENSG00000183878.15" "ENSG00000176728.9" 
+[13] "ENSG00000131002.12" "ENSG00000226555.1"  "ENSG00000012817.15"
+[16] "ENSG00000259917.1"  "ENSG00000196436.8"  "ENSG00000241859.7" 
+[19] "ENSG00000114374.13" "ENSG00000251022.6"  "ENSG00000215580.11"
+[22] "ENSG00000196584.3"  "ENSG00000260372.7"  "ENSG00000124782.20"
+[25] "ENSG00000250483.1"  "ENSG00000260197.1"  "ENSG00000288049.1" 
+[28] "ENSG00000229236.3"  "ENSG00000271741.1"  "ENSG00000217896.2" 
+[31] "ENSG00000215414.4"  "ENSG00000223773.7"  "ENSG00000103995.14"
+```
 
+What if we select WNH after COMBAT?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC', ]
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+batch = as.numeric(data$run_date)
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+adjusted_counts2 <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+imWNH = which(data$C1 > 0 & data$C2 < -.075)
+d0 <- DGEList(adjusted_counts2)
+d0 <- calcNormFactors(d0[, imWNH])
+cutoff <- 1  # subjective... play with this
+drop <- which(apply(cpm(d0), 1, max) < cutoff)
+d <- d0[-drop,]
+
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data[imWNH, ])
+y <- voom(d, mm, plot = F)
+fit <- lmFit(y, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                       levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+![](images/2020-05-15-10-44-50.png)
+
+Results not as good...
+
+Is it COMBAT or RINe doing the benefit?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC', ]
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+batch = as.numeric(data$run_date)
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+adjusted_counts2 <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+d0 <- DGEList(adjusted_counts2)
+d0 <- calcNormFactors(d0)
+cutoff <- 1  # subjective... play with this
+drop <- which(apply(cpm(d0), 1, max) < cutoff)
+d <- d0[-drop,]
+
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data)
+y <- voom(d, mm, plot = F)
+fit <- lmFit(y, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                       levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+length(which(top.table$adj.P.Val < 0.05))
+```
+
+I only get 20 without RIN:
+
+![](images/2020-05-15-10-52-05.png)
+
+Maybe we should use the intercept? Well, nothing wrong with use RINe as a
+covariate...
 
 
 # TODO
-* run the pipeline after combat?
 * try caudate
+* how do these results look like in the entire population?
+* look at gene functions
 * play with other gene removal thresholds
 * try other pipelines from note 108
