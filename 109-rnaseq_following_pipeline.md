@@ -526,8 +526,515 @@ library(edgeR)
 x <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
 ```
 
+Now we're ready to do some damage:
+
+```r
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+keep.exprs <- filterByExpr(x, group=data$Diagnosis)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+```
+
+That leave sus with about 23.5K genes. Let's make a nice-looking plot showing
+what was done:
+
+```r
+lcpm.cutoff <- log2(10/M + 2/L)
+library(RColorBrewer)
+nsamples <- ncol(x)
+col <- brewer.pal(nsamples, "Paired")
+par(mfrow=c(1,2))
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+}
+lines(den$x, den$y, col=col[i], lwd=2)
+legend("topright", data$submitted_name, text.col=col, bty="n")
+lcpm <- cpm(x, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+}
+lines(den$x, den$y, col=col[i], lwd=2)
+legend("topright", data$submitted_name, text.col=col, bty="n")
+```
+
+![](images/2020-05-15-20-12-00.png)
+
+We can play with this cut-off like in the other pipeline, but this will do it
+for now. I should also make the plot above for all subjects (the paired color
+pallete only works for up to 12), so that I can visualize outliers.
+
+```r
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- data$Diagnosis
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+col.region <- data$Region
+levels(col.region) <-  brewer.pal(nlevels(col.region), "Set2")
+col.region <- as.character(col.region)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group)
+title(main="A. Sample groups")
+plotMDS(lcpm, labels=data$Region, col=col.region)
+title(main="B. Region")
+```
+
+![](images/2020-05-15-20-25-30.png)
+
+The first dimension is totally the region. We could even throw away 2 for
+caudate and 3 for ACC if we judge them as outliers. That other plots would also
+be helpful here, if we plot fewer subjects in it.
+
+What do the other dimensions look like?
+
+```r
+par(mfrow=c(1,2))
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(2,3))
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(3,4))
+```
+
+![](images/2020-05-15-20-30-02.png)
+
+There might be some other batching variable we need to correct for in dimensions
+2/3, or at least covary out. Let's carry on with the analysis just to see what
+can be done, and then we tweak it as we go.
+
+```r
+mm <- model.matrix(~Diagnosis*Region, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+tmp <- contrasts.fit(fit, coef = 4)
+tmp <- eBayes(tmp)
+plotSA(tmp)
+```
+
+![](images/2020-05-15-20-49-57.png)
+
+So, Voom is working. But do we get any results?
+
+```r
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+No, nothing really significant in the interaction term. Let's drop it.
+
+```r
+mm <- model.matrix(~Diagnosis + Region, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+tmp <- contrasts.fit(fit, coef = 2)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+Now we get a few that are significant for DX, and A WHOLE BUNCH significant for
+Region. But given that we didn't see anything in the interaction term, is it
+even interesting to do this using both regions at the same time? The model
+become more complex too, as I'll need ot specify a random term in limma. I don't
+think it's impossible based on the comment I read in that paper, but given these
+results, I might as well analyze the regions separately. Just for kicks, what's
+the effect of RIN?
+
+```r
+mm <- model.matrix(~Diagnosis + Region + RINe, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+tmp <- contrasts.fit(fit, coef = 2)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+Maybe I gain a few more signicant close to 20 total.
+
+# 2020-05-18 07:25:22
+
+Let's see if this pipeline is good enough to replicate the ACC results.
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+data = data[data$Region=='ACC',]
+rawCountTable = t(data[, grex_vars])
+geneid <- rownames(rawCountTable)
+# remove that weird .num after ENSG
+id_num = sapply(geneid,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+rawCountTable = rawCountTable[!dups, ]
+rownames(rawCountTable) = id_num
+colnames(rawCountTable) <- data$submitted_name
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(rawCountTable) %in% G_list$ensembl_gene_id
+rawCountTable = rawCountTable[imnamed, ]
+samples = data.frame(batch=data$run_date,
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+library(edgeR)
+x <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+```
+
+And we start the analysis:
+
+```r
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+keep.exprs <- filterByExpr(x, group=data$Diagnosis)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+```
+
+That leaves us with about 22.9K genes. Let's make a nice-looking plot showing
+what was done:
+
+```r
+lcpm.cutoff <- log2(10/M + 2/L)
+library(RColorBrewer)
+nsamples <- ncol(x)
+col <- brewer.pal(nsamples, "Paired")
+par(mfrow=c(1,2))
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+}
+lines(den$x, den$y, col=col[i], lwd=2)
+legend("topright", data$submitted_name, text.col=col, bty="n")
+lcpm <- cpm(x, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+}
+lines(den$x, den$y, col=col[i], lwd=2)
+legend("topright", data$submitted_name, text.col=col, bty="n")
+```
+
+![](images/2020-05-18-07-30-06.png)
+
+We can play with this cut-off like in the other pipeline, but this will do it
+for now. I should also make the plot above for all subjects (the paired color
+pallete only works for up to 12), so that I can visualize outliers.
+
+```r
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- data$Diagnosis
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(3,4))
+```
+
+![](images/2020-05-18-07-33-50.png)
+
+This doesn't look super promising. Maybe if I do it for WNH only it'd look
+better? We'll see.
+
+```r
+mm <- model.matrix(~Diagnosis, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+tmp <- contrasts.fit(fit, coef = 2)
+tmp <- eBayes(tmp)
+plotSA(tmp)
+```
+
+![](images/2020-05-18-07-36-36.png)
+
+So, Voom is working. But do we get any results?
+
+```r
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+No, nothing really significant there.
+
+## WNH only
+
+Let's repeat all this analysis but using WNH only. That was the main result in
+the first pipeline anyways. I'll again keep it to ACC first, but I'll try the
+DX*Region interaction later.
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+data = data[data$Region=='ACC',]
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+rawCountTable = t(data[, grex_vars])
+geneid <- rownames(rawCountTable)
+# remove that weird .num after ENSG
+id_num = sapply(geneid,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+rawCountTable = rawCountTable[!dups, ]
+rownames(rawCountTable) = id_num
+colnames(rawCountTable) <- data$submitted_name
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(rawCountTable) %in% G_list$ensembl_gene_id
+rawCountTable = rawCountTable[imnamed, ]
+samples = data.frame(batch=data$run_date,
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+library(edgeR)
+x <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+keep.exprs <- filterByExpr(x, group=data$Diagnosis)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- data$Diagnosis
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(3,4))
+```
+
+![](images/2020-05-18-07-47-59.png)
+
+Arghh... I have to remove 57 otherwise it screws up everything...
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC',]
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+rawCountTable = t(data[, grex_vars])
+geneid <- rownames(rawCountTable)
+# remove that weird .num after ENSG
+id_num = sapply(geneid,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+rawCountTable = rawCountTable[!dups, ]
+rownames(rawCountTable) = id_num
+colnames(rawCountTable) <- data$submitted_name
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(rawCountTable) %in% G_list$ensembl_gene_id
+rawCountTable = rawCountTable[imnamed, ]
+samples = data.frame(batch=data$run_date,
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+library(edgeR)
+x <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+keep.exprs <- filterByExpr(x, group=data$Diagnosis)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- data$Diagnosis
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(3,4))
+```
+
+![](images/2020-05-18-07-49-59.png)
+
+Now these look a bit better, but still not as good as the separation I saw in the
+first 2 PCs using Combat. 
+
+```r
+mm <- model.matrix(~0 + Diagnosis, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                        levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+Nope, nothing there. And of course that contrast formulation gives the same
+results as the other one... it's just math. So, it seems like Combat is making a
+difference here. How about RIN?
+
+```r
+mm <- model.matrix(~Diagnosis + RINe, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+tmp <- contrasts.fit(fit, coef=2)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+No, actually a bit worse. OK, what if I use COMBAT with this pipeline?
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC', ]
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+batch = as.numeric(data$run_date)
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+rawCountTable <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+geneid <- rownames(rawCountTable)
+# remove that weird .num after ENSG
+id_num = sapply(geneid,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+rawCountTable = rawCountTable[!dups, ]
+rownames(rawCountTable) = id_num
+colnames(rawCountTable) <- data$submitted_name
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(rawCountTable) %in% G_list$ensembl_gene_id
+rawCountTable = rawCountTable[imnamed, ]
+samples = data.frame(batch=data$run_date,
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+library(edgeR)
+x <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+
+library(RColorBrewer)
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+keep.exprs <- filterByExpr(x, group=data$Diagnosis)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- data$Diagnosis
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group)
+plotMDS(lcpm, labels=data$Diagnosis, col=col.group, dim=c(3,4))
+```
+
+![](images/2020-05-18-14-37-38.png)
+
+Now these look a bit better, but still not as good as the separation in the
+first one...
+
+```r
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data)
+v <- voom(x, mm, plot = T)
+fit <- lmFit(v, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                        levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+length(which(top.table$adj.P.Val < 0.05))
+```
+
+It does give me lots of results though (31).
+
+This paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4934518/ has a very
+similar analysis pipeline, but it gives many examples of analysis to do later.
+Let's then focus on the results we have now, and then run those analysis.
+
+What happens if we run the test suggested in that paper, though? One of the
+things they do is use a different normalization method than voom.
+
+```r
+y <- estimateDisp(x, mm, robust=TRUE)
+qlfit <- glmQLFit(y, mm, robust=TRUE)
+res <- glmQLFTest(qlfit, contrast=contr)
+top.table2 <- topTags(res, sort.by = "P", n = Inf)
+head(top.table2, 20)
+```
+
+Not as many results as when using voom... what if I use the log-fold test?
+
+```r
+tr <- glmTreat(qlfit, contrast=contr, lfc=log2(1.5))
+topTags(tr)
+```
+
+My two X chromosome results are there... let's maybe make a cluster map of our
+results, just for viualization purposes, before I run the rest of the
+confirmatory analysis in the TODO list:
+
+```r
+logCPM <- cpm(x, prior.count=2, log=TRUE)
+rownames(logCPM) <- x$genes$Symbol
+colnames(logCPM) <- paste(x$samples$group, 1:2, sep="-")
+o <- order(top.table$P.Value)
+logCPM <- logCPM[o[1:31],]
+logCPM <- t(scale(t(logCPM)))
+library(gplots)
+col.pan <- colorpanel(100, "blue", "white", "red")
+heatmap.2(logCPM, col=col.pan, Rowv=TRUE, scale="none", trace="none",
+          dendrogram="both", cexRow=1, cexCol=1.4, density.info="none")
+        #   margin=c(10,9), lhei=c(2,10), lwid=c(2,6))
+```
+
+![](images/2020-05-18-15-07-58.png)
+
+or something like that.
+
 
 # TODO
-* how do these results look like in the entire population?
-* look at gene functions
-* try other pipelines from note 108
+* repeat pipeline above within region, checking for outliers and if it's needed
+  to use combat and stratify per population
+* pick the best genes and see if they come out in lme
+* check the effects in batching after WNH selection
+* run gene set analysis as suggested in the paper
+* how do the ACC WNH results in the first pipeline look like in the entire population?
