@@ -309,6 +309,204 @@ and ALL in beta;
 good sized list for IPA.  Tell him to run DisGeNet also; and to look at the
 brain atlases (he could start digging around in these).
 
+## WNH autosomes
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC', ]
+# use WNH only
+imWNH = data$C1 > 0 & data$C2 < -.075
+data = data[which(imWNH),]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+colnames(count_matrix) <- data$submitted_name
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+batch = as.numeric(factor(data$run_date))
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+rawCountTable <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+samples = data.frame(batch=as.numeric(factor(data$run_date)),
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+
+library(edgeR)
+x0 <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+keep.exprs <- filterByExpr(x0, group=data$Diagnosis)
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data)
+v <- voom(x, mm, plot = F)
+fit <- lmFit(v, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                        levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+![](images/2020-05-19-13-34-27.png)
+
+We have about 10 with q < .1. I'll send the table to Sam for him to run a few
+thresholds. Does Sex affect the results this time?
+
+![](images/2020-05-19-13-40-19.png)
+
+Yes, a little bit. But not as much as before though. Now, let's see how this
+looks if we don't restrict it to WNH only:
+
+## All autosomes
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+data = data[data$Region=='ACC', ]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+colnames(count_matrix) <- data$submitted_name
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+batch = as.numeric(factor(data$run_date))
+group = as.numeric(data$Diagnosis)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+# now I'll further adjust it for brain bank
+batch = as.numeric(data$bainbank)
+rawCountTable <- ComBat_seq(adjusted_counts, batch=batch, group=group)
+
+samples = data.frame(batch=as.numeric(factor(data$run_date)),
+                     bank=data$bainbank, RIN=data$RINe)
+rownames(samples) = data$submitted_name
+
+library(edgeR)
+x0 <- DGEList(rawCountTable, samples=samples, genes=G_list, group=data$Diagnosis)
+keep.exprs <- filterByExpr(x0, group=data$Diagnosis)
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+lcpm <- cpm(x, log=TRUE)
+
+mm <- model.matrix(~0 + Diagnosis + RINe, data=data)
+v <- voom(x, mm, plot = F)
+fit <- lmFit(v, mm)
+contr <- makeContrasts(DiagnosisCase - DiagnosisControl,
+                        levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+```
+
+![](images/2020-05-19-13-45-34.png)
+
+Well, there's one big hit and then that's it... I wonder if I wouldn't do better
+using the data for both brain regions? In particular, this looks promising:
+
+https://bioconductor.org/packages/release/bioc/vignettes/variancePartition/inst/doc/dream.html
+
+Let's first make a few plots. I'll keep playing with autosomes for now:
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ] # removing ACC outlier
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+colnames(count_matrix) <- data$submitted_name
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+x <- DGEList(count_matrix, genes=G_list, group=data$Diagnosis)
+lcpm <- cpm(x, log=TRUE)
+
+library(ggplot2)
+mds = plotMDS(lcpm, plot=F)
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       batch=factor(data$run_date),
+                       group=factor(DX2))
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
+```
+
+![](images/2020-05-19-14-20-43.png)
+
+There is definitely a batch effect here, where samples of the same batch (same
+color) group together. And of course, ACC and Caudate samples are extremely
+different. How does it relate to brain bank?
+
+```r
+```
+
+
 
 # TODO
 * what if I try the other regressions from the paper? (without using voom)
