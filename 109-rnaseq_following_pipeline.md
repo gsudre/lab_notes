@@ -1036,5 +1036,6 @@ or something like that.
   to use combat and stratify per population
 * pick the best genes and see if they come out in lme
 * check the effects in batching after WNH selection
+* try other possible covariates that would work better?
 * run gene set analysis as suggested in the paper
 * how do the ACC WNH results in the first pipeline look like in the entire population?
