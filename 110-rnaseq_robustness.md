@@ -566,9 +566,27 @@ ggplot(plot_data, aes(x=x, y=y, shape=group, color=bank)) + geom_point()
 No, doesn't look like it. OK, so now I can think about cleaning the data again,
 and maybe running a few more sofisticated models, like the link above.
 
+# 2020-05-20 06:38:17
+
+```r
+samples = data.frame(batch=as.numeric(factor(data$run_date)),
+                     bank=data$bainbank, RIN=data$RINe, region=data$Region)
+rownames(samples) = data$submitted_name
+
+library(edgeR)
+x0 <- DGEList(adjusted_counts, samples=samples, genes=G_list, group=data$Diagnosis)
+keep.exprs <- filterByExpr(x0, group=data$Diagnosis)
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+
+library(variancePartition)
+```
+
 
 # TODO
 * run mixed effect model using dream
+* check if there is a difference if I use COMBAT with 2 different factors? how about doing filterBy using the 4 groups?
+  instead of a single factor with 4 levels
 * try making RIN plot as well, like that https://www.hindawi.com/journals/bmri/2018/2906292/
 * what about using FPKM or other normalizer instead of CPM?
 * what if I try the other regressions from the paper? (without using voom)
