@@ -568,12 +568,15 @@ and maybe running a few more sofisticated models, like the link above.
 
 
 # TODO
+* run mixed effect model using dream
+* try making RIN plot as well, like that https://www.hindawi.com/journals/bmri/2018/2906292/
+* what about using FPKM or other normalizer instead of CPM?
 * what if I try the other regressions from the paper? (without using voom)
 * not remove women but remove all Y-genes? potentially all X as well?
 * what if we focused on males and ONLY on the Y chromosome?
 * maybe worth putting back caudate and ACC data and just correct in the model?
   maybe try it with everyone's data and then WNH only...
-* also maybe look at this: https://www.hindawi.com/journals/bmri/2018/2906292/
+* also maybe look at this: 
 * show that same pipeline doesn't work for Caudate
 * pick the best genes and see if they come out in lme. Are there better
   covariates to use? Check only good genes.
