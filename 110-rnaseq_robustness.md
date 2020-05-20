@@ -504,8 +504,67 @@ color) group together. And of course, ACC and Caudate samples are extremely
 different. How does it relate to brain bank?
 
 ```r
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       bank=factor(data$bainbank),
+                       group=factor(DX2))
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=bank)) + geom_point()
 ```
 
+![](images/2020-05-19-21-00-27.png)
+
+There is indeed some degree of clustering, but I'm not sure if it wouldn't just
+go away if I corrected for batch first. I do want to remove those outliers
+first:
+
+```r
+imout = which(mds$x>-1 & mds$x<1.2)
+data = data[-imout, ]
+x = x[, -imout]
+lcpm <- cpm(x, log=TRUE)
+mds = plotMDS(lcpm, plot=F)
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       batch=factor(data$run_date),
+                       group=factor(DX2))
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
+```
+
+![](images/2020-05-19-21-07-10.png)
+
+This is much better. Now, let's deal with the batches:
+
+```r
+count_matrix = count_matrix[, -imout]
+batch = factor(data$run_date)
+group = factor(DX2)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
+
+x <- DGEList(adjusted_counts, genes=G_list, group=data$Diagnosis)
+lcpm <- cpm(x, log=TRUE)
+mds = plotMDS(lcpm, plot=F)
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       batch=factor(data$run_date),
+                       group=factor(DX2))
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
+```
+
+![](images/2020-05-19-21-12-26.png)
+
+There isn't much of a batch effect anymore. Is there still a brain bank
+effect?
+
+```r
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       bank=factor(data$bainbank),
+                       group=factor(DX2))
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=bank)) + geom_point()
+```
+
+![](images/2020-05-19-21-14-22.png)
+
+No, doesn't look like it. OK, so now I can think about cleaning the data again,
+and maybe running a few more sofisticated models, like the link above.
 
 
 # TODO
