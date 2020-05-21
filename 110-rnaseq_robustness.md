@@ -540,6 +540,8 @@ batch = factor(data$run_date)
 group = factor(DX2)
 adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=group)
 
+# I created adjusted_counts.RData because BW wasn't installing sva-dev to run Combat_seq
+
 x <- DGEList(adjusted_counts, genes=G_list, group=data$Diagnosis)
 lcpm <- cpm(x, log=TRUE)
 mds = plotMDS(lcpm, plot=F)
@@ -580,24 +582,133 @@ x <- x0[keep.exprs, keep.lib.sizes=FALSE]
 x <- calcNormFactors(x, method = "TMM")
 
 library(variancePartition)
+library(BiocParallel)
+param = SnowParam(2, "SOCK", progressbar=TRUE)
+register(param)
+
+data$Individual = factor(data$hbcc_brain_id)
+form <- ~ Diagnosis*Region + (1|Individual)
+vobjDream = voomWithDreamWeights(x, form, data)
+fitmm = dream( vobjDream, form, data )
+# fitmmKR = dream( vobjDream, form, metadata, ddf="Kenward-Roger")
+top.table = topTable( fitmm, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
 ```
 
+This takes considerably more time than running regular voom, so I might need to
+run it in BW.... still taking forever even in BW. Much faster, but still slow.
+
+Maybe work with a subset of
+genes first just to see if scripts run all the way to the end, and then run the
+whole thing?
+
+Got this warning, which hopefully doesn't mean anything:
+
+```
+Warning messages:                                                                                                                                            
+1: In .fitVarPartModel(exprObj, formula, data, REML = REML, useWeights = useWeights,  :                                                                      
+  Sample names of responses (i.e. columns of exprObj) do not match                                                                                           
+sample names of metadata (i.e. rows of data).  Recommend consistent                                                                                          
+names so downstream results are labeled consistently.                                                                                                        
+2: In regularize.values(x, y, ties, missing(ties)) :                                                                                                         
+  collapsing to unique 'x' values                                                                                                                            
+```
+
+Maybe try fewer genes to make sure this is not affecting anything. Also, I'll
+use the two biological variables option in Combat-seq, because it makes more
+sense:
+
+(Fixed the error above as well by setting rownames of data)
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+x <- DGEList(count_matrix, genes=G_list, group=data$Diagnosis)
+lcpm <- cpm(x, log=TRUE)
+
+mds = plotMDS(lcpm, plot=F)
+# removing the brain region outliers in the MDS plot
+imout = which(mds$x>-1 & mds$x<1.2)
+data = data[-imout, ]
+x = x[, -imout]
+count_matrix = count_matrix[, -imout]
+batch = factor(data$run_date)
+covar_mat = cbind(data$Diagnosis, data$Region)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=NULL,
+                              covar_mod=covar_mat)
+
+# I created adjusted_counts_covar.RData because BW wasn't installing sva-dev to run Combat_seq
+library(edgeR)
+x0 <- DGEList(adjusted_counts, genes=G_list)
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+keep.exprs <- filterByExpr(x0, group=factor(DX2))
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(2, "SOCK", progressbar=TRUE)
+register(param)
+
+data$Individual = factor(data$hbcc_brain_id)
+form <- ~ Diagnosis*Region + RINe + (1|Individual)
+vobjDream = voomWithDreamWeights(x, form, data)
+fitmm = dream( vobjDream, form, data )
+# fitmmKR = dream( vobjDream, form, data, ddf="Kenward-Roger")
+top.table = topTable( fitmm, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
+```
+
+Left running overnight the models... the goal is to try out both the KR method
+and the approximation, and see what we get. I'm running RINe in one machine and
+without it in the other, but we can just save the variable and load it on the
+other machine if needed.
+
+While we wait, let's take a look at our RIN values:
+
+```r
+ggplot(data, aes(x=1:nrow(data), y=RINe, shape=Region, color=Diagnosis)) + geom_point()
+```
+
+![](images/2020-05-20-20-17-00.png)
+
+There's a definite shift in RINe values between regions, but it doesn't look
+like it's affecting DX.
 
 # TODO
-* run mixed effect model using dream
-* check if there is a difference if I use COMBAT with 2 different factors? how about doing filterBy using the 4 groups?
-  instead of a single factor with 4 levels
-* try making RIN plot as well, like that https://www.hindawi.com/journals/bmri/2018/2906292/
+* should I use any contrasts?
 * what about using FPKM or other normalizer instead of CPM?
 * what if I try the other regressions from the paper? (without using voom)
 * not remove women but remove all Y-genes? potentially all X as well?
 * what if we focused on males and ONLY on the Y chromosome?
-* maybe worth putting back caudate and ACC data and just correct in the model?
-  maybe try it with everyone's data and then WNH only...
-* also maybe look at this: 
-* show that same pipeline doesn't work for Caudate
 * pick the best genes and see if they come out in lme. Are there better
   covariates to use? Check only good genes.
-* check the effects in batching after WNH selection
 * run gene set analysis as suggested in the paper
-* how do the ACC WNH results in the first pipeline look like in the entire population?
