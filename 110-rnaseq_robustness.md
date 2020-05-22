@@ -487,14 +487,6 @@ G_list = G_list[imautosome, ]
 x <- DGEList(count_matrix, genes=G_list, group=data$Diagnosis)
 lcpm <- cpm(x, log=TRUE)
 
-library(ggplot2)
-mds = plotMDS(lcpm, plot=F)
-DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
-                                                data[x, 'Region']))
-plot_data = data.frame(x=mds$x, y=mds$y,
-                       batch=factor(data$run_date),
-                       group=factor(DX2))
-ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
 ```
 
 ![](images/2020-05-19-14-20-43.png)

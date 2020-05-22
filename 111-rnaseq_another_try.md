@@ -304,8 +304,11 @@ library(edgeR)
 x0 <- DGEList(adjusted_counts, genes=G_list)
 lcpm <- cpm(x0, log=TRUE)
 
-cutoffs = c(-1.5, -.1, -.05, 0)
-min_samples = c(50, 75, 100)
+cutoffs = seq(-2, 2, len=20)
+min_samples = seq(50, nrow(data), len=10)
+fdr_limit = .1
+fm_str = '~0 + group + RINe'
+ctr_str = 'groupCase_ACC - groupControl_ACC'
 res = c()
 for (co in cutoffs) {
     for (ms in min_samples) {
@@ -314,24 +317,39 @@ for (co in cutoffs) {
         x <- x0[keep_genes, keep.lib.sizes=FALSE]
         x <- calcNormFactors(x, method = "TMM")
         print(dim(x))
-        mm <- model.matrix(~0 + group, data=data)
+        mm <- model.matrix(as.formula(fm_str), data=data)
         y <- voom(x, mm, plot = F)
         fit <- lmFit(y, mm)
-        contr <- makeContrasts(groupCase_ACC - groupControl_ACC,
+        contr <- makeContrasts(ctr_str,
                             levels = colnames(coef(fit)))
         tmp <- contrasts.fit(fit, contr)
         tmp <- eBayes(tmp)
         top.table <- topTable(tmp, sort.by = "P", n = Inf)
-        res = rbind(res, c(co, ms, sum(top.table$adj.P.Val < .2)))
+        res = rbind(res, c(co, ms, sum(top.table$adj.P.Val < fdr_limit)))
     }
 }
 res = data.frame(res)
+t_str = sprintf('%s; %s; FDR < %f', fm_str, ctr_str, fdr_limit)
 colnames(res) = c('cutoff', 'min_samples', 'good_genes')
 ggplot(res, aes(x = min_samples, y = cutoff)) + 
   geom_tile(aes(fill=good_genes)) + 
+  labs(x="Minimum samples", y="logCPM cut-off", title=t_str) + 
   scale_fill_gradient(low="grey90", high="red") + theme_bw()
 ```
 
+Here are a few results:
+
+![](images/2020-05-22-17-12-01.png)
+
+![](images/2020-05-22-17-17-17.png)
+
+![](images/2020-05-22-17-36-36.png)
+
+![](images/2020-05-22-17-37-56.png)
+
+![](images/2020-05-22-18-20-32.png)
+
+![](images/2020-05-22-18-20-50.png)
 
 # TODO
 * try other cutoffs that are more stringent
