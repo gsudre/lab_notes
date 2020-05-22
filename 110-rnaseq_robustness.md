@@ -703,9 +703,323 @@ ggplot(data, aes(x=1:nrow(data), y=RINe, shape=Region, color=Diagnosis)) + geom_
 There's a definite shift in RINe values between regions, but it doesn't look
 like it's affecting DX.
 
+# 2020-05-21 07:18:52
+
+I could also try running some of the simpler models (i.e. non-lme, or even the
+limma-mixed model), just because they run faster, and they might give me some
+idea of what variables to use for DREAM.
+
+```r
+design = model.matrix( ~ Diagnosis*Region + RINe, data)
+vobj_tmp = voom( x, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( x, design, plot=FALSE, block=data$Individual,
+            correlation=dupcor$consensus)
+dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+fitDupCor <- lmFit(vobj, design, block=data$Individual,
+                   correlation=dupcor$consensus)
+fitDupCor <- eBayes( fitDupCor )
+top.table = topTable( fitDupCor, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
+head(top.table, 20)
+```
+
+Smallest adjusted p for interacton term was .5, and for the DX term was .16. Of
+course, the Region term is extremely significant. Let me see how Sex and RINe
+influence the result. 
+
+Removing RINe didn't change things much. Using just Sex and no RIN also didn't
+change much for the interaction term, but now I do get a couple hits in the DX
+term:
+![](images/2020-05-21-07-55-10.png)
+
+Adding sex and RIN takes down those results a notch... so maybe we can add RIN
+later if necessary?
+
+It looks like we have a good model here using Diagnosis*Region + Sex, which we
+can explore later in gene set analysis. But let's see how it looks if we use WNH
+only.
+
+```r
+imWNH = which(data$C1 > 0 & data$C2 < -.075)
+data2 = data[imWNH,]
+x2 = x[, imWNH]
+
+design = model.matrix( ~ Diagnosis*Region + Sex, data2)
+vobj_tmp = voom( x2, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data2$Individual)
+vobj = voom( x2, design, plot=FALSE, block=data2$Individual,
+            correlation=dupcor$consensus)
+dupcor <- duplicateCorrelation(vobj, design, block=data2$Individual)
+fitDupCor <- lmFit(vobj, design, block=data2$Individual,
+                   correlation=dupcor$consensus)
+fitDupCor <- eBayes( fitDupCor )
+top.table = topTable( fitDupCor, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
+head(top.table, 20)
+```
+
+![](images/2020-05-21-08-04-27.png)
+
+Results seem congruent with the whole population, and using the Sex term helps
+the significance for the DX term. Adding RINe to that wipes off the results...
+and the RINe coefficient is indeed quite significant in general, so we should
+better keep it. Sex is somewhat significant after FDR, so it's a toss whether to
+include it or not.
+
+Now, given the huge effect of region, but not really anything in the interaction
+term, should we give it a go again with running each region on its own?
+
+```r
+keep_me = which(data$Region == 'ACC')
+data2 = data[keep_me,]
+x2 = x[, keep_me]
+
+design = model.matrix( ~ Diagnosis + RINe, data2)
+vobj = voom( x2, design, plot=FALSE)
+fit <- lmFit(vobj, design)
+fit <- eBayes( fit )
+top.table = topTable( fit, coef='DiagnosisControl', sort.by = "P" )
+head(top.table, 20)
+```
+
+Sex wasn't really that significant by itself, so I removed it. Still, out best
+FDR genes are at .12... not sure if worth doing it this way, or the mixed model.
+Results for Caudate were even worse.
+
+Maybe some gene-set analysis could answer this? What if we do WNH here first?
+
+```r
+keep_me = which(data$Region == 'ACC')
+data2 = data[keep_me,]
+x2 = x[, keep_me]
+imWNH = which(data2$C1 > 0 & data2$C2 < -.075)
+data2 = data2[imWNH,]
+x2 = x2[, imWNH]
+
+design = model.matrix( ~ Diagnosis + RINe, data2)
+vobj = voom( x2, design, plot=FALSE)
+fit <- lmFit(vobj, design)
+fit <- eBayes( fit )
+top.table = topTable( fit, coef='DiagnosisControl', sort.by = "P" )
+head(top.table, 20)
+```
+
+No, I'm at .42 now for adjusted p... better stick with the entire population
+then. 
+
+What if I try a random intercept for Region? I wouldn't be able to run the limma
+model anymore, because I think it can only take one random term. But worth a
+try. Would this run?
+
+```r
+library(edgeR)
+x0 <- DGEList(adjusted_counts, genes=G_list)
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+keep.exprs <- filterByExpr(x0, group=factor(DX2))
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(2, "SOCK", progressbar=TRUE)
+register(param)
+
+x = x[1:20, ]
+data$Individual = factor(data$hbcc_brain_id)
+form <- ~ Diagnosis*Region + RINe + (1|Individual) + (1|Region)
+vobjDream = voomWithDreamWeights(x, form, data)
+fitmm = dream( vobjDream, form, data )
+# fitmmKR = dream( vobjDream, form, data, ddf="Kenward-Roger")
+top.table = topTable( fitmm, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
+```
+
+This runs. The questions is whether it is the best model...
+
+# 2020-05-21 19:40:29
+
+Let's evaluate a few different models. For example, let's play with a single
+gene so we can visualize what's going on.
+
+I saved .Rdata in ~/data/rnaseq_derek just to load the results of all that
+cleaning above, keeping all subjects and both regions.
+
+```r
+ggplot(data, aes(x=1:nrow(data), y=x$counts['ENSG00000259110',], shape=Region, color=Diagnosis)) + geom_point()
+```
+
+I noticed I was getting very good results in the difference between ACC and
+Caudate because some genes had zero expression in one of them. For example:
+
+![](images/2020-05-21-19-58-47.png)
+
+I'm going to redo the dropping then:
+
+```r
+cutoff <- 1  # subjective... play with this
+drop <- which(apply(cpm(x0), 1, max) < cutoff)
+x <- x0[-drop,]
+```
+
+I didn't like that... well, let's go back to that one pipeline that's quite
+complete... except that it doesn't use voom. I can deal with that later and see
+if it makes a change. For now, I'll just use the pipeline as is in
+https://f1000research.com/articles/5-1438, as it's a very similar design to what
+we have.
+
+```r
+library(sva)
+library(edgeR)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+x <- DGEList(count_matrix, genes=G_list, group=data$Diagnosis)
+lcpm <- cpm(x, log=TRUE)
+
+mds = plotMDS(lcpm, plot=F)
+# removing the brain region outliers in the MDS plot
+imout = which(mds$x>-1 & mds$x<1.2)
+data = data[-imout, ]
+x = x[, -imout]
+count_matrix = count_matrix[, -imout]
+batch = factor(data$run_date)
+covar_mat = cbind(data$Diagnosis, data$Region)
+adjusted_counts <- ComBat_seq(count_matrix, batch=batch, group=NULL,
+                              covar_mod=covar_mat)
+
+# I created adjusted_counts_covar.RData because BW wasn't installing sva-dev to run Combat_seq
+library(edgeR)
+x0 <- DGEList(adjusted_counts, genes=G_list)
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+data$group = factor(DX2)
+keep.exprs <- filterByExpr(x0, group=data$group)
+x <- x0[keep.exprs, keep.lib.sizes=FALSE]
+x <- calcNormFactors(x, method = "TMM")
+
+design <- model.matrix(~0+group, data=data)
+colnames(design) <- levels(data$group)
+# here's where I'd replace by voom
+y <- estimateDisp(x, design, robust=TRUE)
+fit <- glmQLFit(y, design, robust=TRUE)
+ACCcaseVScontrol <- makeContrasts(Case_ACC - Control_ACC, levels=design)
+res <- glmQLFTest(fit, contrast=ACCcaseVScontrol)
+topTags(res)
+tr <- glmTreat(fit, contrast=ACCcaseVScontrol, lfc=log2(1.5))
+topTags(tr)
+```
+
+As expected, not much there. But the goal is to go all the way through to the
+gene set analysis.
+
+Is the change in expression between case and control the same for ACC as it is
+for Caudate (in other words, testing the interaction between DX and Region):
+
+```r
+con <- makeContrasts((Case_ACC - Control_ACC)-
+                     (Case_Caudate - Control_Caudate), levels=design)
+res <- glmQLFTest(fit, contrast=con)
+topTags(res)
+```
+
+Still nothing there... but let's put together some code for gene expression,
+just in case. Nothing is working though. Something about the gene id not being
+in the universe. Let me see if the results with voom are slightly better.
+
+```r
+mm <- model.matrix(~0 + group, data=data)
+v <- voom(x, mm, plot = F)
+fit <- lmFit(v, mm)
+contr <- makeContrasts(groupCase_ACC - groupControl_ACC,
+                       levels = colnames(coef(fit)))
+tmp <- contrasts.fit(fit, contr)
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+length(which(top.table$adj.P.Val < 0.05))
+```
+
+Actually, with voom it was a bit worse. But I did get some more interesting
+results when adding sex and RIN. Let me do it slowly, in the other framework.
+
+```r
+design <- model.matrix(~0+group+Sex+RINe, data=data)
+y <- estimateDisp(x, design, robust=TRUE)
+fit <- glmQLFit(y, design, robust=TRUE)
+ACCcaseVScontrol <- makeContrasts(groupCase_ACC - groupControl_ACC,
+                                  levels=design)
+res <- glmQLFTest(fit, contrast=ACCcaseVScontrol)
+topTags(res)
+```
+
+![](images/2020-05-21-21-25-20.png)
+
+I actually think it's just the sex variable. If I use it, without RIN, I get the
+result above. But with Sex and RIN I get:
+
+![](images/2020-05-21-21-26-33.png)
+
+So, if I add just Sex in the Voom code, I get:
+
+![](images/2020-05-21-21-27-20.png)
+
+But with Sex and RIN I get:
+
+![](images/2020-05-21-21-28-19.png)
+
+```r
+design <- model.matrix(~0+group+Sex, data=data)
+y <- estimateDisp(x, design, robust=TRUE)
+fit <- glmQLFit(y, design, robust=TRUE)
+ACCcaseVScontrol <- makeContrasts(groupCase_ACC - groupControl_ACC,
+                                  levels=design)
+res <- glmQLFTest(fit, contrast=ACCcaseVScontrol)
+topTags(res)
+```
+
+```r
+# I can do this in the beginning when creating x, but for now this hack works
+tmp = as.character(as.numeric(gsub(x=rownames(res), pattern='ENSG', replacement='')))
+keg <- kegga(res, species="Hs", FDR=.1)
+go <- goana(res, species="Hs", FDR=.1)
+topGO(go)
+topKEGG(keg)
+```
+
 # TODO
-* should I use any contrasts?
+* try other cutoffs that are more stringent
 * what about using FPKM or other normalizer instead of CPM?
+* how about using these results as a filter for a multivariate model?
+* what if I try a random intercept for Region?
+* what if I do the significance of the joint probabilities, like in the DREAM documentation?
+* re-run best limma results in DREAM to seek some boosting?
+* should I use any contrasts?
 * what if I try the other regressions from the paper? (without using voom)
 * not remove women but remove all Y-genes? potentially all X as well?
 * what if we focused on males and ONLY on the Y chromosome?
