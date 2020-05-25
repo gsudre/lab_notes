@@ -352,8 +352,9 @@ Here are a few results:
 ![](images/2020-05-22-18-20-50.png)
 
 # TODO
-* try other cutoffs that are more stringent
+
+* just try different nominal cut-offs in gene set analysis
 * what about using FPKM or other normalizer instead of CPM?
 * what if we focused on genes differentially expressed in ACC, compared to ACC
   (and vice-versa), within our cohort?
-* how about using these results as a filter for a multivariate model?
+* how about using these results as a filter for a multivariate model? or, even
