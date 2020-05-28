@@ -212,6 +212,7 @@ genes:
 ```r
 library(sva)
 library(edgeR)
+library(ggplot2)
 data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
 data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
 data = data[data$Region=='ACC', ]
@@ -248,7 +249,87 @@ anno = get_annotated_genes(structure_ids=c('Allen:10277', 'Allen:10278'),
 batch = factor(data$run_date)
 stages = 1:5
 fdr_limit = .1
-fm_str = '~0 + Diagnosis + Sex + RINe'
+fm_str = '~0 + Diagnosis + Sex'
+ctr_str = 'DiagnosisCase - DiagnosisControl'
+res = c()
+for (co in cutoffs) {
+    for (s in stages) {
+        print(sprintf('%f, %f', co, s))
+
+        idx = anno$age_category==s & anno$cutoff==co
+        expressed_genes = unique(anno[idx, 'anno_gene'])
+        keep_genes = which(G_list$hgnc_symbol %in% expressed_genes)
+
+        adjusted_counts <- ComBat_seq(count_matrix[keep_genes,],
+                                      batch=batch, group=data$Diagnosis)
+        x <- DGEList(adjusted_counts, genes=G_list[keep_genes,])
+        x <- calcNormFactors(x, method = "TMM")
+        print(dim(x))
+        mm <- model.matrix(as.formula(fm_str), data=data)
+        y <- voom(x, mm, plot = F)
+        fit <- lmFit(y, mm)
+        contr <- makeContrasts(ctr_str,
+                            levels = colnames(coef(fit)))
+        tmp <- contrasts.fit(fit, contr)
+        tmp <- eBayes(tmp)
+        top.table <- topTable(tmp, sort.by = "P", n = Inf)
+        res = rbind(res, c(co, s, sum(top.table$adj.P.Val < fdr_limit)))
+    }
+}
+res = data.frame(res)
+t_str = sprintf('%s; %s; FDR < %f', fm_str, ctr_str, fdr_limit)
+colnames(res) = c('cutoff', 'dev_stage', 'good_genes')
+ggplot(res, aes(x = cutoff, y = dev_stage)) + 
+  geom_tile(aes(fill=good_genes)) + 
+  labs(x="Cut-off quantile", y="Developmental stage", title=t_str) + 
+  scale_fill_gradient(low="grey90", high="red") + theme_bw()
+```
+
+![](images/2020-05-28-08-23-03.png)
+![](images/2020-05-28-08-25-47.png)
+
+And of course, for Caudate it's quite similar:
+
+```r
+library(sva)
+library(edgeR)
+library(ggplot2)
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[data$Region=='Caudate', ]
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars,
+                function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+                   G_list$chromosome_name != 'Y' &
+                   G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(ABAEnrichment)
+cutoffs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9)
+anno = get_annotated_genes(structure_ids='Allen:10333',
+                           dataset='5_stages',
+                           cutoff_quantiles=cutoffs)
+batch = factor(data$run_date)
+stages = 1:5
+fdr_limit = .1
+fm_str = '~0 + Diagnosis + Sex'
 ctr_str = 'DiagnosisCase - DiagnosisControl'
 res = c()
 for (co in cutoffs) {
