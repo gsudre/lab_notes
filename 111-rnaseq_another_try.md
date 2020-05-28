@@ -366,7 +366,8 @@ Here are a few results:
   just to remove covariates and dispersion effects? or, even just the MDS or PCs
   for a multi-variate classification. But it doesn't have to be. I could also
   just use estimateDisp and glmQLFit from edgeR. Either way, I could keep the
-  group variable in there too.
+  group variable in there too. Could even go back to PLS, which is a somewhat
+  simple analysis to swallow.
   * philip not as excited about this one. Best to try the genes sets first. Use
     PCs so there's no circularity in selecting the top genes.
 * just try different nominal cut-offs in gene set analysis
