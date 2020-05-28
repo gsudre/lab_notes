@@ -353,8 +353,25 @@ Here are a few results:
 
 # TODO
 
-* just try different nominal cut-offs in gene set analysis
-* what about using FPKM or other normalizer instead of CPM?
 * what if we focused on genes differentially expressed in ACC, compared to ACC
   (and vice-versa), within our cohort?
-* how about using these results as a filter for a multivariate model? or, even
+    * do it in our cohort and then based on lists Sam will send. Allen atlas,
+      brain-span atlas. PsychM code? Panos.... Do it through developmental
+      stages, and correcting within those genes expressed. Try different brain
+      atlases too. Multiply by effect size in the region? Like PRS? Gene
+      expression score
+    * use our lists 
+    * maybe use the list of genes we sent to Yung Chin, but that's not as interesting.
+* how about using these results as a filter for a multivariate model? using voom
+  just to remove covariates and dispersion effects? or, even just the MDS or PCs
+  for a multi-variate classification. But it doesn't have to be. I could also
+  just use estimateDisp and glmQLFit from edgeR. Either way, I could keep the
+  group variable in there too.
+  * philip not as excited about this one. Best to try the genes sets first. Use
+    PCs so there's no circularity in selecting the top genes.
+* just try different nominal cut-offs in gene set analysis
+  * good, definitely try it
+* what about using FPKM or other normalizer instead of CPM?
+* CCA for cognition and brain (separate project)
+* write protocol for neuroimmuno response for covid response, but getting our
+  feet wet with other vaccines first
