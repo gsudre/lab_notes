@@ -166,4 +166,5 @@ y <- estimateDisp(x, mm, robust=TRUE)
   https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf.
   Can use estimateDisp without a design matrix if using just a single factor. In
   this case, Diagnosis within a cell group?
+* try PCs/MDS on lcpm
 * try sPCA again?

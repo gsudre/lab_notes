@@ -578,4 +578,8 @@ for RLE.
     adding batch like (3.4.3) in and then with.
 * maybe try using the standard edgeR pipeline from the user guide again, without
   COMBAT?
-  
+* try top 500 or 100 instead of quantiles, multiply by inverse of p-value of DX.
+  Does the developmental score differ across stages? Something akin to PRS.
+* males only?
+* do our nominal results overlap with our lists? TWAS/EWAS/GWAS (sam)
+* talk to Kwangmi's resource
