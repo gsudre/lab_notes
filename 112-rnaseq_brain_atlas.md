@@ -564,13 +564,18 @@ colnames(res) = c('cutoff', 'min_samples', 'dev', 'qtile', 'good_genes')
 
 While that's running, I'll run it for TMM as well.
 
+It tooks a few hours, and nothing there... the maximum I got was 3 for TMM and 2
+for RLE.
+
 # TODO
 * implement cut-off using only our sample
-* combine developmental set analysis with data cleaning cutoffs?
 * are combat results independent of the number of genes involved? in other
   words, is it dependent on the samples only?
 * anything new here? https://pubmed.ncbi.nlm.nih.gov/27008025/
 * also check this one a bit more: https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
+  * it's very similar to the experiment in 4.4, or a slighlty simpler version of
+    3.5. Or maybe even 3.3. In any case, let's try it without COMBAT (but trying
+    adding batch like (3.4.3) in and then with.
 * maybe try using the standard edgeR pipeline from the user guide again, without
   COMBAT?
   

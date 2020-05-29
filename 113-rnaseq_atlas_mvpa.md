@@ -162,4 +162,8 @@ y <- estimateDisp(x, mm, robust=TRUE)
 ```
         
 # TODO
+* try using pseudocounts, like this?
+  https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf.
+  Can use estimateDisp without a design matrix if using just a single factor. In
+  this case, Diagnosis within a cell group?
 * try sPCA again?
