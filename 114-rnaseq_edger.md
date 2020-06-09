@@ -268,6 +268,36 @@ pca2d(pca2, group=data$run_date, shape=as.numeric(data$Region))
 
 Hum... nothing happened.
 
+```r
+adjusted_counts2 <- ComBat_seq(t(X), batch=batch, group=data$Diagnosis)
+pca3 <- prcomp(t(adjusted_counts2), scale=TRUE)
+dev.new()
+pca2d(pca3, group=data$run_date, shape=as.numeric(data$Region))
+```
+
+![](images/2020-06-09-08-12-43.png)
+
+It's still not taking care of it... colors are clearly split in PC1.
+
+Is it brain bank?
+
+```r
+dev.new()
+pca2d(pca3, group=data$bainbank, shape=as.numeric(data$Region))
+```
+
+![](images/2020-06-09-08-24-54.png)
+
+No, batch colors it better. How about using that one package for QC?
+
+https://bmcresnotes.biomedcentral.com/articles/10.1186/s13104-019-4179-2
+
+https://www.bioconductor.org/packages/release/bioc/html/BatchQC.html
+
+# 2020-06-09 08:03:10
+
+What if we only keep the group variable?
+
 
 ## 4.4
 
