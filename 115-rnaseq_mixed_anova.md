@@ -134,11 +134,6 @@ fitmm = dream( vobjDream, form, data )
 # fitmmKR = dream( vobjDream, form, data, ddf="Kenward-Roger")
 top.table = topTable( fitmm, coef='DiagnosisControl:RegionCaudate',
                       sort.by = "P", number=Inf )
-
-
-L = getContrast( vobjDream, form, data, c("DiagnosisControl"))
-fit = dream( vobjDream, form, data, L)
-
 ```
 
 And if not putting batch in the model, I can try:
@@ -187,4 +182,46 @@ pca2d(pca, group=data$run_date, shape=as.numeric(data$Diagnosis))
 Even using this I still get many negative counts... don't like that. Let's focus
 on getting the fixed models running then, including the batch effect in the
 stats model:
+
+# 2020-06-11 07:14:50
+
+A quick note on whether use 0 or not in the formula. It's an R notation, but if
+we use it (~ 0 +), then it has coefficients for DiagnosisCase and
+DiagnosisControl, instead of just one of them when not using it. We could then
+just do:
+
+```r
+L = getContrast( vobjDream, form, data, c("DiagnosisControl", "DiagnosisCase"))
+fit = dream( vobjDream, form, data, L)
+```
+
+Finally, I can also do the cleaning using a design matrix just for kicks:
+
+```r
+y <- DGEList(t(X), genes=G_list2, group=data$Diagnosis)
+DX <- factor(data$Diagnosis)
+Region <- factor(data$Region)
+
+design <- model.matrix(~DX*Region)
+keep <- filterByExpr(y, group=NULL, design=design)
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(2, "SOCK", progressbar=TRUE)
+register(param)
+
+data$Individual = factor(data$hbcc_brain_id)
+data$batch = factor(data$run_date)
+form <- ~ Diagnosis*Region + batch + (1|Individual)
+vobjDream = voomWithDreamWeights(y, form, data)
+fitmm = dream( vobjDream, form, data )
+# fitmmKR = dream( vobjDream, form, data, ddf="Kenward-Roger")
+top.table = topTable( fitmm, coef='DiagnosisControl:RegionCaudate',
+                      sort.by = "P", number=Inf )
+```
+
+Also, we have a small dataset, so worth checking if it makes a difference using
+the KR approximation...
 
