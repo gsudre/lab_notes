@@ -294,14 +294,549 @@ https://bmcresnotes.biomedcentral.com/articles/10.1186/s13104-019-4179-2
 
 https://www.bioconductor.org/packages/release/bioc/html/BatchQC.html
 
-# 2020-06-09 08:03:10
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
 
-What if we only keep the group variable?
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
 
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
 
-## 4.4
+detach("package:caret", unload=TRUE)
+detach("package:biomaRt", unload=TRUE)
 
-This analysis doesn't look that different from the other ones...
+library(BatchQC)
+batch = factor(data$run_date)
+condition = data$Diagnosis
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+group = factor(DX2)
+batchQC(t(X), batch=batch, condition=group,
+        report_file="batchqc_report.html", report_dir=".",
+        report_option_binary="111111111",
+        view_report=FALSE, interactive=TRUE, batchqc_output=TRUE)
+```
+
+This is not helping much, and the GUI is extremely slow. What else can we do?
+
+Let's go back to sva:
+https://bioconductor.org/packages/release/bioc/vignettes/sva/inst/doc/sva.pdf
+
+```r
+modBatch = model.matrix(~condition + batch)
+mod0Batch = model.matrix(~batch)
+pValuesBatch = f.pvalue(t(X),modBatch,mod0Batch)
+       > qValuesBatch = p.adjust(pValuesBatch,method="BH")
+```
+
+Didn't like this either...
+
+How about we go back to analyzing within Region? Then our biggest source of
+variation in the PCA should go away...
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+data = data[data$Region=='ACC', ]
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+pca <- prcomp(X, scale=TRUE)
+library(pca3d)
+pca2d(pca, group=data$run_date, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-09-14-54-51.png)
+
+The batch effect is even more obvious now in the first PC. But is it batch of
+brain bank?
+
+```r
+pca2d(pca, group=data$bainbank, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-09-14-55-59.png)
+
+Again, it looks more like batch. But only the first one that different than the
+rest...
+
+```r
+library(sva)
+batch = factor(data$run_date)
+adjusted_counts <- ComBat_seq(t(X), batch=batch, group=data$Diagnosis)
+pca2 <- prcomp(t(adjusted_counts), scale=TRUE)
+pca2d(pca2, group=batch, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-09-15-02-46.png)
+
+That's not doing much again!
+
+Maybe I should just go with more standard methods, as Combat_seq is quite
+experimental at this time...
+
+```r
+modcombat = model.matrix(~1, data=data)
+batch = factor(data$run_date)
+adjusted_counts <- ComBat(t(X), batch=batch, mod=modcombat, par.prior=T,
+                          prior.plots=T)
+```
+
+![](images/2020-06-09-15-11-21.png)
+
+Hum... worth checking whether the empirical priors might work better.
+
+```r
+pca2 <- prcomp(t(adjusted_counts), scale=TRUE)
+pca2d(pca2, group=batch, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-09-15-12-36.png)
+
+Well, at least this takes care of the batch. Now we just need to check if we
+still have any results here. We could also do it empirically, and keeping the
+variable of interest:
+
+```r
+modcombat = model.matrix(~Diagnosis, data=data)
+batch = factor(data$run_date)
+adjusted_counts <- ComBat(t(X), batch=batch, mod=modcombat, par.prior=F,
+                          prior.plots=F)
+pca3 <- prcomp(t(adjusted_counts), scale=TRUE)
+pca2d(pca3, group=batch, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-10-08-12-28.png)
+
+It's a slightly different plot, but I'm not sure if it warrants the long time it
+took (several hours). Let me run the parametric version with the grouping
+variables, and see what we get:
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+data = data[data$Region=='ACC', ]
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+
+modcombat = model.matrix(~Diagnosis, data=data)
+batch = factor(data$run_date)
+
+library(sva)
+adjusted_counts <- ComBat(t(X), batch=batch, mod=modcombat, par.prior=T,
+                          prior.plots=F)
+pca <- prcomp(t(adjusted_counts), scale=TRUE)
+library(pca3d)
+pca2d(pca, group=data$run_date, shape=as.numeric(data$Diagnosis))
+```
+
+![](images/2020-06-10-08-18-50.png)
+
+No more batch effects.
+
+Now let's run the edgeR analysis and then the lima-voom, just for kicks.
+
+```r
+library(edgeR)
+# getting some negative counts after ComBat, so I'll offset everything
+adjusted_counts2 = adjusted_counts - min(adjusted_counts)
+keep_genes = G_list$ensembl_gene_id %in% colnames(X)
+G_list2 = G_list[keep_genes, ]
+y <- DGEList(adjusted_counts2, genes=G_list2, group=data$Diagnosis)
+
+DX <- factor(data$Diagnosis)
+design <- model.matrix(~DX)
+
+keep <- filterByExpr(y)  # doing it based on group
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+y <- estimateDisp(y, design, robust=TRUE)
+plotBCV(y)
+fit <- glmQLFit(y, design)
+```
+
+![](images/2020-06-02-08-14-52.png)
+
+To detect genes that are differentially expressed between Case and Control,
+adjusting for brain region differences:
+
+```r
+qlf <- glmQLFTest(fit, coef=3)
+topTags(qlf)
+```
+
+I'm going to stop here because the plot didn't look sane. I have actually been
+reading lots on batch effect correction, and there's a group of thought that's
+very against using COMBAT and similar methods, arguing for just correcting in
+the statistical model:
+
+https://academic.oup.com/biostatistics/article/17/1/29/1744261
+https://www.biostars.org/p/266507/
+
+So, I could follow something like this:
+
+https://genomicsclass.github.io/book/pages/adjusting_with_linear_models.html
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+data = data[data$Region=='ACC', ]
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+
+batch = factor(data$run_date)
+library(edgeR)
+# getting some negative counts after ComBat, so I'll offset everything
+keep_genes = G_list$ensembl_gene_id %in% colnames(X)
+G_list2 = G_list[keep_genes, ]
+y <- DGEList(t(X), genes=G_list2, group=data$Diagnosis)
+
+DX <- factor(data$Diagnosis)
+design <- model.matrix(~DX + batch)
+
+keep <- filterByExpr(y)  # doing it based on group
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+y <- estimateDisp(y, design, robust=TRUE)
+plotBCV(y)
+```
+
+![](images/2020-06-10-13-22-02.png)
+
+This looks a bit better
+
+```r
+fit <- glmQLFit(y, design)
+qlf <- glmQLFTest(fit, coef=2)
+topTags(qlf)
+```
+
+![](images/2020-06-10-13-24-34.png)
+
+How about voom?
+
+```r
+yv <- voom(y, design, plot = F)
+fit <- lmFit(yv, design)
+tmp <- contrasts.fit(fit, coef = 2) # Directly test second coefficient
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+```
+
+A bit worse, actually.
+
+What if we do the entire dataset using batch as a covariate?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+
+batch = factor(data$run_date)
+library(edgeR)
+# getting some negative counts after ComBat, so I'll offset everything
+keep_genes = G_list$ensembl_gene_id %in% colnames(X)
+G_list2 = G_list[keep_genes, ]
+y <- DGEList(t(X), genes=G_list2, group=data$Diagnosis)
+
+DX <- factor(data$Diagnosis)
+Region <- factor(data$Region)
+mm <- model.matrix(~DX*Region + batch)
+
+keep <- filterByExpr(y)  # doing it based on group
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+data$Individual = factor(data$hbcc_brain_id)
+y_tmp <- voom(y, mm, plot = F)
+dupcor <- duplicateCorrelation(y_tmp, mm, block=data$Individual)
+y = voom(y, mm, plot=FALSE, block=data$Individual, correlation=dupcor$consensus)
+dupcor <- duplicateCorrelation(y, mm, block=data$Individual)
+fit <- lmFit(y, mm, block=data$Individual, correlation=dupcor$consensus)
+tmp <- contrasts.fit(fit, coef = 2) # Directly test second coefficient
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+```
+
+![](images/2020-06-10-13-40-14.png)
+
+Again, nothing.
+
+Or how about using sva?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+data = data[data$Region=='ACC', ]
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+
+library(sva)
+DX <- factor(data$Diagnosis)
+design <- model.matrix(~DX)
+svafit <- sva(t(X), design)
+
+svaX<-model.matrix(~DX+svafit$sv)
+
+library(edgeR)
+# getting some negative counts after ComBat, so I'll offset everything
+keep_genes = G_list$ensembl_gene_id %in% colnames(X)
+G_list2 = G_list[keep_genes, ]
+y <- DGEList(t(X), genes=G_list2, group=data$Diagnosis)
+
+keep <- filterByExpr(y)  # doing it based on group
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+y <- estimateDisp(y, svaX, robust=TRUE)
+plotBCV(y)
+```
+
+![](images/2020-06-10-13-47-32.png)
+
+This looks a bit better. sva gave me a single dimension, which is likely
+correlated with batch, but we should probably eventually verify that.
+
+```r
+fit <- glmQLFit(y, svaX)
+qlf <- glmQLFTest(fit, coef=2)
+topTags(qlf)
+```
+
+![](images/2020-06-10-13-48-53.png)
+
+One hit... not great but it's something. Maybe check the SVA dimension, and try
+it using both regions? Potentially even with Region in it?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+imautosome = which(G_list$chromosome_name != 'X' &
+G_list$chromosome_name != 'Y' &
+G_list$chromosome_name != 'MT')
+count_matrix = count_matrix[imautosome, ]
+G_list = G_list[imautosome, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+
+library(sva)
+DX <- factor(data$Diagnosis)
+Region <- factor(data$Region)
+
+design <- model.matrix(~DX*Region)
+svafit <- sva(t(X), design)
+
+svaX<-model.matrix(~DX*Region+svafit$sv)
+
+batch = factor(data$run_date)
+library(edgeR)
+# getting some negative counts after ComBat, so I'll offset everything
+keep_genes = G_list$ensembl_gene_id %in% colnames(X)
+G_list2 = G_list[keep_genes, ]
+y <- DGEList(t(X), genes=G_list2, group=data$Diagnosis)
+
+keep <- filterByExpr(y)  # doing it based on group
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+data$Individual = factor(data$hbcc_brain_id)
+y_tmp <- voom(y, svaX, plot = F)
+dupcor <- duplicateCorrelation(y_tmp, svaX, block=data$Individual)
+y = voom(y, svaX, plot=FALSE, block=data$Individual, correlation=dupcor$consensus)
+dupcor <- duplicateCorrelation(y, svaX, block=data$Individual)
+fit <- lmFit(y, svaX, block=data$Individual, correlation=dupcor$consensus)
+tmp <- contrasts.fit(fit, coef = 2) # Directly test second coefficient
+tmp <- eBayes(tmp)
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+```
+
+Not much either...
+
+Let's then just look at our best univariate result and use that in future
+moon-shot analysis.
 
 
 (possible alternatives to edgeR?)

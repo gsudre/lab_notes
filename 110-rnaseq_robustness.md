@@ -486,7 +486,7 @@ G_list = G_list[imautosome, ]
 
 x <- DGEList(count_matrix, genes=G_list, group=data$Diagnosis)
 lcpm <- cpm(x, log=TRUE)
-
+```
 
 ![](images/2020-05-19-14-20-43.png)
 
