@@ -193,6 +193,7 @@ just do:
 ```r
 L = getContrast( vobjDream, form, data, c("DiagnosisControl", "DiagnosisCase"))
 fit = dream( vobjDream, form, data, L)
+tt = topTable( fit, coef="L1")
 ```
 
 Finally, I can also do the cleaning using a design matrix just for kicks:
