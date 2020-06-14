@@ -223,7 +223,6 @@ are...
 
 ```r
 get_enrich_order2 = function( res, gene_sets ){
-#   res$qvalue = qvalue( res$P.Value )$qvalue
   if( !is.null(res$z.std) ){
     stat = res$z.std
   }else if( !is.null(res$F.std) ){
@@ -239,24 +238,75 @@ get_enrich_order2 = function( res, gene_sets ){
   index = ids2indices(gene_sets, names(stat))
   cameraPR( stat, index )
 }
+load('~/data/rnaseq_derek/enrich.RDATA')
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+load('~/data/rnaseq_derek/dream1.RDATA')
+
 resDC = topTable(fitDupCor, number=Inf) 
 enrich_dupCor_camera = get_enrich_order2( resDC, geneSetsCombined ) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
    
 resMM = topTable(fitmm, coef="L1", number=Inf)  
 enrich_dream_camera = get_enrich_order2( resMM, geneSetsCombined )
+adhd_dream_camera = get_enrich_order2( resMM, t2 )
 
 ```
+
+It looks like our dupCor results are actually a bit better:
+
+![](images/2020-06-14-08-09-25.png)
+
+I'm getting an error when running the KR approximation. It doesn't happen if I
+run a handful of genes, but when I do the entire set. 
+
+![](images/2020-06-14-07-54-10.png)
+
+I'll hold out on that os I can run the other experiments.
+
+How about using the developmental gene sets?
+
+```r
+library('ABAEnrichment')
+cutoffs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9)
+anno = get_annotated_genes(structure_ids=c('Allen:10277', 'Allen:10278',
+                                            'Allen:10333'),
+                           dataset='5_stages',
+                           cutoff_quantiles=cutoffs)
+# format lists into the format we need
+dev_lists = list()
+for (s in 1:5) {
+    for (co in cutoffs) {
+        idx = anno$age_category==s & anno$cutoff==co
+        expressed_genes = unique(anno[idx, 'anno_gene'])
+        dev_lists[[sprintf('dev%s_c%.1f', s, co)]] = expressed_genes
+    }
+}
+dev_dupCor_camera = get_enrich_order2( resDC, dev_lists )
+dev_dream_camera = get_enrich_order2( resMM, dev_lists ) 
+```
+
+We get plenty of results here. The main question is what lists to use, and what
+kind of conclusions we can get. For example, it's clear that we have singificant
+results across cutoffs and developmental stages (especially with cutoff above
+.3). But what's the intersect of those gene sets? If we take cutoff X, if X is
+above .3 it's clear that all stages will be significant. But what's the overlap
+across stages? If there isn't much (or we could potentially select a cut-off to
+minimize that), it'd seem that the effect of ADHD in up-regulating those genes
+is constant across development? (or something better worded than that)
+
+
 # TODO
 * make the plot justifying 
 ```r
 isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
 ```
-and then run it for other thresholds.
-* Try KR version
+and then run it for other thresholds. Median upper quartile pvals as a metric?
+Look at covariates first though?
+* Try KR version?
 * Try different covariates
 * Try gene set analysis for different gene sets
   * need to figure out how to filter KEGG and GO databases, and others if necessary
-  * use Philip's gene lists (t2)
+  * should we use Gabriel's gene sets somehow? (~1.6K sets)
 * check that dream is really necessary, or if we can just do cameraPR in dupCor
   and go with that... much faster! Maybe even try using the table at different
   nominal p-value cut-offs just in case.
