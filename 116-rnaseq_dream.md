@@ -37,16 +37,16 @@ count_matrix = count_matrix[!dups, ]
 
 library('biomaRt')
 mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-G_list <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
                  "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
 G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
 imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
 count_matrix = count_matrix[imnamed, ]
-imautosome = which(G_list$chromosome_name != 'X' &
-G_list$chromosome_name != 'Y' &
-G_list$chromosome_name != 'MT')
-count_matrix = count_matrix[imautosome, ]
-G_list = G_list[imautosome, ]
 
 library(caret)
 set.seed(42)
@@ -56,11 +56,18 @@ pp = preProcess(t(count_matrix), method = pp_order)
 X = predict(pp, t(count_matrix))
 geneCounts = t(X)
 
-library(edgeR)
-# getting some negative counts after ComBat, so I'll offset everything
-keep_genes = G_list$ensembl_gene_id %in% colnames(X)
-G_list2 = G_list[keep_genes, ]
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
 
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
 isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
 
 # Standard usage of limma/voom
@@ -98,6 +105,8 @@ vp = fitExtractVarPartModel( vobj, form, data)
 plotVarPart( sortCols( vp ) ) 
 ```
 
+1h and 10min on the Desktop with 16 threads...
+
 Now we compare expression with Diagnosis:
 
 ```r
@@ -126,6 +135,15 @@ L['RegionACC:DiagnosisControl'] = 1
 # Apply the contrast matrix L for the hypothesis test  
 # By default, uses the Satterthwaite approximation for the hypothesis test
 fitmm = dream( vobjMM, form, data, L)
+
+# fitmmKR = dream( vobjMM, form, data, L, ddf="Kenward-Roger")
+```
+
+That took 2.7h! I saved everything in ~/data/rnaseq_derek/dream1.RDATA.
+
+```r
+save(fitmm, fitDupCor, vobjMM, vobj, dupcor, vp, 
+     file='~/data/rnaseq_derek/dream1.RDATA')
 ```
 
 Compare -log10 p from dream and duplicateCorrelation
@@ -134,7 +152,7 @@ Compare -log10 p from dream and duplicateCorrelation
 p1 = topTable(fitDupCor, number=Inf, sort.by="none")$P.Value
 p2 = topTable(fitmm, coef='L1', number=Inf, sort.by="none")$P.Value
       
-plotCompareP( p1, p2, vp$individualIdentifier, dupcor$consensus)
+plotCompareP( p1, p2, vp$Individual, dupcor$consensus)
 ```
 
 ## Covariates
@@ -163,6 +181,14 @@ should actually check their effect in the actual gene counts:
 ## enrichment analysis
 
 ```r
+library(qvalue)
+load('~/data/rnaseq_derek/enrich.RDATA')
+# exlucde some gensets: mSigDB C4
+geneSetsCombined = geneSetsCombined[grep("^c4", names(geneSetsCombined), invert=TRUE)]
+geneSetsCombined = geneSetsCombined[grep("^CMC", names(geneSetsCombined), invert=TRUE)]
+# geneInfo = readRDS("geneInfo.RDS")
+geneInfo = readRDS('~/data/rnaseq_derek/geneInfo.RDS')
+
 get_enrich_order = function( res ){
   res$qvalue = qvalue( res$P.Value )$qvalue
   rownames(res) = gsub("\\..*$", "", rownames(res))
@@ -179,6 +205,7 @@ get_enrich_order = function( res ){
   }
   names(stat) = res$symbol
   stat = stat[!is.na(names(stat))]
+  print(head(stat))
   index = ids2indices(geneSetsCombined, names(stat))
   cameraPR( stat, index )
 }
@@ -187,18 +214,134 @@ res = topTable(fitDupCor, number=Inf)
 enrich_dupCor_camera = get_enrich_order( res ) 
    
 res = topTable(fitmm, coef="L1", number=Inf)  
-enrich_dream_camera = get_enrich_order( res )   
+enrich_dream_camera = get_enrich_order( res )
 ```
 
+The code works with Gabriel's gene sets, but let's change things a bit so it
+works better with ours. Also, need to figure out exactly what those results
+are...
+
+```r
+get_enrich_order2 = function( res, gene_sets ){
+#   res$qvalue = qvalue( res$P.Value )$qvalue
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+resDC = topTable(fitDupCor, number=Inf) 
+enrich_dupCor_camera = get_enrich_order2( resDC, geneSetsCombined ) 
+   
+resMM = topTable(fitmm, coef="L1", number=Inf)  
+enrich_dream_camera = get_enrich_order2( resMM, geneSetsCombined )
+
+```
 # TODO
 * make the plot justifying 
 ```r
 isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
 ```
 and then run it for other thresholds.
-* Try KM version
+* Try KR version
 * Try different covariates
 * Try gene set analysis for different gene sets
   * need to figure out how to filter KEGG and GO databases, and others if necessary
   * use Philip's gene lists (t2)
-  * try the ones Gabriel used just for debugging (enrich)
+* check that dream is really necessary, or if we can just do cameraPR in dupCor
+  and go with that... much faster! Maybe even try using the table at different
+  nominal p-value cut-offs just in case.
+
+
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+data = data[-c(which(rownames(data)=='57')), ]  # removing ACC outlier
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
+
+library(BiocParallel)
+param = SnowParam(8, "SOCK", progressbar=TRUE)
+register(param)
+
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+data$Individual = factor(data$hbcc_brain_id)
+data$batch = factor(data$run_date)
+design = model.matrix( ~ Region + batch , data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+             correlation=dupcor$consensus)
+library(variancePartition)
+form = ~ (1|Region) + (1|batch) + (1|Individual)
+vobjMM = voomWithDreamWeights( genes, form, data, plot=FALSE)
+form = ~ (1|Region:Diagnosis) + (1|Individual) + (1|batch) + (1|Region) + (1|Sex) + RINe + PMI + Age
+vp = fitExtractVarPartModel( vobj, form, data)
+design = model.matrix( ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age,
+                      data)
+dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+fitDupCor <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
+Lc = matrix(0, ncol=ncol(design))
+colnames(Lc) = colnames(design)
+Lc[length(Lc):(length(Lc)-1)] = 1
+fitDupCor = contrasts.fit( fitDupCor, t(Lc))
+fitDupCor <- eBayes( fitDupCor )
+form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) 
+L = getContrast( vobj, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmm = dream( vobjMM, form, data, L)
+save(fitmm, fitDupCor, vobjMM, vobj, dupcor, vp, 
+     file='~/data/rnaseq_derek/dream1.RDATA')
+```
