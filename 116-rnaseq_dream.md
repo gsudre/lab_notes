@@ -294,6 +294,22 @@ across stages? If there isn't much (or we could potentially select a cut-off to
 minimize that), it'd seem that the effect of ADHD in up-regulating those genes
 is constant across development? (or something better worded than that)
 
+Well, there is a big overlap:
+
+```r
+> length(intersect(dev_lists$dev1_c0.9, dev_lists$dev2_c0.9))
+[1] 1412
+> length(intersect(dev_lists$dev1_c0.9, dev_lists$dev3_c0.9))
+[1] 1275
+> length(intersect(dev_lists$dev1_c0.9, dev_lists$dev4_c0.9))
+[1] 1261
+> length(intersect(dev_lists$dev1_c0.9, dev_lists$dev5_c0.9))
+[1] 1325
+> length(dev_lists$dev1_c0.9)
+[1] 1940
+```
+
+
 
 # TODO
 * make the plot justifying 
@@ -311,7 +327,17 @@ Look at covariates first though?
   and go with that... much faster! Maybe even try using the table at different
   nominal p-value cut-offs just in case.
 
-
+neurodevelopmental disorders... ASD, developmental problems, dopamine, serotonin,
+glutamate
+anything in the brain?
+neurotransmitter
+neurite autogrowth
+myelination
+check with Gabriel how he got his lists
+tease out developmental lists a bit more *
+what are the genes in those nice lists from gabriel? *
+genes in gwas list? *
+table of things that didn't work out
 
 ```r
 data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
