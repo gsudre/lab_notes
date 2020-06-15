@@ -309,35 +309,114 @@ Well, there is a big overlap:
 [1] 1940
 ```
 
+Given that there's considerable overlap in .9, let's see what's the cutoff with
+smallest overlap (median over all combinations, as a percentage of the smaller
+set):
 
-
-# TODO
-* make the plot justifying 
 ```r
-isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
+cutoffs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9)
+co_overlap = c()
+for (co in cutoffs) {
+    overlaps = c()
+    for (s1 in 1:4) {
+        for (s2 in (s1+1):5) {
+            print(sprintf('%d, %d', s1, s2))
+            idx = anno$age_category==s1 & anno$cutoff==co
+            g1 = unique(anno[idx, 'anno_gene'])
+            idx = anno$age_category==s2 & anno$cutoff==co
+            g2 = unique(anno[idx, 'anno_gene'])
+            overlap = intersect(g1, g2)
+            overlaps = c(overlaps, length(overlap)/min(length(g1), length(g2)))
+        }
+    }
+    co_overlap = c(co_overlap, median(overlaps))
+}
 ```
-and then run it for other thresholds. Median upper quartile pvals as a metric?
-Look at covariates first though?
-* Try KR version?
-* Try different covariates
-* Try gene set analysis for different gene sets
-  * need to figure out how to filter KEGG and GO databases, and others if necessary
-  * should we use Gabriel's gene sets somehow? (~1.6K sets)
-* check that dream is really necessary, or if we can just do cameraPR in dupCor
-  and go with that... much faster! Maybe even try using the table at different
-  nominal p-value cut-offs just in case.
 
-neurodevelopmental disorders... ASD, developmental problems, dopamine, serotonin,
-glutamate
-anything in the brain?
-neurotransmitter
-neurite autogrowth
-myelination
-check with Gabriel how he got his lists
-tease out developmental lists a bit more *
-what are the genes in those nice lists from gabriel? *
-genes in gwas list? *
-table of things that didn't work out
+Our smallest overlap is using .9 cutoff, but it's still 0.8460325. I could just
+create unique sets in each dev stage, or even a list that's continually
+expressed across life stages... 
+
+Let's do that then. I'll create a unique list per stage, and then a constant
+list:
+
+```r
+co = .9
+idx = anno$age_category==1 & anno$cutoff==co
+genes_overlap = unique(anno[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno$age_category==s & anno$cutoff==co
+  g2 = unique(anno[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno$age_category==s & anno$cutoff==co
+  g = unique(anno[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno$age_category==s2 & anno$cutoff==co
+    g2 = unique(anno[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+}
+genes_unique[['overlap']] = unique(genes_overlap)
+```
+
+So, let's run our results in these new gene sets:
+
+```r
+load('~/data/rnaseq_derek/dream1.RDATA')
+resDC = topTable(fitDupCor, number=Inf) 
+dev_dupCor_camera = get_enrich_order2( resDC, genes_unique)
+```
+
+Here's an interesting result:
+
+![](images/2020-06-15-07-53-12.png)
+
+Each gene set only has the unique genes for that developmental stage (still
+combining ACC and Caudate). I'll split them later, and see if it survives across
+different developmental expression cutoffs. But if we take the first two rows
+above as the significant results, it'd indicate that genes unique to the first
+developmental stage, as well as the genes consistently expressed along one's
+life, as differentially up-regulated in ADHD. Maybe I'm misinterpreting it, but
+it would point towards that one theory about "fixed issues" from birth (sorry,
+forgot proper naming)?
+
+Let's see if it's worth it splitting the analysis per brain region. What's the
+overlap across regions for the different stages?
+
+```r
+library(VennDiagram)
+co = .9
+acc = c('Allen:10277', 'Allen:10278')
+striatum = 'Allen:10333'
+for (s in 1:5) {
+  main_str = sprintf('s%d_c%.1f', s, co)
+  print(main_str)
+  str_idx = anno$structure_id==striatum & anno$age_category==s & anno$cutoff==co
+  acc_idx = ((anno$structure_id==acc[1] | anno$structure_id==acc[2]) &
+              anno$age_category==s & anno$cutoff==co)
+  str_genes = unique(anno[str_idx, 'anno_gene'])
+  acc_genes = unique(anno[acc_idx, 'anno_gene'])
+  venn.plot = venn.diagram(list(striatum = str_genes, ACC = acc_genes),
+                          euler.d=TRUE, fill=c('red','green'), main=main_str,
+                          filename=sprintf('~/tmp/ov_%s.tiff', main_str))
+}
+```
+
+![](images/2020-06-15-08-27-44.png)
+
+Maybe not worth it to split them.
+## Cut-offs
+
+I'm going to generate the plots for gene expression cutoff again, but this time
+using dupCor, because using dream would take forever. I'll use number of
+nominally significant genes (p<.01) for now, just to the matrices are not too
+sparse.
 
 ```r
 data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
@@ -383,41 +462,86 @@ imautosome = which(G_list2$chromosome_name != 'X' &
                    G_list2$chromosome_name != 'MT')
 geneCounts = geneCounts[imautosome, ]
 G_list2 = G_list2[imautosome, ]
-
 library(edgeR)
+
+cutoffs = seq(-2, 2, len=20)
+min_samples = seq(50, nrow(data), len=10)
+pval_limit = .01
+fm_str = ' ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age'
+res = c()
+for (co in cutoffs) {
+    for (ms in min_samples) {
+        print(sprintf('%f, %f', co, ms))
+        isexpr = rowSums(cpm(geneCounts)>co) >= ms
+
+        # Standard usage of limma/voom
+        genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+        genes = calcNormFactors( genes)
+        data$Individual = factor(data$hbcc_brain_id)
+        data$batch = factor(data$run_date)
+
+        design = model.matrix( ~ Region + batch , data)
+        vobj_tmp = voom( genes, design, plot=FALSE)
+        # apply duplicateCorrelation 
+        dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+        # run voom considering the duplicateCorrelation results
+        # in order to compute more accurate precision weights
+        vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+                    correlation=dupcor$consensus)
+
+        design = model.matrix(as.formula(fm_str), data)
+        dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+        fitDupCor <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
+        Lc = matrix(0, ncol=ncol(design))
+        colnames(Lc) = colnames(design)
+        Lc[length(Lc):(length(Lc)-1)] = 1
+        fitDupCor = contrasts.fit( fitDupCor, t(Lc))
+        
+        # Fit Empirical Bayes for moderated t-statistics
+        fitDupCor <- eBayes( fitDupCor )
+        top.table <- topTable(fitDupCor, sort.by = "P", n = Inf)
+        pcount = sum(top.table$P.Value < pval_limit)
+        res = rbind(res, c(co, ms, pcount / nrow(genes)))
+    }
+}
+res = data.frame(res)
+t_str = sprintf('%s; pval < %f', fm_str, pval_limit)
+colnames(res) = c('cutoff', 'min_samples', 'good_genes')
+ggplot(res, aes(x = min_samples, y = cutoff)) + 
+  geom_tile(aes(fill=good_genes)) + 
+  labs(x="Minimum samples", y="logCPM cut-off", title=t_str) + 
+  scale_fill_gradient(low="grey90", high="red") + theme_bw()
+
+
+
+# TODO
+* make the plot justifying 
+```r
 isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
-
-library(BiocParallel)
-param = SnowParam(8, "SOCK", progressbar=TRUE)
-register(param)
-
-genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
-genes = calcNormFactors( genes)
-data$Individual = factor(data$hbcc_brain_id)
-data$batch = factor(data$run_date)
-design = model.matrix( ~ Region + batch , data)
-vobj_tmp = voom( genes, design, plot=FALSE)
-dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
-vobj = voom( genes, design, plot=FALSE, block=data$Individual,
-             correlation=dupcor$consensus)
-library(variancePartition)
-form = ~ (1|Region) + (1|batch) + (1|Individual)
-vobjMM = voomWithDreamWeights( genes, form, data, plot=FALSE)
-form = ~ (1|Region:Diagnosis) + (1|Individual) + (1|batch) + (1|Region) + (1|Sex) + RINe + PMI + Age
-vp = fitExtractVarPartModel( vobj, form, data)
-design = model.matrix( ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age,
-                      data)
-dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
-fitDupCor <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
-Lc = matrix(0, ncol=ncol(design))
-colnames(Lc) = colnames(design)
-Lc[length(Lc):(length(Lc)-1)] = 1
-fitDupCor = contrasts.fit( fitDupCor, t(Lc))
-fitDupCor <- eBayes( fitDupCor )
-form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) 
-L = getContrast( vobj, form, data, "RegionCaudate:DiagnosisControl")
-L['RegionACC:DiagnosisControl'] = 1
-fitmm = dream( vobjMM, form, data, L)
-save(fitmm, fitDupCor, vobjMM, vobj, dupcor, vp, 
-     file='~/data/rnaseq_derek/dream1.RDATA')
 ```
+and then run it for other thresholds. Median upper quartile pvals as a metric?
+Look at covariates first though?
+* Try KR version?
+* Try different covariates
+* Try gene set analysis for different gene sets
+  * need to figure out how to filter KEGG and GO databases, and others if necessary
+  * should we use Gabriel's gene sets somehow? (~1.6K sets)
+* check that dream is really necessary, or if we can just do cameraPR in dupCor
+  and go with that... much faster! Maybe even try using the table at different
+  nominal p-value cut-offs just in case.
+* how about gene set developmental analysis within region? or maybe look only at
+  the unique genes across stages?
+
+
+* Potential terms to look for gene sets:
+   - neurodevelopmental disorders... ASD, developmental problems
+   - neurotransmitters: dopamine, serotonin, glutamate
+   - anything in the brain?
+   - neurite outgrowth
+   - myelination
+
+ * tease out developmental lists a bit more *
+ * what are the genes in those nice lists from gabriel? *
+ * genes in gwas list? *
+ * make table of things that didn't work out
+ * Are Camera results influenced by gene set size?
