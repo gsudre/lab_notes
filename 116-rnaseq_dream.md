@@ -605,17 +605,17 @@ ggplot(res, aes(x = min_samples, y = cutoff)) +
   geom_tile(aes(fill=good_genes)) + 
   labs(x="Minimum samples", y="lCPM cut-off", title=t_str) + 
   scale_fill_gradient(low="grey90", high="red") + theme_bw()
+save(res, file='~/data/rnaseq_derek/heatmap_data.rdata')
 ```
+
+![](images/2020-06-16-07-05-48.png)
+
+This looks much better. And there are several sensible cutoffs, including the
+one we've used. But there's also the chance that this metric of p < .01 has not
+much to do with our actula gene set analysis. So, let's leave it as is. 
 
 
 # TODO
-* make the plot justifying 
-```r
-isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
-```
-and then run it for other thresholds. Median upper quartile pvals as a metric?
-Look at covariates first though?
-* Try KR version?
 * Try different covariates
 * Try gene set analysis for different gene sets
   * need to figure out how to filter KEGG and GO databases, and others if necessary
@@ -623,6 +623,8 @@ Look at covariates first though?
 * check that dream is really necessary, or if we can just do cameraPR in dupCor
   and go with that... much faster! Maybe even try using the table at different
   nominal p-value cut-offs just in case.
+* use population-based regressors? or maybe just run WNH
+* use more curated gene sets?
 
 * Potential terms to look for gene sets:
    - neurodevelopmental disorders... ASD, developmental problems
@@ -631,9 +633,6 @@ Look at covariates first though?
    - neurite outgrowth
    - myelination
 
- * tease out developmental lists a bit more *
- * what are the genes in those nice lists from gabriel? *
- * genes in gwas list? *
  * make table of things that didn't work out
 
 I found some interesting universal gene sets here:
@@ -650,9 +649,6 @@ gene ids here. That's the same thing we used to get the HUGO ids, and when we do
 our developmental gene sets we use hugo IDS, so that's fine. But gageData has
 everything in terms of EntrezIDs, so we'll need to convert that. Preferably, to
 hgnc. 
-
-
-
 
 ```r
 library(gageData)
@@ -672,21 +668,22 @@ go_sets = lapply(1:length(go.sets.hs),
                                       'SYMBOL', 'ENTREZID'))
 names(go_sets) = names(go.sets.hs)
 data(carta.hs)
+# remove some empty lists
+for (p in names(carta.hs)) {
+  if (all(is.na(carta.hs[[p]]))) {
+     carta.hs[[p]] = NULL
+  }
+}
 carta_sets = lapply(1:length(carta.hs),
-                   function(x) mapIds(org.Hs.eg.db, carta.hs[[x]],
-                                      'SYMBOL', 'ENTREZID'))
+                   function(x) { print(names(carta.hs)[x]);
+                                        mapIds(org.Hs.eg.db, carta.hs[[x]],
+                                      'SYMBOL', 'ENTREZID')})
 names(carta_sets) = names(carta.hs)
-
-
-
-kegg_dupCor_camera = get_enrich_order2( resDC, kegg_sets)
-
-
-
-
 ```
 
-With a little effort I can parse all the ds:* results from the kegg output
+Some of the carta sets are tiny, so maybe we can just stay with kegg and go?
+
+Also, With a little effort I can parse all the ds:* results from the kegg output
 below, and I imagine the pathways would be included in the kegg_sets from above?
 Not really... 
 
@@ -695,18 +692,95 @@ Not really...
 character(0)
 ```
 
-Same thing for others. Maybe they'll be in GO or carta datasets though. Or,
+Same thing for others. Maybe they'll be in GO datasets though. Or,
 worst case scenario I can dive into the path: ontology entries and grab some
 genes from there. There's no gene entry like the diseases, but I can probably
 find something to sniff around.
 
+```r
+library(gageData)
+load('~/data/rnaseq_derek/dream1.RDATA')
+resDC = topTable(fitDupCor, number=Inf) 
+load('~/data/rnaseq_derek/gene_sets_hugo.RDATA')
+kegg_dupCor_camera = get_enrich_order2( resDC, kegg_sets)
+go_dupCor_camera = get_enrich_order2( resDC, go_sets)
+data(go.subs.hs)
+goMF_dupCor_camera = get_enrich_order2( resDC, go_sets[go.subs.hs$MF])
+goCC_dupCor_camera = get_enrich_order2( resDC, go_sets[go.subs.hs$CC])
+goBP_dupCor_camera = get_enrich_order2( resDC, go_sets[go.subs.hs$BP])
+rownames(kegg_dupCor_camera[kegg_dupCor_camera$FDR < .1,])
+rownames(go_dupCor_camera[go_dupCor_camera$FDR < .1,])
+rownames(goMF_dupCor_camera[goMF_dupCor_camera$FDR < .1,])
+rownames(goCC_dupCor_camera[goCC_dupCor_camera$FDR < .1,])
+rownames(goBP_dupCor_camera[goBP_dupCor_camera$FDR < .1,])
+```
+
+```
+> rownames(kegg_dupCor_camera[kegg_dupCor_camera$FDR < .1,])
+[1] "hsa05150 Staphylococcus aureus infection"                           
+[2] "hsa03060 Protein export"                                            
+[3] "hsa00510 N-Glycan biosynthesis"                                     
+[4] "hsa04610 Complement and coagulation cascades"                       
+[5] "hsa04380 Osteoclast differentiation"                                
+[6] "hsa00190 Oxidative phosphorylation"                                 
+[7] "hsa04120 Ubiquitin mediated proteolysis"                            
+[8] "hsa00601 Glycosphingolipid biosynthesis - lacto and neolacto series"
+> rownames(go_dupCor_camera[go_dupCor_camera$FDR < .1,])
+[1] "GO:0019864 IgG binding"            "GO:0019865 immunoglobulin binding"
+> rownames(goMF_dupCor_camera[goMF_dupCor_camera$FDR < .1,])
+[1] "GO:0019864 IgG binding"            "GO:0019865 immunoglobulin binding"
+> rownames(goCC_dupCor_camera[goCC_dupCor_camera$FDR < .1,])
+[1] "GO:0060205 cytoplasmic membrane-bounded vesicle lumen" 
+[2] "GO:0031227 intrinsic to endoplasmic reticulum membrane"
+[3] "GO:0005814 centriole"                                  
+[4] "GO:0031983 vesicle lumen"                              
+[5] "GO:0030176 integral to endoplasmic reticulum membrane" 
+> rownames(goBP_dupCor_camera[goBP_dupCor_camera$FDR < .1,])
+character(0)
+```
+
+It looks like the results with Gabriel's sets were nicer, but it'd be nice if he
+got back to me to let me know how he got those sets:
+
+```r
+load('~/data/rnaseq_derek/enrich.RDATA')
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+load('~/data/rnaseq_derek/dream1.RDATA')
+
+resDC = topTable(fitDupCor, number=Inf) 
+enrich_dupCor_camera = get_enrich_order2( resDC, geneSetsCombined ) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
+rownames(enrich_dupCor_camera[enrich_dupCor_camera$FDR < .1,])
+rownames(adhd_dupCor_camera[adhd_dupCor_camera$FDR < .1,])
+```
+
+```
+> adhd_dupCor_camera
+        NGenes Direction     PValue       FDR
+GWAS        19        Up 0.03790275 0.1895137
+CNV         45        Up 0.41451665 0.8360386
+EWAS       110      Down 0.53317726 0.8360386
+TWAS         9        Up 0.66918441 0.8360386
+TWASnom     28        Up 0.83603861 0.8360386
+
+```
+
+Based on naming, it looks like some of Gabriel's sets came from here:
+
+https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp
+
+I could just do a more curated capture of those sets, or try to grab our own
+sets of interest as mentioned above. Also, Gabriel updated the WIKI entry for
+that data:
+
+"This stores gene sets from MSigDB v5.2, and Magma. Also included are
+differential expression signatures from the CommonMind Consortium".
+
+So, there you go.
 
 
 
-
-
-
-Some KEGG results:
+# Some KEGG results:
 
 ```
 > head(keggFind("disease", "attention"))
