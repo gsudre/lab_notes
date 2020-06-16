@@ -234,7 +234,7 @@ get_enrich_order2 = function( res, gene_sets ){
   }
   names(stat) = res$hgnc_symbol
   stat = stat[!is.na(names(stat))]
-  print(head(stat))
+  # print(head(stat))
   index = ids2indices(gene_sets, names(stat))
   cameraPR( stat, index )
 }
@@ -411,6 +411,30 @@ for (s in 1:5) {
 ![](images/2020-06-15-08-27-44.png)
 
 Maybe not worth it to split them.
+
+But is there a bias towards big gene sets? Let's run two random sets of equal
+sizes and see if there is any difference:
+
+```r
+big_better = 0
+for (p in 1:1000) {
+  idx = sample(1:nrow(resDC), 945, replace=F)
+  big_set = resDC[idx, 'hgnc_symbol']
+  left_genes = setdiff(resDC$hgnc_symbol, big_set)
+  idx = sample(1:length(left_genes), 81, replace=F)
+  little_set = left_genes[idx]
+  rnd_camera = get_enrich_order2( resDC, list(big=big_set, little=little_set))
+  if (rnd_camera['big', 'PValue'] < rnd_camera['little', 'PValue']) {
+    big_better = big_better + 1
+  }
+}
+```
+
+I ran this multiple times... got 251, 259, and 245. So, it doesn't look like having more
+genes necessarily gives you higher stats. If anything, it's systematically
+worse.
+
+
 ## Cut-offs
 
 I'm going to generate the plots for gene expression cutoff again, but this time
@@ -509,9 +533,79 @@ t_str = sprintf('%s; pval < %f', fm_str, pval_limit)
 colnames(res) = c('cutoff', 'min_samples', 'good_genes')
 ggplot(res, aes(x = min_samples, y = cutoff)) + 
   geom_tile(aes(fill=good_genes)) + 
-  labs(x="Minimum samples", y="logCPM cut-off", title=t_str) + 
+  labs(x="Minimum samples", y="CPM cut-off", title=t_str) + 
   scale_fill_gradient(low="grey90", high="red") + theme_bw()
+```
 
+![](images/2020-06-15-19-21-39.png)
+
+Not sure how informative this analysis was. Clearly below 0 cpm it's all
+constant... likely because it's not log-based? Let's make that nice plot again:
+
+```r
+mylcpm = cpm(geneCounts, log=T)
+plot(density(mylcpm[,1]), las=2, main="", xlab="lCPM")
+for (s in 2:nrow(data)) {
+  lines(density(mylcpm[, s]), las=2)
+}
+```
+
+![](images/2020-06-15-19-37-44.png)
+
+Each line is a subject. So, after the initial bump of genes with lCPM, it does
+look like our initial threshold of CPM=1 (lCPM=0) is reasonable, and subjects
+are behaving somewhat the same way. Let's go from -2.5 to 2.5 to see if things
+can get better.
+
+```r
+cutoffs = seq(-2.5, 2.5, len=20)
+min_samples = seq(11, nrow(data), len=10)
+pval_limit = .01
+fm_str = ' ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age'
+res = c()
+for (co in cutoffs) {
+    for (ms in min_samples) {
+        print(sprintf('%f, %f', co, ms))
+        isexpr = rowSums(cpm(geneCounts, log=T)>co) >= ms
+
+        # Standard usage of limma/voom
+        genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+        genes = calcNormFactors( genes)
+        data$Individual = factor(data$hbcc_brain_id)
+        data$batch = factor(data$run_date)
+
+        design = model.matrix( ~ Region + batch , data)
+        vobj_tmp = voom( genes, design, plot=FALSE)
+        # apply duplicateCorrelation 
+        dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+        # run voom considering the duplicateCorrelation results
+        # in order to compute more accurate precision weights
+        vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+                    correlation=dupcor$consensus)
+
+        design = model.matrix(as.formula(fm_str), data)
+        dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+        fitDupCor <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
+        Lc = matrix(0, ncol=ncol(design))
+        colnames(Lc) = colnames(design)
+        Lc[length(Lc):(length(Lc)-1)] = 1
+        fitDupCor = contrasts.fit( fitDupCor, t(Lc))
+        
+        # Fit Empirical Bayes for moderated t-statistics
+        fitDupCor <- eBayes( fitDupCor )
+        top.table <- topTable(fitDupCor, sort.by = "P", n = Inf)
+        pcount = sum(top.table$P.Value < pval_limit)
+        res = rbind(res, c(co, ms, pcount / nrow(genes)))
+    }
+}
+res = data.frame(res)
+t_str = sprintf('%s; pval < %f', fm_str, pval_limit)
+colnames(res) = c('cutoff', 'min_samples', 'good_genes')
+ggplot(res, aes(x = min_samples, y = cutoff)) + 
+  geom_tile(aes(fill=good_genes)) + 
+  labs(x="Minimum samples", y="lCPM cut-off", title=t_str) + 
+  scale_fill_gradient(low="grey90", high="red") + theme_bw()
+```
 
 
 # TODO
@@ -529,9 +623,6 @@ Look at covariates first though?
 * check that dream is really necessary, or if we can just do cameraPR in dupCor
   and go with that... much faster! Maybe even try using the table at different
   nominal p-value cut-offs just in case.
-* how about gene set developmental analysis within region? or maybe look only at
-  the unique genes across stages?
-
 
 * Potential terms to look for gene sets:
    - neurodevelopmental disorders... ASD, developmental problems
@@ -544,4 +635,275 @@ Look at covariates first though?
  * what are the genes in those nice lists from gabriel? *
  * genes in gwas list? *
  * make table of things that didn't work out
- * Are Camera results influenced by gene set size?
+
+I found some interesting universal gene sets here:
+
+https://bioconductor.org/packages/release/data/experiment/manuals/gageData/man/gageData.pdf
+
+Let's see what we get:
+
+**WAAAAAAIIIIIT... FIRST, LET'S MAKE SURE WE'RE USING THE RIGHT IDS. THERE ARE
+ENTREZ IDS AND ENSEMBLE IDS!**
+
+Derek's file had everything in terms of ENSG*, so we're looking into ensemble
+gene ids here. That's the same thing we used to get the HUGO ids, and when we do
+our developmental gene sets we use hugo IDS, so that's fine. But gageData has
+everything in terms of EntrezIDs, so we'll need to convert that. Preferably, to
+hgnc. 
+
+
+
+
+```r
+library(gageData)
+load('~/data/rnaseq_derek/dream1.RDATA')
+resDC = topTable(fitDupCor, number=Inf) 
+
+# first, convert from EntrezID to HGNC... save it because it takes a while!
+library(org.Hs.eg.db)
+data(kegg.sets.hs)
+kegg_sets = lapply(1:length(kegg.sets.hs),
+                   function(x) mapIds(org.Hs.eg.db, kegg.sets.hs[[x]],
+                                      'SYMBOL', 'ENTREZID'))
+names(kegg_sets) = names(kegg.sets.hs)
+data(go.sets.hs)
+go_sets = lapply(1:length(go.sets.hs),
+                   function(x) mapIds(org.Hs.eg.db, go.sets.hs[[x]],
+                                      'SYMBOL', 'ENTREZID'))
+names(go_sets) = names(go.sets.hs)
+data(carta.hs)
+carta_sets = lapply(1:length(carta.hs),
+                   function(x) mapIds(org.Hs.eg.db, carta.hs[[x]],
+                                      'SYMBOL', 'ENTREZID'))
+names(carta_sets) = names(carta.hs)
+
+
+
+kegg_dupCor_camera = get_enrich_order2( resDC, kegg_sets)
+
+
+
+
+```
+
+With a little effort I can parse all the ds:* results from the kegg output
+below, and I imagine the pathways would be included in the kegg_sets from above?
+Not really... 
+
+```
+> names(kegg.sets.hs)[which(grepl(names(kegg.sets.hs), pattern='eroto'))]
+character(0)
+```
+
+Same thing for others. Maybe they'll be in GO or carta datasets though. Or,
+worst case scenario I can dive into the path: ontology entries and grab some
+genes from there. There's no gene entry like the diseases, but I can probably
+find something to sniff around.
+
+
+
+
+
+
+
+Some KEGG results:
+
+```
+> head(keggFind("disease", "attention"))
+                                        ds:H01895 
+"Attention deficit hyperactivity disorder (ADHD)" 
+> head(keggFind("disease", "autism"))
+                                                             ds:H02111 
+"Autism; Autistic spectrum disorder; Pervasive developmental disorder" 
+                                                             ds:H02371 
+    "Intellectual developmental disorder with autism and speech delay" 
+> keggFind("disease", "developmental")
+                                                                                                                    ds:H00926 
+                                                    "Growth retardation, developmental delay, coarse facies, and early death" 
+                                                                                                                    ds:H01928 
+           "Smith-Kingsmore syndrome; Macrocephaly-intellectual disability-neurodevelopmental disorder-small thorax syndrome" 
+                                                                                                                    ds:H02069 
+                                            "SADDAN; Severe achondroplasia with developmental delay and acanthosis nigricans" 
+                                                                                                                    ds:H02111 
+                                                       "Autism; Autistic spectrum disorder; Pervasive developmental disorder" 
+                                                                                                                    ds:H02305 
+"RERE-related neurodevelopmental syndrome; Neurodevelopmental disorder with or without anomalies of the brain, eye, or heart" 
+                                                                                                                    ds:H02346 
+                               "Intellectual developmental disorder with short stature, facial anomalies, and speech defects" 
+                                                                                                                    ds:H02368 
+                                        "Developmental delay with short stature, dysmorphic facial features, and sparse hair" 
+                                                                                                                    ds:H02371 
+                                                           "Intellectual developmental disorder with autism and speech delay" 
+                                                                                                                    ds:H02375 
+                                                                                     "Cardiac valvular defect, developmental" 
+                                                                                                                    ds:H02376 
+                                   "Global developmental delay, absent or hypoplastic corpus callosum, and dysmorphic facies" 
+                                                                                                                    ds:H02397 
+                              "Neurodevelopmental disorder with movement abnormalities, abnormal gait, and autistic features" 
+> keggFind("disease", "neuro")
+                                                                                                                                                      ds:H00043 
+                                                                                                                                                "Neuroblastoma" 
+                                                                                                                                                      ds:H00045 
+                                                                                                                              "Pancreatic neuroendocrine tumor" 
+                                                                                                                                                      ds:H00149 
+                                                                                                                               "Neuronal ceroid lipofuscinosis" 
+                                                                                                                                                      ds:H00253 
+                                                                                       "Neurohypophyseal diabetes insipidus (NPDI); Central Diabetes Insipidus" 
+                                                                                                                                                      ds:H00264 
+                                                                                         "Charcot-Marie-Tooth disease; Hereditary motor and sensory neuropathy" 
+                                                                                                                                                      ds:H00265 
+                                                                                                                  "Hereditary sensory and autonomic neuropathy" 
+                                                                                                                                                      ds:H00621 
+                                                                                        "Alopecia neurologic defects and endocrinopathy syndrome; ANE syndrome" 
+                                                                                                                                                      ds:H00799 
+                                                          "CEDNIK syndrome; Cerebral dysgenesis, neuropathy, ichthyosis, and palmoplantar keratoderma syndrome" 
+                                                                                                                                                      ds:H00816 
+                                                                                                   "Agenesis of the corpus callosum with peripheral neuropathy" 
+                                                                                                                                                      ds:H00832 
+                                                                                                                           "Core neuroacanthocytosis syndromes" 
+                                                                                                                                                      ds:H00833 
+                                                                                                               "Neurodegeneration with brain iron accumulation" 
+                                                                                                                                                      ds:H00856 
+                                                                                                                         "Distal hereditary motor neuropathies" 
+                                                                                                                                                      ds:H00874 
+                                                                  "Leukoencephalopathy with dystonia and motor neuropathy; Sterol carrier protein 2 deficiency" 
+                                                                                                                                                      ds:H01115 
+                                                                                     "Polyneuropathy, hearing loss, ataxia, retinitis pigmentosa, and cataract" 
+                                                                                                                                                      ds:H01131 
+                                                                                       "Hereditary neuralgic amyotrophy; Hereditary brachial plexus neuropathy" 
+                                                                                                                                                      ds:H01212 
+                                                                                                    "Familial encephalopathy with neuroserpin inclusion bodies" 
+                                                                                                                                                      ds:H01220 
+                                                                                                     "Congenital cataracts, facial dysmorphism, and neuropathy" 
+                                                                                                                                                      ds:H01259 
+                                                                                                                                      "Giant axonal neuropathy" 
+                                                                                                                                                      ds:H01295 
+                                                                                                "Neurodegeneration due to cerebral folate transport deficiency" 
+                                                                                                                                                      ds:H01296 
+                                                                                                     "Hereditary neuropathy with liability to pressure palsies" 
+                                                                                                                                                      ds:H01363 
+                                                                                                      "NARP syndrome; Neuropathy ataxia and retinis pigmentosa" 
+                                                                                                                                                      ds:H01365 
+                                                                                                               "Leber hereditary optic neuropathy and dystonia" 
+                                                                                                                                                      ds:H01390 
+                                                                                        "Mitochondrial neurogastrointestinal encephalomyopathy; MNGIE Syndrome" 
+                                                                                                                                                      ds:H01437 
+                                                                                                         "Neurofibromatosis type 1; Von Recklinghausen disease" 
+                                                                                                                                                      ds:H01438 
+                                                                                                                                     "Neurofibromatosis type 2" 
+                                                                                                                                                      ds:H01452 
+                                                                      "Pediatric autoimmune neuropsychiatric disorders associated with streptococcal infection" 
+                                                                                                                                                      ds:H01459 
+                                                                                                                                          "Diabetic neuropathy" 
+                                                                                                                                                      ds:H01487 
+"CHIME syndrome; Coloboma, congenital heart disease, ichthyosiform dermatosis, mental retardation, and ear anomalies syndrome; Zunich neuroectodermal syndrome" 
+                                                                                                                                                      ds:H01491 
+                                                                                                                          "Neuromyelitis optica; Devic disease" 
+                                                                                                                                                      ds:H01527 
+                                                                                                    "Chronic inflammatory demyelinating polyradiculoneuropathy" 
+                                                                                                                                                      ds:H01528 
+                                                                                                                               "Neuroleptic malignant syndrome" 
+                                                                                                                                                      ds:H01578 
+                                                                                                                      "Subacute myelo-optico-neuropathy (SMON)" 
+                                                                                                                                                      ds:H01638 
+                                                                                                                                  "Neuropathic pain; Neuralgia" 
+                                                                                                                                                      ds:H01662 
+                                                                                                               "Generalized anxiety disorder; Anxiety neurosis" 
+                                                                                                                                                      ds:H01671 
+                                                                                                                                  "Neurosis; Neurotic disorder" 
+                                                                                                                                                      ds:H01719 
+                                                                                                                                             "Optic neuropathy" 
+                                                                                                                                                      ds:H01779 
+                                                                                                                                          "Neuroferritinopathy" 
+                                                                                                                                                      ds:H01835 
+                                                                                                                                  "Neuronal migration disorder" 
+                                                                                                                                                      ds:H01928 
+                                             "Smith-Kingsmore syndrome; Macrocephaly-intellectual disability-neurodevelopmental disorder-small thorax syndrome" 
+                                                                                                                                                      ds:H01937 
+              "Multinucleated neurons, anhydramnios, renal dysplasia, cerebellar hypoplasia, and hydranencephaly; Hydranencephaly with renal aplasia-dysplasia" 
+                                                                                                                                                      ds:H01987 
+                                                                "Familial dysautonomia; Riley-Day syndrome; Hereditary sensory and autonomic neuropathy type 3" 
+                                                                                                                                                      ds:H02114 
+                                                                                                            "Spastic paraplegia, optic atrophy, and neuropathy" 
+                                                                                                                                                      ds:H02189 
+                                                                                                                            "Neurofibromatosis-Noonan syndrome" 
+                                                                                                                                                      ds:H02208 
+                               "Pantothenate kinase-associated neurodegeneration; Hallervorden-Spatz disease; Neurodegeneration with brain iron accumulation 1" 
+                                                                                                                                                      ds:H02232 
+                                "CAGSSS syndrome; Cataracts, growth hormone deficiency, sensory neuropathy, sensorineural hearing loss, and skeletal dysplasia" 
+                                                                                                                                                      ds:H02275 
+                                                                             "Batten disease; Spielmeyer-Vogt disease; Juvenile neuronal ceroid lipofuscinoses" 
+                                                                                                                                                      ds:H02276 
+                                                                                                     "Kufs disease; Adult-onset neuronal ceroid lipofuscinosis" 
+                                                                                                                                                      ds:H02277 
+                                                                                          "Santavuori-Haltia disease; Infantile neuronal ceroid lipofuscinosis" 
+                                                                                                                                                      ds:H02278 
+                                                                                   "Jansky-Bielschowsky disease; Late infantile neuronal ceroid lipofuscinosis" 
+                                                                                                                                                      ds:H02299 
+                                                                                                                "Neurogenic arthrogryposis multiplex congenita" 
+                                                                                                                                                      ds:H02305 
+                                  "RERE-related neurodevelopmental syndrome; Neurodevelopmental disorder with or without anomalies of the brain, eye, or heart" 
+                                                                                                                                                      ds:H02322 
+                                                      "Amyloidosis, Finnish type; Meretoja syndrome; Amyloid cranial neuropathy with lattice corneal dystrophy" 
+                                                                                                                                                      ds:H02339 
+                                                                                                                                          "Auditory neuropathy" 
+                                                                                                                                                      ds:H02345 
+                                                                                                           "Autosomal recessive peripheral neuropathy (PNRIID)" 
+                                                                                                                                                      ds:H02356 
+                                                                                                 "PCWH syndrome; Waardenburg-Shah syndrome, neurologic variant" 
+                                                                                                                                                      ds:H02357 
+                                                                                                                        "Congenital hypomyelinating neuropathy" 
+                                                                                                                                                      ds:H02358 
+                                                                                           "Arthrogryposis multiplex congenita, neurogenic, with myelin defect" 
+                                                                                                                                                      ds:H02366 
+                                                                                             "Cerebellar ataxia, neuropathy, and vestibular areflexia syndrome" 
+                                                                                                                                                      ds:H02390 
+                                                                                                      "Autosomal recessive neuromyotonia and axonal neuropathy" 
+                                                                                                                                                      ds:H02391 
+                                                                                    "Infantile-onset multisystem neurologic, endocrine, and pancreatic disease" 
+                                                                                                                                                      ds:H02397 
+                                                                "Neurodevelopmental disorder with movement abnormalities, abnormal gait, and autistic features" 
+> keggFind("pathway", "neuro")
+                            path:map04080 
+"Neuroactive ligand-receptor interaction" 
+                            path:map04722 
+         "Neurotrophin signaling pathway" 
+                            path:map07234 
+"Neurotransmitter transporter inhibitors" 
+> keggFind("pathway", "glut")
+                                path:map00250 
+"Alanine, aspartate and glutamate metabolism" 
+                                path:map00471 
+     "D-Glutamine and D-glutamate metabolism" 
+                                path:map00480 
+                     "Glutathione metabolism" 
+                                path:map04724 
+                      "Glutamatergic synapse" 
+> keggFind("pathway", "dopa")
+                           path:map04728 
+                  "Dopaminergic synapse" 
+                           path:map07213 
+"Dopamine receptor agonists/antagonists" 
+> keggFind("pathway", "seroto")
+                            path:map04726 
+                   "Serotonergic synapse" 
+                            path:map07211 
+"Serotonin receptor agonists/antagonists" 
+> keggFind("disease", "myelin")
+                                                                                                                                                                                     ds:H00424 
+                                                                                                                                                 "Defects in the degradation of sphingomyelin" 
+                                                                                                                                                                                     ds:H00679 
+                                                                                                                          "Hypomyelinating leukodystrophy; Pelizaeus-Merzbacher disease (PMD)" 
+                                                                                                                                                                                     ds:H00869 
+"Leukoencephalopathy with vanishing white matter; Vanishing white matter disease; Childhood ataxia with diffuse central nervous system hypomyelination (CACH); Cree leukoencephalopathy (CLE)" 
+                                                                                                                                                                                     ds:H01305 
+                                                                                                                "Global cerebral hypomyelination; Early infantile epileptic encephalopathy 39" 
+                                                                                                                                                                                     ds:H01527 
+                                                                                                                                   "Chronic inflammatory demyelinating polyradiculoneuropathy" 
+                                                                                                                                                                                     ds:H02287 
+                                                                                                                                            "Deafness, dystonia, and cerebral hypomyelination" 
+                                                                                                                                                                                     ds:H02357 
+                                                                                                                                                       "Congenital hypomyelinating neuropathy" 
+                                                                                                                                                                                     ds:H02358 
+                                                                                                                          "Arthrogryposis multiplex congenita, neurogenic, with myelin defect" 
+```
