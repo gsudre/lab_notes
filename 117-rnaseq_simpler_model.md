@@ -261,3 +261,106 @@ adhd_dupCor_camera = get_enrich_order2( resDC, t2 )
 ```
 
 Results were exactly the same!
+
+Let me check if the results using DX2 are only affected because of voom:
+
+```r
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+data$group = factor(DX2)
+
+design = model.matrix( ~ Region + batch , data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+             correlation=dupcor$consensus)
+
+form =  ~ 0 + group + batch + Sex + RINe + PMI + Age
+design = model.matrix(form, data)
+dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+fit <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
+
+contr <- makeContrasts((groupCase_ACC + groupCase_Caudate) -
+                       (groupControl_ACC + groupControl_Caudate),
+                       levels = colnames(coef(fit)))
+fitDupCor = contrasts.fit( fit, contr )
+fitDupCor <- eBayes( fitDupCor )
+resDC = topTable(fitDupCor, number=Inf) 
+enrich_dupCor_camera = get_enrich_order2( resDC, geneSetsCombined ) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
+```
+
+They're not exactly the same, but very similar. Like, differences like .0348 and
+0.0379.
+
+We could also test multiple coefficients at the same time and look at the F
+stats. For example, use two separate contrasts:
+
+```r
+DX2 = sapply(1:nrow(data), function(x) sprintf('%s_%s', data[x, 'Diagnosis'],
+                                                data[x, 'Region']))
+data$group = factor(DX2)
+
+design = model.matrix( ~ Region + batch , data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+             correlation=dupcor$consensus)
+
+form =  ~ 0 + group + batch + Sex + RINe + PMI + Age
+design = model.matrix(form, data)
+dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+fit <- lmFit(vobj, design, block=data$Individual, correlation=dupcor$consensus)
+
+contrACC <- makeContrasts(groupCase_ACC - groupControl_ACC,
+                          levels = colnames(coef(fit)))
+contrCaudate <- makeContrasts(groupCase_Caudate - groupControl_Caudate,
+                              levels = colnames(coef(fit)))
+contr = cbind(contrACC, contrCaudate)
+fitDupCor = contrasts.fit( fit, contr )
+fitDupCor <- eBayes( fitDupCor )
+resDC = topTable(fitDupCor, number=Inf) 
+enrich_dupCor_camera = get_enrich_order2( resDC, geneSetsCombined ) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
+```
+
+This works and I get a F-value because I'm running two coefficients/comparisons,
+but it's the end result is not great.
+
+ADHD set result is somewhat there if I look only at the ACC comparison, but not
+as strong as using the uber contrast, or Gabriel's mode.
+
+What if I try something like example 3.5 in 
+https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
+
+```r
+# design <- model.matrix(~Individual + batch + Sex + RINe + PMI + Age, data=data)
+design <- model.matrix(~Individual + batch, data=data)
+ACC.Case <- data$Diagnosis=="Case" & data$Region=="ACC"
+Caudate.Case <- data$Diagnosis=="Case" & data$Region=="Caudate"
+design <- cbind(design, ACC.Case, Caudate.Case)
+
+y <- estimateDisp(genes, design)
+fit <- glmQLFit(y, design)
+qlf <- glmQLFTest(fit, coef="ACC.Case")
+topTags(qlf)
+```
+
+Nevermind... the design matrix is not full rank. Is it because of the people
+that don't have ACC?
+
+```r
+idx = data$Individual %in% c(1530, 1683, 2485, 3003, 3006, 3006, 3023, 3055)
+data2 = data[!idx, ]
+data2$Individual = factor(data2$Individual)
+design <- model.matrix(~Individual + batch, data=data2)
+ACC.Case <- data2$Diagnosis=="Case" & data2$Region=="ACC"
+Caudate.Case <- data2$Diagnosis=="Case" & data2$Region=="Caudate"
+design <- cbind(design, ACC.Case, Caudate.Case)
+y <- estimateDisp(genes[, !idx], design)
+```
+
+Still not singular... oh well.
+
+But it's also important to read 3.2.4 to see if other contrasts would make more
+sense to run with limma and random subjects.

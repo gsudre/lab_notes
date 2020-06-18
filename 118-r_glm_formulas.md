@@ -67,3 +67,19 @@ Caudate vs ACC difference is different in ADHD compared to normals. That's not
 what we want (at least not just that). We want to know where ADHD differs from
 NV regardless of region. Then we could partition it by region. 
 
+This page is great to understand the barebones basics of interactions:
+
+https://data.library.virginia.edu/understanding-2-way-interactions/
+
+I'm actually learning a lot just looking at the edgeR manual:
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
+
+Specially sessions 3.3.3 and the stuff around it.
+
+I'm trying to see how I can replicate the aov results, which is what we want to
+know. Like the virginia link, we don't care about the coefficient significant,
+but the term itself.
+
+
+
