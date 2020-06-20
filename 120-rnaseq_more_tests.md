@@ -398,8 +398,101 @@ reassuring. When I add in MoD to the model, I get:
 So, not really helping. Let's see what's the impact of POP_CODE without MoD
 first:
 
+# 2020-06-20 09:39:05
+
+```r
+form =  ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age + POP_CODE
+design = model.matrix(form, data)
+dupcor <- duplicateCorrelation(vobj, design, block=data$Individual)
+fit <- lmFit(vobj, design, block=data$Individual,
+             correlation=dupcor$consensus)
+
+Lc = matrix(0, ncol=ncol(design))
+colnames(Lc) = colnames(design)
+# make the 2 contrast terms positive
+Lc[length(Lc):(length(Lc)-1)] = 1
+fitDupCor = contrasts.fit( fit, t(Lc))
+fitDupCor <- eBayes( fitDupCor )
+
+resDC = topTable(fitDupCor, number=Inf) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
+```
+
+![](images/2020-06-20-09-44-14.png)
+
+That completely wipes off the GWAS results.
+
+What if I use the same design for zoom and fit?
+
+```r
+form =  ~ 0 + Region + Region:Diagnosis + batch + Sex + RINe + PMI + Age + POP_CODE
+design = model.matrix( form , data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+             correlation=dupcor$consensus)
+fit <- lmFit(vobj, design, block=data$Individual,
+             correlation=dupcor$consensus)
+Lc = matrix(0, ncol=ncol(design))
+colnames(Lc) = colnames(design)
+Lc[length(Lc):(length(Lc)-1)] = 1
+fitDupCor = contrasts.fit( fit, t(Lc))
+fitDupCor <- eBayes( fitDupCor )
+resDC = topTable(fitDupCor, number=Inf) 
+adhd_dupCor_camera = get_enrich_order2( resDC, t2 ) 
+```
+
+![](images/2020-06-20-09-50-07.png)
+
+Still nothing... this is getting annoying. The main issue is that I don't know
+if results are going away because the model is getting too complex, or because
+my initial results were really explained by population. Let's do a CCA in our
+subject-based covariates and check the variance plot. Maybe we can decide on
+some threshold of what to use based on that, instead of doing this highly
+complex model?
+
+```r
+library(variancePartition)
+form <- ~ Region + Diagnosis + Sex + RINe + PMI + Age + POP_CODE + C1 + C2 + C3 + MoD
+C = canCorPairs( form, data)
+plotCorrMatrix( C )
+```
+
+![](images/2020-06-20-09-58-54.png)
+
+So, we have the obvious result of the components highly correlated with
+POP_CODE, and also with Diagnosis, which explains why it'd be taking away from
+our initial result. RIN also seems to vary with Region. Diagnosis also seems
+somewhat related to sex and PMI. MoD also correlated with age...
+
+So, let's run our variance plot and see what we get:
+
+```r
+library(BiocParallel)
+param = SnowParam(2, "SOCK", progressbar=TRUE)
+register(param)
+
+design = model.matrix( ~ Region + batch , data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp,design,block=data$Individual)
+vobj = voom( genes, design, plot=FALSE, block=data$Individual,
+             correlation=dupcor$consensus)
+
+form = ~ (1|Region:Diagnosis) + (1|Individual) + (1|batch) + (1|Region) + (1|Sex) + RINe + PMI + Age + (1|POP_CODE) + (1|MoD)
+vp = fitExtractVarPartModel( vobj, form, data)
+plotVarPart( sortCols( vp ) ) 
+```
+
+For future reference, this is th one paper about population structure I always
+remember:
+
+https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1007841
+
 
 # TODO
-
+* try Gabriel's dream code again? Maybe fixing race, or do it inside Region? should
+  run faster now with slim data?
+* Or try Gabriel's dream on WNH only?
+* PCA analysis from Alex to try to recover the results?
 * What's the impact of 'comorbid_group' and 'substance_group'?
 
