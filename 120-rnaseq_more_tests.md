@@ -483,16 +483,438 @@ vp = fitExtractVarPartModel( vobj, form, data)
 plotVarPart( sortCols( vp ) ) 
 ```
 
-For future reference, this is th one paper about population structure I always
+![](images/2020-06-20-14-38-28.png)
+
+For future reference, this is the one paper about population structure I always
 remember:
 
 https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1007841
 
+Well, what if we run Gabriel's code within Race?
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's likely caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
+
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(32, "SOCK", progressbar=TRUE)
+register(param)
+
+form = ~ 0 + Region + Region:Diagnosis + (1|POP_CODE/Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD
+vobjMM1 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+L = getContrast( vobjMM1, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmm1 = dream( vobjMM1, form, data, L)
+```
+
+The difference of running dream with the slim data matrix is enourmous. Running
+32 cores in BW took only 3min for voom, and 5min for dream!
+
+```r
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+
+resMM1 = topTable(fitmm1, coef="L1", number=Inf) 
+adhd_dream_camera1 = get_enrich_order2( resMM1, t2 ) 
+```
+
+![](images/2020-06-20-15-35-06.png)
+
+It's getting closer, but I still need to try the developmental model.
+
+Or we can make a more similar model to Gabriel's code for the voom object:
+
+```r
+form = ~ (1|Region) + (1|POP_CODE/Individual) + (1|batch)
+vobjMM2 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+form = ~ 0 + Region + Region:Diagnosis + (1|POP_CODE/Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD
+L = getContrast( vobjMM2, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmm2 = dream( vobjMM2, form, data, L)
+resMM2 = topTable(fitmm2, coef="L1", number=Inf) 
+adhd_dream_camera2 = get_enrich_order2( resMM2, t2 ) 
+```
+
+![](images/2020-06-20-15-44-31.png)
+
+We're under the threshold... maybe a better way to test would be with the
+developmental sets. 
+
+And now that it's running somewhat faster, could we try the KR approximation
+again?
+
+```r
+# using the simpler vobjMM
+fitmmKR = dream( vobjMM2, form, data, L, ddf="Kenward-Roger")
+resMMKR = topTable(fitmmKR, coef="L1", number=Inf) 
+adhd_dreamKR_camera = get_enrich_order2( resMMKR, t2 ) 
+```
+
+Getting too many errors in the fit step:
+
+```
+> fitmmKR = dream( vobjMM, form, data, L, ddf="Kenward-Roger")
+Dividing work into 100 chunks...
+iteration: 1
+
+Total:425 s
+Error in { : task 1 failed - "$ operator is invalid for atomic vectors"
+> Warning messages:
+1: In pf(FstatU, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+2: In pf(Fstat, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+3: In pf(q = Fvalue, df1 = ndf, df2 = ddf, lower.tail = FALSE) :
+  NaNs produced
+Warning messages:
+1: In pf(FstatU, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+2: In pf(Fstat, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+3: In pf(q = Fvalue, df1 = ndf, df2 = ddf, lower.tail = FALSE) :
+  NaNs produced
+4: In pf(FstatU, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+5: In pf(Fstat, df1 = q, df2 = df2, lower.tail = FALSE) : NaNs produced
+6: In pf(q = Fvalue, df1 = ndf, df2 = ddf, lower.tail = FALSE) :
+  NaNs produced
+```
+
+## dream on WNH
+
+Let's then try the dream code on WNH only:
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's likely caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+
+imWNH = which(data$C1 > 0 & data$C2 < -.075)
+data = data[imWNH, ]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
+
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(32, "SOCK", progressbar=TRUE)
+register(param)
+
+form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD
+vobjMM1 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+L = getContrast( vobjMM1, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmm1 = dream( vobjMM1, form, data, L)
+
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+
+resMM1 = topTable(fitmm1, coef="L1", number=Inf) 
+adhd_dream_camera1 = get_enrich_order2( resMM1, t2 ) 
+```
+
+![](images/2020-06-20-15-47-51.png)
+
+Looking at WNH only, I get the TWAS result again, which is not necessarily bad.
+It's even stronger than the GWAS result, so I won't complain too much. 
+
+But would it work better with a simpler voom object model?
+
+```r
+form = ~ (1|Region) + (1|Individual) + (1|batch)
+vobjMM2 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD
+L = getContrast( vobjMM2, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmm2 = dream( vobjMM2, form, data, L)
+resMM2 = topTable(fitmm2, coef="L1", number=Inf) 
+adhd_dream_camera2 = get_enrich_order2( resMM2, t2 ) 
+```
+
+![](images/2020-06-20-15-57-41.png)
+
+Again, results extremely similar, so maybe an analysis like the developmental
+set one might help. 
+
+Especially here looking at WNH only, KR might help:
+
+```r
+# using the simpler vobjMM
+fitmmKR = dream( vobjMM2, form, data, L, ddf="Kenward-Roger")
+resMMKR = topTable(fitmmKR, coef="L1", number=Inf) 
+adhd_dreamKR_camera = get_enrich_order2( resMMKR, t2 ) 
+```
+
+Getting errors here too. From my debugging, it's related to sepcific genes, but
+kind hard to tell what is is unless we start playing with different thresholds.
+We probably can deal with more important stuff for now. Let see what the
+situation with the gene sets currently is for both WNH and all data set:
+
+```r
+library('ABAEnrichment')
+cutoffs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9)
+anno = get_annotated_genes(structure_ids=c('Allen:10277', 'Allen:10278',
+                                            'Allen:10333'),
+                           dataset='5_stages',
+                           cutoff_quantiles=cutoffs)
+co = .9
+idx = anno$age_category==1 & anno$cutoff==co
+genes_overlap = unique(anno[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno$age_category==s & anno$cutoff==co
+  g2 = unique(anno[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno$age_category==s & anno$cutoff==co
+  g = unique(anno[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno$age_category==s2 & anno$cutoff==co
+    g2 = unique(anno[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+}
+genes_unique[['overlap']] = unique(genes_overlap)
+
+# just for kicks, let's also try to focus just on ACC, instead of the entire CC
+anno2 = anno[anno$structure_id != 'Allen:10277', ]
+idx = anno2$age_category==1 & anno2$cutoff==co
+genes_overlap = unique(anno2[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno2$age_category==s & anno2$cutoff==co
+  g2 = unique(anno2[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique2 = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno2$age_category==s & anno2$cutoff==co
+  g = unique(anno2[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno2$age_category==s2 & anno2$cutoff==co
+    g2 = unique(anno2[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  genes_unique2[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+}
+genes_unique2[['overlap']] = unique(genes_overlap)
+save(anno, genes_unique, file='~/data/rnaseq_derek/dev_gene_sets.RData')
+```
+
+Actually, it turns out that the list of genes for the two ACC regions is the
+same! So, using genes_unique or genes_unique2 is the same.
+
+![](images/2020-06-20-17-21-09.png)
+
+Now it's just a matter of testing the different test results. First, the one
+with the entire population:
+
+```r
+load('~/data/rnaseq_derek/dev_gene_sets.RData')
+dev_dream_camera1 = get_enrich_order2( resMM1, genes_unique )
+dev_dream_camera2 = get_enrich_order2( resMM2, genes_unique )
+```
+
+For the whole set we get:
+
+![](images/2020-06-20-17-32-53.png)
+
+If we look at WNH, we get:
+
+![](images/2020-06-20-17-26-53.png)
+
+It's actually a more straight-foward result to explain. And it didn't vary too
+much for the voom weights, which is also nice.
+
+We'd have to find a nice way to bridge it back to the entire sample though for
+the TWAS result. Maybe in a per-gene basis?
+
+And just to be safe:
+
+![](images/2020-06-20-17-31-31.png)
+
+## Using PCs?
+
+Maybe the result will be more similar to WNH (at least the TWAS result) if I add
+PCs instead of population code?
+
+```r
+form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD + scale(C1) + scale(C2) + scale(C3)
+vobjMMPC1 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+L = getContrast( vobjMMPC1, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmmPC1 = dream( vobjMMPC1, form, data, L)
+resMMPC1 = topTable(fitmmPC1, coef="L1", number=Inf) 
+adhd_dream_cameraPC1 = get_enrich_order2( resMMPC1, t2 ) 
+
+form = ~ (1|Region) + (1|Individual) + (1|batch)
+vobjMMPC2 = voomWithDreamWeights( genes, form, data, plot=FALSE)
+form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD + scale(C1) + scale(C2) + scale(C3)
+L = getContrast( vobjMMPC2, form, data, "RegionCaudate:DiagnosisControl")
+L['RegionACC:DiagnosisControl'] = 1
+fitmmPC2 = dream( vobjMMPC2, form, data, L)
+resMMPC2 = topTable(fitmmPC2, coef="L1", number=Inf) 
+adhd_dream_cameraPC2 = get_enrich_order2( resMMPC2, t2 ) 
+
+dev_dream_cameraPC1 = get_enrich_order2( resMMPC1, genes_unique )
+dev_dream_cameraPC2 = get_enrich_order2( resMMPC2, genes_unique )
+```
+
 
 # TODO
-* try Gabriel's dream code again? Maybe fixing race, or do it inside Region? should
-  run faster now with slim data?
-* Or try Gabriel's dream on WNH only?
+* try Gabriel's dream within region and also WNH only?
 * PCA analysis from Alex to try to recover the results?
 * What's the impact of 'comorbid_group' and 'substance_group'?
 
