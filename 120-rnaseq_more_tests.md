@@ -891,6 +891,79 @@ Maybe the result will be more similar to WNH (at least the TWAS result) if I add
 PCs instead of population code?
 
 ```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's likely caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+idx = !is.na(data$C1)
+data = data[idx, ]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library('biomaRt')
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+library(caret)
+set.seed(42)
+# remove genes with zero or near zero variance so we can run PCA
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr = rowSums(cpm(geneCounts)>1) >= 0.1*ncol(geneCounts)
+
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+library(variancePartition)
+library(BiocParallel)
+param = SnowParam(32, "SOCK", progressbar=TRUE)
+register(param)
+
 form = ~ 0 + Region + Region:Diagnosis + (1|Individual) + (1|batch) + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD + scale(C1) + scale(C2) + scale(C3)
 vobjMMPC1 = voomWithDreamWeights( genes, form, data, plot=FALSE)
 L = getContrast( vobjMMPC1, form, data, "RegionCaudate:DiagnosisControl")
@@ -911,6 +984,86 @@ adhd_dream_cameraPC2 = get_enrich_order2( resMMPC2, t2 )
 dev_dream_cameraPC1 = get_enrich_order2( resMMPC1, genes_unique )
 dev_dream_cameraPC2 = get_enrich_order2( resMMPC2, genes_unique )
 ```
+
+![](images/2020-06-20-19-00-27.png)
+
+Not much help. The TWAS results are still not great. Maybe these make a bit more
+sense as we use the PCs to define WNH, and the dev1 result is still nominally
+significant. Not sure if we can interpret the GWAS result though, which is
+better using PCs than POP_CODE anyways.
+
+Then I got some sets from MSigDB and got some quite exciting results. They come
+from https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp, and I got the
+entire GO gene sets (c5), because every time I looked for one of the
+neurotransmitters, there was a GO pathway with that name. So, the set has over
+10K pathways, of course not all related to neurotransmitters:
+
+```r
+c5_all = read.gmt('~/Downloads/c5.all.v7.1.symbols.gmt')
+save(c5_all, '~/data/rnaseq_derek/c5_gene_sets.RData')
+
+###
+load('~/data/rnaseq_derek/c5_gene_sets.RData')
+c5_dream_camera2 = get_enrich_order2( resMM2, c5_all)
+c5_dream_camera1 = get_enrich_order2( resMM1, c5_all )
+```
+
+![](images/2020-06-20-19-25-11.png)
+
+![](images/2020-06-20-19-25-39.png)
+
+That's only WNH. There was nothing significant with FDR using the entire
+dataset.
+
+# Disease specific
+
+I then went just for the top hit in Google when looking for TWAS, EWAS, then GWAS for
+each disorder. I already had the ADHD ones from Philip, so it remained:
+
+ASD:
+* GWAS: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6454898/
+* TWAS: https://www.sciencedirect.com/science/article/pii/S0006322319313344
+* EWAS: https://molecularautism.biomedcentral.com/articles/10.1186/s13229-018-0224-6
+
+SCZ: 
+* GWAS: https://www.nature.com/articles/nature13595
+* TWAS: https://www.nature.com/articles/s41588-018-0092-1
+* EWAS: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5351932/
+
+BD: 
+* GWAS: https://pubmed.ncbi.nlm.nih.gov/31043756/
+* TWAS: https://www.cell.com/cell/pdf/S0092-8674(18)30658-5.pdf
+  * (actually got this from http://twas-hub.org/traits/BD/ instead of copy and paste)
+* EWAS: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5003658/
+
+I then put them all in a .csv file: brain_disorders_genes_clean.csv. Then, it's
+just a matter of importing and running them:
+
+```r
+t = read.csv('~/data/rnaseq_derek/brain_disorders_genes_clean.csv')
+disorders = list()
+for (d in c('ADHD', 'ASD', 'BD', 'SCZ')) {
+   for (s in c('GWAS', 'TWAS', 'EWAS')) {
+      gs_name = sprintf('%s_%s', d, s)
+      idx = t$disorder==d & t$study.design==s
+      disorders[[gs_name]] = unique(t[idx, 'gene'])
+   }
+}
+save(disorders, file='~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
+```
+
+And we try it on the WNH results:
+
+```r
+load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
+dis_dream_camera2 = get_enrich_order2( resMM2, disorders)
+dis_dream_camera1 = get_enrich_order2( resMM1, disorders )
+```
+
+![](images/2020-06-20-20-44-00.png)
+
+Seems quite specific too!
+
 
 
 # TODO
