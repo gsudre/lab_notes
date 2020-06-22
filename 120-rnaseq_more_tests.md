@@ -1162,3 +1162,10 @@ interesting ones.
 * PCA analysis from Alex to try to recover the results?
 * What's the impact of 'comorbid_group' and 'substance_group'?
 
+
+* within region
+* different cut-offs for allen atlas
+* different cutoffs for our data
+* different cut-offs for WNH (5 extra? 2 extra?)
+* try putting that sample in
+* do play with comorbidity and substance_group to see how things change (none, mild, severe?)
