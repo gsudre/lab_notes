@@ -1064,6 +1064,97 @@ dis_dream_camera1 = get_enrich_order2( resMM1, disorders )
 
 Seems quite specific too!
 
+# 2020-06-22 06:45:45
+
+The main question then is how these results with WNH related to the entire
+group. The developmental results still hold (nominally, if using population PCs,
+but even with FDR if using nested model with POP_CODE). The main issue is the
+TWAS result, and then the GO result. It'd be nice if there was some relationship
+there too.
+
+First, I put in the lines of how we're defining WNH:
+
+```r
+ggplot(data, aes(x=C1, y=C2, col=POP_CODE)) + geom_point() + geom_hline(yintercept=-.075, linetype="dashed", color = "black") + geom_vline(xintercept=0, linetype="dashed", color = "black")
+```
+
+![](images/2020-06-22-07-01-19.png)
+
+Then I saved the results from before so I don't have to re-run everything over
+an over again.
+
+```r
+save(dis_dream_cameraWNH1, dis_dream_cameraWNH2, dev_dream_cameraWNH1, dev_dream_cameraWNH2, adhd_dream_cameraWNH1, adhd_dream_cameraWNH2, c5_dream_cameraWNH1, c5_dream_cameraWNH2, resMMWNH1, resMMWNH2, file='~/data/rnaseq_derek/dream_WNH.RData')
+```
+
+```r
+load('~/data/rnaseq_derek/dream_WNH.RData')
+load('~/data/rnaseq_derek/dream_allPC.RData')
+load('~/data/rnaseq_derek/dream_allPOPCODE.RData')
+
+good_wnh = resMMWNH2[resMMWNH1$P.Value < .05, 'hgnc_symbol']
+good_all = resMMWNH2[resMMPC1$P.Value < .05, 'hgnc_symbol']
+length(good_wnh)
+length(good_all)
+length(intersect(good_all, good_wnh))
+good_wnh = resMMWNH2[resMMWNH2$P.Value < .05, 'hgnc_symbol']
+good_all = resMMPC2[resMMPC2$P.Value < .05, 'hgnc_symbol']
+length(good_wnh)
+length(good_all)
+length(intersect(good_all, good_wnh))
+good_wnh = resMMWNH1[resMMWNH1$P.Value < .05, 'hgnc_symbol']
+good_all = resMMPC1[resMMPC1$P.Value < .05, 'hgnc_symbol']
+length(good_wnh)
+length(good_all)
+length(intersect(good_all, good_wnh))
+good_wnh = resMMWNH1[resMMWNH1$P.Value < .05, 'hgnc_symbol']
+good_all = resMM1[resMM1$P.Value < .05, 'hgnc_symbol']
+length(good_wnh)
+length(good_all)
+length(intersect(good_all, good_wnh))
+good_wnh = resMMWNH2[resMMWNH2$P.Value < .05, 'hgnc_symbol']
+good_all = resMM2[resMM2$P.Value < .05, 'hgnc_symbol']
+length(good_wnh)
+length(good_all)
+length(intersect(good_all, good_wnh))
+```
+
+![](images/2020-06-22-08-03-08.png)
+
+If we take a crude metric of the overlap of good genes, there seems to be
+something there. It's just unclear whether this is a good way to revert back to
+the entire group result. As for a non-parametric test to decide if this is
+significant, it could be as simple as establishing how often one would get these
+many hits in the overlap of two lists of the same size. Or, if we want to be a
+bit more rigorous, we could re-run the entire models after after permuting the
+Diagnosis label. 
+
+How about the c5 and disorder results?
+
+![](images/2020-06-22-08-18-26.png)
+
+I think we could use the same permutation idea here, as I doubt we'll get
+something like 125 intersections out of a set of 786 and 514. Well, let's check:
+
+```r
+ns1 = 514
+ns2 = 786
+noverlap = 125
+nperms = 1000
+gene_names = rownames(c5_dream_cameraWNH1)
+overlaps = c()
+for (p in 1:nperms) {
+  s1 = sample(gene_names, size=ns1, replace=F)
+  s2 = sample(gene_names, size=ns2, replace=F)
+  overlaps = c(overlaps, length(intersect(s1, s2)))
+}
+sum(overlaps >= noverlap) / nperms
+```
+
+The maximum set we got was 59 even after 1000 perms. In a way, this makes more
+sense than looking at the individual genes, as our main results are all gene
+sets. Also, if we look at the actual pathways that overlap there are many
+interesting ones.
 
 
 # TODO
