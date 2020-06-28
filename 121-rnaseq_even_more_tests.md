@@ -917,10 +917,16 @@ a = data[, c('hbcc_brain_id', 'POP_CODE', 'C1', 'C2', 'C3')]
 b = a[!duplicated(a$hbcc_brain_id),]
 b = b[!is.na(b$C1),]
 k = kmeans(b[, c('C1', 'C2', 'C3')], centers=3)
-ggplot(b, aes(x=C1, y=C2, col=factor(k$cluster))) + geom_point()
+ggplot(b, aes(x=C1, y=C2, col=factor(k$cluster))) + geom_point() + geom_hline(yintercept=-.065, linetype="dashed", color = "black")
 ```
 
 ![](images/2020-06-27-20-01-41.png)
+
+If I use all 10 PCs, I get:
+
+![](images/2020-06-28-11-03-59.png)
+
+with the horizontal line at -.065.
 
 So, before I run the whole gammit of thresholds, let's try it with the two from
 edgeR:
@@ -1080,7 +1086,7 @@ min_samples = seq(11, nrow(data), len=10)
 res = list()
 for (co in cutoffs) {
     for (ms in min_samples) {
-        this_comb = sprintf('%,2f_%.2f', co, ms)
+        this_comb = sprintf('%.2f_%.2f', co, ms)
         print(this_comb)
         isexpr = rowSums(cpm(geneCounts, log=T)>co) >= ms
 
@@ -1173,14 +1179,214 @@ for (co in cutoffs) {
 }
 ```
 
+# 2020-06-28 10:04:35
 
+Let's make a few grid plots:
 
+```r
+library(edgeR)
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
 
+load('~/data/rnaseq_derek/grid_MM.RData')
+tmp = c()
+for (co in cutoffs) {
+    for (ms in min_samples) {
+      this_comb = sprintf('%.2f_%.2f', co, ms)
+      adhd_dream_camera = get_enrich_order2( res[[this_comb]], t2 )
+      tmp = rbind(tmp, c(co, ms, adhd_dream_camera['TWAS', 'PValue']))
+    }
+}
+tmp = data.frame(tmp)
+t_str = sprintf('TWAS p-values')
+colnames(tmp) = c('cutoff', 'min_samples', 'pval')
+ggplot(tmp, aes(x = min_samples, y = cutoff)) + 
+  geom_tile(aes(fill=pval)) + 
+  labs(x="Minimum samples", y="lCPM cut-off", title=t_str) + 
+  scale_fill_gradient(low="grey90", high="red", limits=c(0, .1)) + theme_bw()
 ```
-* Move around gene threshold?
-* Move around WNH threshold?
-* Check if ACC list is as sensitive to adding more WNH then all list. If yes,
-  then maybe the approach is to use both regions in determining c5 and disorder
-  lists, but split the analysis for developmental periods. I wonder if I can do
-  that using the same model as well, just playing with the contrasts.
+
+![](images/2020-06-28-10-18-16.png)
+
+Everything is pointing to our current cutoffs being the best, but the results
+were much stronger when I reeeeeaaally restricted WNH. But I do like the
+per-region analysis, and that seemed to be a bit more robust to having more WNH
+samples. Let's see if we can boost up the Caudate results there.
+
+First, the two edgeR thresholds:
+
+```r
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+library(caret)
+set.seed(42)
+library(edgeR)
+library(variancePartition)
+library(BiocParallel)
+library('biomaRt')
+load('~/data/rnaseq_derek/c5_gene_sets.RData')
+load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
+load('~/data/rnaseq_derek/data_for_alex.RData')
+
+library(BiocParallel)
+param = SnowParam(32, "SOCK", progressbar=TRUE)
+register(param)
+
+myregion = 'Caudate'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's NOT caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+
+imWNH = which(data$C1 > 0 & data$C2 < -.05)
+data = data[imWNH, ]
+
+# have 34 WNH subjects for ACC and 36 for Caudate
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genesG = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+
+design = model.matrix(~ Diagnosis + batch + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD, data=data)
+isexpr <- filterByExpr(geneCounts, design=design)
+genesD = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] )
+
+co = .9 
+idx = anno$age_category==1 & anno$cutoff==co
+genes_overlap = unique(anno[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno$age_category==s & anno$cutoff==co
+  g2 = unique(anno[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno$age_category==s & anno$cutoff==co
+  g = unique(anno[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno$age_category==s2 & anno$cutoff==co
+    g2 = unique(anno[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+}
+genes_unique[['overlap']] = unique(genes_overlap)
+```
+
+Now it's just a matter of running both sets and seeing which ones work best.
+
+```r
+genes = calcNormFactors( genesD)
+form4 = ~ Diagnosis + Sex + scale(RINe) + scale(PMI) + scale(Age) + MoD
+design = model.matrix( form4, data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp, design, block=data$batch)
+vobj = voom( genes, design, plot=FALSE, block=data$batch,
+             correlation=dupcor$consensus)
+fit <- lmFit(vobj, design, block=data$batch, correlation=dupcor$consensus)
+fitDC <- eBayes( fit )
+resDC = topTable(fitDC, coef='DiagnosisControl', number=Inf) 
+adhd_dream_cameraDC = get_enrich_order2( resDC, t2 ) 
+c5_dream_cameraDC = get_enrich_order2( resDC, c5_all)
+dis_dream_cameraDC = get_enrich_order2( resDC, disorders)
+dev_dream_cameraDC = get_enrich_order2( resDC, genes_unique )
+```
+
+Keep in mind that we're using the most generous WNH cut-offs here. 
+
+With the grouping cut-offs (17K genes), we get:
+
+![](images/2020-06-28-10-46-06.png)
+
+And with the design matrix cutoff (20K genes), we get:
+
+![](images/2020-06-28-10-48-54.png)
+
+Not that much different... 
+
+Let me stop thinking about this for now and play with comorbidities and
+substance abuse. Maybe this will spark some ideas on how to finish this
+analysis.
 
