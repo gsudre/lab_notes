@@ -305,3 +305,115 @@ for (m in ms) {
 out_fname = gsub(fname, pattern='.csv', replacement='_FDR.csv')
 write.csv(a, file=out_fname, row.names=F)
 ```
+
+# 2020-07-06 19:57:07
+
+Running some methyl regressions to be the icing on the cake in the paper.
+
+```r
+cog = read.csv('~/data/longitudinal_methylome/cog_mediation_for_gs.csv')
+a = readRDS('~/data/longitudinal_methylome/UPDATED_PROCESSED_WITH_DIFF.rds')
+idx = a$PersonID %in% cog$PersonID
+a2 = a[idx, ]
+saveRDS(a2, file='~/data/longitudinal_methylome/UPDATED320.rds')
+cg_vars = colnames(a2)[grepl(colnames(a2), pattern='^cg')]
+a3 = a2[, c('PersonID', 'ageACQ.1', cg_vars)]
+tmp = c()
+i = 1
+while (i < nrow(a3)) {
+    if (a3[i, 'ageACQ.1'] < a3[i+1, 'ageACQ.1']) {
+        tmp = c(tmp, 1, 2)
+    } else {
+        tmp = c(tmp, 2, 1)
+    }
+    i = i + 2
+}
+a3 = cbind(a3, tmp)
+a4 = reshape(a3, idvar = "PersonID", v.names=cg_vars,
+           timevar = "tmp",
+           direction = "wide")
+```
+
+This is not working... it's taking forever to make it wide.
+
+Let's try something else. Can we reshape per cg? Then I can use all cores to do
+what's needed.
+
+```r
+a = readRDS('~/data/longitudinal_methylome/UPDATED320.rds')
+tmp = a$ageACQ
+for (s in unique(a$PersonID)) {
+    subj_rows = which(a$PersonID==s)
+    if (a[subj_rows[1], 'ageACQ'] < a[subj_rows[2], 'ageACQ']) {
+        tmp[subj_rows] = c(1, 2)
+    } else {
+        tmp[subj_rows] = c(2, 1)
+    }
+}
+a = cbind(a, tmp)
+f = read.csv('~/data/longitudinal_methylome/ROC_data_pheno_file_yun_ching_used.csv')
+
+fit_wrapper = function(x) {
+    a_slim = a[, c('PersonID', 'tmp', x)]
+    a_wide = reshape(a_slim, idvar = "PersonID",
+                     timevar = "tmp",
+                     direction = "wide")
+    m = merge(a_wide, f, by='PersonID')
+    # f_str = '%s.2 ~ %s.1 + age.diff + ageACQ.1 + sample_type + PC1 + PC2 + PC3 + PC4 + PC5 + SV.one.m2 + CD8T.diff + CD4T.diff + NK.diff + Bcell.diff + Mono.diff + Gran.diff + sex'
+    f_str = '%s.2 ~ %s.1 + age.diff + ageACQ.1 + PC1 + PC2 + PC3 + PC4 + PC5 + SV.one.m2 + CD8T.diff + CD4T.diff + NK.diff + Bcell.diff + Mono.diff + Gran.diff + sex'
+    # f_str = '%s.2 ~ %s.1 + sample_type + age.diff + ageACQ.1 + PC1 + PC2 + PC3 + PC4 + PC5 + SV.one.m2 + CD8T.diff + CD4T.diff + NK.diff + Bcell.diff + Mono.diff + Gran.diff + sex'
+    fit = lm(as.formula(sprintf(f_str, x, x)), data=m)
+    res = summary(fit)$coefficients
+    myrow = which(grepl(rownames(res), pattern=sprintf('^%s', x)))
+    return(res[myrow, ])
+}
+
+cg_vars = colnames(a)[grepl(colnames(a), pattern='^cg')]
+Ms = cg_vars[1:100]
+m1_res = lapply(Ms, fit_wrapper)
+all_res = do.call(rbind, m1_res)
+
+# taking too long to export the big a variable to the cluster. Will try to run it
+# in individual CPUs to see how long it'll take.
+library(parallel)
+cl <- makeCluster(2, type='FORK')
+m1_res2 = parLapply(cl, Ms, fit_wrapper)
+all_res2 = do.call(rbind, m1_res2)
+stopCluster(cl)
+```
+
+This is still taking a long time. Let's swarm it using the script
+methyl_lm_wrapper.R.
+
+It took me 32s to run 96 probes. Rounding up to one minute, I can do 23K probes
+in 4h, so I'll split 20K probes per file.
+
+```bash
+mydir=~/data/longitudinal_methylome
+cd ${mydir}
+for v in '' '_blood' '_saliva' '_inter'; do
+    sfile=swarm.lm${v}
+    rm -rf $sfile
+    for s in `ls methyls_??`; do
+        echo "cd ${mydir}; Rscript ~/research_code/methyl_lm_wrapper${v}.r $s 32 ~/tmp/adjusted.csv" >> $sfile;
+    done;
+    swarm -g 100 -t 32 --job-name lm${v} --time 4:00:00 -f ${sfile} \
+        -m R --partition quick,norm --logdir trash --gres=lscratch:40
+done
+```
+
+Actually it didn't take very long to run it in interactive... only an hour.
+Let's keep running it that way (with the parallel package).
+
+Now, just some clean up and calculating FDR:
+
+```bash
+grep -v sample interactions.csv > inter.csv
+sed -i -e 's/\.1\,/\,/g' inter.csv
+```
+
+```r
+a = read.csv('~/data/longitudinal_methylome/blood.csv')
+a$FDR_q = p.adjust(a[, 5], method='fdr')
+write.csv(a, file='~/data/longitudinal_methylome/blood_FDR.csv', row.names=F, quote=F)
+```

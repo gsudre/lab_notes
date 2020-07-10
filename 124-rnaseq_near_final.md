@@ -183,4 +183,148 @@ Didn't help much.
 
 ![](images/2020-07-02-18-05-46.png)
 
+# 2020-07-06 10:30:54
+
+What if we go back to the analysis with both regions, and only split it for the
+developmental analysis?
+
+```r
+myregion = 'ACC'
+
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+library(caret)
+set.seed(42)
+library(edgeR)
+library(variancePartition)
+library(BiocParallel)
+library('biomaRt')
+load('~/data/rnaseq_derek/c5_gene_sets.RData')
+load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
+load('~/data/rnaseq_derek/data_for_alex.RData')
+
+library(BiocParallel)
+param = SnowParam(32, "SOCK", progressbar=TRUE)
+register(param)
+
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's NOT caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+imWNH = which(data$C1 > 0 & data$C2 < -.065)
+data = data[imWNH, ]
+```
+
+I don't think I'll keep it to Men only anymore... we have so few datapoints
+already...
+
+```
+> table(data$Sex, data$Region)
+   
+    ACC Caudate
+  F   4       6
+  M  28      28
+```
+
+```r
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$MoD2 = as.character(data$MoD)
+data[data$MoD2!='natural', 'MoD2'] = 'other'
+```
+
+```
+> table(data$MoD2, data$Region)
+         
+          ACC Caudate
+  natural  14      14
+  other    18      20
+```
+
+```r
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+# avoiding contacting server
+load('~/data/rnaseq_derek/Glist_0.RData')
+
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+
+genes = calcNormFactors( genes)
+
+form = ~ Diagnosis + (1|batch) + scale(RINe) + scale(PMI) + scale(Age) + (1|MoD2) + 
+vobjMM = voomWithDreamWeights( genes, form, data, plot=FALSE)
+fitmm = dream( vobjMM, form, data, ddf="Kenward-Roger")
+resMM = topTable(fitmm, coef="DiagnosisControl", number=Inf) 
+adhd_dream_camera = get_enrich_order2( resMM, t2 ) 
+c5_dream_camera = get_enrich_order2( resMM, c5_all)
+dis_dream_camera = get_enrich_order2( resMM, disorders)
+dev_dream_camera = get_enrich_order2( resMM, genes_unique )
+```
+
+
 
