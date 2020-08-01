@@ -322,7 +322,7 @@ done
 And I can compare the ROC this way: 
 
 ```r
-library(pROc)
+library(pROC)
 roc.test(y_test, dat[,'stable'], dat_slim[, 'stable'])
 # or
 roc.test(y_test, dat[,'stable'], dat_all[, 'stable'], alternative='less', method='bootstrap', boot.n=10000)
