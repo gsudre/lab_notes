@@ -87,3 +87,47 @@ done
 
 For the reliability scans, I'm just copying the first session number as the mask
 id scan. Copying the TORTOISE output tensors manually.
+
+And some quick code to get the JHU tracts:
+
+```bash
+#bw
+mydir=/mnt/shaw/sudregp/dtitk_processing/tortoise_dtitk_crossSec_agingTemplate
+weighted_tracts=jhu_tracts_183.csv;
+cd $mydir
+row="id";
+for t in ATR CST cin_cin cin_hip CC IFO ILF SLF unc SLFtemp; do
+    for h in l r; do
+        m=fa;
+        row=${row}','${m}_${t}_${h};
+    done;
+done
+echo $row > $weighted_tracts;
+for m in `cat ~/tmp/m2.txt`; do
+    echo ${m}
+    3dresample -master ./${m}_tensor_diffeo_fa.nii.gz -prefix ./rois.nii \
+                -inset ../JHU_ICBM_tractsThr25_inAging.nii.gz \
+                -rmode NN -overwrite 2>/dev/null &&
+    row="${m}";
+    for t in `seq 1 20`; do
+        3dcalc -a rois.nii -expr "amongst(a, $t)" -prefix mask.nii \
+            -overwrite 2>/dev/null &&
+        fa=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_fa.nii 2>/dev/null`;
+        row=${row}','${fa};
+    done
+    echo $row >> $weighted_tracts;
+    rm -rf rois.nii mask.nii;
+done
+```
+
+And we can pull out the DTI-TK tracts this way for the same IDs:
+
+```bash
+cd /mnt/shaw/sudregp/dtitk_processing/tortoise_dtitk_crossSec_agingTemplate
+for m in `cat ~/tmp/m2.txt`; do
+    echo "${m}_tensor_diffeo.nii.gz" >> ~/tmp/m2_diffeo.txt;
+done
+tsa_sampling ~/tmp/m2_diffeo.txt ../ixi_aging_template_v3.0/tsa/ mean
+python3 ~/research_code/lab_mgmt/convert_dti_sampling.py
+Rscript ~/research_code/dti/compile_tract_table.R
+```

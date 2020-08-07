@@ -417,3 +417,389 @@ a = read.csv('~/data/longitudinal_methylome/blood.csv')
 a$FDR_q = p.adjust(a[, 5], method='fdr')
 write.csv(a, file='~/data/longitudinal_methylome/blood_FDR.csv', row.names=F, quote=F)
 ```
+
+# 2020-08-03 12:51:22
+
+Philip sent a new file to run. Let's go through the same steps as above. I also
+changed the script to run a version without x_base, just in case.
+
+```bash
+mydir=~/data/longitudinal_methylome
+sfile=swarm.hiNB2_1k
+cd ${mydir}
+rm -rf $sfile
+for s in `cat HI_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        HI_ROC_methyl_sx_dti_82.csv res_2_1K_noBaseX_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name hiNB2 --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+sfile=swarm.inattNB2_1k
+cd ${mydir}
+rm -rf $sfile
+for s in `cat IN_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        INATT_ROC_methyl_sx_dti_82.csv res_2_1K_noBaseX_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name inattNB2 --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+Let's work on compiling the results:
+
+```bash
+cd ~/data/longitudinal_methylome/results/
+head -n 1 res_2_1K_hi_bj.csv > res_2_1K_hi_compiled.csv
+for f in `ls -1 res_2_1K_hi_??.csv`; do tail -n +2 $f >> res_2_1K_hi_compiled.csv; done
+```
+
+```r
+fname = '~/data/longitudinal_methylome/results/res_2_1K_hi_compiled.csv'
+ms = c('AD_left_ifo_rate', 'RD_left_ifo_rate', 'AD_left_ilf_rate',
+       'AD_left_slf_rate', 'RD_left_slf_rate', 'RD_right_ilf_rate',
+       'AD_right_slf_rate')
+ms = c('AD_left_unc_rate', 'AD_right_unc_rate', 'RD_right_unc_rate')
+a = read.csv(fname)
+a$tot_p_FDR = p.adjust(a$tot_p, method='fdr')
+a$acme_p_FDR = p.adjust(a$acme_p, method='fdr')
+a$ade_p_FDR = p.adjust(a$ade_p, method='fdr')
+a$prop_p_FDR = p.adjust(a$prop_p, method='fdr')
+a$tot_p_FDR_withinM = NA
+a$acme_p_FDR_withinM = NA
+a$ade_p_FDR_withinM = NA
+a$prop_p_FDR_withinM = NA
+for (m in ms) {
+    idx = a$M==m
+    a[idx,]$tot_p_FDR_withinM = p.adjust(a[idx,]$tot_p, method='fdr')
+    a[idx,]$acme_p_FDR_withinM = p.adjust(a[idx,]$acme_p, method='fdr')
+    a[idx,]$ade_p_FDR_withinM = p.adjust(a[idx,]$ade_p, method='fdr')
+    a[idx,]$prop_p_FDR_withinM = p.adjust(a[idx,]$prop_p, method='fdr')
+}
+out_fname = gsub(fname, pattern='.csv', replacement='_FDR.csv')
+write.csv(a, file=out_fname, row.names=F)
+```
+
+# 2020-08-04 08:10:00
+
+The cg file I was using didn't have everyone, so I'll have to re-create the file
+like above, but with both sets of cgs (above only had HI):
+
+```r
+library(data.table)
+dread = fread('~/data/longitudinal_methylome/ROC_methyl.csv', header = T, sep = ',')
+d = as.data.frame(dread)
+colnames(d)[1] = 'PersonID'
+tmp1 = read.table('~/data/longitudinal_methylome/HI_probes_3294.txt')[,1]
+tmp2 = read.table('~/data/longitudinal_methylome/IN_probes_1117.txt')[,1]
+probes = unique(c(tmp1, tmp2))
+a = d[, c('PersonID', probes)]
+roc = sapply(probes, function(x) sprintf('%s_ROC', x))
+colnames(a)[2:ncol(a)] = roc
+# grab baseline from the other file
+b = readRDS('~/data/longitudinal_methylome/UPDATED_PROCESSED_WITH_DIFF.rds')
+b2 = b[, c('PersonID', 'ageACQ', probes)]
+b3 = b2[b2$PersonID %in% a$PersonID, ]
+is_base = c()
+for (s in unique(b3$PersonID)) {
+    idx = which(b3$PersonID == s)
+    if (diff(b3[idx, 'ageACQ']) > 0) {
+        is_base = c(is_base, idx[1])
+    } else {
+        is_base = c(is_base, idx[2])
+    }
+}
+b4 = b3[is_base, ]
+bases = sapply(probes, function(x) sprintf('%s_baseline', x))
+colnames(b4)[3:ncol(b4)] = bases
+# grabing other variables from yet another file...
+f = read.csv('~/data/longitudinal_methylome/ROC_data_pheno_file_yun_ching_used.csv')
+m = merge(a, b4, by='PersonID')
+m = merge(m, f, by='PersonID')
+write.csv(m, file='~/data/longitudinal_methylome/ROC_data_inattAndHI_160.csv',
+          row.names=F, quote=F)
+```
+
+Now we need to re-split the new probe files that contian the ch. probes. I also
+changed the mediation code to accomodate those.
+
+```bash
+cd ~/data/longitudinal_methylome
+sed -e "s/$/_ROC/g" HI_probes_3294.txt > HI_probes_3294_ROC.txt
+sed -e "s/$/_ROC/g" IN_probes_1117.txt > IN_probes_1117_ROC.txt
+split -l 15 IN_probes_1117_ROC.txt inatt_
+ls -1 inatt_* > IN_sets.txt;
+split -l 15 HI_probes_3294_ROC.txt hi_
+ls -1 hi_* > HI_sets.txt;
+```
+
+And finally we swarm everything:
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat IN_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat HI_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inattNB90_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat IN_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hiNB90_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat HI_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition quick,norm --logdir trash
+```
+
+For 10K I'll have to increase the wall time:
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90_10k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat IN_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_10K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90_10k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat HI_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_10K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inattNB90_10k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat IN_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_10K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hiNB90_10k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat HI_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_10K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+Philip asked me to change the code to spit out the regression values as well.
+Since that doesn't depend on the perms, I'll re-run everything with a couple
+boostraps just so it goes fast and we can have a file that is just useful for
+the regressions values. In the future, when we run the code we'll have
+everything in the same file though.
+
+```bash
+cd ~/data/longitudinal_methylome
+Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv HI_probes_3294_ROC.txt HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_lmValuesOnly.csv
+Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv IN_probes_1117_ROC.txt IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv resNB90_2_inatt_lmValuesOnly.csv
+```
+
+Then change the code to run:
+
+```bash
+cd ~/data/longitudinal_methylome
+Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv HI_probes_3294_ROC.txt HI_ms2 HI_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_hi_lmValuesOnly.csv
+`Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv IN_probes_1117_ROC.txt IN_ms2 IN_ys F \
+        ROC_data_inattAndHI_160.csv res90_2_inatt_lmValuesOnly.csv
+```
+
+# 2020-08-06 16:15:27
+
+Philip asked me to run all probes this time. 1K first, no baseline.
+
+```r
+library(data.table)
+dread = fread('~/data/longitudinal_methylome/ROC_methyl.csv', header = T, sep = ',')
+d = as.data.frame(dread)
+colnames(d)[1] = 'PersonID'
+probes = colnames(d)[2:ncol(d)]
+a = d
+roc = sapply(probes, function(x) sprintf('%s_ROC', x))
+colnames(a)[2:ncol(a)] = roc
+# grab baseline from the other file
+b = readRDS('~/data/longitudinal_methylome/UPDATED_PROCESSED_WITH_DIFF.rds')
+b2 = b[, c('PersonID', 'ageACQ', probes)]
+b3 = b2[b2$PersonID %in% a$PersonID, ]
+is_base = c()
+for (s in unique(b3$PersonID)) {
+    idx = which(b3$PersonID == s)
+    if (diff(b3[idx, 'ageACQ']) > 0) {
+        is_base = c(is_base, idx[1])
+    } else {
+        is_base = c(is_base, idx[2])
+    }
+}
+b4 = b3[is_base, ]
+bases = sapply(probes, function(x) sprintf('%s_baseline', x))
+colnames(b4)[3:ncol(b4)] = bases
+# grabing other variables from yet another file...
+f = read.csv('~/data/longitudinal_methylome/ROC_data_pheno_file_yun_ching_used.csv')
+m = merge(a, b4, by='PersonID')
+m = merge(m, f, by='PersonID')
+saveRDS(m, file='~/data/longitudinal_methylome/ROC_data_ALL_160.rds')
+```
+
+```bash
+cd ~/data/longitudinal_methylome
+split -l 15 all_probes.txt probes_
+ls -1 probes_* > ALL_sets.txt;
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90allProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90allProbes_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90allProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90allProbes_2_1K_${s}.csv;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+    -m R --partition norm --logdir trash
+```
+
+Biowulf is estimating 4.5days because of the autobundle... let me see if I can
+compact this a bit more. So, 1K for HI, which has 7Ms, took a little over 2h for
+15 probes. Say it took 2.5h, so 30 probes in 5h, 45 comfortably in 8h.
+
+```bash
+cd ~/data/longitudinal_methylome
+rm probes_*
+split -l 45 all_probes.txt probes_
+ls -1 probes_* > ALL_sets.txt;
+```
+
+We will still have about 19K lines in the swarm file, but it might help...
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90allProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90allProbes_2_1K_${s}.csv;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+The inattention runs, with 15 probes but only 2 Ms, took less than 1h. So, I
+could resplit the probes to keep it at 8h, or just run as many but set it to 4h
+instead... 

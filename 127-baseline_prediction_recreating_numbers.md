@@ -208,7 +208,117 @@ for cs in "worsening" "improvers" "never_affected" "stable"; do
 done;
 ```
 
-* Maybe play more with the onevsall models? 
-* Try removing NVs in oneVSall?
-* sx only matters on clinical group comparisons...
-* maybe try again models that don't need imputation?
+# 2020-08-02 09:56:13
+
+Let's check if using standrd scores for Beery and PS help:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_splitFirst.R;
+sx="categ_all_lm";
+imp=dti;
+clf=slda;
+cov=F;
+res_file=resFinalSTD_splitFirst_tmp.csv;
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08022020.csv $sx $cs $clf $imp $cov $res_file;
+done;
+```
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_splitFirst_sandbox.R;
+sx="categ_all_lm";
+imp=dti;
+clf=glmStepAIC;
+cov=F;
+res_file=resFinalSTD_splitFirst_tmp3.csv;
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08022020.csv $sx $cs $clf $imp $cov $res_file;
+done;
+```
+
+Now that we somewhat decided we're going with knn upsamples, let's run the sx
+contrast using the family test set:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_splitFirst_sandbox.R;
+sx="categ_all_lm";
+imp=dti;
+clf=slda;
+cov=F;
+res_file=resFinalSTD_splitFirst_tmp4.csv;
+for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08022020.csv $sx $cs $clf $imp $cov $res_file;
+done;
+```
+
+Let's try focusing on optimizing the NV classification:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_splitFirst_sandbox.R;
+sx="categ_all_lm";
+imp=dti;
+clf=rf;
+cov=F;
+res_file=resFinalSTD_splitFirst_tmp5.csv;
+for cs in "worsening never_affected" "improvers never_affected" \
+          "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08022020.csv $sx $cs $clf $imp $cov $res_file;
+done;
+```
+
+# 2020-08-06 16:06:22
+
+What if we impute before we split? 
+
+```r
+library(VIM)
+data = read.csv('~/data/baseline_prediction/FINAL_DATA_08022020.csv')
+data = data[data$pass2_58=='yes',]
+
+set.seed(42)
+my_vars = c(
+              # PRS
+              'ADHD_PRS0.000100', 'ADHD_PRS0.001000',
+              'ADHD_PRS0.010000', 'ADHD_PRS0.050000',
+              'ADHD_PRS0.100000', 'ADHD_PRS0.200000',
+              'ADHD_PRS0.300000', 'ADHD_PRS0.400000',
+              'ADHD_PRS0.500000',
+              # DTI
+              'atr_fa', 'cst_fa', 'cing_cing_fa', 'cing_hipp_fa', 'cc_fa',
+              'ilf_fa', 'slf_fa', 'unc_fa', 'ifo_fa',
+              #   demo
+              'sex_numeric', 'base_age',
+              # cog
+              'FSIQ', 'SS_RAW', 'DS_RAW', 'PS_STD', 'VMI.beery_STD',
+              # anat
+              'cerbellum_white', 'cerebllum_grey', 'amygdala',
+              'cingulate', 'lateral_PFC', 'OFC', 'striatum', 'thalamus'
+              )
+
+x = irmi(data[, my_vars])
+
+data[, my_vars] = x[, 1:length(my_vars)]
+
+write.csv(data, file='~/data/baseline_prediction/FINAL_DATA_08022020_IRMI.csv',
+          row.names=F)
+```
+
+
+* how about using totalSX?
+* allow caseWeights and not upsample?
+* no upsample or caseweights?
+* separate between inatt and hi categories?
+* feature selection? potentially never dropping sx?
+* 
