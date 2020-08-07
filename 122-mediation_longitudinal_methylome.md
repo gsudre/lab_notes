@@ -800,6 +800,81 @@ for f in `/bin/ls ${jname}_split??`; do
 done
 ```
 
+Keeping track of last submitted because I mistakenly ran the loop in an
+interactive node... last submitted: ak
+
 The inattention runs, with 15 probes but only 2 Ms, took less than 1h. So, I
 could resplit the probes to keep it at 8h, or just run as many but set it to 4h
 instead... 
+
+# 2020-08-07 14:08:44
+
+Philip asked me to run a random subsample of about 100K methyls, including the
+good ones. Let's pre-select them. So, I created a file in R called
+probes100KandGood.txt, which lists 100K probes selected at random plus 97 of the
+108 good probes that hadn't been randomly selected. Let's run those probes now.
+
+```bash
+cd ~/data/longitudinal_methylome
+rm probes_*
+split -l 45 probes100KandGood.txt probes_
+ls -1 probes_* > ALL_sets.txt;
+```
+
+We now have about 2225 lines in the swarm file, but it might help...
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90SomeProbes_2_1K_${s}.csv;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+Since now we only have 3 split swarm files, I can run inatt as well. And since
+it only has 2 Ms, it can be only 4h.
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90SomeProbes_2_1K_${s}.csv;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+

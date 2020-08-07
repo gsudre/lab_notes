@@ -315,10 +315,137 @@ write.csv(data, file='~/data/baseline_prediction/FINAL_DATA_08022020_IRMI.csv',
           row.names=F)
 ```
 
+# 2020-08-07 07:43:10
 
-* how about using totalSX?
-* allow caseWeights and not upsample?
-* no upsample or caseweights?
-* separate between inatt and hi categories?
-* feature selection? potentially never dropping sx?
-* 
+None of the results are that good anymore, since the grouping based on lm. What
+if we do lots of massaging beforehand? For example, PCA within domain?
+
+```r
+data = read.csv('~/data/baseline_prediction/FINAL_DATA_08022020_IRMI.csv')
+library(nFactors)
+var_names = c(# PRS
+              'ADHD_PRS0.000100', 'ADHD_PRS0.001000',
+              'ADHD_PRS0.010000', 'ADHD_PRS0.050000',
+              'ADHD_PRS0.100000', 'ADHD_PRS0.200000',
+              'ADHD_PRS0.300000', 'ADHD_PRS0.400000',
+              'ADHD_PRS0.500000')
+fm_str = sprintf('~ %s', paste0(var_names, collapse='+ ', sep=' '))
+pca = prcomp(as.formula(fm_str), data[, var_names], scale=T,
+             na.action=na.exclude)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+cnames = sapply(1:ncol(my_data), function(x) sprintf('PRS_%s', colnames(mydata)[x]))
+colnames(mydata) = cnames
+pc_data = mydata
+
+var_names = c(# DTI
+              'atr_fa', 'cst_fa', 'cing_cing_fa', 'cing_hipp_fa', 'cc_fa',
+              'ilf_fa', 'slf_fa', 'unc_fa', 'ifo_fa')
+fm_str = sprintf('~ %s', paste0(var_names, collapse='+ ', sep=' '))
+pca = prcomp(as.formula(fm_str), data[, var_names], scale=T,
+             na.action=na.exclude)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+colnames(mydata) = 'DTI_PC01'
+pc_data = cbind(pc_data, mydata)
+
+var_names = c(# cog
+              'FSIQ', 'SS_RAW', 'DS_RAW', 'PS_STD', 'VMI.beery_STD')
+fm_str = sprintf('~ %s', paste0(var_names, collapse='+ ', sep=' '))
+pca = prcomp(as.formula(fm_str), data[, var_names], scale=T,
+             na.action=na.exclude)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+cnames = sapply(1:ncol(my_data), function(x) sprintf('COG_%s', colnames(mydata)[x]))
+colnames(mydata) = cnames
+pc_data = cbind(pc_data, mydata)
+
+var_names = c(# anat
+              'cerbellum_white', 'cerebllum_grey', 'amygdala',
+              'cingulate', 'lateral_PFC', 'OFC', 'striatum', 'thalamus')
+fm_str = sprintf('~ %s', paste0(var_names, collapse='+ ', sep=' '))
+pca = prcomp(as.formula(fm_str), data[, var_names], scale=T,
+             na.action=na.exclude)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+cnames = sapply(1:ncol(my_data), function(x) sprintf('ANAT_%s', colnames(mydata)[x]))
+colnames(mydata) = cnames
+pc_data = cbind(pc_data, mydata)
+
+data2 = cbind(data, pc_data)
+write.csv(data2,
+          file='~/data/baseline_prediction/FINAL_DATA_08022020_IRMI_PCs.csv',
+          row.names=F, quote=F)
+```
+
+None of that is working... let's fire up multiple algorithms again and see if
+any of them luck out.
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_splitFirst_sandbox.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resFinalSTD_splitFirst_up.csv;
+sfile=swarm.nvs;
+for clf in `cat ~/research_code/clf_feature_selection_class_probs.txt`; do
+    for cs in "worsening never_affected" "improvers never_affected" \
+            "stable never_affected"; do
+        echo "Rscript $my_script ${my_dir}/FINAL_DATA_08022020_IRMI.csv $sx $cs $clf $imp $cov $res_file;" >> $sfile;
+    done;
+done;
+
+cat $sfile | parallel -j 30 --max-args=1 {};
+```
+
+Rscript ~/research_code/baseline_prediction/twoClass_ROC_splitFirst_sandbox.R \
+FINAL_DATA_08022020_IRMI.csv categ_all_lm worsening never_affected svmLinear dti F \
+resFinalSTD_splitFirst_up.csv;
+
+For TPOT, I could try some sort of LOOCV:
+
+```python
+from tpot import TPOTClassifier
+import pandas as pd
+import numpy as np
+from sklearn import preprocessing
+
+X = pd.read_csv('~/tmp/X_wn.csv')
+y = pd.read_csv('~/tmp/y_wn.csv')
+enc = preprocessing.OrdinalEncoder()
+enc.fit(y)
+y2 = enc.transform(y).ravel()
+preds = []
+for i in range(len(y2)):
+    X_test = np.array(X.iloc[i, :]).reshape(1, -1)
+    y_test = y2[i]
+    idx = [j for j in range(len(y2)) if j != i]
+    X_train = X.iloc[idx, :]
+    y_train = y2[idx]
+
+    # tpot = TPOTClassifier(generations=5, population_size=50, verbosity=2, random_state=42, scoring='roc_auc')
+    tpot = TPOTClassifier(verbosity=2, random_state=42, scoring='roc_auc', n_jobs=30, use_dask=False)
+    tpot.fit(X_train, y_train)
+    preds.append(tpot.predict(X_test)[0])
+```
+
+* trying tpot
+* maybe tpot LOOCV?
+* maybe try to downsample NV class based on maximal dissimilarity, then CV
+  within that new sample
+* hand pick train, dev, and test sets based on some parameter that equally
+  samples the distribution?
+* play more with different classifiers and class balancing using the PC data
+* try using single test set again
+* try PC within the 2 classes only
+* try adding covariates to PC
