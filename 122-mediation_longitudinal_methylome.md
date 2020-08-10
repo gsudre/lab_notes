@@ -839,7 +839,7 @@ for f in `/bin/ls ${jname}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${f} \
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${f} \
             -m R --partition norm --logdir trash 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
@@ -868,7 +868,7 @@ for f in `/bin/ls ${jname}_split??`; do
     echo "ERROR" > swarm_wait_${USER}
     while grep -q ERROR swarm_wait_${USER}; do
         echo "Trying $f"
-        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${f} \
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${f} \
             -m R --partition norm --logdir trash 2> swarm_wait_${USER};
         if grep -q ERROR swarm_wait_${USER}; then
             echo -e "\tError, sleeping..."
@@ -878,3 +878,332 @@ for f in `/bin/ls ${jname}_split??`; do
 done
 ```
 
+# 2020-08-09 12:18:26
+
+I made a few changes to the code to make it even faster, because now we're
+trimming the big file right away. Let's first run associations that include the
+x_base. I'll run them in the laptop, and start with the good probes, then 100K,
+and finally 800K.
+
+```bash
+Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+    dti_2_for_sam_slim.csv probes.txt IN_ms2 IN_ys F \
+    ROC_data_ALL_160.rds res_inatt90SigProbes_linearOnly.csv 2
+
+Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+    dti_2_for_sam_slim.csv probes.txt HI_ms2 HI_ys F \
+    ROC_data_ALL_160.rds res_hi90SigProbes_linearOnly.csv 2
+```
+
+For the 100K randomly selected probes, I'll have to use the chunks like before
+so that it's fast inside the script:
+
+```bash
+cd ~/data/longitudinal_methylome
+rm probes_*
+split -l 45 probes100KandGood.txt probes_
+ls -1 probes_* > SOME_sets.txt;
+```
+
+We now have about 2225 lines in the swarm file, but it might help...
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90SomeProbes
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90SomeProbes_linearOnly_${s}.csv 2;" >> $sfile;
+done
+cat $sfile | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 {};
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90SomeProbes
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90SomeProbes_linearOnly_${s}.csv 2;" >> $sfile;
+done
+cat $sfile | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 {};
+```
+
+And now we should be fine to re-run the mediations within the amount of time we
+expect them to take:
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 16:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+And compiling the lmOnly results:
+
+```bash
+cd ~/data/longitudinal_methylome/results/
+head -n 1 res_inatt90SomeProbes_linearOnly_probes_aa.csv > res_inatt90SomeProbes_linearOnly_compiled.csv
+for f in `ls -1 res_inatt90SomeProbes_linearOnly_probes_*.csv`; do echo $f; tail -n +2 $f >> res_inatt90SomeProbes_linearOnly_compiled.csv; done
+```
+
+I ran 3 probes for 1K perms in inattention, and it took 7 min. Multiply it by 15
+for the 45 probes we have, so we have 105 min for inattention. We can add some delay
+of handling the bigger file and any other shenanigans, and 3 to 4h should be
+enough. Actually, some have already finished before I ran this test, and they
+took about 2.5h. For hi, 3 probes ran in 14min, so 45 would be 210min, which is
+3.5h. Let's go for 6h to be safe.
+
+Some of the runs failed... let's see which ones.
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inatt_redo
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    if [ ! -e res_inatt90SomeProbes_1K_${s}.csv ]; then
+        echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+    fi;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${sfile} \
+            -m R --partition quick,norm --logdir trash
+```
+
+And I created a noXBase version of the code so I don't have to keep waiting for
+everything to get queued:
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inattNXB90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim_noXBase.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inattNXB90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${f} \
+            -m R --partition quick,norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hiNXB90SomeProbes_1k
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim_noXBase.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hiNXB90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+done
+split -l 1000 $sfile ${jname}_split;
+for f in `/bin/ls ${jname}_split??`; do
+    echo "ERROR" > swarm_wait_${USER}
+    while grep -q ERROR swarm_wait_${USER}; do
+        echo "Trying $f"
+        swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 6:00:00 -f ${f} \
+            -m R --partition norm --logdir trash 2> swarm_wait_${USER};
+        if grep -q ERROR swarm_wait_${USER}; then
+            echo -e "\tError, sleeping..."
+            sleep 10m;
+        fi;
+    done;
+done
+```
+
+And Philip asked me to run the linear regression for all probe sets. I want to
+keep it to a single swarm file, to let's keep only 1000 probe sets.
+
+```bash
+cd ~/data/longitudinal_methylome
+rm all_probes_*
+split -l 900 all_probes.txt all_probes_
+ls -1 all_probes_* > ALL_sets.txt;
+
+mydir=~/data/longitudinal_methylome
+jname=inatt90ALLlmOnly
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inatt90All_lmOnly_${s}.csv 1;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${f} \
+            -m R --partition quick,norm --logdir trash
+
+jname=hi90ALLlmOnly
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat ALL_sets.txt`; do
+    echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90All_lmOnly_${s}.csv 1;" >> $sfile;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 4:00:00 -f ${f} \
+            -m R --partition quick,norm --logdir trash
+```
+
+That took only 8min for the entire file in inatt, so 1h should be plenty, and 2
+for hi.
+
+# 2020-08-10 06:40:12
+
+Figuring out what else left to run:
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hi_redo
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    if [ ! -e res_hi90SomeProbes_1K_${s}.csv ]; then
+        echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hi90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+    fi;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 8:00:00 -f ${sfile} \
+            -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=inattNXB_redo
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    if [ ! -e res_inattNXB90SomeProbes_1K_${s}.csv ]; then
+        echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim_noXBase.R \
+        dti_2_for_sam_slim.csv ${s} IN_ms2 IN_ys F \
+        ROC_data_ALL_160.rds res_inattNXB90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+    fi;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 6:00:00 -f ${sfile} \
+            -m R --partition norm --logdir trash
+```
+
+```bash
+mydir=~/data/longitudinal_methylome
+jname=hiNXB_redo
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+for s in `cat SOME_sets.txt`; do
+    if [ ! -e res_hiNXB90SomeProbes_1K_${s}.csv ]; then
+        echo "cd ${mydir}; Rscript ~/research_code/mediation_code_for_methylation_slim_noXBase.R \
+        dti_2_for_sam_slim.csv ${s} HI_ms2 HI_ys F \
+        ROC_data_ALL_160.rds res_hiNXB90SomeProbes_1K_${s}.csv 1000;" >> $sfile;
+    fi;
+done
+swarm -g 12 -t 1 -p 2 --job-name ${jname} --time 10:00:00 -f ${sfile} \
+            -m R --partition norm --logdir trash
+```
+
+And we compile the ones that finished:
+
+```bash
+cd ~/data/longitudinal_methylome/
+head -n 1 res_inatt90SomeProbes_1K_probes_aa.csv > res_inatt90SomeProbes_1K_compiled.csv
+for f in `ls -1 res_inatt90SomeProbes_1K_probes_*.csv`; do tail -n +2 $f >> res_inatt90SomeProbes_1K_compiled.csv; done
+```
+
+```r
+fname = '~/data/longitudinal_methylome/results/res_inatt90SomeProbes_1K_compiled.csv'
+# hi
+ms = c('AD_left_ifo_rate', 'RD_left_ifo_rate', 'AD_left_ilf_rate',
+       'AD_left_slf_rate', 'RD_left_slf_rate', 'RD_right_ilf_rate',
+       'AD_right_slf_rate')
+# inatt
+ms = c('AD_left_unc_rate', 'AD_right_unc_rate', 'RD_right_unc_rate')
+a = read.csv(fname)
+a$tot_p_FDR = p.adjust(a$tot_p, method='fdr')
+a$acme_p_FDR = p.adjust(a$acme_p, method='fdr')
+a$ade_p_FDR = p.adjust(a$ade_p, method='fdr')
+a$prop_p_FDR = p.adjust(a$prop_p, method='fdr')
+a$tot_p_FDR_withinM = NA
+a$acme_p_FDR_withinM = NA
+a$ade_p_FDR_withinM = NA
+a$prop_p_FDR_withinM = NA
+for (m in ms) {
+    idx = a$M==m
+    a[idx,]$tot_p_FDR_withinM = p.adjust(a[idx,]$tot_p, method='fdr')
+    a[idx,]$acme_p_FDR_withinM = p.adjust(a[idx,]$acme_p, method='fdr')
+    a[idx,]$ade_p_FDR_withinM = p.adjust(a[idx,]$ade_p, method='fdr')
+    a[idx,]$prop_p_FDR_withinM = p.adjust(a[idx,]$prop_p, method='fdr')
+}
+out_fname = gsub(fname, pattern='.csv', replacement='_FDR.csv')
+write.csv(a, file=out_fname, row.names=F)
+```

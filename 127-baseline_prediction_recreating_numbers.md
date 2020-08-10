@@ -420,12 +420,15 @@ import pandas as pd
 import numpy as np
 from sklearn import preprocessing
 
-X = pd.read_csv('~/tmp/X_wn.csv')
-y = pd.read_csv('~/tmp/y_wn.csv')
+comp='wn'
+X = pd.read_csv('~/tmp/X_%s.csv' % comp)
+y = pd.read_csv('~/tmp/y_%s.csv' % comp)
 enc = preprocessing.OrdinalEncoder()
 enc.fit(y)
 y2 = enc.transform(y).ravel()
 preds = []
+probs = []
+fout = open('/home/sudregp/tmp/%s_loocv.txt' % comp, 'w')
 for i in range(len(y2)):
     X_test = np.array(X.iloc[i, :]).reshape(1, -1)
     y_test = y2[i]
@@ -433,18 +436,54 @@ for i in range(len(y2)):
     X_train = X.iloc[idx, :]
     y_train = y2[idx]
 
-    # tpot = TPOTClassifier(generations=5, population_size=50, verbosity=2, random_state=42, scoring='roc_auc')
-    tpot = TPOTClassifier(verbosity=2, random_state=42, scoring='roc_auc', n_jobs=30, use_dask=False)
+    tpot = TPOTClassifier(generations=5, population_size=50, verbosity=2, random_state=42, scoring='roc_auc')
+    # tpot = TPOTClassifier(verbosity=2, random_state=42, scoring='roc_auc', n_jobs=30, use_dask=False)
     tpot.fit(X_train, y_train)
     preds.append(tpot.predict(X_test)[0])
+    probs.append(tpot.predict_proba(X_test)[0])
+    fout.write('%d,%d,%d,%.3f,%.3f\n' % (i, y_test, preds[-1],
+                                         probs[-1][0], probs[-1][1]))
+fout.close()
 ```
+
+I could potentially also set the pipe to append and run this in a swarm. Maybe
+in the future, when I'm done running the swarms for methylation. The default
+pipeline is taking under 30min per LO. Under 5min for the short one. 
+
+So I created run_tpot_loocv.py to deal with that. Then, to run it's just:
+
+```bash
+mydir=~/data/baseline_prediction
+jname=tpot_loocv
+sfile=swarm.${jname}
+cd ${mydir}
+rm -rf $sfile
+s='sn';
+for i in {0..99}; do
+    echo "python ~/research_code/baseline_prediction/run_tpot_loocv.py $s $i;" >> $sfile;
+done
+s='wn';
+for i in {0..96}; do
+    echo "python ~/research_code/baseline_prediction/run_tpot_loocv.py $s $i;" >> $sfile;
+done
+s='in';
+for i in {0..117}; do
+    echo "python ~/research_code/baseline_prediction/run_tpot_loocv.py $s $i;" >> $sfile;
+done
+swarm -g 12 -t 32 --job-name ${jname} --time 2:00:00 -f $sfile \
+    -m python --partition quick,norm --logdir trash
+```
+
+
+
+
 
 * trying tpot
 * maybe tpot LOOCV?
+* hand pick train, dev, and test sets based on some parameter that equally
+  samples the distribution? maybe don't need dev test?
 * maybe try to downsample NV class based on maximal dissimilarity, then CV
   within that new sample
-* hand pick train, dev, and test sets based on some parameter that equally
-  samples the distribution?
 * play more with different classifiers and class balancing using the PC data
 * try using single test set again
 * try PC within the 2 classes only
