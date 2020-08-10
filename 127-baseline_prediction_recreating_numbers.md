@@ -474,10 +474,54 @@ swarm -g 12 -t 32 --job-name ${jname} --time 2:00:00 -f $sfile \
     -m python --partition quick,norm --logdir trash
 ```
 
+# 2020-08-10 14:51:17
+
+Let's code the distance sampling idea. Starting with the worsening class (the
+smallest), we have 24 kids. So, say we put 3 kids in training for each kid in
+testing. That would leave 6 kids for testing and 18 in training. Let's start
+with the smallest distance between kids and go from there. But it turns out that
+we have all class numbers divisible by 3...
+
+```
+> table(data$categ_all_lm)
+
+     improvers never_affected         stable      worsening 
+            45             72             27             24 
+```
+
+So, let's redo the ratios to always work:
+
+```r
+X_train = c()
+X_test = c()
+# this refers to X
+candidates = which(y=='worsening')
+
+while (length(candidates) >= 3) {
+    X_group = scale(X[candidates,])
+    # all indexes refer to X_group!
+    dists = dist(data.frame(X_group), upper=T)
+    closest = which(as.matrix(dists)==min(dists), arr.ind=T)
+    X_test = rbind(X_test, X_group[closest[1], ])
+    # get the kids most similar to our testing kid
+    s = sort(as.matrix(dists)[closest[1],], index.return=T)
+    # the first is always zero... select kids not chosen yet
+    cnt = 2
+    chosen = c()
+    while ((length(chosen) < 2) && (cnt <= nrow(X_group))) {
+        chosen = c(chosen, s$ix[cnt])
+        cnt = cnt + 1
+    }
+    X_train = rbind(X_train, X_group[chosen,])
+    # need to remove candidates based on X!
+    candidates = candidates[-c(closest[1], chosen)]
+    print(c(closest[1], chosen))
+}
+```
 
 
-
-
+* try TPOT with balanced accuracy?
+* try autoML?
 * trying tpot
 * maybe tpot LOOCV?
 * hand pick train, dev, and test sets based on some parameter that equally

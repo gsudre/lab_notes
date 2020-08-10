@@ -1181,7 +1181,7 @@ for f in `ls -1 res_inatt90SomeProbes_1K_probes_*.csv`; do tail -n +2 $f >> res_
 ```
 
 ```r
-fname = '~/data/longitudinal_methylome/results/res_inatt90SomeProbes_1K_compiled.csv'
+fname = '~/data/longitudinal_methylome/res_inatt90SomeProbes_1K_compiled.csv'
 # hi
 ms = c('AD_left_ifo_rate', 'RD_left_ifo_rate', 'AD_left_ilf_rate',
        'AD_left_slf_rate', 'RD_left_slf_rate', 'RD_right_ilf_rate',
