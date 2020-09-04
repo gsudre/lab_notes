@@ -458,3 +458,10 @@ m = merge(mrn2enigma, m, by.x='MRN', by.y='MRN', all.y=F)
 write.csv(m, file='enigma_DTI_ROIsAndProjDists.csv', row.names=F)
 # then remove all superfluous columns manually!
 ```
+
+# 2020-09-04 10:52:14
+
+Finally getting back to this, let's run the other DTI properties for Martine,
+following
+http://enigma.ini.usc.edu/protocols/dti-protocols/enigma-dti-diffusivity-protocol/:
+

@@ -519,7 +519,471 @@ while (length(candidates) >= 3) {
 }
 ```
 
+# 2020-08-11 06:44:41
 
+Let's see if this new distance sampling makes any difference:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resSTD_dist_irmi_nc_svms.csv;
+for clf in svmLinear svmRadialCost; do
+    for nc in 3 4 5; do
+        for cs in "worsening never_affected" "improvers never_affected" \
+                "stable never_affected"; do
+            Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+        done;
+    done;
+done
+```
+
+Now that I have a few selections, let's see how the clinical groups look:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resSTD_dist_irmi_nc_clin.csv;
+clf=rf;
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file 5;
+done
+```
+
+# 2020-08-12 06:55:35
+
+Let's also try some multi class analysis:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/multiClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resMultiSTD_dist_irmi_clin.csv;
+clf=slda;
+for clf in rf cforest; do
+clf=slda;
+    for nc in 3 4 5; do
+        for rs in up down SMOTE; do
+            Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $clf $imp $cov $res_file $nc $rs;
+        done
+    done
+done
+```
+
+Let's run the other tests for reviewers:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resReviewersSTD_dist_irmi_weights.csv;
+clf=cforest;
+nc=5;
+for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+done
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+done
+```
+
+# 2020-08-13 11:09:43
+
+For comparing the dats with and without Sx, I made a few changes to the
+resulting dat in the code before concatenating them. This way we can compare
+them across all comparisons after rbinding them:
+
+```r
+dat1 = dat
+dat1$obs = factor(as.numeric(dat1$obs))
+dat1$pred = factor(as.numeric(dat1$pred))
+colnames(dat1)[3:4] = c('1', '2')
+```
+
+Just remember to concatenate the comparisons in the same order!
+
+```r
+library(pROC)
+set.seed(42)
+roc.test(all_dat[,'obs'], sx_dat[,'1'], all_dat[, '1'], alternative='less',
+         method='bootstrap', boot.n=10000)
+```
+
+# 2020-08-18 06:48:01
+
+There was an issue that not everyone in pass2_58 had DTI. So, I'll need to re-impute:
+
+```r
+library(VIM)
+data = read.csv('~/data/baseline_prediction/FINAL_DATA_08072020.csv')
+data = data[data$pass2_58=='yes',]
+data = data[!is.na(data$slf_fa),]
+
+set.seed(42)
+my_vars = c(
+              # PRS
+              'ADHD_PRS0.000100', 'ADHD_PRS0.001000',
+              'ADHD_PRS0.010000', 'ADHD_PRS0.050000',
+              'ADHD_PRS0.100000', 'ADHD_PRS0.200000',
+              'ADHD_PRS0.300000', 'ADHD_PRS0.400000',
+              'ADHD_PRS0.500000',
+              # DTI
+              'atr_fa', 'cst_fa', 'cing_cing_fa', 'cing_hipp_fa', 'cc_fa',
+              'ilf_fa', 'slf_fa', 'unc_fa', 'ifo_fa',
+              #   demo
+              'sex_numeric', 'base_age', 'last_age',
+              # cog
+              'FSIQ', 'SS_RAW', 'DS_RAW', 'PS_STD', 'VMI.beery_STD',
+              # anat
+              'cerbellum_white', 'cerebllum_grey', 'amygdala',
+              'cingulate', 'lateral_PFC', 'OFC', 'striatum', 'thalamus'
+              )
+
+x = irmi(data[, my_vars])
+
+data[, my_vars] = x[, 1:length(my_vars)]
+
+write.csv(data, file='~/data/baseline_prediction/FINAL_DATA_08182020_IRMI.csv',
+          row.names=F)
+```
+
+And we re-run the tests:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resReviewersSTD_dist_irmi_166.csv;
+clf=cforest;
+nc=5;
+# for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+#     Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+# done
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc;
+done
+```
+
+We took some big hits... let's see if we impute on anatomy:
+
+```r
+library(VIM)
+data = read.csv('~/data/baseline_prediction/FINAL_DATA_08072020.csv')
+data = data[!is.na(data$cerebllum_grey),]
+
+set.seed(42)
+my_vars = c(
+              # PRS
+              'ADHD_PRS0.000100', 'ADHD_PRS0.001000',
+              'ADHD_PRS0.010000', 'ADHD_PRS0.050000',
+              'ADHD_PRS0.100000', 'ADHD_PRS0.200000',
+              'ADHD_PRS0.300000', 'ADHD_PRS0.400000',
+              'ADHD_PRS0.500000',
+              # DTI
+              'atr_fa', 'cst_fa', 'cing_cing_fa', 'cing_hipp_fa', 'cc_fa',
+              'ilf_fa', 'slf_fa', 'unc_fa', 'ifo_fa',
+              #   demo
+              'sex_numeric', 'base_age', 'last_age',
+              # cog
+              'FSIQ', 'SS_RAW', 'DS_RAW', 'PS_STD', 'VMI.beery_STD',
+              # anat
+              'cerbellum_white', 'cerebllum_grey', 'amygdala',
+              'cingulate', 'lateral_PFC', 'OFC', 'striatum', 'thalamus'
+              )
+
+x = irmi(data[, my_vars], imp_var=FALSE)
+
+data[, my_vars] = x[, 1:length(my_vars)]
+
+write.csv(data, file='~/data/baseline_prediction/FINAL_DATA_08182020_anatIRMI.csv',
+          row.names=F)
+```
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=dti;
+cov=F;
+res_file=resReviewersSTD_dist_irmi_267.csv;
+clf=cforest;
+nc=5;
+# for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+#     Rscript $my_script ${my_dir}/FINAL_DATA_08072020_IRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+# done
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08182020_anatIRMI.csv $sx $cs $clf $imp $cov $res_file $nc;
+done
+```
+
+Let's try some tests without imputation:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=F;
+res_file=resSTD362_dist_irmi6.csv;
+clf=cforest;
+for nc in {3..10}; do
+    for rs in up down SMOTE; do
+        for cs in "worsening improvers" "worsening never_affected" \
+                "worsening stable" "improvers never_affected" \
+                "improvers stable" "stable never_affected"; do
+            Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+        done;
+    done;
+done
+```
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/tmp/twoClass_ROC_irmi_distance7.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resSTD362_dist_irmi_7_cov.csv;
+clf=cforest;
+for nc in {3..10}; do
+    for rs in up down SMOTE; do
+        for cs in "worsening improvers" "worsening never_affected" \
+                "worsening stable" "improvers never_affected" \
+                "improvers stable" "stable never_affected"; do
+            Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+        done;
+    done;
+done
+```
+
+Let's grab some varImps:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resSTD362_dist_irmi_weights.csv;
+clf=cforest;
+nc=9;
+rs=down;
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+```
+
+# 2020-08-20 07:49:59
+
+Running the analysis for the response to reviewers again:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resReviewersSTD_dist.csv;
+clf=cforest;
+nc=9;
+rs=down;
+for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+```
+
+And we run something similar but for svmLinear and slda to see what works best:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resReviewersSTD_dist_postIRMI.csv;
+nc=9;
+rs=down;
+for clf in svmLinear slda; do
+    for cs in "worsening improvers" "worsening never_affected" \
+                "worsening stable" "improvers never_affected" \
+                "improvers stable" "stable never_affected"; do
+        Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+    done
+done
+```
+
+# 2020-08-24 07:41:00
+
+Some more analysis:
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_distance_singlePredictor.R;
+sx="categ_all_lm";
+imp=none;
+cov=F;
+res_file=resReviewersSTD_dist_sx.csv;
+clf=cforest;
+nc=9;
+rs=down;
+for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+```
+
+And then I did some roc.test:
+
+```
+> roc_all = roc(dat$obs, dat[, levels(dat$obs)[1]], direction = ">")
+Setting levels: control = improvers, case = stable
+> roc_sx = roc(dat_sx$obs, dat_sx[, levels(dat$obs)[1]], direction = ">")
+Setting levels: control = improvers, case = stable
+> roc_all
+
+Call:
+roc.default(response = dat$obs, predictor = dat[, levels(dat$obs)[1]],     direction = ">")
+
+Data: dat[, levels(dat$obs)[1]] in 12 controls (dat$obs improvers) > 7 cases (dat$obs stable).
+Area under the curve: 0.8333
+> roc_sx
+
+Call:
+roc.default(response = dat_sx$obs, predictor = dat_sx[, levels(dat$obs)[1]],     direction = ">")
+
+Data: dat_sx[, levels(dat$obs)[1]] in 12 controls (dat_sx$obs improvers) > 7 cases (dat_sx$obs stable).
+Area under the curve: 0.5952
+> set.seed(2020)
+> roc.test(roc_all, roc_sx, alternative='greater', method='bootstrap', boot.n=10000)
+  |======================================================================| 100%
+
+	Bootstrap test for two correlated ROC curves
+
+data:  roc_all and roc_sx
+D = 1.6425, boot.n = 10000, boot.stratified = 1, p-value = 0.05025
+alternative hypothesis: true difference in AUC is greater than 0
+sample estimates:
+AUC of roc1 AUC of roc2 
+  0.8333333   0.5952381 
+```
+
+# 2020-08-27 19:46:43
+
+We ran the univariate and ML analyses differently again. Philip ran only the 166
+DTI and I ran everyone. HE sent me a new file (FINAL_DATA_08162020_short.csv),
+which I changed to make everyone not in pass2_58 to have NaN for DTI and its
+covariates (FINAL_DATA_08162020_short_cleanDTI.csv). Then, re-ran all the ML.
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resReviewersSTD_dist_cleanDTI.csv;
+clf=cforest;
+nc=10;
+rs=down;
+for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08162020_short_cleanDTI.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+for cs in "worsening improvers" "worsening never_affected" \
+            "worsening stable" "improvers never_affected" \
+            "improvers stable" "stable never_affected"; do
+    Rscript $my_script ${my_dir}/FINAL_DATA_08162020_short_cleanDTI.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+done
+```
+
+Apparently running just 166 DTI broke the results...
+
+![](images/2020-08-27-20-24-19.png)
+
+Let's run all the permutation again to see if there is a better parameter to go
+with.
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resReviewersSTD_dist_cleanDTI.csv;
+clf=cforest;
+nc=9;
+rs=down;
+# for cs in "worsening improvers" "worsening stable" "improvers stable"; do
+#     Rscript $my_script ${my_dir}/FINAL_DATA_08072020.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+# done
+for rs in down up SMOTE; do
+    for nc in {3..6}; do 
+        for cs in "worsening improvers" "worsening never_affected" \
+                    "worsening stable" "improvers never_affected" \
+                    "improvers stable" "stable never_affected"; do
+            Rscript $my_script ${my_dir}/FINAL_DATA_08162020_short_cleanDTI.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+        done;
+    done;
+done;
+```
+
+```bash
+my_dir=~/data/baseline_prediction
+cd $my_dir
+my_script=~/research_code/baseline_prediction/twoClass_ROC_irmi_distance.R;
+sx="categ_all_lm";
+imp=none;
+cov=T;
+res_file=resReviewersSTD_dist_postIRMI.csv;
+nc=10;
+rs=down;
+for clf in svmLinear slda; do
+    for cs in "worsening improvers" "worsening never_affected" \
+                "worsening stable" "improvers never_affected" \
+                "improvers stable" "stable never_affected"; do
+        Rscript $my_script ${my_dir}/FINAL_DATA_08162020_short_cleanDTI.csv $sx $cs $clf $imp $cov $res_file $nc $rs;
+    done
+done
+```
+
+* use only oldest in family?
 * try TPOT with balanced accuracy?
 * try autoML?
 * trying tpot
@@ -532,3 +996,6 @@ while (length(candidates) >= 3) {
 * try using single test set again
 * try PC within the 2 classes only
 * try adding covariates to PC
+
+
+roc.test(y_test, dat_all[,'improvers'], dat[, 'improvers'], alternative='greater', method='bootstrap', boot.n=10000)
