@@ -94,24 +94,46 @@ Let's also capture the commands I'm using to run the imputation:
 
 ```bash
 # bw
+module load python
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate imlabtools
 
-mydir=~/data/expression_impute; python3 $mydir/MetaXcan-master/software/Predict.py --model_db_path $mydir/eqtl/mashr/mashr_Brain_Caudate_basal_ganglia.db --vcf_genotypes /data/NCR_SBRB/ABCD/v201/1KG/chr*.dose.vcf.gz --vcf_mode imputed --prediction_output $mydir/results/ABCD_v201_Caudate_predict_1KG_mashr.txt --prediction_summary_output $mydir/results/ABCD_v201_Caudate_summary_1KG_mashr.txt --verbosity 9 --throw --model_db_snp_key varID --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" --liftover hg19ToHg38.over.chain.gz
+mydir=~/data/expression_impute;
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/eqtl/mashr/mashr_Brain_Caudate_basal_ganglia.db \
+    --vcf_genotypes /data/NCR_SBRB/ABCD/v201/1KG/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --prediction_output $mydir/results/ABCD_v201_Caudate_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/ABCD_v201_Caudate_summary_1KG_mashr.txt \
+    --verbosity 9 --throw --model_db_snp_key varID \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --liftover $mydir/hg19ToHg38.over.chain.gz
 
-mydir=~/data/expression_impute; python3 $mydir/MetaXcan-master/software/Predict.py --model_db_path $mydi
-r/eqtl/mashr/mashr_Brain_Anterior_cingulate_cortex_BA24.db --vcf_genotypes /data/NCR_SBRB/ABCD/v201/1KG/chr*.dose.vcf.gz --vcf_mode imputed --prediction_
-output $mydir/results/ABCD_v201_ACC_predict_1KG_mashr.txt --prediction_summary_output $mydir/results/ABCD_v201_ACC_summary_1KG_mashr.txt --verbosity 9 --
-throw --model_db_snp_key varID --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" --liftover hg19ToHg38.over.chain.gz
+mydir=~/data/expression_impute;
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/eqtl/mashr/mashr_Brain_Anterior_cingulate_cortex_BA24.db \
+    --vcf_genotypes /data/NCR_SBRB/ABCD/v201/1KG/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --prediction_output $mydir/results/ABCD_v201_ACC_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/ABCD_v201_ACC_summary_1KG_mashr.txt \
+    --verbosity 9 --throw --model_db_snp_key varID \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --liftover $mydir/hg19ToHg38.over.chain.gz
 ```
 
 And for NCR data is similar, for example:
 
 ```bash
-mydir=~/data/expression_impute; python3 $mydir/MetaXcan-master/software/Predict.py --model_db_path $mydi
-r/eqtl/mashr/mashr_Brain_Caudate_basal_ganglia.db --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v2/1KG/chr*.dose.vcf.gz --vcf_mode imputed --pre
-diction_output $mydir/results/Caudate_predict_1KG_mashr.txt --prediction_summary_output $mydir/results/Caudate_summary_1KG_mashr.txt --verbosity 9 --thro
-w --model_db_snp_key varID --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" --liftover hg19ToHg38.over.chain.gz
+mydir=~/data/expression_impute;
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/eqtl/mashr/mashr_Brain_Caudate_basal_ganglia.db \
+    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v2/1KG/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --prediction_output $mydir/results/Caudate_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/Caudate_summary_1KG_mashr.txt \
+    --verbosity 9 --throw --model_db_snp_key varID \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --liftover $mydir/hg19ToHg38.over.chain.gz
 ```
 
 # TODO
