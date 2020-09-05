@@ -127,13 +127,40 @@ And for NCR data is similar, for example:
 mydir=~/data/expression_impute;
 python3 $mydir/MetaXcan-master/software/Predict.py \
     --model_db_path $mydir/eqtl/mashr/mashr_Brain_Caudate_basal_ganglia.db \
-    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v2/1KG/chr*.dose.vcf.gz \
+    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v3/chr*.dose.vcf.gz \
     --vcf_mode imputed \
-    --prediction_output $mydir/results/Caudate_predict_1KG_mashr.txt \
-    --prediction_summary_output $mydir/results/Caudate_summary_1KG_mashr.txt \
+    --prediction_output $mydir/results/NCR_v3_Caudate_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/NCR_v3_Caudate_summary_1KG_mashr.txt \
     --verbosity 9 --throw --model_db_snp_key varID \
     --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
     --liftover $mydir/hg19ToHg38.over.chain.gz
+
+mydir=~/data/expression_impute;
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/eqtl/mashr/mashr_Brain_Anterior_cingulate_cortex_BA24.db \
+    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v3/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --prediction_output $mydir/results/NCR_v3_ACC_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/NCR_v3_ACC_summary_1KG_mashr.txt \
+    --verbosity 9 --throw --model_db_snp_key varID \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --liftover $mydir/hg19ToHg38.over.chain.gz
+```
+
+Now that imputation results are ready:
+
+```bash
+cd /data/NCR_SBRB/NCR_genetics/v3
+for f in `/bin/ls *zip`; do unzip -P W5hTW7yDJIQxry $f; done
+```
+
+From Philip:
+
+```
+[5:08 PM] Shaw, Philip (NIH/NHGRI) [E]
+    yup--- the neatest finding would be that genes that we find to have grex for case vs control in the brain overlap with those in the living subject---- and the 'grex' may be gene-set overlap ---enriching the same developmental periods, but not necessarilty wiht exactly the diff exp genes.  
+​[5:09 PM] Shaw, Philip (NIH/NHGRI) [E]
+    If that holds---then you could see how the 'grex' genes associate with brain dimension in the living subject----then concluding that these grex genes have a trophic impact on the brain.  
 ```
 
 # TODO
