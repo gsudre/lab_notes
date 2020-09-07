@@ -163,5 +163,84 @@ From Philip:
     If that holds---then you could see how the 'grex' genes associate with brain dimension in the living subject----then concluding that these grex genes have a trophic impact on the brain.  
 ```
 
+# 2020-09-07 12:25:06
+
+Just to make things run faster, I did:
+
+```r
+a = read.table('~/data/expression_impute/results/NCR_v3_ACC_predict_1KG_mashr.txt', header=1)
+saveRDS(a, '~/data/expression_impute/results/NCR_v3_ACC_1KG_mashr.rds')
+```
+
+I'll also use the same data we used for imputation in order to compute the
+population PCs, but here I'll need to remove that last sample so it's not
+contributing to the PCs:
+
+```bash
+#bw
+cd /data/NCR_SBRB/NCR_genomics/genotyping/v3
+echo "3333333 3239" >> rm_ids.txt
+module load plink
+plink --bfile NCR_v3_noDups_flipped --remove rm_ids.txt --make-bed \
+    --out NCR_v3_noDups_flipped_noExtra
+/data/NCR_SBRB/software/KING/king --mds --cpus 30 -b NCR_v3_noDups_flipped_noExtra.bed
+```
+
+```r
+pcs = read.table('/data/NCR_SBRB/NCR_genomics/genotyping/v3/kingpc.ped')
+pcsf = pcs[, c(2, 7:26)]
+new_names = c('IID', sapply(1:20, function(x) sprintf('PC%.2d', x)))
+colnames(pcsf) = new_names
+write.csv(pcsf, file='/data/NCR_SBRB/NCR_genomics/genotyping/v3/pop_pcs.csv', row.names=F)
+```
+
+Now, let's try to do some basic analysis, starting by looking at WNH only,
+because if I remember correctly that's our strongest result in post-mortem. It's
+always possible that the expression imputation is heavily skewed to WNH
+populations, so let's start there.
+
+![](images/2020-09-07-13-39-00.png)
+
+Here it'll depend on how many people we want to include. Let's do PC01 < 0 and
+PC02 > -.025 for now.
+
+```r
+a = readRDS('~/data/expression_impute/results/NCR_v3_ACC_1KG_mashr.rds')
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+pcs = read.csv('/data/NCR_SBRB/NCR_genomics/genotyping/v3/pop_pcs.csv')
+keep_me = pcs$PC01 < 0 & pcs$PC02 > -.025
+pcs = pcs[keep_me, ]
+data = merge(a, pcs, by='IID', all.x=F, all.y=F)
+gf = read.csv('~/data/expression_impute/gf_1119_09072020.csv')
+data = merge(data, gf, by.x='IID', by.y='Subject.Code...Subjects', all.x=F, all.y=F)
+data$Case = factor(data$Case)
+```
+
+And the analysis is similar to what we normally do:
+
+```r
+library(lme4)
+library(car)
+fit = lmer(ENSG00000261456.5 ~ Case + Sex...Subjects + PC01 + (1|FAMID), data=data)
+Anova(fit)
+```
+
+or, if we run for all genes:
+
+```r
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+# set up some heuristic that at least half the subjects should have non-zero imputation
+nzeros = colSums(data[, grex_vars]==0)
+good_grex = grex_vars[nzeros < (nrow(data)/2)]
+pvals = sapply(good_grex, function(x) {
+    fm_str = sprintf('%s ~ Case + Sex...Subjects + (1|FAMID)', x)
+    fit = lmer(as.formula(fm_str), data=data)
+    return(Anova(fit)['Case', 3])})
+```
+
 # TODO
  * try using the elastic net models
+ * adults only?
+ * blood samples only?
+ * use entire population?
