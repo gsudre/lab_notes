@@ -229,18 +229,244 @@ Anova(fit)
 or, if we run for all genes:
 
 ```r
+library(caret)
+
 grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+
+# remove zero or near zero variance genes
+set.seed(42)
+pp_order = c('zv', 'nzv')
+pp = preProcess(data[, grex_vars], method = pp_order)
+X = predict(pp, data[, grex_vars])
+good_grex = colnames(X)
+
 # set up some heuristic that at least half the subjects should have non-zero imputation
-nzeros = colSums(data[, grex_vars]==0)
-good_grex = grex_vars[nzeros < (nrow(data)/2)]
+nzeros = colSums(X==0)
+good_grex = good_grex[nzeros < (nrow(X)/2)]
 pvals = sapply(good_grex, function(x) {
     fm_str = sprintf('%s ~ Case + Sex...Subjects + (1|FAMID)', x)
     fit = lmer(as.formula(fm_str), data=data)
     return(Anova(fit)['Case', 3])})
 ```
 
+And I could easily parallelize that to go much faster. We just need to figure
+out if we are using the right covariates.
+
+I'm seeing scenarios where we have many subjects with 0 for some genes. I'll
+need to use whatever heuristic I'm applying for the post-mortem here as well
+then.
+
+# 2020-09-08 06:56:34
+
+Let's now focus on how to remove bad genes (not represented in enough subjects)
+and how to massage the results to run the gene set analysis.
+
+I'm using filterByExpr for rnaseq, so I'll need to generate some plots to
+qualitatively crop the imputed data.
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's NOT caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+data = data[data$Sex=='M',]
+
+imWNH = which(data$C1 > 0 & data$C2 < -.065)
+data = data[imWNH, ]
+
+# have 19 super clean WNH subjects for ACC and 20 for Caudate
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+# data matrix goes on a diet...
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library(biomaRt)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+
+# some data variables modifications
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+
+# match gene counts to gene info
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+```
+
+Now we make plots with one line per subject:
+
+```r
+plot(density(cpm(geneCounts[,1], log=T)), las=2, main="", xlab="lCPM")
+for (s in 2:nrow(data)) {
+  lines(density(cpm(geneCounts[, s], log=T)), las=2)
+}
+# and now we plot in red after cleaning
+for (s in 1:nrow(data)) {
+  lines(density(cpm(genes[, s], log=T)), las=2, col='red')
+}
+```
+
+![](images/2020-09-08-09-27-50.png)
+
+Now, let's do the same thing with the imputed data:
+
+```r
+a = readRDS('~/data/expression_impute/results/NCR_v3_ACC_1KG_mashr.rds')
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+keep_me = pcs$PC01 < 0 & pcs$PC02 > -.025
+pcs = pcs[keep_me, ]
+imp_data = merge(a, pcs, by='IID', all.x=F, all.y=F)
+gf = read.csv('~/data/expression_impute/gf_1119_09072020.csv')
+imp_data = merge(imp_data, gf, by.x='IID', by.y='Subject.Code...Subjects', all.x=F, all.y=F)
+imp_data$Case = factor(imp_data$Case)
+
+library(caret)
+grex_vars = colnames(imp_data)[grepl(colnames(imp_data), pattern='^ENS')]
+# remove zero or near zero variance genes
+set.seed(42)
+pp_order = c('zv', 'nzv')
+pp = preProcess(imp_data[, grex_vars], method = pp_order)
+X = predict(pp, imp_data[, grex_vars])
+grex_vars = colnames(X)
+
+# data matrix goes on a diet...
+imp_data = imp_data[, !grepl(colnames(imp_data), pattern='^ENS')]
+# remove that weird .num after ENSG
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+colnames(X) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+X = t(X[, !dups])
+
+library(biomaRt)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# remove any genes without a HUGOID
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+# remove genes that appear more than once
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+# keep only gene counts for genes that we have information
+imnamed = rownames(X) %in% G_list$ensembl_gene_id
+X = X[imnamed, ]
+grex_vars = id_num[imnamed]
+
+# match gene counts to gene info
+G_list2 = merge(rownames(X), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+
+# keep only autosomal genes
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+X = X[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+```
+
+And let's make a similar plot:
+
+```r
+plot(density(X[, 1]), las=2, main="", xlab="impVal")
+for (s in 2:col(X)) {
+  lines(density(X[, s]), las=2)
+}
+```
+
+![](images/2020-09-08-09-45-51.png)
+
+Hum... these values are quite odd. What are we predicting here? According to
+Sam,:
+
+```
+Negative values represent underexpression of the gene, positive values represent overexpression. I am trying to remember what the parameters were to determine the reference expression, whether that is entirely taken from the reference cohort with genotype and expression data, or if it is in relation to the imputed cohort
+
+Genes were retained if they had an R2 <0.01 for cross-validation between imputed expression and actual expression within the GTEx reference cohort. 12,419 genes were expressed in at least one cohort and 7,392 genes were expressed in all three. Following further quality control removing genes with at least 30% zero expression values in at least one cohort, 6,575 genes were included in the final analyses.
+```
+
+But the MASHR models don't give R2, so we're stuck with looking at % of zeros,
+which looks funky too:
+
+```r
+nzeros = rowSums(X==0)
+plot(sort(nzeros, decreasing=T))
+```
+
+![](images/2020-09-08-11-33-09.png)
+
+So, there isn't really a good cut-off in terms of subjects (Y axis). For now,
+let's stick with 50%, and we can go up or lower later.
+
+```r
+nzeros = rowSums(X==0)
+good_grex = grex_vars[nzeros < (ncol(X)/2)]
+library(lme4)
+library(car)
+mydata = cbind(imp_data, t(X))
+pvals = sapply(good_grex, function(x) {
+    fm_str = sprintf('%s ~ Case + Sex...Subjects + (1|FAMID)', x)
+    fit = lmer(as.formula(fm_str), data=mydata)
+    return(Anova(fit)['Case', 3])})
+```
+
+
+
+
+
+
 # TODO
  * try using the elastic net models
  * adults only?
+ * play with zero threshold
+ * look into epiXcan
  * blood samples only?
  * use entire population?
