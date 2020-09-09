@@ -925,6 +925,11 @@ Adult-male:
 ![](images/2020-09-09-11-14-05.png)
 ![](images/2020-09-09-11-21-04.png)
 
+Here are some number for the Adult-male WNH sample:
+
+![](images/2020-09-09-11-52-07.png)
+
+
 # TODO
  * try using the elastic net models
  * play with zero threshold
@@ -933,3 +938,12 @@ Adult-male:
  * blood samples only?
  * figure out those unknown samples
  * use entire population?
+ * what's going on with caudate?
+ * what happens to main results when we add all races and women?
+
+# From meeting with Philip
+ * remitted should be included as adhd. Typical are really typical. Maybe just
+   do ever_ADHD?
+ * narrow to age range that's comparable to postmortem
+ * only one per family (even for extended family, for healthy, no family history)
+ * look at cognition as well
