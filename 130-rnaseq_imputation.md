@@ -317,5 +317,46 @@ more as a robustness analysis or if this OPF idea is really what we'll go with.
 
 Let's maybe go through some of the other items in the TODO list.
 
+# 2020-09-14 11:03:28
+
+I'm starting to think that before I analyze any of these results I'll have to
+first check if they are at all significant. I'll create
+rnaseq_imputation_intersection.R and see what we get.
+
+So, we can run it in the cluster like this:
+
+```bash
+# bw
+cd ~/data/expression_impute/
+sfile=swarm.intersect;
+rm $sfile;
+for i in {1..100}; do
+    echo "Rscript ~/research_code/rnaseq_imputation_intersection.R ~/data/tmp WNH_WNHBoth $RANDOM" >> $sfile;
+done
+cat $sfile | parallel -j 32 --max-args=1 {};
+```
+
+And we can compile them with something like:
+
+```r
+fnames = list.files(mydir, pattern='~/data/tmp/WNH_WNHBoth_rnd*')
+gs05 = c()
+gs01 = c()
+ig05 = c()
+ig01 = c()
+for (fname in fnames) {
+    load(fname)
+    append(gs05, intersect(rownames(c5_dream_cameraDC)[c5_dream_cameraDC$PValue<.05],
+                        rownames(c5_imp_camera)[c5_imp_camera$PValue<.05]))
+    append(gs01, intersect(rownames(c5_dream_cameraDC)[c5_dream_cameraDC$PValue<.01],
+                        rownames(c5_imp_camera)[c5_imp_camera$PValue<.01]))
+    append(ig05, intersect(resDC[resDC$P.Value<.05, 'hgnc_symbol'],
+                        imp_res[imp_res[, 4]<.05, 'hgnc_symbol']))
+    append(ig01, intersect(resDC[resDC$P.Value<.01, 'hgnc_symbol'],
+                        imp_res[imp_res[, 4]<.01, 'hgnc_symbol']))
+}
+sum(gs05>=28)/length(gs05)
+```
+
 # TODO
- *  
+ *  make sure our DX is very clean!
