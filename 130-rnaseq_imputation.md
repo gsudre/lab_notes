@@ -358,5 +358,170 @@ for (fname in fnames) {
 sum(gs05>=28)/length(gs05)
 ```
 
+# 2020-09-15 13:25:00
+
+Even after adding the new DX based on dsm5 and nv012, we're still not going over
+the number of intersecting pathways that would survive the permutation test.
+What else can we do?
+
+Let's try some other approaches. First, let's try the Elastic Net models:
+
+```bash
+python3 $METAXCAN/Predict.py \
+--model_db_path $DATA/models/gtex_v8_en/en_Whole_Blood.db \
+--vcf_genotypes $DATA/1000G_hg37/ALL.chr*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+--vcf_mode genotyped \
+--prediction_output $RESULTS/vcf_1000G_hg37_en/Whole_Blood__predict.txt \
+--prediction_summary_output $RESULTS/vcf_1000G_hg37_en/Whole_Blood__summary.txt \
+--verbosity 9 \
+--throw
+```
+
+```bash
+# bw
+module load python
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate imlabtools
+mydir=~/data/expression_impute;
+
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/elastic_net_models/en_Brain_Caudate_basal_ganglia.db \
+    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v3/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --liftover $mydir/hg19ToHg38.over.chain.gz \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --variant_mapping $mydir/gtex_v8_eur_filtered_maf0.01_monoallelic_variants.txt.gz id rsid \
+    --prediction_output $mydir/results/NCR_v3_Caudate_predict_1KG_en.txt \
+    --prediction_summary_output $mydir/results/NCR_v3_Caudate_summary_1KG_en.txt \
+    --verbosity 9 --throw
+
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/elastic_net_models/en_Brain_Anterior_cingulate_cortex_BA24.db \
+    --vcf_genotypes /data/NCR_SBRB/NCR_genomics/genotyping/v3/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --liftover $mydir/hg19ToHg38.over.chain.gz \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --variant_mapping $mydir/gtex_v8_eur_filtered_maf0.01_monoallelic_variants.txt.gz id rsid \
+    --prediction_output $mydir/results/NCR_v3_ACC_predict_1KG_en.txt \
+    --prediction_summary_output $mydir/results/NCR_v3_ACC_summary_1KG_en.txt \
+    --verbosity 9 --throw
+```
+
+# 2020-09-16 11:30:12
+
+I'm curious to see whether I need to add PCs to the edgeR model after I use just
+the WNH population. Let's compare to pure noise features and see how much they
+explain using variancePartition.
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier that's NOT caudate labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+data = data[data$Sex=='M',]
+imWNH = which(data$C1 > 0 & data$C2 < -.065)
+data = data[imWNH, ]
+
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+```
+
+Now let's run the standard variancePartition analysis, using only the ACC WNH
+samples (Males only):
+
+```r
+library(variancePartition)
+form = ~ batch + scale(RINe) + scale(PMI)
+design = model.matrix( form, data)
+vobj = voom( genes, design, plot=FALSE)
+
+form = ~ (1|Diagnosis) + scale(RINe) + (1|batch) + scale(PMI) + scale(Age) + (1|MoD) + scale(C1) + scale(C2) + scale(C3) + scale(C4) + scale(C5)
+varPart <- fitExtractVarPartModel(vobj, form, data)
+vp <- sortCols( varPart )
+plotVarPart( vp )
+```
+
+![](images/2020-09-16-14-03-44.png)
+
+This doesn't look very good. Are these variables correlated at all? Also,
+there's a whole lot of variance that we're not explaining here... VERY different
+than plots like the one in the documentation:
+
+![](images/2020-09-16-14-05-48.png)
+
+
+
+
+
+design = model.matrix( form, data)
+vobj_tmp = voom( genes, design, plot=FALSE)
+dupcor <- duplicateCorrelation(vobj_tmp, design, block=data$batch)
+vobj = voom( genes, design, plot=FALSE, block=data$batch,
+             correlation=dupcor$consensus)
+fit <- lmFit(vobj, design, block=data$batch, correlation=dupcor$consensus)
+fitDC <- eBayes( fit )
+resDC = topTable(fitDC, coef='DiagnosisControl', number=Inf)
+
+
 # TODO
- *  make sure our DX is very clean!
+ * grab cog data for everyone in the OPF sample
+ * try using the elastic net models
+ * Do I need to include PCs in the postmortem model? Check how much variance they explain!
+   How do results change if I just add X number of noise variables?
+ * maybe ML on genes selected in post-mortem? we could have manhatan-like plots
+    with sig genes on the bottom, trying to predict different phenotypes. One
+    plot per phenotype. Or we could use all genes to predict each phenotype,
+    maybe using stepAIC? We could be extremely ambitious, train on ABCD and test
+    on ours.
+ * can we predict max Sx?
+ * play with zero threshold
+ * play with caudate too
+ * look at the genes (or even the methods) of the imputed TWAS papers Sam sent
