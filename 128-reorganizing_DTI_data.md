@@ -91,15 +91,16 @@ id scan. Copying the TORTOISE output tensors manually.
 And some quick code to get the JHU tracts:
 
 ```bash
-#bw
+#ncrshell01
 mydir=/mnt/shaw/sudregp/dtitk_processing/tortoise_dtitk_crossSec_agingTemplate
 weighted_tracts=jhu_tracts_183.csv;
 cd $mydir
 row="id";
 for t in ATR CST cin_cin cin_hip CC IFO ILF SLF unc SLFtemp; do
     for h in l r; do
-        m=fa;
-        row=${row}','${m}_${t}_${h};
+        for m in fa ad rd; do
+            row=${row}','${m}_${t}_${h};
+        done;
     done;
 done
 echo $row > $weighted_tracts;
@@ -113,7 +114,9 @@ for m in `cat ~/tmp/m2.txt`; do
         3dcalc -a rois.nii -expr "amongst(a, $t)" -prefix mask.nii \
             -overwrite 2>/dev/null &&
         fa=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_fa.nii 2>/dev/null`;
-        row=${row}','${fa};
+        ad=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_ad.nii 2>/dev/null`;
+        rd=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_rd.nii 2>/dev/null`;
+        row=${row}','${fa}','${ad}','${rd};
     done
     echo $row >> $weighted_tracts;
     rm -rf rois.nii mask.nii;
