@@ -638,7 +638,128 @@ dev_camera = get_enrich_order2( res, genes_unique )
 Mostly sperm stuff... not sure what to make of these results. 19 of those are
 also significant at q < .01.
 
+## Adding more genes
+
+I was a bit worried that our conversion to genes with HUGO IDs was eliminating
+about 30K markers. Let's see if converting using a different database would do
+better:
+
+```r
+myregion = 'Caudate'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+library(biomaRt)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix_bm = count_matrix[imnamed, ]
+```
+
+```
+library('org.Hs.eg.db')
+geneids = mapIds(org.Hs.eg.db, rownames(count_matrix), 'SYMBOL', 
+    'ENSEMBL')
+r$> sum(!is.na(geneids))                                             
+[1] 26377
+r$> dim(count_matrix)                                                
+[1] 60558    58
+r$> dim(count_matrix_bm)                                             
+[1] 38548    58
+```
+
+So, I'm actually doing better using the BioMart conversion. Starting with 38.5K
+genes is not bad (pre-cleaning), so I'll just start with that.
+
+## Other gene set analysis
+
+I'll use Caudate first, and let's check what's going with when analyzing with
+goana, kegga, and fgsea.
+
+```r
+saveLimmaGeneSets<- function(res, idx, fname) {
+  symbols = res[idx, 'hgnc_symbol']
+  geneids = mapIds(org.Hs.eg.db, symbols, 'ENTREZID', 'SYMBOL')
+  res_go = goana(geneids, species='Hs')
+  res_go = res_go[order(res_go$P.DE),]
+  res_go$FDR = p.adjust(res_go$P.DE, method='fdr')
+  res_kegg = kegga(geneids, species='Hs')
+  res_kegg = res_kegg[order(res_kegg$P.DE),]
+  res_kegg$FDR = p.adjust(res_kegg$P.DE, method='fdr')
+  out_fname = gsub(x=fname, pattern='.csv', replacement='_go.csv')
+  write.csv(res_go, file=out_fname)
+  out_fname = gsub(x=fname, pattern='.csv', replacement='_kegg.csv')
+  write.csv(res_kegg, file=out_fname)
+}
+
+saveLimmaGeneSets(res, res$P.Value<.01, '~/tmp/limma_caudate_p01.csv')
+saveLimmaGeneSets(res, res$P.Value<.05, '~/tmp/limma_caudate_p01.csv')
+# r$> max(res$P.Value[1:100])                                          
+# [1] 0.006035448
+saveLimmaGeneSets(res, 1:100, '~/tmp/limma_caudate_top100.csv')
+```
+
+And we should also run it for ACC for comparison. But before we go there, let's
+play a bit with fgsea:
+
+```r
+library(fgsea)
+load('~/data/rnaseq_derek/c5_gene_sets.RData')
+ranks = res$t
+names(ranks) = res$hgnc_symbol
+res2 = fgsea(c5_all, ranks)
+ngood = sum(res2$pval<.01)
+print(sprintf('Gene ontology nominal at p < .01: %d', ngood))
+out_fname = '~/tmp/fgsea_caudate_c5.csv'
+# not writing out last column which is a list of genes and it's messing up write.csv... we can check it later if needed
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+res2 = fgsea(disorders, ranks)
+out_fname = '~/tmp/fgsea_caudate_disorders.csv'
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+res2 = fgsea(genes_unique, ranks)
+out_fname = '~/tmp/fgsea_caudate_dev.csv'
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+```
+
+For ACC, we run all the prep code above and do this:
+
+```r
+saveLimmaGeneSets(res, res$P.Value<.01, '~/tmp/limma_acc_p01.csv')
+saveLimmaGeneSets(res, res$P.Value<.05, '~/tmp/limma_acc_p01.csv')
+# r$> max(res$P.Value[1:100])                                          
+# [1] 0.0034
+saveLimmaGeneSets(res, 1:100, '~/tmp/limma_acc_top100.csv')
+
+ranks = res$t
+names(ranks) = res$hgnc_symbol
+res2 = fgsea(c5_all, ranks)
+out_fname = '~/tmp/fgsea_acc_c5.csv'
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+res2 = fgsea(disorders, ranks)
+out_fname = '~/tmp/fgsea_acc_disorders.csv'
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+res2 = fgsea(genes_unique, ranks)
+out_fname = '~/tmp/fgsea_acc_dev.csv'
+write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
+```
+
 # TODO
- * should we get HUGO symbols from somewhere else that doesn't waste 30K markers?
- * How about Caudate?
- * other gene set analysis?
+ * how about separating the developmental gene lists?
