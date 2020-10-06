@@ -87,6 +87,15 @@ everything other than RINe and pH. Now, let's see how much variance the
 biological variables actually explain, compared to these technical ones and some
 random noise. 
 
+```r
+form <- ~ Age + (1|batch) + RINe + pH
+vobj = voom( genes, form, plot=FALSE)
+
+varPart <- fitExtractVarPartModel( genes, form, info )
+vp <- sortCols( varPart )
+plotVarPart( vp )
+```
+
 
 
 # TODO
