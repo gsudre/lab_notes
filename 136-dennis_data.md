@@ -170,3 +170,27 @@ And then copied everything back to shaw:/dennis/.
 
 QC images look fine, but forceps minor and major could not be estimated for one
 of the subjects. Might need to tweak things a bit there later.
+
+# 2020-10-07 11:12:02
+
+Philip asked me to do some TBSS in these subjects as well:
+
+```
+in addition to the corpus callosum, it'd be good to pull out the individual voxel values for the CC.  We'd simply use a non-parametric test at each voxel to test for deviation from a range (derived from whatever adults you have).
+```
+
+```bash
+m=24
+cd ~/data/dennis/preproc/$m
+
+tbss_1_preproc dti_FA.nii.gz
+tbss_2_reg -T
+# wait for jobs submitted above finish
+tbss_3_postreg -S
+tbss_4_prestats 0.3
+```
+
+Once I get the age ranges I can make sure all our NVs have something similar to
+this, and generate distributions for each voxel in the corpus callosum, or even
+a distribution from the mean, and then see how often the cases here are outside
+the normal distribution.
