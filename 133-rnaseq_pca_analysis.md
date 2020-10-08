@@ -750,7 +750,6 @@ saveLimmaGeneSets(res, 1:100, '~/tmp/limma_acc_top100.csv')
 
 ranks = res$t
 names(ranks) = res$hgnc_symbol
-res2 = fgsea(c5_all, ranks)
 out_fname = '~/tmp/fgsea_acc_c5.csv'
 write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
 res2 = fgsea(disorders, ranks)
