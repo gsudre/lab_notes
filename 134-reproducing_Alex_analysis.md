@@ -627,6 +627,7 @@ But that assumes samples as rows, which is not our case. And we cannot put a
 square matrix of 650K in memory. So, maybe we can change this to compute on the
 fly?
 
+
 ```r
 # calculates Meff without computing the costly big cc matrix, but paying in run
 # time to calculate each correlation in the loop.
