@@ -376,3 +376,233 @@ Scanner      8  12
 
 And for Caudate we will remove PCs 1, 2, 5, 6, and 12. And the minimum p-value for
 Sample_Group was .1, so we're also good there.
+
+Now we do the actual statistical model:
+
+```r
+# Differential methylation for Caudate: M-values with limma model corrected for unwanted variance
+# limma to predict DMP from M values
+vars.caudate = cbind(samples.caudate, pcs.caudate)
+var <- model.matrix(~ PC1 + PC2 + PC5 + PC6 + PC12 + Sample_Group,
+                    data=vars.caudate)
+M <- logit2(meth.caudate) # convert beta to M:  log2(beta) - log2(1 - beta)
+library(limma)
+fit <- lmFit(M, var)
+fit2 <- eBayes(fit, trend=TRUE, robust=TRUE)
+probes.limma.caudate <- topTable(fit2, adjust="fdr",
+                                 coef=colnames(var)[ncol(var)], num=Inf)
+```
+
+```
+r$> head(probes.limma.caudate)                                                                                                                                                 
+                logFC    AveExpr         t        P.Value adj.P.Val         B
+cg09992259 -0.4017439  1.3097275 -5.329861 0.000001704884 0.9294906 1.8918339
+cg20792284 -0.8355384 -4.7842311 -5.188071 0.000002868931 0.9294906 1.6101347
+cg15980797  0.3810369 -2.7444191  4.712723 0.000015884321 0.9994431 0.6719115
+cg21827674  0.7213013  0.7737180  4.657451 0.000019308328 0.9994431 0.5638065
+cg02390806  0.5005134 -1.6282955  4.603950 0.000023304672 0.9994431 0.4594285
+cg02556924 -0.4497043 -0.6535741 -4.567987 0.000026433472 0.9994431 0.3894228
+```
+
+And we do the same for ACC:
+
+```r
+vars.acc = cbind(samples.acc, pcs.acc)
+var <- model.matrix(~ PC2 + PC4 + PC5 + PC6 + PC9 + Sample_Group,
+                    data=vars.acc)
+M <- logit2(meth.acc) # convert beta to M:  log2(beta) - log2(1 - beta)
+fit <- lmFit(M, var)
+fit2 <- eBayes(fit, trend=TRUE, robust=TRUE)
+probes.limma.acc <- topTable(fit2, adjust="fdr",
+                             coef=colnames(var)[ncol(var)], num=Inf)
+```
+
+```
+r$> head(probes.limma.acc)                                                                                                                                                     
+                logFC   AveExpr         t        P.Value adj.P.Val         B
+cg17427421  0.3600533  2.627971  5.171306 0.000003658587 0.8210943 1.2624822
+cg12848592 -0.6123150 -5.352947 -5.144062 0.000004029615 0.8210943 1.2124132
+cg16900188  0.4217245  3.701550  5.141539 0.000004065804 0.8210943 1.2077755
+cg07910816  0.4387288  2.827655  5.056224 0.000005496727 0.8210943 1.0510215
+cg18389630  0.3709812  3.246830  4.799408 0.000013502251 0.8210943 0.5800598
+cg16660494  0.3644896  3.212603  4.740526 0.000016557385 0.8210943 0.4724045
+```
+
+Again, nothing survives FDR, but not really surprising. 
+
+At this point, let's save our results and then we can start investigating gene
+set analysis.
+
+```r
+save(meth.acc, meth.caudate, pcs.acc, pcs.caudate, probes.limma.acc,
+     probes.limma.caudate, samples.acc, samples.caudate,
+     file='~/data/methylation_post_mortem/main_results_10082020.RData')
+```
+
+Now we need to attach some genes to all these probes. 
+
+```r
+data("probe.features.epic")
+probes.limma.caudate.annotated <- merge(probes.limma.caudate, probe.features,
+                                        by="row.names", sort=FALSE, all.x=TRUE)
+probes.limma.acc.annotated <- merge(probes.limma.acc, probe.features,
+                                    by="row.names", sort=FALSE, all.x=TRUE)
+```
+
+Let me re-create some of Alex's plots so we can retain his code, but also to see
+the differences using the modifications I made in the analaysis:
+
+```r
+# Manhattan plot
+mhplot <- function(data, genomewide_threshold=5e-6, annotate_threshold=1e-5) {
+    # Creating a data set of the require data
+    manhattan.data<-data.frame(feature=data$gene,CHR=data$CHR,
+      MAPINFO=data$MAPINFO, adj.P.Val = data$adj.P.Val,  P.Value = data$P.Value)
+    
+    # We have to turn Chr into a numeric vector for this function
+    manhattan.data$CHR <- as.character(manhattan.data$CHR)
+    manhattan.data$CHR <- sub("chr","",manhattan.data$CHR)
+    manhattan.data$CHR[which(manhattan.data$CHR=="X")] <- "23"
+    manhattan.data$CHR[which(manhattan.data$CHR=="Y")] <- "24"
+    manhattan.data$CHR <- as.numeric(manhattan.data$CHR)
+    
+    # Create Manhattan plot
+    manhattan(manhattan.data, col = c("deepskyblue4", "deepskyblue3"), chr = "CHR", bp = "MAPINFO", p = "P.Value", snp = "feature", suggestiveline=FALSE, genomewideline=-log10(genomewide_threshold), annotatePval=annotate_threshold, annotateTop=TRUE)
+}
+
+mhplot(probes.limma.caudate.annotated)
+mhplot(probes.limma.acc.annotated)
+```
+
+![](images/2020-10-08-11-47-22.png)
+![](images/2020-10-08-11-48-35.png)
+
+Top Manhatan is for Caudate, bottom for ACC.
+
+And we try some Volcano plots too:
+
+```r
+EnhancedVolcano(
+  probes.limma.caudate.annotated,
+  lab = rownames(probes.limma.caudate.annotated),
+  x = 'logFC',
+  y = 'P.Value',
+  ylab = bquote(~-Log[10]~italic(P)["non-adjusted"]),
+  xlab = bquote(~"logFC"),
+  xlim = c(-0.7, +0.7),
+  ylim = c(0, 6),
+  axisLabSize = 12,
+  title="",
+  subtitle="",
+  caption="",
+  subtitleLabSize = 0,
+  captionLabSize = 0,
+  titleLabSize = 0,
+  legendPosition = "none",
+  pCutoff = 1e-5,
+  FCcutoff = 0.2,
+  selectLab=c(''),
+  col=c('gray60', 'gray60', 'black', 'red'),
+  )
+```
+
+![](images/2020-10-08-11-51-26.png)
+
+```r
+EnhancedVolcano(
+  probes.limma.acc.annotated,
+  lab = rownames(probes.limma.acc.annotated),
+  x = 'logFC',
+  y = 'P.Value',
+  ylab = bquote(~-Log[10]~italic(P)["non-adjusted"]),
+  xlab = bquote(~"logFC"),
+  xlim = c(-0.7, +0.7),
+  ylim = c(0, 7),
+  axisLabSize = 12,
+  title="",
+  subtitle="",
+  caption="",
+  subtitleLabSize = 0,
+  captionLabSize = 0,
+  titleLabSize = 0,
+  legendPosition = "none",
+  pCutoff = 1e-5,
+  FCcutoff = 0.2,
+  selectLab=c(''),
+  col=c('gray60', 'gray60', 'black', 'red'),
+  )
+```
+
+![](images/2020-10-08-11-53-05.png)
+
+I'm not sure where Alex got those p-value thresholds from. The GWAS threshold is
+5*10^-8, and what I could find for epigenome is 2.4×10-7 for the entire 450K
+array. In our analysis I get 1*10^-7 if using the ones with gene annotation,
+7.7*10^-8 if using all annotated probes.  
+
+Since we're doing gene set analysis, we should keep it only to the probes
+annotated with genes.
+
+```r
+idx = probes.limma.acc.annotated$gene != ''
+genes.acc = probes.limma.acc.annotated[idx, ]
+idx = probes.limma.caudate.annotated$gene != ''
+genes.caudate = probes.limma.caudate.annotated[idx, ]
+```
+
+Then we run our usual gene set analysis:
+
+```r
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$gene
+  stat = stat[!is.na(names(stat))]
+  # print(head(stat))
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
+load('~/data/rnaseq_derek/c5_gene_sets.RData')
+load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
+load('~/data/rnaseq_derek/data_for_alex.RData')
+co = .9 
+idx = anno$age_category==1 & anno$cutoff==co
+genes_overlap = unique(anno[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno$age_category==s & anno$cutoff==co
+  g2 = unique(anno[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno$age_category==s & anno$cutoff==co
+  g = unique(anno[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno$age_category==s2 & anno$cutoff==co
+    g2 = unique(anno[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+}
+genes_unique[['overlap']] = unique(genes_overlap)
+
+adhd_acc = get_enrich_order2( genes.acc, t2 ) 
+c5_acc = get_enrich_order2( genes.acc, c5_all)
+dis_acc = get_enrich_order2( genes.acc, disorders)
+dev_acc = get_enrich_order2( genes.acc, genes_unique )
+```
+
+# TODO
+ * is there a better result if we look only at certain feature or cgi annotated results?
+ * look at only genes at a certain SNP distance?
+ 
