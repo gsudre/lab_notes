@@ -646,6 +646,8 @@ slow_meff = function(mydata) {
 }
 ```
 
+That run the whole night on my laptop and still didn't finish. I might need to
+parallelize it or try running the big correlation matrix in a big machine.
 
 
 # TODO
