@@ -605,4 +605,9 @@ dev_acc = get_enrich_order2( genes.acc, genes_unique )
 # TODO
  * is there a better result if we look only at certain feature or cgi annotated results?
  * look at only genes at a certain SNP distance?
+ * we can look more into the hypergeometric test:
+   * https://sbc.shef.ac.uk/workshops/2018-07-10-rna-seq/rna-seq-gene-set-testing.nb.html
+   * https://www.bioconductor.org/packages/devel/bioc/vignettes/GeneOverlap/inst/doc/GeneOverlap.pdf
+   * https://bioinfogp.cnb.csic.es/tools/venny/index.html
+   * http://www.pangloss.com/wiki/VennSignificance
  
