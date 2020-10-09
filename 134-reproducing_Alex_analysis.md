@@ -600,10 +600,57 @@ adhd_acc = get_enrich_order2( genes.acc, t2 )
 c5_acc = get_enrich_order2( genes.acc, c5_all)
 dis_acc = get_enrich_order2( genes.acc, disorders)
 dev_acc = get_enrich_order2( genes.acc, genes_unique )
+
+adhd_caudate = get_enrich_order2( genes.caudate, t2 ) 
+c5_caudate = get_enrich_order2( genes.caudate, c5_all)
+dis_caudate = get_enrich_order2( genes.caudate, disorders)
+dev_caudate = get_enrich_order2( genes.caudate, genes_unique )
 ```
+
+In case I want to run Meff, this is the code:
+
+```r
+cc = cor(data)
+M = nrow(cc)
+cnt = 0
+for (j in 1:M) {
+    print(j)
+    for (k in 1:M) {
+        cnt = cnt + (1 - cc[j, k]**2)
+    }
+}
+meff = 1 + cnt / M
+cat(sprintf('Galwey Meff = %.2f\n', meff))
+```
+
+But that assumes samples as rows, which is not our case. And we cannot put a
+square matrix of 650K in memory. So, maybe we can change this to compute on the
+fly?
+
+```r
+# calculates Meff without computing the costly big cc matrix, but paying in run
+# time to calculate each correlation in the loop.
+# mydata is vars by samples
+slow_meff = function(mydata) {
+    M = nrow(mydata)
+    cnt = 0
+    for (j in 1:M) {
+        # print(j)
+        for (k in 1:M) {
+            cnt = cnt + (1 - cor(mydata[j, ], mydata[k, ])**2)
+        }
+    }
+    meff = 1 + cnt / M
+    cat(sprintf('Galwey Meff = %.2f\n', meff))
+    return(meff)
+}
+```
+
+
 
 # TODO
  * is there a better result if we look only at certain feature or cgi annotated results?
+ * start looking at islands only, then shore, shelf, then sea?
  * look at only genes at a certain SNP distance?
  * we can look more into the hypergeometric test:
    * https://sbc.shef.ac.uk/workshops/2018-07-10-rna-seq/rna-seq-gene-set-testing.nb.html
