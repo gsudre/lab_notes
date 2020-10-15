@@ -28,10 +28,11 @@ dups = duplicated(id_num)
 id_num = id_num[!dups]
 count_matrix = count_matrix[!dups, ]
 
-library(biomaRt)
-mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
-                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+# library(biomaRt)
+# mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+# G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+#                  "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
 G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
 G_list = G_list[G_list$hgnc_symbol!='',]
 G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
@@ -759,6 +760,28 @@ res2 = fgsea(genes_unique, ranks)
 out_fname = '~/tmp/fgsea_acc_dev.csv'
 write.csv(res2[order(pval), 1:(ncol(res2)-1)], file=out_fname)
 ```
+
+# 2020-10-15 06:32:38
+
+I'm going to re-run everything above to construct and RData file with all the
+result lists.
+
+```
+methyl_acc = readRDS('~/data/methylation_post_mortem/acc_methyl_results_10092020.rds')                                                                                                           
+
+r$> methyl_caudate = readRDS('~/data/methylation_post_mortem/caudate_methyl_results_10092020.rds')                                                                                                   
+
+r$> iso_acc_rsem = read.csv('~/data/isoforms/acc_rsem.csv')                                                                                                                                          
+
+r$> iso_acc_kallisto = read.csv('~/data/isoforms/acc_kallisto.csv')                                                                                                                                  
+
+r$> iso_caudate_rsem = read.csv('~/data/isoforms/caudate_rsem.csv')                                                                                                                                  
+
+r$> iso_caudate_kallisto = read.csv('~/data/isoforms/caudate_kallisto.csv')                                                                                                                          
+
+r$> save(rnaseq_acc, rnaseq_caudate, methyl_acc, methyl_caudate, iso_acc_kallisto, iso_acc_rsem, iso_caudate_kallisto, iso_caudate_rsem, file='~/data/rnaseq_derek/xmodal_results_10152020.RData')   
+```
+
 
 # TODO
  * how about separating the developmental gene lists?
