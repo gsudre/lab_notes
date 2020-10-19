@@ -39,3 +39,10 @@ getMatrix(gom.obj, name='odds.ratio')
 
 # TODO
  * maybe try using spec=hg19 to check on differences?
+ * clusterProfile and DOSE? look at methods in Sam's methylome paper
+ * Yun-Ching suggested this: http://www.webgestalt.org/ and they have an R
+   interface too
+ * can we use just CAMERA now? since we're not using dream anymore
+ * try GSEA using ranks
+ * try overrepresentation (hypergeometric) for different cut-offs... make a plot of
+   thresholds, significant genes, and the p-value of the overlap
