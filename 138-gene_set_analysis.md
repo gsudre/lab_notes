@@ -412,20 +412,87 @@ I saved all directories (from the uncompressed ZIP file downloads from
 WebGestalt, http://www.webgestalt.org/) to ~/data/postmortem. I also copied the
 .rnk tables there for future reference.
 
+I'm getting R errors when using the Web interface for methyl results in GSEA for
+DisgeNet. The error message is not more descriptive than that. I'll need to run
+it in the R toolbox to see if I can get anything different.
+
+# 2020-10-21 06:02:40
+
+Let's put the developmental lists into GMT format:
+
+```r
+load('~/data/rnaseq_derek/data_for_alex.RData')
+dev_names = c('prenatal', 'infant (0-2 yrs)', 'child (3-11 yrs)',
+              'adolescent (12-19 yrs)', 'adult (>19 yrs)')
+if (myregion == 'ACC') {
+    anno_region = 'Allen:10278'
+} else {
+    anno_region = 'Allen:10333'
+}
+co = .9 
+idx = anno$age_category==1 & anno$cutoff==co & anno$structure_id==anno_region
+genes_overlap = unique(anno[idx, 'anno_gene'])
+for (s in 2:5) {
+  idx = anno$age_category==s & anno$cutoff==co & anno$structure_id==anno_region
+  g2 = unique(anno[idx, 'anno_gene'])
+  genes_overlap = intersect(genes_overlap, g2)
+}
+genes_unique = list()
+for (s in 1:5) {
+  others = setdiff(1:5, s)
+  idx = anno$age_category==s & anno$cutoff==co & anno$structure_id==anno_region
+  g = unique(anno[idx, 'anno_gene'])
+  for (s2 in others) {
+    idx = anno$age_category==s2 & anno$cutoff==co & anno$structure_id==anno_region
+    g2 = unique(anno[idx, 'anno_gene'])
+    rm_me = g %in% g2
+    g = g[!rm_me]
+  }
+  tmp = list(id = sprintf('dev%s_c%.1f', s, co), genes = unique(g),
+             name = dev_names[s])
+  genes_unique[[s]] = tmp
+}
+tmp = list(id = sprintf('overlap_c%.1f', co), genes = unique(genes_overlap),
+             name = 'overlap')
+genes_unique[[6]] = tmp
+
+# just overwrite another object
+gmt = read.GMT('~/data/post_mortem//hsapiens_disease_Disgenet_entrezgene.gmt.txt')
+junk = gmt[1:6]
+for (i in 1:6) {
+   junk[[i]] = genes_unique[[i]]
+}
+write.GMT(junk, sprintf('~/data/post_mortem/%s_developmental.gmt', myregion))
+```
+
+And let's do the same thing for the disorders we collected:
+
+```r
+ndis = length(names(disorders))
+gmt = read.GMT('~/data/post_mortem//hsapiens_disease_Disgenet_entrezgene.gmt.txt')
+junk = gmt[seq(1, ndis)]
+for (i in seq(1, ndis)) {
+  tmp = list(id = names(disorders)[i], genes = disorders[[names(disorders)[i]]],
+             name = names(disorders)[i])
+  junk[[i]] = tmp
+}
+write.GMT(junk, '~/data/post_mortem/disorders.gmt')
+```
+
+Then I manualy changed one of the ASD_TWAS genes that had a weird character in
+it.
 
 # TODO
-
- * try GSEA using ranks: https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-017-1674-0
- * http://genomicsclass.github.io/book/
- * try development lists within region
- * try romer within limma
- * can we run the entire KEGG and GO within camera/roast/romer?
- * do we need to explore network topology or other things in webgestalt?
- * narrow down list of overlap within methyls (maybe by probe type? or just
+* narrow down list of overlap within methyls (maybe by probe type? or just
    combine p-values?)
-  * https://online.stat.psu.edu/stat555/node/46/
-  * http://genomespot.blogspot.com/2014/08/rna-seq-analysis-step-by-step.html
-* run all pipelines through webgestalt
-* make developmental and disorder lists into GMT
-* run new GMTs through webgestalt
+* annotate type of probe being used in methylation?
 * try the same sets from webgestaltl through camera
+* look into https://github.com/reimandlab/ActivePathways : any new information
+  that's not already in Webgestalt?
+
+
+# Links to remember:
+ * https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-017-1674-0
+ * http://genomicsclass.github.io/book/
+ * https://online.stat.psu.edu/stat555/node/46/
+ * http://genomespot.blogspot.com/2014/08/rna-seq-analysis-step-by-step.html
