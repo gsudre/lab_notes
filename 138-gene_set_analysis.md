@@ -487,6 +487,9 @@ it.
    combine p-values?)
 * annotate type of probe being used in methylation?
 * try the same sets from webgestaltl through camera
+* use isoforms or imputation next?
+* update list (refine it!)
+* comorbidity: did I use it to pick PCs? 
 * look into https://github.com/reimandlab/ActivePathways : any new information
   that's not already in Webgestalt?
 
