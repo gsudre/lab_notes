@@ -824,14 +824,250 @@ n_snps used for th MASHR mode compared to the ENEt model, there are way fewer on
 the MASHR model... not sure if that's the efect of curation, or if there is
 anything funky going on.
 
+# 2020-10-26 06:45:11
 
+Let's run some tests with their own associations scripts:
+
+```r
+# it also expects no more than the number of people we have in the phenotypes
+a = read.table('~/data/expression_impute/results/NCR_v3_ACC_predict_1KG_en.txt', header=1)
+# remove FAMID
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+b = a[a$IID %in% data2$IID, ]
+write.table(b, file='~/tmp/tmp2.tab', row.names=F, quote=F, sep='\t')
+colnames(data2)[2] = 'IID'
+data2$FID = b$FID
+# their function is quite finicky, so let's make the phenotype file barebones
+data3 = data2[, c('IID', 'avg_qc')]
+write.table(data3, file='~/tmp/tmp.tab', row.names=F, quote=F, sep='\t')
+
+```
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+python3 $METAXCAN/PrediXcanAssociation.py \
+    --expression_file ~/tmp/tmp2.tab \
+    --input_phenos_file ~/tmp/tmp.tab \
+      --input_phenos_column avg_qc \
+   --output ~/tmp/assoc.txt \
+   --verbosity 9
+```
+
+Still doesn't run... let me check if it at least runs with their sample data:
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/Downloads/predxcan_data;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+RESULTS=~/data/expression_impute/examples/;
+
+python3 $METAXCAN/Predict.py \
+--model_db_path $DATA/models/gtex_v8_en/en_Whole_Blood.db \
+--vcf_genotypes $DATA/1000G_hg37/ALL.chr*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+--vcf_mode genotyped \
+--prediction_output $RESULTS/vcf_1000G_hg37_en/Whole_Blood__predict.txt \
+--prediction_summary_output $RESULTS/vcf_1000G_hg37_en/Whole_Blood__summary.txt \
+--verbosity 9 \
+--throw
+
+python3 $METAXCAN/PrediXcanAssociation.py \
+--expression_file $RESULTS/vcf_1000G_hg37_en/Whole_Blood__predict.txt \
+--input_phenos_file $DATA/1000G_hg37/random_pheno_1000G_hg37.txt \
+--input_phenos_column pheno \
+--output $RESULTS/vcf_1000G_hg37_en/Whole_Blood__association.txt \
+--verbosity 9 \
+--throw
+```
+
+So, this worked... is it an issue with FID and SID?
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+python3 $METAXCAN/PrediXcanAssociation.py \
+    --expression_file ~/tmp/tmp2.tab \
+    --input_phenos_file ~/tmp/tmp.tab \
+      --input_phenos_column rh_caudalanteriorcingulate_thickness \
+   --output ~/tmp/assoc.txt \
+   --verbosity 9
+```
+
+Yep... let's make sure the phenotype is perfectly aligned to the imputed data in
+he exported files because it looks like the association script is very sensitive
+to that as well...
+
+```r
+data_dir = '~/data/expression_impute/'
+# it expects no more than the number of people we have in the phenotypes
+a = read.table(sprintf('%s/results/NCR_v3_ACC_predict_1KG_en.txt', data_dir),
+               header=1)
+# remove FAMID from IID
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+b = a[a$IID %in% data2$IID, ]
+b = b[order(b$IID), ]
+write.table(b, file='~/tmp/tmp2.tab', row.names=F, quote=F, sep='\t')
+my_phen = 'avg_qc'
+data3 = data2[, c('IID', my_phen)]
+colnames(data3)[2] = 'phen'
+data3 = data3[order(data3$IID), ]
+data3$FID = b$FID # they're both sorted on IID
+write.table(b, file=sprintf('%s/cropped_imp.tab', data_dir),
+            row.names=F, quote=F, sep='\t')
+write.table(data3, file=sprintf('%s/phen_%s.tab', data_dir, my_phen),
+            row.names=F, quote=F, sep='\t')
+```
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+python3 $METAXCAN/PrediXcanAssociation.py \
+    --expression_file $DATA/cropped_imp.tab \
+    --input_phenos_file $DATA/phen_avg_qc.tab \
+      --input_phenos_column phen \
+   --output $DATA/assoc_avg_qc.txt \
+   --verbosity 9
+```
+
+Because of the imputation models, I'm pretty sure I'll have to redo this and
+keep only the WNH... let's see what we get then:
+
+```r
+library(ggplot2)
+ggplot(imp_data, aes(x=PC01, y=PC02, col=POP_CODE)) + geom_point() + geom_hline(yintercept=-.02, linetype="dashed", color = "black") + geom_vline(xintercept=0, linetype="dashed", color = "black")
+```
+
+![](images/2020-10-26-16-10-08.png)
+
+I'll keep these thresholds even though I got a couple different
+self-classifications. Let's generate the new data then.
+
+```r
+imwnh = imp_data[imp_data$PC01<0 & imp_data$PC02>-.02,]$SID
+data_dir = '~/data/expression_impute/'
+phenotypes = list(ACC=c('res_lh_caudalanteriorcingulate_thickness',
+                        'res_rh_caudalanteriorcingulate_thickness',
+                        'res_ACC_thickness'),
+                  Caudate=c('res_Left.Caudate', 'res_Right.Caudate'))
+for (region in c('ACC', 'Caudate')) {
+   for (my_phen in phenotypes[[region]]) {
+       print(my_phen)
+      data3 = data2[data2$SID %in% imwnh, ]
+      data3 = data3[, c('IID', my_phen, 'Sex...Subjects')]
+      colnames(data3)[2] = 'phen'
+      colnames(data3)[3] = 'sex'
+      data3$sex = as.numeric(as.factor(data3$sex))
+      data3 = data3[order(data3$IID), ]
+      # it expects no more than the number of people we have in the phenotypes
+      a = read.table(sprintf('%s/results/NCR_v3_%s_predict_1KG_en.txt',
+                             data_dir, region), header=1)
+    #    a = readRDS(sprintf('%s/results/NCR_v3_%s_1KG_mashr.rds', data_dir,
+    #                        region))
+      # remove FAMID from IID
+      iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+      a$IID = iid2
+      b = a[a$IID %in% data3$IID, ]
+      b = b[order(b$IID), ]
+      data3$FID = b$FID # they're both sorted on IID
+      write.table(b, file=sprintf('%s/cropped_imp_EN_%s.tab', data_dir,
+                                  region), row.names=F, quote=F, sep='\t')
+    #   write.table(b, file=sprintf('%s/cropped_imp_MASHR_%s.tab', data_dir,
+    #                               region), row.names=F, quote=F, sep='\t')
+      write.table(data3, file=sprintf('%s/phen_%s.tab', data_dir, my_phen),
+                  row.names=F, quote=F, sep='\t')
+   }
+}
+```
+
+And we run it again, this time trying on covariates:
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+for phen in res_ACC_thickness \
+    res_lh_caudalanteriorcingulate_thickness \
+    res_rh_caudalanteriorcingulate_thickness; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/cropped_imp_MASHR_ACC.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+       --covariates_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+         --covariates sex \
+      --output $DATA/assoc_MASHR_${phen}.txt \
+      --verbosity 9;
+done
+for phen in res_Left.Caudate res_Right.Caudate; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/cropped_imp_MASHR_Caudate.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+       --covariates_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+         --covariates sex \
+      --output $DATA/assoc_MASHR_${phen}.txt \
+      --verbosity 9;
+done
+
+```
+
+Now that I've ran a few models, let's take a look at the gene sets:
+
+```r
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+md='EN'
+for (region in c('ACC', 'Caudate')) {
+   for (my_phen in phenotypes[[region]]) {
+      res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, my_phen),
+                       header=1)
+      id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+      dups = duplicated(id_num)
+      id_num = id_num[!dups]
+      res$id_num = id_num
+
+      imnamed = res$id_num %in% G_list$ensembl_gene_id
+      res = res[imnamed, ]
+      G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+      imautosome = which(G_list2$chromosome_name != 'X' &
+                         G_list2$chromosome_name != 'Y' &
+                         G_list2$chromosome_name != 'MT')
+      G_list2 = G_list2[imautosome, ]
+
+      tmp2 = G_list2[, c('hgnc_symbol', 'zscore')]
+      write.table(tmp2, file=sprintf('%s/%s_%s.rnk', data_dir, md, my_phen),
+                  sep='\t', quote=F, row.names=F, col.names=F)
+   }
+}
+```
 
 # TODO
- * can we strengthen the neuroscience results? voxel-based analysis or use everyone in the family?
- * Maybe run the association script from PrediXscan, in case they do some sort
-   special transformation? https://github.com/hakyimlab/MetaXcan/wiki/Individual-level-PrediXcan:-introduction,-tutorials-and-manual
- * restrict the imputation analysis to WNH, because that's how the PredXscan
-   models were trained?
-   https://www.frontiersin.org/articles/10.3389/fgene.2019.00261/full
+ * use zscore or effect to rank the imputed association?
+ * can we strengthen the neuroscience results? voxel-based analysis or use
+   everyone in the family? use stepAIC for residualizing? run brain analysis
+   within WNH?
+ * relax QC a bit to add mroe people to the analysis?
+ * does adding the sex covariate (and anything else) change the imputation results?
+ * need to figure out what transformations are being done to the data in their
+   script, in case we need to run PCA for nuisance
    
 
+# Useful references:
+ * paper on different populations and PredXcan: https://www.frontiersin.org/articles/10.3389/fgene.2019.00261/full
+ * predXcan manual: https://github.com/hakyimlab/MetaXcan/wiki/Individual-level-PrediXcan:-introduction,-tutorials-and-manual
