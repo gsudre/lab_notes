@@ -1004,25 +1004,24 @@ for phen in res_ACC_thickness \
     res_lh_caudalanteriorcingulate_thickness \
     res_rh_caudalanteriorcingulate_thickness; do
    python3 $METAXCAN/PrediXcanAssociation.py \
-        --expression_file $DATA/cropped_imp_MASHR_ACC.tab \
+        --expression_file $DATA/cropped_imp_EN_ACC.tab \
        --input_phenos_file $DATA/phen_${phen}.tab \
        --covariates_file $DATA/phen_${phen}.tab \
          --input_phenos_column phen \
          --covariates sex \
-      --output $DATA/assoc_MASHR_${phen}.txt \
+      --output $DATA/assoc_EN_${phen}.txt \
       --verbosity 9;
 done
 for phen in res_Left.Caudate res_Right.Caudate; do
    python3 $METAXCAN/PrediXcanAssociation.py \
-        --expression_file $DATA/cropped_imp_MASHR_Caudate.tab \
+        --expression_file $DATA/cropped_imp_EN_Caudate.tab \
        --input_phenos_file $DATA/phen_${phen}.tab \
        --covariates_file $DATA/phen_${phen}.tab \
          --input_phenos_column phen \
          --covariates sex \
-      --output $DATA/assoc_MASHR_${phen}.txt \
+      --output $DATA/assoc_EN_${phen}.txt \
       --verbosity 9;
 done
-
 ```
 
 Now that I've ran a few models, let's take a look at the gene sets:
@@ -1057,6 +1056,38 @@ for (region in c('ACC', 'Caudate')) {
 }
 ```
 
+**NOTE!!! The FDR output for Webgestalt only works for ORA analysis!!!! Reading
+at their manual, the FDR is NOT over the p-values for GSEA**
+
+Now I need to figur eout if the FDR scores for GSEA mean anything, even if they
+can be used for our rnaseq and methyl results...
+
+Ir ran several experiments, even using my own sets, and the FDR values output
+really do not match the ones I get with p.adjust. Maybe it's just a different
+implementation, but at least we need the pvalues going the same direction as the
+Qs. In other words, a smaller pvalue cannot have a smaller q than a higher pvalue.
+
+It's taking too long to run all these possible permutations through the web
+interface. Let's run it using the R interface. But we need to keep an eye that
+these results are not funky!
+
+So, my variables are zcore / effect; en / mashr; phenotype; database. If none of
+that works, I have to re-run the association using different data (more
+subjects, different residualizing, etc).
+
+```r
+enrichResult <- WebGestaltR(enrichMethod="ORA", organism="hsapiens",
+      enrichDatabase="pathway_KEGG", interestGeneFile=geneFile,
+      interestGeneType="genesymbol", referenceGeneFile=refFile,
+      referenceGeneType="genesymbol", isOutput=F,
+      sigMethod="top", topThr=30000, projectName=NULL, minNum=1, maxNum=100000)
+
+enrichResult <- WebGestaltR(enrichMethod="GSEA", organism="hsapiens",
+      enrichDatabase="pathway_KEGG", interestGeneFile=rankFile,
+      interestGeneType="genesymbol", sigMethod="top", topThr=30000, minNum=5,
+      isOutput=F, isParallel=T)
+```
+
 # TODO
  * use zscore or effect to rank the imputed association?
  * can we strengthen the neuroscience results? voxel-based analysis or use
@@ -1066,6 +1097,10 @@ for (region in c('ACC', 'Caudate')) {
  * does adding the sex covariate (and anything else) change the imputation results?
  * need to figure out what transformations are being done to the data in their
    script, in case we need to run PCA for nuisance
+ * try overrepresentation analysis between imputed and postmortem hits
+ * since I'm trying different permutations of these results, maybe using the R
+   implementation of Webgestalt would be faster?
+
    
 
 # Useful references:
