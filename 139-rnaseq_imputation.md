@@ -1088,8 +1088,166 @@ enrichResult <- WebGestaltR(enrichMethod="GSEA", organism="hsapiens",
       isOutput=F, isParallel=T)
 ```
 
+# 2020-10-27 06:32:19
+
+Let's try constructing those queries:
+
+WG_MASHR_effect_res_lh_caudalanteriorcingulate_thickness_geneontology_Molecular_Function_noRedundant.csv
+
+```r
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+ncpu=31
+
+for (md in c('EN', 'MASHR')) {
+     for (region in c('ACC', 'Caudate')) {
+         for (phen in phenotypes[[region]]) {
+             res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                              header=1)
+             id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+             dups = duplicated(id_num)
+             id_num = id_num[!dups]
+             res$id_num = id_num
+
+             imnamed = res$id_num %in% G_list$ensembl_gene_id
+             res = res[imnamed, ]
+             G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+             imautosome = which(G_list2$chromosome_name != 'X' &
+                               G_list2$chromosome_name != 'Y' &
+                               G_list2$chromosome_name != 'MT')
+             G_list2 = G_list2[imautosome, ]
+
+            for (score in c('zscore', 'effect')) {
+                tmp2 = G_list2[, c('hgnc_symbol', score)]
+                for (db in c('geneontology_Biological_Process_noRedundant',
+                             'geneontology_Cellular_Component_noRedundant',
+                             'geneontology_Molecular_Function_noRedundant',
+                             'pathway_KEGG', 'disease_Disgenet',
+                             'phenotype_Human_Phenotype_Ontology',
+                             'network_PPI_BIOGRID')) {
+                    cat(md, score, phen, db, '\n')
+                    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                                organism="hsapiens",
+                                                enrichDatabase=db,
+                                                interestGene=tmp2,
+                                                interestGeneType="genesymbol",
+                                                sigMethod="top", topThr=10,
+                                                minNum=5,
+                                                isOutput=F, isParallel=T,
+                                                nThreads=ncpu)
+                    out_fname = sprintf('%s/WG_%s_%s_%s_%s.csv', data_dir,
+                                        md, score, phen, db)
+                    write.csv(enrichResult, file=out_fname, quote=F,
+                              row.names=F)
+                }
+            }
+         }
+      }
+}
+```
+
+This will take a while because I need to check whether it's calling the API or
+running it locally. In any case, let's open another instance and run our own
+gene sets:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/expression_impute/'
+phenotypes = list(ACC=c('res_lh_caudalanteriorcingulate_thickness',
+                        'res_rh_caudalanteriorcingulate_thickness',
+                        'res_ACC_thickness'),
+                  caudate=c('res_Left.Caudate', 'res_Right.Caudate'))
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+
+for (md in c('EN', 'MASHR')) {
+     for (region in c('ACC', 'caudate')) {
+         for (phen in phenotypes[[region]]) {
+             res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                              header=1)
+             id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+             dups = duplicated(id_num)
+             id_num = id_num[!dups]
+             res$id_num = id_num
+
+             imnamed = res$id_num %in% G_list$ensembl_gene_id
+             res = res[imnamed, ]
+             G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+             imautosome = which(G_list2$chromosome_name != 'X' &
+                               G_list2$chromosome_name != 'Y' &
+                               G_list2$chromosome_name != 'MT')
+             G_list2 = G_list2[imautosome, ]
+
+            for (score in c('zscore', 'effect')) {
+                tmp2 = G_list2[, c('hgnc_symbol', score)]
+                for (db in c('disorders', sprintf('%s_developmental', region))) {
+                    cat(md, score, phen, db, '\n')
+                    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+                    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                                organism="hsapiens",
+                                                enrichDatabaseFile=db_file,
+                                                enrichDatabaseType="genesymbol",
+                                                interestGene=tmp2,
+                                                interestGeneType="genesymbol",
+                                                sigMethod="top", topThr=10,
+                                                minNum=3,
+                                                isOutput=F, isParallel=T)
+                    out_fname = sprintf('%s/WG_%s_%s_%s_%s.csv', data_dir,
+                                        md, score, phen, db)
+                    write.csv(enrichResult, file=out_fname, quote=F,
+                              row.names=F)
+                }
+            }
+         }
+      }
+}
+```
+
+I actually found something about FDR and GSEA:
+
+https://groups.google.com/g/webgestalt/c/yenmgyuQLX4/m/-Xz-EZIZAQAJ
+
+In short: "GSEA used the permutation method to evaluate the FDR instead of the
+simple BH method. When you selected the GSEA method, the fdr method is disabled
+(grey color and can not select). That does not mean we use the BH method for the
+FDR calculation."
+
+So, we should be fine. We won't be able to reproduce it, and it makes sense that
+it's not in line with the p-value.
+
+OK, so I was able to run the gene sets relatively fast in BW. Let's see if
+anything good came out of it.
+
+```r
+all_res = c()
+files = list.files(path = '~/data/expression_impute/', pattern = '^WG*')
+for (f in files) {
+    cat(f, '\n')
+    res = read.csv(sprintf('~/data/expression_impute/%s', f))
+    res$fname = f
+    # clean up a bit
+    res = res[!is.na(res$FDR),]
+    res = res[res$FDR>0,]
+    all_res = rbind(all_res, res[, c('geneSet', 'link', 'FDR', 'fname')])
+}
+```
+
+Had to do that compilation in R because the position of the FDR column changes
+based on the gene set being used :(
+
+I'm getting a curious result, in that I get many ADHD_TWAS results as
+significant. That might be interesting because the TWAS study we got the gene
+list from didn't use any brain. But it doesn't do much for the intersection with
+the post-mortem results though. I'm going to move all these WG and assoc_ results to a
+folder with todays date, so I can run other data iterations that might improve the results.
+
+
 # TODO
- * use zscore or effect to rank the imputed association?
  * can we strengthen the neuroscience results? voxel-based analysis or use
    everyone in the family? use stepAIC for residualizing? run brain analysis
    within WNH?
@@ -1098,11 +1256,14 @@ enrichResult <- WebGestaltR(enrichMethod="GSEA", organism="hsapiens",
  * need to figure out what transformations are being done to the data in their
    script, in case we need to run PCA for nuisance
  * try overrepresentation analysis between imputed and postmortem hits
- * since I'm trying different permutations of these results, maybe using the R
-   implementation of Webgestalt would be faster?
-
+ * maybe there's something with DTI instead?
+ * maybe impute the NAs? Just so we can have a complete dataset? Not completely
+   sure that the association script can handle it properly.
+ * run some tests increasing nperms... maybe 10000? to increase FDR precision
+   and stability. Can I even use a random seed?
    
 
 # Useful references:
  * paper on different populations and PredXcan: https://www.frontiersin.org/articles/10.3389/fgene.2019.00261/full
  * predXcan manual: https://github.com/hakyimlab/MetaXcan/wiki/Individual-level-PrediXcan:-introduction,-tutorials-and-manual
+
