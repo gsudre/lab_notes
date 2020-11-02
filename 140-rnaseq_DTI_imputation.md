@@ -652,7 +652,339 @@ for (md in c('EN', 'MASHR')) {
 }
 ```
 
+# 2020-11-02 05:56:51
+
+I was thinking a bit more about these models, and I think it makes more sense to
+run the entire analysis as LME, instead of breaking it up for correlation and
+t-test. I'll use the same framework I'm using for residualizing, except that it
+won't have the DX term in the residualization.
+
+```r
+data = read.csv('~/data/expression_impute/gfWithDTIandClin_602_10292020.csv')
+quartz()
+par(mfrow = c(1,3))
+hist(data$goodVolumes, breaks=50)
+hist(data$norm.trans, breaks=50)
+hist(data$norm.rot, breaks=50)
+```
+
+![](images/2020-11-02-06-08-24.png)
+
+There's no difference in norm.trans between adult and child sequences, so that's
+good. The thresholds I had before could still work, but for now I'll go ahead
+and use one based on quantiles (which won't work for goodVolumes). It still
+looks good in our distributions:
+
+```
+r$> quantile(data$norm.rot, .85)                                                                                             
+       85% 
+0.02192451 
+
+r$> quantile(data$norm.trans, .85)                                                                                           
+     85% 
+1.096012 
+```
+
+```r
+keep_idx = (data$goodVolumes >= 56 &
+            data$norm.trans <= quantile(data$norm.trans, .85) &
+            data$norm.rot <= quantile(data$norm.rot, .85))
+data2 = data[keep_idx,]
+
+# combining some trracts
+for (m in c('ad', 'fa', 'rd')) {
+    data2[, sprintf('%s_ATR', m)] = data2[, sprintf('%s_ATR_l', m)] + data2[, sprintf('%s_ATR_r', m)]
+    data2[, sprintf('%s_cin_cin', m)] = data2[, sprintf('%s_cin_cin_l', m)] + data2[, sprintf('%s_cin_cin_r', m)]
+}
+brain_vars = c('fa_ATR_l', 'ad_ATR_l', 'rd_ATR_l',
+            'fa_ATR_r', 'ad_ATR_r', 'rd_ATR_r',
+            'fa_ATR', 'ad_ATR', 'rd_ATR',
+            'fa_cin_cin_l', 'ad_cin_cin_l', 'rd_cin_cin_l',
+            'fa_cin_cin_r', 'ad_cin_cin_r', 'rd_cin_cin_r',
+            'fa_cin_cin', 'ad_cin_cin', 'rd_cin_cin',
+            'fa_CC_r', 'ad_CC_r', 'rd_CC_r',
+            'FA_cc', 'AD_cc', 'RD_cc')
+
+for (v in brain_vars) {
+    m = mean(data2[, v], na.rm=T)
+    s = sd(data2[, v], na.rm=T)
+    data2[which(data2[, v] > m + 3*s), v] = NA
+    data2[which(data2[, v] < m - 3*s), v] = NA
+}
+# working with 454 scans
+library(MASS)
+library(nlme)
+num_vars = c('SX_inatt', 'SX_hi', 'maxOverTimeSX_inatt', 'maxOverTimeSX_hi')
+categ_vars = c('DX_dsm', 'DX_nv012', 'everADHD_dsm', 'everADHD_nv012')
+clin_vars = c(num_vars, categ_vars)
+
+clin_pvals = matrix(nrow=length(clin_vars), ncol=length(brain_vars),
+                   dimnames=list(clin_vars, brain_vars))
+for (bv in brain_vars) {
+    for (cv in clin_vars) {
+        cat(bv, cv, '\n')
+        fm_str = sprintf('%s ~ %s + Sex...Subjects + age_acq + scanner_update + sequence_type + norm.trans + norm.rot + goodVolumes', bv, cv)
+        fit <- lme(as.formula(fm_str), random=~1|FAMID, data = data2,
+                   na.action=na.exclude, method='ML')
+        step <- try(stepAIC(fit, direction = "both", trace = F,
+                            scope = list(lower = as.formula(sprintf('~ %s',
+                                                                    cv)))))
+        if (length(step)==1) {
+            # if we couldn't fit using stepAIC get the value from initial lme
+            clin_pvals[cv, bv] = summary(fit)$tTable[2, 'p-value']
+        } else {
+            clin_pvals[cv, bv] = summary(step)$tTable[2, 'p-value']
+        }
+    }
+}
+```
+
+```
+r$> which(clin_pvals < .05, arr.ind = T)                                                                                     
+                    row col
+SX_hi                 2   1
+DX_dsm                5   1
+DX_nv012              6   1
+SX_hi                 2   7
+DX_dsm                5   7
+SX_hi                 2  15
+SX_hi                 2  16
+SX_hi                 2  18
+SX_inatt              1  20
+maxOverTimeSX_inatt   3  20
+everADHD_dsm          7  20
+maxOverTimeSX_inatt   3  21
+everADHD_dsm          7  21
+everADHD_nv012        8  21
+SX_hi                 2  22
+
+r$> which(clin_pvals < .05, arr.ind = T)[,2]                                                                                 
+              SX_hi              DX_dsm            DX_nv012               SX_hi              DX_dsm               SX_hi 
+                  1                   1                   1                   7                   7                  15 
+              SX_hi               SX_hi            SX_inatt maxOverTimeSX_inatt        everADHD_dsm maxOverTimeSX_inatt 
+                 16                  18                  20                  20                  20                  21 
+       everADHD_dsm      everADHD_nv012               SX_hi 
+                 21                  21                  22 
+
+r$> colnames(clin_pvals)[which(clin_pvals < .05, arr.ind = T)[,2]]                                                           
+ [1] "fa_ATR_l"     "fa_ATR_l"     "fa_ATR_l"     "fa_ATR"       "fa_ATR"       "rd_cin_cin_r" "fa_cin_cin"   "rd_cin_cin"  
+ [9] "ad_CC_r"      "ad_CC_r"      "ad_CC_r"      "rd_CC_r"      "rd_CC_r"      "rd_CC_r"      "FA_cc"       
+
+r$> unique(colnames(clin_pvals)[which(clin_pvals < .05, arr.ind = T)[,2]])                                                   
+[1] "fa_ATR_l"     "fa_ATR"       "rd_cin_cin_r" "fa_cin_cin"   "rd_cin_cin"   "ad_CC_r"      "rd_CC_r"      "FA_cc"       
+```
+
+Now let's construct the residualized versions and run the associations. I'll
+focus on fa_ATR, fa_cin_cin, and FA_cc, which are good summaries and are all
+correlated to SX_hi. But is it just motion? Well, it has already been removed in
+the model.
+
+```r
+good_brain_vars = c("fa_ATR", "fa_cin_cin", "FA_cc")
+for (v in good_brain_vars) {
+    fm_str = sprintf('%s ~ Sex...Subjects + age_acq + scanner_update + sequence_type + norm.trans + norm.rot + goodVolumes', v)
+    fit <- lme(as.formula(fm_str), random=~1|FAMID, data = data2, na.action=na.exclude, method='ML')
+    step <- stepAIC(fit, direction = "both", trace = F)
+    data2[, sprintf('res_%s', v)] = scale(residuals(step))
+}
+```
+
+And we run those phenotypes through TWAS. But only WNH and bestInFamily!
+
+```r
+a = read.table('~/data/expression_impute/results/NCR_v3_ACC_predict_1KG_en.txt', header=1)
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+imp_data = merge(a, pcs, by='IID', all.x=F, all.y=F)
+imp_data = merge(imp_data, data2, by.x='IID', by.y='Subject.Code...Subjects',
+                 all.x=F, all.y=F)
+
+imwnh = imp_data[imp_data$PC01<0 & imp_data$PC02>-.02,]$subject.id
+data_dir = '~/data/expression_impute/'
+phenotypes = list(ACC=c('res_fa_cin_cin', 'res_FA_cc'),
+                  Caudate=c('res_fa_ATR'))
+for (region in c('ACC', 'Caudate')) {
+   for (my_phen in phenotypes[[region]]) {
+       print(my_phen)
+      data3 = data2[data2$subject.id %in% imwnh, ]
+      data3 = data3[data3$bestInFamily==T, ]
+      data3 = data3[, c('subject.id', my_phen, 'Sex...Subjects')]
+      colnames(data3)[1] = 'IID'
+      colnames(data3)[2] = 'phen'
+      colnames(data3)[3] = 'sex'
+      data3$sex = as.numeric(as.factor(data3$sex))
+      data3 = data3[order(data3$IID), ]
+      # it expects no more than the number of people we have in the phenotypes
+      a = read.table(sprintf('%s/results/NCR_v3_%s_predict_1KG_en.txt',
+                             data_dir, region), header=1)
+    #    a = readRDS(sprintf('%s/results/NCR_v3_%s_1KG_mashr.rds', data_dir,
+    #                        region))
+      # remove FAMID from IID
+      iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+      iid3 = gsub(x=iid2, pattern='SID.', replacement='')
+      a$IID = as.numeric(iid3)
+      b = a[a$IID %in% data3$IID, ]
+      b = b[order(b$IID), ]
+      data3$FID = b$FID # they're both sorted on IID
+      write.table(b, file=sprintf('%s/DTI_cropped_imp_EN_%s.tab', data_dir,
+                                  region), row.names=F, quote=F, sep='\t')
+    #   write.table(b, file=sprintf('%s/DTI_cropped_imp_MASHR_%s.tab', data_dir,
+    #                               region), row.names=F, quote=F, sep='\t')
+      write.table(data3, file=sprintf('%s/phen_%s.tab', data_dir, my_phen),
+                  row.names=F, quote=F, sep='\t')
+   }
+}
+```
+
+And we run the associations:
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+for phen in res_fa_cin_cin res_FA_cc; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/DTI_cropped_imp_EN_ACC.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+       --covariates_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+         --covariates sex \
+      --output $DATA/assoc_EN_${phen}.txt \
+      --verbosity 9;
+done
+for phen in res_fa_ATR; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/DTI_cropped_imp_EN_Caudate.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+       --covariates_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+         --covariates sex \
+      --output $DATA/assoc_EN_${phen}.txt \
+      --verbosity 9;
+done
+```
+
+Then it's just a matter of running the gene set analysis in BW:
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate radian
+./.local/bin/radian
+```
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/expression_impute/'
+phenotypes = list(ACC=c('res_fa_cin_cin', 'res_FA_cc'),
+                  caudate=c('res_fa_ATR'))
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+ncpu=31
+
+for (md in c('EN', 'MASHR')) {
+     for (region in c('ACC', 'caudate')) {
+         for (phen in phenotypes[[region]]) {
+             res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                              header=1)
+             id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+             dups = duplicated(id_num)
+             id_num = id_num[!dups]
+             res$id_num = id_num
+
+             imnamed = res$id_num %in% G_list$ensembl_gene_id
+             res = res[imnamed, ]
+             G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+             imautosome = which(G_list2$chromosome_name != 'X' &
+                               G_list2$chromosome_name != 'Y' &
+                               G_list2$chromosome_name != 'MT')
+             G_list2 = G_list2[imautosome, ]
+
+            for (score in c('zscore', 'effect')) {
+                tmp2 = G_list2[, c('hgnc_symbol', score)]
+                for (db in c('geneontology_Biological_Process_noRedundant',
+                             'geneontology_Cellular_Component_noRedundant',
+                             'geneontology_Molecular_Function_noRedundant',
+                             'pathway_KEGG', 'disease_Disgenet',
+                             'phenotype_Human_Phenotype_Ontology',
+                             'network_PPI_BIOGRID')) {
+                    cat(md, score, phen, db, '\n')
+                    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                                organism="hsapiens",
+                                                enrichDatabase=db,
+                                                interestGene=tmp2,
+                                                interestGeneType="genesymbol",
+                                                sigMethod="top", topThr=10,
+                                                minNum=5,
+                                                isOutput=F, isParallel=T,
+                                                nThreads=ncpu)
+                    out_fname = sprintf('%s/WG_%s_%s_%s_%s.csv', data_dir,
+                                        md, score, phen, db)
+                    write.csv(enrichResult, file=out_fname, quote=F,
+                              row.names=F)
+                }
+                # my own GMTs
+                for (db in c('disorders', sprintf('%s_developmental', region))) {
+                    cat(md, score, phen, db, '\n')
+                    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+                    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                                organism="hsapiens",
+                                                enrichDatabaseFile=db_file,
+                                                enrichDatabaseType="genesymbol",
+                                                interestGene=tmp2,
+                                                interestGeneType="genesymbol",
+                                                sigMethod="top", topThr=10,
+                                                minNum=3,
+                                                isOutput=F, isParallel=T,
+                                                nThreads=ncpu)
+                    out_fname = sprintf('%s/WG_%s_%s_%s_%s.csv', data_dir,
+                                        md, score, phen, db)
+                    write.csv(enrichResult, file=out_fname, quote=F,
+                              row.names=F)
+                }
+            }
+         }
+      }
+}
+```
+
+While we're running this in BW, let's run the associations without the sex
+covariate:
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+for phen in res_fa_cin_cin res_FA_cc; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/DTI_cropped_imp_EN_ACC.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+      --output $DATA/assoc_EN_noSex_${phen}.txt \
+      --verbosity 9;
+done
+for phen in res_fa_ATR; do
+   python3 $METAXCAN/PrediXcanAssociation.py \
+        --expression_file $DATA/DTI_cropped_imp_EN_Caudate.tab \
+       --input_phenos_file $DATA/phen_${phen}.tab \
+         --input_phenos_column phen \
+      --output $DATA/assoc_EN_noSex_${phen}.txt \
+      --verbosity 9;
+done
+```
 
 # TODO
  * check the effects of adding the sex covariate in the association
+ * run overrepresentation across all results, including imputation
+ * ask Kwangmi and Sam about the software to compare GWAS results
 
