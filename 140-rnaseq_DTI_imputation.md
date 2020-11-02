@@ -967,24 +967,65 @@ DATA=~/data/expression_impute;
 METAXCAN=~/data/expression_impute/MetaXcan/software;
 for phen in res_fa_cin_cin res_FA_cc; do
    python3 $METAXCAN/PrediXcanAssociation.py \
-        --expression_file $DATA/DTI_cropped_imp_EN_ACC.tab \
+        --expression_file $DATA/DTI_cropped_imp_MASHR_ACC.tab \
        --input_phenos_file $DATA/phen_${phen}.tab \
          --input_phenos_column phen \
-      --output $DATA/assoc_EN_noSex_${phen}.txt \
+      --output $DATA/assoc_MASHR_noSex_${phen}.txt \
       --verbosity 9;
 done
 for phen in res_fa_ATR; do
    python3 $METAXCAN/PrediXcanAssociation.py \
-        --expression_file $DATA/DTI_cropped_imp_EN_Caudate.tab \
+        --expression_file $DATA/DTI_cropped_imp_MASHR_Caudate.tab \
        --input_phenos_file $DATA/phen_${phen}.tab \
          --input_phenos_column phen \
-      --output $DATA/assoc_EN_noSex_${phen}.txt \
+      --output $DATA/assoc_MASHR_noSex_${phen}.txt \
       --verbosity 9;
 done
 ```
 
+Let's pick a phenotype and check the overlap of results using Sex or not:
+
+```r
+md = 'MASHR'
+phen = 'res_fa_cin_cin'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                              header=1)
+resNS = read.table(sprintf('%s/assoc_%s_noSex_%s.txt', data_dir, md, phen),
+                              header=1)
+res = res[order(res$gene),]
+resNS = resNS[order(resNS$gene),]
+```
+
+```
+r$> cor.test(res$pvalue, resNS$pvalue)                                           
+
+        Pearson's product-moment correlation
+
+data:  res$pvalue and resNS$pvalue
+t = 1537.4, df = 13214, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.9971198 0.9973094
+sample estimates:
+      cor 
+0.9972162 
+
+r$> sum(res$pvalue<.05, na.rm=T)                                                 
+[1] 668
+
+r$> sum(resNS$pvalue<.05, na.rm=T)                                               
+[1] 663
+
+r$> length(intersect(res$gene[res$pvalue<.05], resNS$gene[resNS$pvalue<.05]))    
+[1] 645
+```
+
+Results for the other phenotypes were very much the same. I'll keep the sex
+covariate just because I already ran the results.
+
+
+
 # TODO
- * check the effects of adding the sex covariate in the association
  * run overrepresentation across all results, including imputation
  * ask Kwangmi and Sam about the software to compare GWAS results
 
