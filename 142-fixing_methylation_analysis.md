@@ -79,18 +79,7 @@ raw = read_idats(samples$Basename, quiet = FALSE)
 raw$sample_names <- samples$Sample_Name
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
+# 2020-11-03 06:03:33
 
 Loading the samples took a few minutes, but it looks like it worked. Moving on
 to QC:
@@ -114,9 +103,7 @@ failed.samples <- samples[sample_failure(ctrls),
                           c("Sample_Group", "Sentrix_ID")]
 ```
 
-![](images/2020-10-07-20-52-26.png)
-![](images/2020-10-07-20-52-44.png)
-![](images/2020-10-07-20-53-03.png)
+![](images/2020-11-03-06-05-13.png)
 
 QC looks good, no failed samples. Checking sex:
 
@@ -132,11 +119,10 @@ plot(Y ~ X, data=tmp, pch=ifelse(tmp$sex=="f",1,4), asp=1,
      ylab="Normalized Y chromosome intensities")
 tmp = pheno[predicted_sex!=sex]
 ```
-![](images/2020-10-07-20-59-23.png)
+
+![](images/2020-11-03-06-08-19.png)
 
 There were no mismatches between predicted and declared sex.
-
-# 2020-10-08 06:08:39
 
 Let's continue with preprocessing:
 
@@ -154,7 +140,6 @@ filtered <- champ.filter(beta=meth.nors, pd=samples, filterDetP = FALSE,
                          filterMultiHit = TRUE, filterBeads = FALSE,
                          fixOutlier=FALSE, arraytype="EPIC")
 meth.filtered <- na.omit(filtered$beta)
-dim(meth.filtered)
 ```
 
 We are now down to 647K markers, from the initial 865K. I'll skip checking the
@@ -169,12 +154,12 @@ So, let's get an idea about the data we're working with:
 table(samples$Sex)
 table(samples$Diagnosis)
 table(samples$Brainbank)
-table(samples$Manner.of.Death)
+table(samples$MoD)
 table(samples$Kit)
 ```
 
 ```
-F  M 
+ F  M 
 21 94 
 
    Case Control 
@@ -183,15 +168,12 @@ F  M
 nimh_hbcc      pitt      umbn 
        50        19        46 
 
-          Accident           Homicide            natural            Suicide Suicide (probable)            unknown
-                32                 20                 38                 21                  2                  2
+Accident Homicide  natural  Suicide 
+      32       20       40       23 
 
-Qiagen   Zymo
-    59     56
+Qiagen   Zymo 
+    59     56 
 ```
-
-I'll do the same modifications I did for the RNAseq data:
-
 
 Before we run the PCA analysis, let's split the data between ACC and Caudate.
 
@@ -204,17 +186,37 @@ samples.acc <- samples[!is.caudate & !is.outlier, ]
 
 meth.caudate <- meth.filtered[, is.caudate]
 meth.acc <- meth.filtered[, !is.caudate & !is.outlier]
+```
 
-# Stratified PCA
-set.seed(42)
-meth.caudate.pca <- prcomp(t(meth.caudate), scale.=TRUE)
-meth.acc.pca <- prcomp(t(meth.acc), scale.=TRUE)
+Before I continue, I'll export the data Gauri will need for the clock:
+
+```r
+new_names = gsub(x=colnames(meth.acc), pattern='_ACC', replacement='')
+colnames(meth.acc) = new_names
+new_names = gsub(x=colnames(meth.caudate), pattern='_Caudate', replacement='')
+colnames(meth.caudate) = new_names
+saveRDS(meth.acc, file='~/data/methylation_post_mortem/acc_methyl_raw_11032020.rds')
+saveRDS(meth.caudate, file='~/data/methylation_post_mortem/caudate_methyl_raw_11032020.rds')
+
+ages = samples$Age
+names(ages) = samples$Sample_Name
+new_names = gsub(x=names(ages), pattern='_ACC', replacement='')
+new_names = gsub(x=new_names, pattern='_Caudate', replacement='')
+names(ages) = new_names
+ages = ages[!duplicated(new_names)]
+df = data.frame(IID=names(ages), age=ages)
+write.csv(df, file='~/data/methylation_post_mortem/IID_age.csv', row.names=F)
 ```
 
 Like in the RNAseq analysis, let's figure out how many PCs to use for ACC and
 Caudate.
 
 ```r
+# Stratified PCA
+set.seed(42)
+meth.caudate.pca <- prcomp(t(meth.caudate), scale.=TRUE)
+meth.acc.pca <- prcomp(t(meth.acc), scale.=TRUE)
+
 library(nFactors)
 eigs <- meth.acc.pca$sdev^2
 nS = nScree(x=eigs)
@@ -242,13 +244,14 @@ plot(prop_varex, xlab = "Principal Component",
              type = "b", main='Caudate')
 ```
 
-We got 9 for ACC and 13 for Caudate.
+We got 10 for ACC and 11 for Caudate.
 
-![](images/2020-10-08-07-07-56.png)
-![](images/2020-10-08-07-09-19.png)
+![](images/2020-11-03-06-39-44.png)
+![](images/2020-11-03-06-40-57.png)
 
 Now let's make the same plots as the RNAseq analysis, but most importantly we
-need to see which PCs are correlated with the data at a certain threshold.
+need to see which PCs are correlated with the data at a certain threshold. We
+start with the ACC:
 
 ```r
 num_vars = c('pH', 'Age', 'RINe', 'PMI', 'RIN',
@@ -269,7 +272,7 @@ library(corrplot)
 corrplot(t(num_corrs), method='color', tl.cex=1, cl.cex=1)
 ```
 
-![](images/2020-10-08-07-24-01.png)
+![](images/2020-11-03-06-42-21.png)
 
 ```r
 categ_vars = c('MoD', 'substance_group',
@@ -289,30 +292,42 @@ for (x in categ_vars) {
 corrplot(t(categ_corrs), method='color', tl.cex=1, cl.cex=1, is.corr=F)
 ```
 
-![](images/2020-10-08-07-23-39.png)
+![](images/2020-11-03-06-42-50.png)
 
 ```
-r$> which(num_pvals < .01, arr.ind = T)                                                                                                                                        
+r$> which(num_pvals < .01, arr.ind = T)                                                                             
     row col
+C6   11   1
 pH    1   2
-pH    1   4
-C2    7   5
-C3    8   5
-C4    9   5
-C7   12   5
-RIN   5   6
+Age   2   2
+PMI   4   2
+pH    1   3
+C5   10   3
+C5   10   6
+Age   2   8
 
-r$> which(categ_pvals < .01, arr.ind = T)                                                                                                                                      
+r$> which(categ_pvals < .01, arr.ind = T)                                                                           
            row col
+Sentrix_ID   6   1
+Kit          9   1
+Brainbank   11   1
 Sentrix_ID   6   2
-Brainbank   11   2
-Kit          9   5
-Brainbank   11   5
-Brainbank   11   9
+Scanner      8   3
+Brainbank   11   3
+Sentrix_ID   6   4
+Kit          9   4
+Sentrix_ID   6   5
+Scanner      8   5
+Sentrix_ID   6   6
+Brainbank   11   7
+Brainbank   11  10
+
+r$> min(categ_pvals['Sample_Group',])                                                                               
+[1] 0.0731767
 ```
 
-So, for ACC we will remove PCs 2, 4, 5, 6, and 9. And the minimum p-value for
-Sample_Group was .19, so we're good there. Let's check the Caudate:
+So, for ACC we will remove PCs 1, 2, 3, 4, 5, 6, 7, 8, and 10. And the minimum p-value for
+Sample_Group was .07, so we're good there. Let's check the Caudate:
 
 ```r
 num_vars = c('pH', 'Age', 'RINe', 'PMI', 'RIN',
@@ -328,12 +343,10 @@ for (x in num_vars) {
         num_pvals[x, y] = res$p.value
     }
 }
-
-library(corrplot)
 corrplot(t(num_corrs), method='color', tl.cex=1, cl.cex=1)
 ```
 
-![](images/2020-10-08-07-28-24.png)
+![](images/2020-11-03-06-47-23.png)
 
 ```r
 categ_vars = c('MoD', 'substance_group',
@@ -353,29 +366,69 @@ for (x in categ_vars) {
 corrplot(t(categ_corrs), method='color', tl.cex=1, cl.cex=1, is.corr=F)
 ```
 
-![](images/2020-10-08-07-29-19.png)
+![](images/2020-11-03-06-47-46.png)
 
 ```
-r$> which(num_pvals < .01, arr.ind = T)                                                                                                                                        
+r$> which(num_pvals < .01, arr.ind = T)                                                                             
     row col
-pH    1   1
-C9   14   2
-C3    8   5
-PMI   4   6
-C2    7  12
-C4    9  12
+PMI   4   1
+Age   2   4
+pH    1   6
+C5   10   6
+C6   11   7
+C5   10   8
+C1    6  11
+C2    7  11
+C3    8  11
+C4    9  11
+C7   12  11
+C10  15  11
 
-r$> which(categ_pvals < .01, arr.ind = T)                                                                                                                                      
-           row col
-Sentrix_ID   6   1
-Brainbank   11   1
-Brainbank   11   5
-Brainbank   11   6
-Scanner      8  12
+r$> which(categ_pvals < .01, arr.ind = T)                                                                           
+             row col
+MoD            1   1
+Sentrix_ID     6   1
+Brainbank     11   1
+Kit            9   2
+Sentrix_ID     6   3
+Scanner        8   3
+Brainbank     11   3
+MoD            1   4
+Sentrix_ID     6   4
+Sentrix_ID     6   5
+Brainbank     11   6
+Brainbank     11   8
+POP_CODE       4  11
+Sample_Group  10  11
+
+r$> min(categ_pvals['Sample_Group',])                                                                               
+[1] 0.009034045
+
+r$> sort(categ_pvals['Sample_Group',])                                                                              
+       PC11         PC7         PC6         PC8         PC9        PC10         PC2         PC3         PC5 
+0.009034045 0.112324215 0.189177774 0.189177774 0.245910750 0.245910750 0.501726757 0.657938621 0.680173964 
+        PC4         PC1 
+0.771751373 0.818857797 
 ```
 
-And for Caudate we will remove PCs 1, 2, 5, 6, and 12. And the minimum p-value for
-Sample_Group was .1, so we're also good there.
+And for Caudate we will remove PCs 1, 2, 3, 4, 5, 6, 7, and 8. PC11 has a lot of
+Diagnosis info in it, so I'll keep it.
+
+Before we run the stats model, let's residualize the data to see if that makes
+more sense in the epiclock:
+
+```r
+resids = meth.caudate
+mydata = data.frame(cbind(t(meth.caudate), pcs.caudate))
+library(MASS)
+for (v in rownames(resids)) {
+    fm_str = sprintf('%s ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8', v)
+    res.lm <- lm(as.formula(fm_str), data = mydata, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    resids[v, ] = residuals(step)
+}
+# this takes forever!
+```
 
 Now we do the actual statistical model:
 
@@ -383,7 +436,7 @@ Now we do the actual statistical model:
 # Differential methylation for Caudate: M-values with limma model corrected for unwanted variance
 # limma to predict DMP from M values
 vars.caudate = cbind(samples.caudate, pcs.caudate)
-var <- model.matrix(~ PC1 + PC2 + PC5 + PC6 + PC12 + Sample_Group,
+var <- model.matrix(~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + Sample_Group,
                     data=vars.caudate)
 M <- logit2(meth.caudate) # convert beta to M:  log2(beta) - log2(1 - beta)
 library(limma)
@@ -394,21 +447,21 @@ probes.limma.caudate <- topTable(fit2, adjust="fdr",
 ```
 
 ```
-r$> head(probes.limma.caudate)                                                                                                                                                 
-                logFC    AveExpr         t        P.Value adj.P.Val         B
-cg09992259 -0.4017439  1.3097275 -5.329861 0.000001704884 0.9294906 1.8918339
-cg20792284 -0.8355384 -4.7842311 -5.188071 0.000002868931 0.9294906 1.6101347
-cg15980797  0.3810369 -2.7444191  4.712723 0.000015884321 0.9994431 0.6719115
-cg21827674  0.7213013  0.7737180  4.657451 0.000019308328 0.9994431 0.5638065
-cg02390806  0.5005134 -1.6282955  4.603950 0.000023304672 0.9994431 0.4594285
-cg02556924 -0.4497043 -0.6535741 -4.567987 0.000026433472 0.9994431 0.3894228
+r$> head(probes.limma.caudate)                                                                                      
+               logFC   AveExpr        t        P.Value adj.P.Val        B
+cg12897947 0.4715399 -2.973068 5.298235 0.000002020613 0.6136304 2.777993
+cg03109101 0.2707579 -3.148986 5.224376 0.000002644187 0.6136304 2.605534
+cg02469347 0.2783378 -1.487961 5.193718 0.000002955567 0.6136304 2.534031
+cg18073918 0.3646369  3.137141 5.125188 0.000003788017 0.6136304 2.374401
+cg19812613 0.3091764  3.567016 5.042385 0.000005105687 0.6449798 2.181931
+cg12301347 0.7439710 -1.948643 5.003469 0.000006434240 0.6449798 2.021067
 ```
 
 And we do the same for ACC:
 
 ```r
 vars.acc = cbind(samples.acc, pcs.acc)
-var <- model.matrix(~ PC2 + PC4 + PC5 + PC6 + PC9 + Sample_Group,
+var <- model.matrix(~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC10 + Sample_Group,
                     data=vars.acc)
 M <- logit2(meth.acc) # convert beta to M:  log2(beta) - log2(1 - beta)
 fit <- lmFit(M, var)
@@ -418,14 +471,14 @@ probes.limma.acc <- topTable(fit2, adjust="fdr",
 ```
 
 ```
-r$> head(probes.limma.acc)                                                                                                                                                     
-                logFC   AveExpr         t        P.Value adj.P.Val         B
-cg17427421  0.3600533  2.627971  5.171306 0.000003658587 0.8210943 1.2624822
-cg12848592 -0.6123150 -5.352947 -5.144062 0.000004029615 0.8210943 1.2124132
-cg16900188  0.4217245  3.701550  5.141539 0.000004065804 0.8210943 1.2077755
-cg07910816  0.4387288  2.827655  5.056224 0.000005496727 0.8210943 1.0510215
-cg18389630  0.3709812  3.246830  4.799408 0.000013502251 0.8210943 0.5800598
-cg16660494  0.3644896  3.212603  4.740526 0.000016557385 0.8210943 0.4724045
+r$> head(probes.limma.acc)                                                                                          
+                logFC   AveExpr         t        P.Value adj.P.Val        B
+cg24747572 -0.3614788  2.244890 -5.426898 0.000001567799 0.3859176 3.490813
+cg00192275 -0.3989329  3.261132 -5.411428 0.000001656432 0.3859176 3.452604
+cg13995516  0.3854365 -1.598190  5.292451 0.000002525499 0.3859176 3.158991
+cg21713048  0.2716786  1.284599  5.262395 0.000002808476 0.3859176 3.084902
+cg14313999  0.2752764  2.182664  5.151242 0.000004154202 0.3859176 2.811277
+cg17044843 -0.2182841  1.730037 -5.148972 0.000004187458 0.3859176 2.805695
 ```
 
 Again, nothing survives FDR, but not really surprising. 
@@ -436,10 +489,11 @@ set analysis.
 ```r
 save(meth.acc, meth.caudate, pcs.acc, pcs.caudate, probes.limma.acc,
      probes.limma.caudate, samples.acc, samples.caudate,
-     file='~/data/methylation_post_mortem/main_results_10082020.RData')
+     file='~/data/methylation_post_mortem/main_results_11032020.RData')
 ```
 
-Now we need to attach some genes to all these probes. 
+Now we need to attach some genes to all these probes, and since we're doing gene
+set analysis, we should keep it only to the probes annotated with genes.
 
 ```r
 data("probe.features.epic")
@@ -447,217 +501,187 @@ probes.limma.caudate.annotated <- merge(probes.limma.caudate, probe.features,
                                         by="row.names", sort=FALSE, all.x=TRUE)
 probes.limma.acc.annotated <- merge(probes.limma.acc, probe.features,
                                     by="row.names", sort=FALSE, all.x=TRUE)
-```
-
-Let me re-create some of Alex's plots so we can retain his code, but also to see
-the differences using the modifications I made in the analaysis:
-
-```r
-# Manhattan plot
-mhplot <- function(data, genomewide_threshold=5e-6, annotate_threshold=1e-5) {
-    # Creating a data set of the require data
-    manhattan.data<-data.frame(feature=data$gene,CHR=data$CHR,
-      MAPINFO=data$MAPINFO, adj.P.Val = data$adj.P.Val,  P.Value = data$P.Value)
-    
-    # We have to turn Chr into a numeric vector for this function
-    manhattan.data$CHR <- as.character(manhattan.data$CHR)
-    manhattan.data$CHR <- sub("chr","",manhattan.data$CHR)
-    manhattan.data$CHR[which(manhattan.data$CHR=="X")] <- "23"
-    manhattan.data$CHR[which(manhattan.data$CHR=="Y")] <- "24"
-    manhattan.data$CHR <- as.numeric(manhattan.data$CHR)
-    
-    # Create Manhattan plot
-    manhattan(manhattan.data, col = c("deepskyblue4", "deepskyblue3"), chr = "CHR", bp = "MAPINFO", p = "P.Value", snp = "feature", suggestiveline=FALSE, genomewideline=-log10(genomewide_threshold), annotatePval=annotate_threshold, annotateTop=TRUE)
-}
-
-mhplot(probes.limma.caudate.annotated)
-mhplot(probes.limma.acc.annotated)
-```
-
-![](images/2020-10-08-11-47-22.png)
-![](images/2020-10-08-11-48-35.png)
-
-Top Manhatan is for Caudate, bottom for ACC.
-
-And we try some Volcano plots too:
-
-```r
-EnhancedVolcano(
-  probes.limma.caudate.annotated,
-  lab = rownames(probes.limma.caudate.annotated),
-  x = 'logFC',
-  y = 'P.Value',
-  ylab = bquote(~-Log[10]~italic(P)["non-adjusted"]),
-  xlab = bquote(~"logFC"),
-  xlim = c(-0.7, +0.7),
-  ylim = c(0, 6),
-  axisLabSize = 12,
-  title="",
-  subtitle="",
-  caption="",
-  subtitleLabSize = 0,
-  captionLabSize = 0,
-  titleLabSize = 0,
-  legendPosition = "none",
-  pCutoff = 1e-5,
-  FCcutoff = 0.2,
-  selectLab=c(''),
-  col=c('gray60', 'gray60', 'black', 'red'),
-  )
-```
-
-![](images/2020-10-08-11-51-26.png)
-
-```r
-EnhancedVolcano(
-  probes.limma.acc.annotated,
-  lab = rownames(probes.limma.acc.annotated),
-  x = 'logFC',
-  y = 'P.Value',
-  ylab = bquote(~-Log[10]~italic(P)["non-adjusted"]),
-  xlab = bquote(~"logFC"),
-  xlim = c(-0.7, +0.7),
-  ylim = c(0, 7),
-  axisLabSize = 12,
-  title="",
-  subtitle="",
-  caption="",
-  subtitleLabSize = 0,
-  captionLabSize = 0,
-  titleLabSize = 0,
-  legendPosition = "none",
-  pCutoff = 1e-5,
-  FCcutoff = 0.2,
-  selectLab=c(''),
-  col=c('gray60', 'gray60', 'black', 'red'),
-  )
-```
-
-![](images/2020-10-08-11-53-05.png)
-
-I'm not sure where Alex got those p-value thresholds from. The GWAS threshold is
-5*10^-8, and what I could find for epigenome is 2.4×10-7 for the entire 450K
-array. In our analysis I get 1*10^-7 if using the ones with gene annotation,
-7.7*10^-8 if using all annotated probes.  
-
-Since we're doing gene set analysis, we should keep it only to the probes
-annotated with genes.
-
-```r
+saveRDS(probes.limma.acc.annotated,
+        file='~/data/methylation_post_mortem/acc_methyl_results_11032020.rds')
+saveRDS(probes.limma.caudate.annotated,
+        file='~/data/methylation_post_mortem/caudate_methyl_results_11032020.rds')
 idx = probes.limma.acc.annotated$gene != ''
 genes.acc = probes.limma.acc.annotated[idx, ]
 idx = probes.limma.caudate.annotated$gene != ''
 genes.caudate = probes.limma.caudate.annotated[idx, ]
 ```
 
-Then we run our usual gene set analysis:
+Then we run our usual gene set analysis in BW. Once again, we'll use one value
+per gene to create the ranked lists.
 
-```r
-get_enrich_order2 = function( res, gene_sets ){
-  if( !is.null(res$z.std) ){
-    stat = res$z.std
-  }else if( !is.null(res$F.std) ){
-    stat = res$F.std
-  }else if( !is.null(res$t) ){
-    stat = res$t
-  }else{
-    stat = res$F
-  }
-  names(stat) = res$gene
-  stat = stat[!is.na(names(stat))]
-  # print(head(stat))
-  index = ids2indices(gene_sets, names(stat))
-  cameraPR( stat, index )
-}
-load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
-load('~/data/rnaseq_derek/c5_gene_sets.RData')
-load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
-load('~/data/rnaseq_derek/data_for_alex.RData')
-co = .9 
-idx = anno$age_category==1 & anno$cutoff==co
-genes_overlap = unique(anno[idx, 'anno_gene'])
-for (s in 2:5) {
-  idx = anno$age_category==s & anno$cutoff==co
-  g2 = unique(anno[idx, 'anno_gene'])
-  genes_overlap = intersect(genes_overlap, g2)
-}
-genes_unique = list()
-for (s in 1:5) {
-  others = setdiff(1:5, s)
-  idx = anno$age_category==s & anno$cutoff==co
-  g = unique(anno[idx, 'anno_gene'])
-  for (s2 in others) {
-    idx = anno$age_category==s2 & anno$cutoff==co
-    g2 = unique(anno[idx, 'anno_gene'])
-    rm_me = g %in% g2
-    g = g[!rm_me]
-  }
-  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
-}
-genes_unique[['overlap']] = unique(genes_overlap)
-
-adhd_acc = get_enrich_order2( genes.acc, t2 ) 
-c5_acc = get_enrich_order2( genes.acc, c5_all)
-dis_acc = get_enrich_order2( genes.acc, disorders)
-dev_acc = get_enrich_order2( genes.acc, genes_unique )
-
-adhd_caudate = get_enrich_order2( genes.caudate, t2 ) 
-c5_caudate = get_enrich_order2( genes.caudate, c5_all)
-dis_caudate = get_enrich_order2( genes.caudate, disorders)
-dev_caudate = get_enrich_order2( genes.caudate, genes_unique )
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate radian
+./.local/bin/radian
 ```
 
-In case I want to run Meff, this is the code:
+In order to create similar lists for the methylation results, we'll need to use
+a single value per gene:
 
 ```r
-cc = cor(data)
-M = nrow(cc)
-cnt = 0
-for (j in 1:M) {
-    print(j)
-    for (k in 1:M) {
-        cnt = cnt + (1 - cc[j, k]**2)
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/methylation_post_mortem/'
+ncpu=31
+
+for (region in c('acc', 'caudate')) {
+    res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
+    idx = res$gene != ''
+    genes = res[idx, ]
+
+    imautosome = which(genes$CHR != 'X' &
+                       genes$CHR != 'Y' &
+                       genes$CHR != 'MT')
+    genes = genes[imautosome, ]
+
+    tmp = genes[, c('gene', 't')]
+    tmp2 = c()
+    # will do it this way because of the two tails of T distribution
+    for (g in unique(tmp$gene)) {
+        gene_data = tmp[tmp$gene==g, ]
+        best_res = which.max(abs(gene_data$t))
+        tmp2 = rbind(tmp2, gene_data[best_res, ])
+    }
+    for (db in c('geneontology_Biological_Process_noRedundant',
+                    'geneontology_Cellular_Component_noRedundant',
+                    'geneontology_Molecular_Function_noRedundant',
+                    'pathway_KEGG', 'disease_Disgenet',
+                    'phenotype_Human_Phenotype_Ontology',
+                    'network_PPI_BIOGRID')) {
+        cat(region, db, '\n')
+        enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="genesymbol",
+                                    sigMethod="top", topThr=10,
+                                    minNum=5,
+                                    isOutput=F, isParallel=T,
+                                    nThreads=ncpu)
+        out_fname = sprintf('%s/WG_%s_%s.csv', data_dir, region, db)
+        write.csv(enrichResult, file=out_fname, quote=F,
+                    row.names=F)
+    }
+    # my own GMTs
+    for (db in c('disorders', sprintf('%s_developmental', region))) {
+        cat(region, db, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabaseFile=db_file,
+                                    enrichDatabaseType="genesymbol",
+                                    interestGene=tmp2,
+                                    interestGeneType="genesymbol",
+                                    sigMethod="top", topThr=10,
+                                    minNum=3,
+                                    isOutput=F, isParallel=T,
+                                    nThreads=ncpu)
+        out_fname = sprintf('%s/WG_%s_%s_.csv', data_dir, region, db)
+        write.csv(enrichResult, file=out_fname, quote=F,
+                    row.names=F)
     }
 }
-meff = 1 + cnt / M
-cat(sprintf('Galwey Meff = %.2f\n', meff))
 ```
 
-But that assumes samples as rows, which is not our case. And we cannot put a
-square matrix of 650K in memory. So, maybe we can change this to compute on the
-fly?
-
+Now let's explore some of the results:
 
 ```r
-# calculates Meff without computing the costly big cc matrix, but paying in run
-# time to calculate each correlation in the loop.
-# mydata is vars by samples
-slow_meff = function(mydata) {
-    M = nrow(mydata)
-    cnt = 0
-    for (j in 1:M) {
-        # print(j)
-        for (k in 1:M) {
-            cnt = cnt + (1 - cor(mydata[j, ], mydata[k, ])**2)
-        }
-    }
-    meff = 1 + cnt / M
-    cat(sprintf('Galwey Meff = %.2f\n', meff))
-    return(meff)
+all_res = c()
+files = list.files(path = '~/data/methylation_post_mortem/', pattern = '^WG*')
+for (f in files) {
+    cat(f, '\n')
+    res = read.csv(sprintf('~/data/methylation_post_mortem/%s', f))
+    res$fname = f
+    # clean up a bit
+    res = res[!is.na(res$FDR),]
+    res = res[res$FDR>0,]
+    all_res = rbind(all_res, res[, c('geneSet', 'link', 'FDR', 'fname')])
 }
 ```
 
-That run the whole night on my laptop and still didn't finish. I might need to
-parallelize it or try running the big correlation matrix in a big machine.
+So, we have a few candidates for FDR < .05. That's good. I do want to re-run
+everything using 10K permutations and creating the outputs ust in case.
 
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate radian
+./.local/bin/radian
+```
 
-# TODO
- * is there a better result if we look only at certain feature or cgi annotated results?
- * start looking at islands only, then shore, shelf, then sea?
- * look at only genes at a certain SNP distance?
- * we can look more into the hypergeometric test:
-   * https://sbc.shef.ac.uk/workshops/2018-07-10-rna-seq/rna-seq-gene-set-testing.nb.html
-   * https://www.bioconductor.org/packages/devel/bioc/vignettes/GeneOverlap/inst/doc/GeneOverlap.pdf
-   * https://bioinfogp.cnb.csic.es/tools/venny/index.html
-   * http://www.pangloss.com/wiki/VennSignificance
- 
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/methylation_post_mortem/'
+ncpu=31
+
+# region='acc'
+region='caudate'
+res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
+idx = res$gene != ''
+genes = res[idx, ]
+
+imautosome = which(genes$CHR != 'X' &
+                    genes$CHR != 'Y' &
+                    genes$CHR != 'MT')
+genes = genes[imautosome, ]
+
+tmp = genes[, c('gene', 't')]
+tmp2 = c()
+# will do it this way because of the two tails of T distribution
+for (g in unique(tmp$gene)) {
+    gene_data = tmp[tmp$gene==g, ]
+    best_res = which.max(abs(gene_data$t))
+    tmp2 = rbind(tmp2, gene_data[best_res, ])
+}
+for (db in c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant',
+                'pathway_KEGG', 'disease_Disgenet',
+                'phenotype_Human_Phenotype_Ontology',
+                'network_PPI_BIOGRID')) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=10,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+# my own GMTs
+for (db in c('disorders', sprintf('%s_developmental', region))) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=10,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+```
