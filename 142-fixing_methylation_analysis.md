@@ -623,8 +623,8 @@ library(WebGestaltR)
 data_dir = '~/data/methylation_post_mortem/'
 ncpu=31
 
-# region='acc'
-region='caudate'
+region='acc'
+# region='caudate'
 res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
 idx = res$gene != ''
 genes = res[idx, ]
@@ -685,3 +685,7 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
                 row.names=F)
 }
 ```
+
+Remember that I need to reduce the number of cpus to run the Human Phenotype
+Ontology, otherwise it crashes. I've been using 5.
+
