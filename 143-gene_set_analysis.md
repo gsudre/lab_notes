@@ -145,7 +145,7 @@ for (m in c("acc", "caudate")){
         tmp2 = c()
         for (g in unique(tmp$gene)) {
             gene_data = tmp[tmp$gene==g, ]
-            best_res = which.min(abs(gene_data$P.Value))
+            best_res = which.min(gene_data$P.Value)
             tmp2 = rbind(tmp2, gene_data[best_res, ])
         }
         # just to conform with imp and rna structures
@@ -155,6 +155,71 @@ for (m in c("acc", "caudate")){
 }
 ```
 
+# 2020-11-04 06:11:00
+
+I saved thoses slices in
+~/data/methylation_post_mortem/sliced_results_11042020.RData because they took a
+while to generate. 
+
+Now it's just a matter of constructing the big matrix.
+
+```r
+t = .05
+ra = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
+rc = rnaseq_caudate[rnaseq_caudate$P.Value < t, 'hgnc_symbol']
+
+ia = res_acc_imp[res_acc_imp$pvalue < t, 'hgnc_symbol']
+ic = res_caudate_imp[res_caudate_imp$pvalue < t, 'hgnc_symbol']
+icin = res_cincin_imp[res_cincin_imp$pvalue < t, 'hgnc_symbol']
+icc = res_cc_imp[res_cc_imp$pvalue < t, 'hgnc_symbol']
+iatr = res_atr_imp[res_atr_imp$pvalue < t, 'hgnc_symbol']
+
+ia2 = res2_acc_imp[res2_acc_imp$pvalue < t, 'hgnc_symbol']
+ic2 = res2_caudate_imp[res2_caudate_imp$pvalue < t, 'hgnc_symbol']
+icin2 = res2_cincin_imp[res2_cincin_imp$pvalue < t, 'hgnc_symbol']
+icc2 = res2_cc_imp[res2_cc_imp$pvalue < t, 'hgnc_symbol']
+iatr2 = res2_atr_imp[res2_atr_imp$pvalue < t, 'hgnc_symbol']
+
+ma = res_acc_methyl[res_acc_methyl$pvalue < t, 'hgnc_symbol']
+mc = res_caudate_methyl[res_caudate_methyl$pvalue < t, 'hgnc_symbol']
+mai = res_acc_island_methyl[res_acc_island_methyl$pvalue < t, 'hgnc_symbol']
+mao = res_acc_opensea_methyl[res_acc_opensea_methyl$pvalue < t, 'hgnc_symbol']
+mase = res_acc_shelf_methyl[res_acc_shelf_methyl$pvalue < t, 'hgnc_symbol']
+maso = res_acc_shore_methyl[res_acc_shore_methyl$pvalue < t, 'hgnc_symbol']
+mci = res_caudate_island_methyl[res_caudate_island_methyl$pvalue < t, 'hgnc_symbol']
+mco = res_caudate_opensea_methyl[res_caudate_opensea_methyl$pvalue < t, 'hgnc_symbol']
+mcse = res_caudate_shelf_methyl[res_caudate_shelf_methyl$pvalue < t, 'hgnc_symbol']
+mcso = res_caudate_shore_methyl[res_caudate_shore_methyl$pvalue < t, 'hgnc_symbol']
+
+gom.obj <- newGOM(list(rnaseq_acc=ra, rnaseq_cau=rc, impM_acc=ia,
+                       impM_cau=ic, impM_cincin=icin, impM_cc=icc,
+                       impM_atr=iatr, impE_cau=ic2, impE_cincin=icin2,
+                       impE_cc=icc2, impE_atr=iatr2, met_acc=ma,
+                       met_acc_isl=mai, met_acc_sea=mao, met_acc_she=mase,
+                       met_acc_sho=maso, met_cau=mc, met_cau_isl=mci,
+                       met_cau_sea=mco, met_cau_she=mcse, met_cau_sho=mcso),
+                       spec='hg19.gene')
+a = getMatrix(gom.obj, name='pval')
+```
+
+Now let's plot it to see if we can find patterns:
+
+```r
+library(corrplot)
+quartz()
+# quick hack to force the color scale
+b = 1-a
+b[b<.95] = NA
+corrplot(b, method='color', tl.cex=.8, cl.cex=1, type='upper', is.corr=F, na.label=' ')
+# corrplot(b, method='color', tl.cex=.8, cl.cex=1, type='upper', is.corr=F,
+#          p.mat=a, sig.level=.05, insig='blank')
+```
+
+![](images/2020-11-04-06-56-31.png)
+
+It looks like the impM results do better than impE, so that's an answer. And
+there are very strong overlaps among the methylation results.
+
+
 # TODO
- * try EN results as well
  * try our own universe
