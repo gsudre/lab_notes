@@ -782,6 +782,102 @@ r$> iso_caudate_kallisto = read.csv('~/data/isoforms/caudate_kallisto.csv')
 r$> save(rnaseq_acc, rnaseq_caudate, methyl_acc, methyl_caudate, iso_acc_kallisto, iso_acc_rsem, iso_caudate_kallisto, iso_caudate_rsem, file='~/data/rnaseq_derek/xmodal_results_10152020.RData')   
 ```
 
+# 2020-11-04 10:02:32
+
+Let's run the rnaseq through 10K perms too. Note that I had to change the
+default top threshold so the results would report all gene sets, otherwise we
+wouldn't be able to try the gene set over representation:
+
+```
+r$> files = list.files(path = '~/data/post_mortem//', pattern = 'gmt$')
+r$> for (f in files) { gmt=readGmt(sprintf('~/data/post_mortem/%s', f)); cat(f, '\n'); print(dim(gmt))}                                        
+ACC_developmental.gmt 
+[1] 1604    3
+caudate_developmental.gmt 
+[1] 1584    3
+disorders.gmt 
+[1] 397   3
+hsapiens_disease_Disgenet_entrezgene.gmt 
+[1] 130821      3
+hsapiens_geneontology_Biological_Process_noRedundant_entrezgene.gmt 
+[1] 147751      3
+hsapiens_geneontology_Cellular_Component_noRedundant_entrezgene.gmt 
+[1] 27948     3
+hsapiens_geneontology_Molecular_Function_noRedundant_entrezgene.gmt 
+[1] 31567     3
+hsapiens_network_PPI_BIOGRID_entrezgene.gmt 
+[1] 87206     3
+hsapiens_pathway_KEGG_entrezgene.gmt 
+[1] 29964     3
+```
+
+So I changed it to 150K across the board to get p-values for all sets. But it
+turns out that the WGs are only giving me 850 sets for GO Bio... at least its
+the same for ACC and Caudate, so the comparison can still work. 
+
+```bash
+# bw
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate radian
+./.local/bin/radian
+```
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/rnaseq_derek/'
+load(sprintf('%s/xmodal_results_10152020.RData', data_dir))
+ncpu=31
+
+# region='acc'
+region='caudate'
+eval(parse(text=sprintf('res = rnaseq_%s', region)))
+
+tmp2 = res[, c('hgnc_symbol', 't')]
+for (db in c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant',
+                'pathway_KEGG', 'disease_Disgenet',
+                'phenotype_Human_Phenotype_Ontology',
+                'network_PPI_BIOGRID')) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+# my own GMTs
+for (db in c('disorders', sprintf('%s_developmental', region))) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+```
+
 
 # TODO
- * how about separating the developmental gene lists?

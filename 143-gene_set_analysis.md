@@ -220,6 +220,93 @@ corrplot(b, method='color', tl.cex=.8, cl.cex=1, type='upper', is.corr=F, na.lab
 It looks like the impM results do better than impE, so that's an answer. And
 there are very strong overlaps among the methylation results.
 
+## Own universe
+
+It might not necessarily be fair to use hg19 as the universe, because some times
+not all genes are present (e.g. imputation). So, we'll need to create our own
+universe depending on the two sets being compared.
+
+```r
+res_rnaseq_acc = rnaseq_acc[, c('hgnc_symbol', 'P.Value')]
+res_rnaseq_caudate = rnaseq_caudate[, c('hgnc_symbol', 'P.Value')]
+colnames(res_rnaseq_acc)[2] = 'pvalue'
+colnames(res_rnaseq_caudate)[2] = 'pvalue'
+res_var = c('res_rnaseq_acc', 'res_rnaseq_caudate',
+            'res_acc_imp', 'res_caudate_imp',
+            'res2_acc_imp', 'res2_caudate_imp',
+            'res_cincin_imp', 'res_cc_imp', 'res_atr_imp',
+            'res2_cincin_imp', 'res2_cc_imp', 'res2_atr_imp',
+            'res_acc_methyl', 'res_caudate_methyl',
+            'res_acc_island_methyl', 'res_caudate_island_methyl',
+            'res_acc_opensea_methyl', 'res_caudate_opensea_methyl',
+            'res_acc_shelf_methyl', 'res_caudate_shelf_methyl',
+            'res_acc_shore_methyl', 'res_caudate_shore_methyl')
+res_str = c('rnaseq_acc', 'rnaseq_cau',
+            'impM_acc', 'impM_cau',
+            'impE_acc', 'impE_cau',
+            'impM_cin', 'impM_cc', 'impM_atr',
+            'impE_cin', 'impE_cc', 'impE_atr',
+            'met_acc', 'met_cau',
+            'met_acc_isl', 'met_cau_isl',
+            'met_acc_sea', 'met_cau_sea',
+            'met_acc_she', 'met_cau_she',
+            'met_acc_sho', 'met_cau_sho')
+thres=.05
+pvals = matrix(nrow=length(res_var), ncol=length(res_var),
+               dimnames=list(res_str, res_str))
+for (i in 1:length(res_var)) {
+    for (j in 1:length(res_var)) {
+        cat(res_var[i], res_var[j], '\n')
+        eval(parse(text=sprintf('res1 = eval(parse(text=res_var[i]))')))
+        eval(parse(text=sprintf('res2 = eval(parse(text=res_var[j]))')))
+        uni = intersect(res1$hgnc_symbol, res2$hgnc_symbol)
+        # only evaluate genes in both sets
+        res1 = res1[res1$hgnc_symbol %in% uni, ]
+        res2 = res2[res2$hgnc_symbol %in% uni, ]
+
+        go.obj <- newGeneOverlap(res1$hgnc_symbol[res1$pvalue < thres],
+                                 res2$hgnc_symbol[res2$pvalue < thres],
+                                 genome.size=length(uni))
+        go.obj <- testGeneOverlap(go.obj)
+        pvals[res_str[i], res_str[j]] = getPval(go.obj)
+    }
+}
+
+b = 1-pvals
+b[b<.95] = NA
+corrplot(b, method='color', tl.cex=.8, cl.cex=1, type='upper', is.corr=F, na.label='x')
+```
+
+![](images/2020-11-04-20-31-20.png)
+
+Yep, this looks a lot more realistic. But is it fair though? Probably more fair
+than hg19...
+
+EN imputation does better for atr, with good overlaps for met_cau, likely driven
+by the shore probes, and we also get a hit for acc shore. EN for cc also has
+some overlap with caudate islands, but that's more weird. MASHR imputation for
+atr didn't have anything across modalities, and for CC has a weird one for
+caudate shore. The more interesting one is for cin-cin, which goes to acc shelf
+probes. Everything else is just inter-modality. They're still interesting to
+explore, but I wonder if we wouldn't get a more clear path if doing a similar
+analysis on the gene sets?
+
+```r
+files = list.files(path = '~/data/methylation_post_mortem/', pattern = '^WG*')
+for (f in files) {
+    cat(f, '\n')
+    res = read.csv(sprintf('~/data/methylation_post_mortem/%s', f))
+    res$fname = f
+    # clean up a bit
+    res = res[!is.na(res$FDR),]
+    res = res[res$FDR>0,]
+    all_res = rbind(all_res, res[, c('geneSet', 'link', 'FDR', 'fname')])
+}
+```
+
+It won't work because I se tthe top to 10 :( Have to re-run everything...
+
 
 # TODO
- * try our own universe
+ * try gene set overrepresentation analysis?
+ * try cameraPR
