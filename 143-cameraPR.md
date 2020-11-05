@@ -25,8 +25,8 @@ get_enrich_order2 = function( res, gene_sets ){
 data_dir = '~/data/rnaseq_derek/'
 load(sprintf('%s/xmodal_results_10152020.RData', data_dir))
 
-# region='acc'
-region='caudate'
+region='acc'
+# region='caudate'
 eval(parse(text=sprintf('res = rnaseq_%s', region)))
 
 tmp2 = res[, c('hgnc_symbol', 't')]
@@ -84,48 +84,84 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
 }
 ```
 
+Now we do the same thing for methylation:
 
 ```r
+data_dir = '~/data/methylation_post_mortem/'
 
-load('~/data/rnaseq_derek/adhd_genesets_philip.RDATA')
-load('~/data/rnaseq_derek/c5_gene_sets.RData')
-load('~/data/rnaseq_derek/brain_disorders_gene_sets.RData')
-load('~/data/rnaseq_derek/data_for_alex.RData')
-co = .9 
-idx = anno$age_category==1 & anno$cutoff==co
-genes_overlap = unique(anno[idx, 'anno_gene'])
-for (s in 2:5) {
-  idx = anno$age_category==s & anno$cutoff==co
-  g2 = unique(anno[idx, 'anno_gene'])
-  genes_overlap = intersect(genes_overlap, g2)
+# region='acc'
+region='caudate'
+res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
+idx = res$gene != ''
+genes = res[idx, ]
+
+imautosome = which(genes$CHR != 'X' &
+                    genes$CHR != 'Y' &
+                    genes$CHR != 'MT')
+genes = genes[imautosome, ]
+
+tmp = genes[, c('gene', 't')]
+tmp2 = c()
+# will do it this way because of the two tails of T distribution
+for (g in unique(tmp$gene)) {
+    gene_data = tmp[tmp$gene==g, ]
+    best_res = which.max(abs(gene_data$t))
+    tmp2 = rbind(tmp2, gene_data[best_res, ])
 }
-genes_unique = list()
-for (s in 1:5) {
-  others = setdiff(1:5, s)
-  idx = anno$age_category==s & anno$cutoff==co
-  g = unique(anno[idx, 'anno_gene'])
-  for (s2 in others) {
-    idx = anno$age_category==s2 & anno$cutoff==co
-    g2 = unique(anno[idx, 'anno_gene'])
-    rm_me = g %in% g2
-    g = g[!rm_me]
-  }
-  genes_unique[[sprintf('dev%s_c%.1f', s, co)]] = unique(g)
+colnames(tmp2)[1] = 'hgnc_symbol'
+for (db in c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant',
+                'pathway_KEGG', 'disease_Disgenet',
+                'phenotype_Human_Phenotype_Ontology',
+                'network_PPI_BIOGRID')) {
+    cat(region, db, '\n')
+    # assigning hgnc to our gene set lists
+    gs = loadGeneSet(enrichDatabase=db)
+    gmt = gs$geneSet
+    a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+                  targetIdType='genesymbol')
+    gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+                 by.y='userId', all.x=F, all.y=F)
+    # and convert it to lists
+    mylist = list()
+    for (s in unique(gmt2$geneSet)) {
+        mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+    }
+    res_camera = get_enrich_order2( tmp2, mylist )
+    if (is.null(gs$geneSetDes)) {
+        # PPI doesn't have descriptions
+        m = cbind(rownames(res_camera), res_camera, NA)
+        colnames(m)[1] = 'Row.names'
+        colnames(m)[ncol(m)] = 'description'
+    } else {
+        # attach gene set description
+        m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
+        m = m[order(m$PValue), ]
+    }
+    out_fname = sprintf('%s/camera_%s_%s.csv', data_dir, region, db)
+    write.csv(m, file=out_fname, quote=F, row.names=F)
 }
-genes_unique[['overlap']] = unique(genes_overlap)
-
-data2 = cbind(data, mydata)
-form = ~ Diagnosis + PC1 + PC2 + PC7 + PC8 + PC9
-design = model.matrix( form, data2)
-vobj = voom( genes, design, plot=FALSE)
-fit <- lmFit(vobj, design)
-fit2 <- eBayes( fit )
-res = topTable(fit2, coef='DiagnosisControl', number=Inf)
-
-adhd_camera = get_enrich_order2( res, t2 ) 
-c5_camera = get_enrich_order2( res, c5_all)
-dis_camera = get_enrich_order2( res, disorders)
-dev_camera = get_enrich_order2( res, genes_unique )
+# my own GMTs
+for (db in c('disorders', sprintf('%s_developmental', region))) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=10,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
 ```
 
 

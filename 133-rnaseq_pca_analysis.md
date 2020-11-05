@@ -813,7 +813,9 @@ hsapiens_pathway_KEGG_entrezgene.gmt
 
 So I changed it to 150K across the board to get p-values for all sets. But it
 turns out that the WGs are only giving me 850 sets for GO Bio... at least its
-the same for ACC and Caudate, so the comparison can still work. 
+the same for ACC and Caudate, so the comparison can still work. And 150K will
+definitely cover everything, because the values I was spitting out above are the
+rows, and the unique number of sets is the unique() of them.
 
 ```bash
 # bw

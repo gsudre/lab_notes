@@ -607,7 +607,7 @@ for (f in files) {
 ```
 
 So, we have a few candidates for FDR < .05. That's good. I do want to re-run
-everything using 10K permutations and creating the outputs ust in case.
+everything using 10K permutations and creating the outputs just in case.
 
 ```bash
 # bw
@@ -623,8 +623,8 @@ library(WebGestaltR)
 data_dir = '~/data/methylation_post_mortem/'
 ncpu=31
 
-region='acc'
-# region='caudate'
+# region='acc'
+region='caudate'
 res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
 idx = res$gene != ''
 genes = res[idx, ]
@@ -655,7 +655,7 @@ for (db in c('geneontology_Biological_Process_noRedundant',
                                 enrichDatabase=db,
                                 interestGene=tmp2,
                                 interestGeneType="genesymbol",
-                                sigMethod="top", topThr=10,
+                                sigMethod="top", topThr=150000,
                                 outputDirectory = data_dir,
                                 minNum=5, projectName=project_name,
                                 isOutput=T, isParallel=T,
@@ -676,7 +676,7 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
                                 interestGene=tmp2,
                                 outputDirectory = data_dir,
                                 interestGeneType="genesymbol",
-                                sigMethod="top", topThr=10,
+                                sigMethod="top", topThr=150000,
                                 minNum=3, projectName=project_name,
                                 isOutput=T, isParallel=T,
                                 nThreads=ncpu, perNum=10000)
