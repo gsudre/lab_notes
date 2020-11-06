@@ -1032,8 +1032,8 @@ Gonna run the same as above but now using 10K perms for stability:
 library(WebGestaltR)
 
 data_dir = '~/data/expression_impute/'
-phenotypes = list(ACC=c('res_fa_cin_cin', 'res_FA_cc'),
-                  caudate=c('res_fa_ATR'))
+phenotypes = list(ACC=c('res_fa_cin_cin', 'res_FA_cc', 'res_ACC_thickness'),
+                  caudate=c('res_fa_ATR', 'res_Caudate_volume'))
 
 G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
 G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
@@ -1074,7 +1074,7 @@ for (md in c('EN', 'MASHR')) {
                                                 enrichDatabase=db,
                                                 interestGene=tmp2,
                                                 interestGeneType="genesymbol",
-                                                sigMethod="top", topThr=10,
+                                                sigMethod="top", topThr=150000,
                                                 outputDirectory = data_dir,
                                                 minNum=5, projectName=project_name,
                                                 isOutput=T, isParallel=T,
@@ -1095,7 +1095,7 @@ for (md in c('EN', 'MASHR')) {
                                                 enrichDatabaseType="genesymbol",
                                                 interestGene=tmp2,
                                                 interestGeneType="genesymbol",
-                                                sigMethod="top", topThr=10,
+                                                sigMethod="top", topThr=150000,
                                                 minNum=3,
                                                 isOutput=T, isParallel=T,
                                                 nThreads=ncpu, perNum=10000,

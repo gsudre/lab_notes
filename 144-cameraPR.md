@@ -344,70 +344,193 @@ much faster. In the gene set contest, I'd have to create one overlap matrix for
 each gene set tested:
 
 ```r
-db = 'geneontology_Biological_Process_noRedundant'
-mydir = '~/data/rnaseq_derek'
-res_var = c()
-for (r in c('acc', 'caudate')) {
-    res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
-    eval(parse(text=sprintf('res_rnaseq_%s = res', r)))
-    eval(parse(text=sprintf('res_var = c(res_var, "res_rnaseq_%s")', r)))
-}
-mydir = '~/data/expression_impute'
-for (md in c('MASHR', 'EN')) {
-    for (sc in c('effect', 'zscore')) {
-        for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
-                    'res_Caudate_volume', 'res_fa_ATR')) {
-            res = read.csv(sprintf('%s/camera_%s_%s_%s_%s.csv', mydir, md, sc, r, db))
-            eval(parse(text=sprintf('res_%s_%s_%s = res', md, sc, r)))
-            eval(parse(text=sprintf('res_var = c(res_var, "res_%s_%s_%s")',
-                                    md, sc, r)))
+library(GeneOverlap)
+library(corrplot)
+quartz()
+
+get_overlaps = function(db, thres) {
+    # db = 'geneontology_Biological_Process_noRedundant'
+    mydir = '~/data/rnaseq_derek'
+    res_var = c()
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        eval(parse(text=sprintf('res_rnaseq_%s = res', r)))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_rnaseq_%s")', r)))
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                res = read.csv(sprintf('%s/camera_%s_%s_%s_%s.csv', mydir, md, sc, r, db))
+                eval(parse(text=sprintf('res_%s_%s_%s = res', md, sc, r)))
+                eval(parse(text=sprintf('res_var = c(res_var, "res_%s_%s_%s")',
+                                        md, sc, r)))
+            }
         }
     }
-}
-mydir = '~/data/methylation_post_mortem'
-for (r in c('acc', 'caudate')) {
-    res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
-    eval(parse(text=sprintf('res_methyl_%s = res', r)))
-    eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s")', r)))
-    for (cgi in c("island", "opensea", "shelf", "shore")) {
-        res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
-        eval(parse(text=sprintf('res_methyl_%s_%s = res', r, cgi)))
-        eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s_%s")', r, cgi)))
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        eval(parse(text=sprintf('res_methyl_%s = res', r)))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s")', r)))
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            eval(parse(text=sprintf('res_methyl_%s_%s = res', r, cgi)))
+            eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s_%s")', r, cgi)))
+        }
     }
-}
 
-# need to be in the same order as res_var!
-res_str = c('rnaseq_acc', 'rnaseq_cau',
-            'impMe_acc', 'impMe_cau', 'impMe_cin', 'impMe_cc', 'impMe_atr',
-            'impMz_acc', 'impMz_cau', 'impMz_cin', 'impMz_cc', 'impMz_atr',
-            'impEe_acc', 'impEe_cau', 'impEe_cin', 'impEe_cc', 'impEe_atr',
-            'impEz_acc', 'impEz_cau', 'impEz_cin', 'impEz_cc', 'impEz_atr',
-            'met_acc', 'met_acc_isl', 'met_acc_sea', 'met_acc_she', 'met_acc_sho',
-            'met_cau', 'met_cau_isl', 'met_cau_sea', 'met_cau_she', 'met_cau_sho',)
-thres=.05
-pvals = matrix(nrow=length(res_var), ncol=length(res_var),
-               dimnames=list(res_str, res_str))
-for (i in 1:length(res_var)) {
-    for (j in 1:length(res_var)) {
-        cat(res_var[i], res_var[j], '\n')
-        eval(parse(text=sprintf('res1 = eval(parse(text=res_var[i]))')))
-        eval(parse(text=sprintf('res2 = eval(parse(text=res_var[j]))')))
-        uni = intersect(res1$Row.names, res2$Row.names)
-        # only evaluate genes in both sets
-        res1 = res1[res1$Row.names %in% uni, ]
-        res2 = res2[res2$Row.names %in% uni, ]
+    # need to be in the same order as res_var!
+    res_str = c('rnaseq_acc', 'rnaseq_cau',
+                'impMe_acc', 'impMe_cau', 'impMe_cin', 'impMe_cc', 'impMe_atr',
+                'impMz_acc', 'impMz_cau', 'impMz_cin', 'impMz_cc', 'impMz_atr',
+                'impEe_acc', 'impEe_cau', 'impEe_cin', 'impEe_cc', 'impEe_atr',
+                'impEz_acc', 'impEz_cau', 'impEz_cin', 'impEz_cc', 'impEz_atr',
+                'met_acc', 'met_acc_isl', 'met_acc_sea', 'met_acc_she', 'met_acc_sho',
+                'met_cau', 'met_cau_isl', 'met_cau_sea', 'met_cau_she', 'met_cau_sho')
 
-        go.obj <- newGeneOverlap(res1$Row.names[res1$PValue < thres],
-                                 res2$Row.names[res2$PValue < thres],
-                                 genome.size=length(uni))
-        go.obj <- testGeneOverlap(go.obj)
-        pvals[res_str[i], res_str[j]] = getPval(go.obj)
+    # thres=.05
+    pvals = matrix(nrow=length(res_var), ncol=length(res_var),
+                dimnames=list(res_str, res_str))
+    for (i in 1:length(res_var)) {
+        for (j in 1:length(res_var)) {
+            eval(parse(text=sprintf('res1 = eval(parse(text=res_var[i]))')))
+            eval(parse(text=sprintf('res2 = eval(parse(text=res_var[j]))')))
+            uni = intersect(res1$Row.names, res2$Row.names)
+            # only evaluate genes in both sets
+            res1 = res1[res1$Row.names %in% uni, ]
+            res2 = res2[res2$Row.names %in% uni, ]
+
+            go.obj <- newGeneOverlap(res1$Row.names[res1$PValue < thres],
+                                    res2$Row.names[res2$PValue < thres],
+                                    genome.size=length(uni))
+            go.obj <- testGeneOverlap(go.obj)
+            pvals[res_str[i], res_str[j]] = getPval(go.obj)
+        }
     }
-}
 
-b = 1-pvals
+    b = 1-pvals
+}
+b = get_overlaps('geneontology_Biological_Process_noRedundant', .05)
 b[b<.95] = NA
 corrplot(b, method='color', tl.cex=.8, cl.cex=1, type='upper', is.corr=F, na.label='x')
 ```
+
+That works, but not sure how much information w'ell be able to get from it.
+Maybe we can have a plot of geneset and threshold, showing the combination with
+best overlaps?
+
+```r
+thresh = c(.05, .01, .005, .001)
+for (gs in c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant',
+            'pathway_KEGG', #'disease_Disgenet',
+            'phenotype_Human_Phenotype_Ontology',
+            'network_PPI_BIOGRID', 'disorders')) {
+    for (t in thresh) {
+        b = get_overlaps(gs, t)
+        b[b<(1-t)] = NA
+        cat(gs, t, sum(!is.na(b)), '\n')
+    }
+}
+```
+
+```
+geneontology_Biological_Process_noRedundant 0.05 138 
+geneontology_Biological_Process_noRedundant 0.01 65 
+geneontology_Biological_Process_noRedundant 0.005 48 
+geneontology_Biological_Process_noRedundant 0.001 25 
+geneontology_Cellular_Component_noRedundant 0.05 69 
+geneontology_Cellular_Component_noRedundant 0.01 23 
+geneontology_Cellular_Component_noRedundant 0.005 9 
+geneontology_Cellular_Component_noRedundant 0.001 6 
+geneontology_Molecular_Function_noRedundant 0.05 78 
+geneontology_Molecular_Function_noRedundant 0.01 31 
+geneontology_Molecular_Function_noRedundant 0.005 25 
+geneontology_Molecular_Function_noRedundant 0.001 11 
+pathway_KEGG 0.05 46 
+pathway_KEGG 0.01 30 
+pathway_KEGG 0.005 17 
+pathway_KEGG 0.001 1 
+phenotype_Human_Phenotype_Ontology 0.05 242 
+phenotype_Human_Phenotype_Ontology 0.01 102 
+phenotype_Human_Phenotype_Ontology 0.005 74 
+phenotype_Human_Phenotype_Ontology 0.001 38 
+network_PPI_BIOGRID 0.05 112 
+network_PPI_BIOGRID 0.01 51 
+network_PPI_BIOGRID 0.005 45 
+network_PPI_BIOGRID 0.001 14 
+disorders 0.05 4 
+disorders 0.01 0 
+disorders 0.005 0 
+disorders 0.001 0 
+```
+
+This wasn't particularly informative. I could eventually use FDR, which would be
+akin to a gene set dependent smaller p-value cut-off. But before I do that, it
+might be interesting just to see, across the board, how many hits I get using
+FDR across all variables:
+
+```r
+gs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant',
+            'pathway_KEGG', #'disease_Disgenet',
+            'phenotype_Human_Phenotype_Ontology',
+            'network_PPI_BIOGRID', 'disorders')
+thresh = .05
+all_res = c()
+for (db in gs) {
+    db_res = c()
+    mydir = '~/data/rnaseq_derek'
+    res_var = c()
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_rnaseq_%s")', r)))
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                res = read.csv(sprintf('%s/camera_%s_%s_%s_%s.csv', mydir, md, sc, r, db))
+                db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+                eval(parse(text=sprintf('res_var = c(res_var, "res_%s_%s_%s")',
+                                        md, sc, r)))
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s")', r)))
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+            eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s_%s")', r, cgi)))
+        }
+    }
+    all_res = rbind(all_res, db_res)
+}
+colnames(all_res) = res_var
+rownames(all_res) = gs
+write.csv(t(all_res), file='~/data/post_mortem/camera_geneset_summary_FDRp05.csv')
+```
+
+I created those files for FDR q < .1 and < .05, just so we can try to make a
+call on the flavors of imputation and also methylation slices we're using.
+
+Looking at those spreadsheets, the "effect" iterations are much better than
+"zscore". The choice between MASHR and EN is harder, so we might need to look at
+the actual hits to see what makes sense. Based on these tables I might go with
+EN just because of the number of hits in the Human Phenotype database, but they
+could all be garbage.
+
+Those are the conclusions for camera anyways. Still waiting on the
+GSEA 10K. 
 
 # TODO

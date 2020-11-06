@@ -688,5 +688,3 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
 
 Remember that I need to reduce the number of cpus to run the Human Phenotype
 Ontology, otherwise it crashes. I've been using 5.
-
-2026304481

@@ -308,6 +308,4 @@ It won't work because I se tthe top to 10 :( Have to re-run everything...
 
 
 # TODO
- * try gene set overrepresentation analysis?
- * try cameraPR
  * maybe other gene sets, like the original (not noRedundant) GOs?
