@@ -25,8 +25,8 @@ get_enrich_order2 = function( res, gene_sets ){
 data_dir = '~/data/rnaseq_derek/'
 load(sprintf('%s/xmodal_results_10152020.RData', data_dir))
 
-region='acc'
-# region='caudate'
+# region='acc'
+region='caudate'
 eval(parse(text=sprintf('res = rnaseq_%s', region)))
 
 tmp2 = res[, c('hgnc_symbol', 't')]
@@ -89,8 +89,8 @@ Now we do the same thing for methylation:
 ```r
 data_dir = '~/data/methylation_post_mortem/'
 
-# region='acc'
-region='caudate'
+region='acc'
+# region='caudate'
 res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
 idx = res$gene != ''
 genes = res[idx, ]
@@ -532,5 +532,14 @@ could all be garbage.
 
 Those are the conclusions for camera anyways. Still waiting on the
 GSEA 10K. 
+
+In the meanwhile, let's see how it looks when we run camera in the redundant
+sets:
+
+```r
+for (db in c('geneontology_Biological_Process',
+                'geneontology_Cellular_Component',
+                'geneontology_Molecular_Function')) {
+```
 
 # TODO
