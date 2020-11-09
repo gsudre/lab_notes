@@ -623,8 +623,8 @@ library(WebGestaltR)
 data_dir = '~/data/methylation_post_mortem/'
 ncpu=31
 
-region='acc'
-# region='caudate'
+# region='acc'
+region='caudate'
 res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
 idx = res$gene != ''
 genes = res[idx, ]
@@ -688,3 +688,91 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
 
 Remember that I need to reduce the number of cpus to run the Human Phenotype
 Ontology, otherwise it crashes. I've been using 5.
+
+# 2020-11-08 16:43:18
+
+Also run the redundant sets for a better comparisons to the camera results:
+
+```r
+for (db in c('geneontology_Biological_Process',
+                'geneontology_Cellular_Component',
+                'geneontology_Molecular_Function')) {
+```
+
+In fact, I can replicate what I did for camera and run each individual CGI:
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/methylation_post_mortem/'
+ncpu=4
+
+region='acc'
+# region='caudate'
+res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
+idx = res$gene != ''
+genes = res[idx, ]
+
+imautosome = which(genes$CHR != 'X' &
+                    genes$CHR != 'Y' &
+                    genes$CHR != 'MT')
+genes = genes[imautosome, ]
+
+for (cgi in c("island", "opensea", "shelf", "shore")) {
+    data <- res[res$cgi==cgi, ]
+    idx = data$gene != ''
+    tmp = data[idx, c('gene', 't')]
+    tmp2 = c()
+    # will do it this way because of the two tails of T distribution
+    for (g in unique(tmp$gene)) {
+        gene_data = tmp[tmp$gene==g, ]
+        best_res = which.max(abs(gene_data$t))
+        tmp2 = rbind(tmp2, gene_data[best_res, ])
+    }
+    for (db in c('geneontology_Biological_Process_noRedundant',
+                    'geneontology_Cellular_Component_noRedundant',
+                    'geneontology_Molecular_Function_noRedundant',
+                    'pathway_KEGG', 'disease_Disgenet',
+                    'phenotype_Human_Phenotype_Ontology',
+                    'network_PPI_BIOGRID','geneontology_Biological_Process',
+                    'geneontology_Cellular_Component',
+                    'geneontology_Molecular_Function')) {
+        cat(region, db, '\n')
+        project_name = sprintf('%s_%s_%s', region, cgi, db)
+        enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="genesymbol",
+                                    sigMethod="top", topThr=150000,
+                                    outputDirectory = data_dir,
+                                    minNum=5, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000)
+        out_fname = sprintf('%s/WG_%s_%s_%s_10K.csv', data_dir, region, cgi, db)
+        write.csv(enrichResult, file=out_fname, quote=F,
+                    row.names=F)
+    }
+    # my own GMTs
+    for (db in c('disorders', sprintf('%s_developmental', region))) {
+        cat(region, db, '\n')
+        project_name = sprintf('%s_%s_%s', region, cgi, db)
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabaseFile=db_file,
+                                    enrichDatabaseType="genesymbol",
+                                    interestGene=tmp2,
+                                    outputDirectory = data_dir,
+                                    interestGeneType="genesymbol",
+                                    sigMethod="top", topThr=150000,
+                                    minNum=3, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000)
+        out_fname = sprintf('%s/WG_%s_%s_%s_10K.csv', data_dir, region, cgi, db)
+        write.csv(enrichResult, file=out_fname, quote=F,
+                    row.names=F)
+    }
+}
+```

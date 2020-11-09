@@ -25,8 +25,8 @@ get_enrich_order2 = function( res, gene_sets ){
 data_dir = '~/data/rnaseq_derek/'
 load(sprintf('%s/xmodal_results_10152020.RData', data_dir))
 
-# region='acc'
-region='caudate'
+region='acc'
+# region='caudate'
 eval(parse(text=sprintf('res = rnaseq_%s', region)))
 
 tmp2 = res[, c('hgnc_symbol', 't')]
@@ -59,6 +59,7 @@ for (db in c('geneontology_Biological_Process_noRedundant',
         # attach gene set description
         m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
         m = m[order(m$PValue), ]
+        m$description = gsub(x=m$description, pattern=',', replacement=';')
     }
     out_fname = sprintf('%s/camera_%s_%s.csv', data_dir, region, db)
     write.csv(m, file=out_fname, quote=F, row.names=F)
@@ -138,6 +139,7 @@ for (db in c('geneontology_Biological_Process_noRedundant',
         # attach gene set description
         m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
         m = m[order(m$PValue), ]
+        m$description = gsub(x=m$description, pattern=',', replacement=';')
     }
     out_fname = sprintf('%s/camera_%s_%s.csv', data_dir, region, db)
     write.csv(m, file=out_fname, quote=F, row.names=F)
@@ -217,6 +219,7 @@ for (cgi in c("island", "opensea", "shelf", "shore")) {
             # attach gene set description
             m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
             m = m[order(m$PValue), ]
+            m$description = gsub(x=m$description, pattern=',', replacement=';')
         }
         out_fname = sprintf('%s/camera_%s_%s_%s.csv', data_dir, region, cgi, db)
         write.csv(m, file=out_fname, quote=F, row.names=F)
@@ -305,6 +308,8 @@ for (md in c('EN', 'MASHR')) {
                         # attach gene set description
                         m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
                         m = m[order(m$PValue), ]
+                        # make sure our CSV is not corrupted by extra commas
+                        m$description = gsub(x=m$description, pattern=',', replacement=';')
                     }
                     out_fname = sprintf('%s/camera_%s_%s_%s_%s.csv', data_dir,
                                         md, score, phen, db)
@@ -477,10 +482,13 @@ FDR across all variables:
 gs = c('geneontology_Biological_Process_noRedundant',
             'geneontology_Cellular_Component_noRedundant',
             'geneontology_Molecular_Function_noRedundant',
-            'pathway_KEGG', #'disease_Disgenet',
+            'geneontology_Biological_Process',
+            'geneontology_Cellular_Component',
+            'geneontology_Molecular_Function',
+            'pathway_KEGG', 'disease_Disgenet',
             'phenotype_Human_Phenotype_Ontology',
             'network_PPI_BIOGRID', 'disorders')
-thresh = .05
+thresh = .1
 all_res = c()
 for (db in gs) {
     db_res = c()
@@ -541,5 +549,85 @@ for (db in c('geneontology_Biological_Process',
                 'geneontology_Cellular_Component',
                 'geneontology_Molecular_Function')) {
 ```
+
+# 2020-11-09 06:05:23
+
+Taking the nonRedudnat results into consideration, the effect iterations are
+again much better than the zscore ones for imputation. Between EN and MASHR,
+it's still a close call that will likely need to be made based on the hits.
+Looks like EN has more results especially for geneontology_Biological_Process.
+Not much in the methylation front though.
+
+Let's spit out the significant results to a table:
+
+```r
+gs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant',
+            'geneontology_Biological_Process',
+            'geneontology_Cellular_Component',
+            'geneontology_Molecular_Function',
+            'pathway_KEGG', 'disease_Disgenet',
+            'phenotype_Human_Phenotype_Ontology',
+            'network_PPI_BIOGRID', 'disorders')
+thresh = .05
+all_res = data.frame(set=c(), origin=c(), setFamily=c(), pval=c(), FDR=c()) 
+for (db in gs) {
+    mydir = '~/data/rnaseq_derek'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        good_res = res[which(res$FDR < thresh), ]
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('rnaseq_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                res = read.csv(sprintf('%s/camera_%s_%s_%s_%s.csv', mydir, md, sc, r, db))
+                good_res = res[which(res$FDR < thresh), ]
+                nres = nrow(good_res)
+                this_res = data.frame(origin = rep(sprintf('imp_%s_%s_%s', md, sc, r), nres),
+                                    setFamily = rep(db, nres),
+                                    set = good_res$description,
+                                    pval = good_res$PValue, FDR = good_res$FDR)
+                all_res = rbind(all_res, this_res)
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        good_res = res[which(res$FDR < thresh), ]
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('methyl_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            good_res = res[which(res$FDR < thresh), ]
+            nres = nrow(good_res)
+            this_res = data.frame(origin = rep(sprintf('methyl_%s', r, cgi), nres),
+                                setFamily = rep(db, nres),
+                                set = good_res$description,
+                                pval = good_res$PValue, FDR = good_res$FDR)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/camera_geneset_goodSets_FDRp05.csv',
+          row.names=F, quote=F)
+```
+
+Code is working, but there's something wrong with the Disgenet result for
+rnaseq_caudate!!!
+
 
 # TODO

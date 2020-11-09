@@ -821,7 +821,7 @@ rows, and the unique number of sets is the unique() of them.
 # bw
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate radian
-./.local/bin/radian
+~/.local/bin/radian
 ```
 
 ```r
@@ -881,5 +881,14 @@ for (db in c('disorders', sprintf('%s_developmental', region))) {
 }
 ```
 
+# 2020-11-08 16:30:47
+
+Also run the redundant sets for a better comparisons to the camera results:
+
+```r
+for (db in c('geneontology_Biological_Process',
+                'geneontology_Cellular_Component',
+                'geneontology_Molecular_Function')) {
+```
 
 # TODO

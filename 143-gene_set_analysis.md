@@ -306,6 +306,58 @@ for (f in files) {
 
 It won't work because I se tthe top to 10 :( Have to re-run everything...
 
+# 2020-11-09 06:11:43
+
+Let's create the same sumary tables we did for camera (144), but this time for
+WG. The redundant sets are still running though.
+
+```r
+gs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant',
+            'pathway_KEGG', 'disease_Disgenet',
+            'phenotype_Human_Phenotype_Ontology',
+            'network_PPI_BIOGRID', 'disorders')
+thresh = .1
+all_res = c()
+for (db in gs) {
+    db_res = c()
+    mydir = '~/data/rnaseq_derek'
+    res_var = c()
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/WG_%s_%s_10K.csv', mydir, r, db))
+        db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_rnaseq_%s")', r)))
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                res = read.csv(sprintf('%s/WG_%s_%s_%s_%s_10K.csv', mydir, md, sc, r, db))
+                db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+                eval(parse(text=sprintf('res_var = c(res_var, "res_%s_%s_%s")',
+                                        md, sc, r)))
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/WG_%s_%s_10K.csv', mydir, r, db))
+        db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+        eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s")', r)))
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
+            eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s_%s")', r, cgi)))
+        }
+    }
+    all_res = rbind(all_res, db_res)
+}
+colnames(all_res) = res_var
+rownames(all_res) = gs
+write.csv(t(all_res), file='~/data/post_mortem/camera_geneset_summary_FDRp05.csv')
+```
 
 # TODO
  * maybe other gene sets, like the original (not noRedundant) GOs?

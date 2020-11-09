@@ -1112,6 +1112,15 @@ for (md in c('EN', 'MASHR')) {
 }
 ```
 
+# 2020-11-08 16:34:57
+
+Also run the redundant sets for a better comparisons to the camera results:
+
+```r
+for (db in c('geneontology_Biological_Process',
+                'geneontology_Cellular_Component',
+                'geneontology_Molecular_Function')) {
+```
 
 
 # TODO
