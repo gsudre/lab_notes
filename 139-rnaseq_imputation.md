@@ -1404,7 +1404,7 @@ Then it's just a matter of running the gene set analysis in BW:
 # bw
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate radian
-./.local/bin/radian
+~/.local/bin/radian
 ```
 
 ```r
@@ -1576,11 +1576,126 @@ for (md in c('EN', 'MASHR')) {
 }
 ```
 
+# 2020-11-10 07:18:55
+
+Let's do some more analysis exploring ACC_volume. That's a bit more consonant
+with the caudate volume metric. I'll try that, and also the volumes normalized
+by ICV. I first added ICV and other overall metrics to the 1023 file.
+
+```r
+data = read.csv('~/data/expression_impute/gfWithMPRAGE_632_11102020.csv')
+keep_idx = data$QC...Scan <= 2.5 & data$external_score <=2.5 & data$internal_score <= 2.5
+data = data[keep_idx,]
+brain_vars = colnames(data)[c(24:35)]
+
+for (v in brain_vars) {
+    m = mean(data[, v], na.rm=T)
+    s = sd(data[, v], na.rm=T)
+    data[which(data[, v] > m + 3*s), v] = NA
+    data[which(data[, v] < m - 3*s), v] = NA
+}
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('~/data/expression_impute//augmented_anon_clinical_10242020.csv')
+data$SID = as.numeric(gsub(x=data$Subject.Code...Subjects, replacement = '', pattern = 'SID.'))
+clin_slim = clin[clin$age_clin!='child',]
+clin_slim$age_clin = as.numeric(clin_slim$age_clin)
+data2 = mergeOnClosestAge(data, clin_slim, data$SID, x.id='SID', y.id='SID', x.age='age_scan', y.age='age_clin')
+
+# working with 486 scans
+library(MASS)
+library(nlme)
+
+data2$ACC_volume_norm = data2$ACC_volume / data2$A
+good_brain_vars = c("ACC_volume", "Caudate_volume")
+for (v in good_brain_vars) {
+    fm_str = sprintf('%s ~ Sex...Subjects + scanner_update + age_scan + QC...Scan + external_score + internal_score', v)
+    fit <- lme(as.formula(fm_str), random=~1|FAMID, data = data2, na.action=na.exclude, method='ML')
+    step <- stepAIC(fit, direction = "both", trace = F)
+    data2[, sprintf('res_%s', v)] = scale(residuals(step))
+}
+```
+
+And we run those phenotypes through TWAS. But only WNH and bestInFamily!
+
+```r
+a = read.table('~/data/expression_impute/results/NCR_v3_ACC_predict_1KG_en.txt', header=1)
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+imp_data = merge(a, pcs, by='IID', all.x=F, all.y=F)
+imp_data = merge(imp_data, data2, by.x='IID', by.y='Subject.Code...Subjects',
+                 all.x=F, all.y=F)
+
+imwnh = imp_data[imp_data$PC01<0 & imp_data$PC02>-.02,]$SID
+data_dir = '~/data/expression_impute/'
+phenotypes = list(ACC=c('res_ACC_thickness'),
+                  Caudate=c('res_Caudate_volume'))
+for (region in c('ACC', 'Caudate')) {
+   for (my_phen in phenotypes[[region]]) {
+       print(my_phen)
+      data3 = data2[data2$SID %in% imwnh, ]
+      data3 = data3[data3$bestInFamily==T, ]
+      data3 = data3[, c('SID', my_phen, 'Sex...Subjects')]
+      colnames(data3)[1] = 'IID'
+      colnames(data3)[2] = 'phen'
+      colnames(data3)[3] = 'sex'
+      data3$sex = as.numeric(as.factor(data3$sex))
+      data3 = data3[order(data3$IID), ]
+      # it expects no more than the number of people we have in the phenotypes
+      a = read.table(sprintf('%s/results/NCR_v3_%s_predict_1KG_en.txt',
+                             data_dir, region), header=1)
+    #    a = readRDS(sprintf('%s/results/NCR_v3_%s_1KG_mashr.rds', data_dir,
+    #                        region))
+      # remove FAMID from IID
+      iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+      iid3 = gsub(x=iid2, pattern='SID.', replacement='')
+      a$IID = as.numeric(iid3)
+      b = a[a$IID %in% data3$IID, ]
+      b = b[order(b$IID), ]
+      data3$FID = b$FID # they're both sorted on IID
+      write.table(b, file=sprintf('%s/ANAT_cropped_imp_EN_%s.tab', data_dir,
+                                  region), row.names=F, quote=F, sep='\t')
+    #   write.table(b, file=sprintf('%s/ANAT_cropped_imp_MASHR_%s.tab', data_dir,
+    #                               region), row.names=F, quote=F, sep='\t')
+      write.table(data3, file=sprintf('%s/phen_%s.tab', data_dir, my_phen),
+                  row.names=F, quote=F, sep='\t')
+   }
+}
+```
+
+And we run the associations:
+
+```bash
+# laptop
+source /Users/sudregp/opt/miniconda3/etc/profile.d/conda.sh
+conda activate imlabtools
+DATA=~/data/expression_impute;
+METAXCAN=~/data/expression_impute/MetaXcan/software;
+phen=res_ACC_thickness;
+md=EN;
+python3 $METAXCAN/PrediXcanAssociation.py \
+     --expression_file $DATA/ANAT_cropped_imp_${md}_ACC.tab \
+    --input_phenos_file $DATA/phen_${phen}.tab \
+    --covariates_file $DATA/phen_${phen}.tab \
+      --input_phenos_column phen \
+      --covariates sex \
+   --output $DATA/assoc_${md}_${phen}.txt \
+   --verbosity 9;
+phen=res_Caudate_volume;
+python3 $METAXCAN/PrediXcanAssociation.py \
+     --expression_file $DATA/ANAT_cropped_imp_${md}_Caudate.tab \
+    --input_phenos_file $DATA/phen_${phen}.tab \
+    --covariates_file $DATA/phen_${phen}.tab \
+      --input_phenos_column phen \
+      --covariates sex \
+   --output $DATA/assoc_${md}_${phen}.txt \
+   --verbosity 9;
+```
+
+
 # TODO
  * can we strengthen the neuroscience results? voxel-based analysis?
- * try overrepresentation analysis between imputed and postmortem hits
- * run some tests increasing nperms... maybe 10000? to increase FDR precision
-   and stability. Can I even use a random seed?
    
 
 # Useful references:

@@ -776,3 +776,50 @@ for (cgi in c("island", "opensea", "shelf", "shore")) {
     }
 }
 ```
+
+Exploding in memory... let's not do parallel:
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/methylation_post_mortem/'
+
+region='acc'
+# region='caudate'
+res = readRDS(sprintf('%s/%s_methyl_results_11032020.rds', data_dir, region))
+idx = res$gene != ''
+genes = res[idx, ]
+
+imautosome = which(genes$CHR != 'X' &
+                    genes$CHR != 'Y' &
+                    genes$CHR != 'MT')
+genes = genes[imautosome, ]
+
+tmp = genes[, c('gene', 't')]
+tmp2 = c()
+# will do it this way because of the two tails of T distribution
+for (g in unique(tmp$gene)) {
+    gene_data = tmp[tmp$gene==g, ]
+    best_res = which.max(abs(gene_data$t))
+    tmp2 = rbind(tmp2, gene_data[best_res, ])
+}
+for (db in c('geneontology_Cellular_Component',
+             'geneontology_Molecular_Function',
+             'geneontology_Biological_Process')) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=F, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+```

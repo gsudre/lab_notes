@@ -359,5 +359,35 @@ rownames(all_res) = gs
 write.csv(t(all_res), file='~/data/post_mortem/camera_geneset_summary_FDRp05.csv')
 ```
 
+# 2020-11-09 20:10:33
+
+Let's explore a bit more the genes that overlap in the RNAseq analysis:
+
+```r
+load('~/data/rnaseq_derek/xmodal_results_10152020.RData')
+library(GeneOverlap)
+t = .005
+ra = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
+rc = rnaseq_caudate[rnaseq_caudate$P.Value < t, 'hgnc_symbol']
+gom.obj <- newGeneOverlap(ra, rc, spec='hg19.gene')
+testGeneOverlap(gom.obj)
+```
+
+```
+r$> testGeneOverlap(gom.obj)                                                                                                 
+GeneOverlap object:
+listA size=165
+listB size=117
+Intersection size=10
+Overlapping p-value=5.8e-09
+Jaccard Index=0.0
+
+r$> intersect(ra, rc)                                                                                                        
+ [1] "TAMM41"       "SMN2"         "ZNF514"       "TBC1D3L"      "HILPDA"       "CLUL1"        "ZNF695"       "VN1R20P"     
+ [9] "PARP2"        "STX16-NPEPL1"
+```
+
+Sent those to Gauri to see if there is anything interesting there.
+
 # TODO
  * maybe other gene sets, like the original (not noRedundant) GOs?

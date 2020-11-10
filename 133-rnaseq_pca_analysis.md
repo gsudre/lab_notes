@@ -891,4 +891,39 @@ for (db in c('geneontology_Biological_Process',
                 'geneontology_Molecular_Function')) {
 ```
 
+Things are really exploding with the redundant sets... let me see if it works if
+I turn off parallel:
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/rnaseq_derek/'
+load(sprintf('%s/xmodal_results_10152020.RData', data_dir))
+
+region='acc'
+# region='caudate'
+eval(parse(text=sprintf('res = rnaseq_%s', region)))
+
+tmp2 = res[, c('hgnc_symbol', 't')]
+for (db in c('geneontology_Cellular_Component',
+             'geneontology_Molecular_Function',
+             'geneontology_Biological_Process')) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=F, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+```
+
 # TODO
