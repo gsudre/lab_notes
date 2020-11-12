@@ -518,7 +518,7 @@ per gene to create the ranked lists.
 # bw
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate radian
-./.local/bin/radian
+~/.local/bin/radian
 ```
 
 In order to create similar lists for the methylation results, we'll need to use
@@ -613,7 +613,7 @@ everything using 10K permutations and creating the outputs just in case.
 # bw
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate radian
-./.local/bin/radian
+~/.local/bin/radian
 ```
 
 ```r
@@ -706,7 +706,7 @@ In fact, I can replicate what I did for camera and run each individual CGI:
 library(WebGestaltR)
 
 data_dir = '~/data/methylation_post_mortem/'
-ncpu=4
+ncpu=5
 
 region='acc'
 # region='caudate'
@@ -735,9 +735,7 @@ for (cgi in c("island", "opensea", "shelf", "shore")) {
                     'geneontology_Molecular_Function_noRedundant',
                     'pathway_KEGG', 'disease_Disgenet',
                     'phenotype_Human_Phenotype_Ontology',
-                    'network_PPI_BIOGRID','geneontology_Biological_Process',
-                    'geneontology_Cellular_Component',
-                    'geneontology_Molecular_Function')) {
+                    'network_PPI_BIOGRID')) {
         cat(region, db, '\n')
         project_name = sprintf('%s_%s_%s', region, cgi, db)
         enrichResult <- WebGestaltR(enrichMethod="GSEA",
@@ -823,3 +821,55 @@ for (db in c('geneontology_Cellular_Component',
                 row.names=F)
 }
 ```
+
+```r
+cgi='shelf'
+data <- res[res$cgi==cgi, ]
+idx = data$gene != ''
+tmp = data[idx, c('gene', 't')]
+tmp2 = c()
+# will do it this way because of the two tails of T distribution
+for (g in unique(tmp$gene)) {
+    gene_data = tmp[tmp$gene==g, ]
+    best_res = which.max(abs(gene_data$t))
+    tmp2 = rbind(tmp2, gene_data[best_res, ])
+}
+for (db in c('disease_Disgenet',
+                'phenotype_Human_Phenotype_Ontology',
+                'network_PPI_BIOGRID')) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s_%s', region, cgi, db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_%s_10K.csv', data_dir, region, cgi, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}
+# my own GMTs
+for (db in c('disorders', sprintf('%s_developmental', region))) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s_%s', region, cgi, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_%s_%s_%s_10K.csv', data_dir, region, cgi, db)
+    write.csv(enrichResult, file=out_fname, quote=F,
+                row.names=F)
+}

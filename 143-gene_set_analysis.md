@@ -318,7 +318,7 @@ gs = c('geneontology_Biological_Process_noRedundant',
             'pathway_KEGG', 'disease_Disgenet',
             'phenotype_Human_Phenotype_Ontology',
             'network_PPI_BIOGRID', 'disorders')
-thresh = .1
+thresh = .05
 all_res = c()
 for (db in gs) {
     db_res = c()
@@ -347,7 +347,7 @@ for (db in gs) {
         db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
         eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s")', r)))
         for (cgi in c("island", "opensea", "shelf", "shore")) {
-            res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            res = read.csv(sprintf('%s/WG_%s_%s_%s_10K.csv', mydir, r, cgi, db))
             db_res = c(db_res, sum(res$FDR < thresh, na.rm=T))
             eval(parse(text=sprintf('res_var = c(res_var, "res_methyl_%s_%s")', r, cgi)))
         }
@@ -356,9 +356,180 @@ for (db in gs) {
 }
 colnames(all_res) = res_var
 rownames(all_res) = gs
-write.csv(t(all_res), file='~/data/post_mortem/camera_geneset_summary_FDRp05.csv')
+write.csv(t(all_res), file='~/data/post_mortem/webgestalt_geneset_summary_FDRp05.csv')
+```
+<!-- 
+Let's create the other summary files as well:
+
+```r
+gs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant',
+            'pathway_KEGG', 'disease_Disgenet',
+            'phenotype_Human_Phenotype_Ontology',
+            'network_PPI_BIOGRID', 'disorders')
+thresh = .05
+all_res = data.frame(set=c(), origin=c(), setFamily=c(), pval=c(), FDR=c()) 
+for (db in gs) {
+    mydir = '~/data/rnaseq_derek'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/WG_%s_%s_10K.csv', mydir, r, db))
+        good_res = res[which(res$FDR < thresh), ]
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('rnaseq_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$pValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                res = read.csv(sprintf('%s/WG_%s_%s_%s_%s_10K.csv', mydir, md, sc, r, db))
+                good_res = res[which(res$FDR < thresh), ]
+                nres = nrow(good_res)
+                this_res = data.frame(origin = rep(sprintf('imp_%s_%s_%s', md, sc, r), nres),
+                                    setFamily = rep(db, nres),
+                                    set = good_res$description,
+                                    pval = good_res$pValue, FDR = good_res$FDR)
+                all_res = rbind(all_res, this_res)
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        res = read.csv(sprintf('%s/WG_%s_%s_10K.csv', mydir, r, db))
+        good_res = res[which(res$FDR < thresh), ]
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('methyl_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$pValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            res = read.csv(sprintf('%s/WG_%s_%s_%s_10K.csv', mydir, r, cgi, db))
+            good_res = res[which(res$FDR < thresh), ]
+            nres = nrow(good_res)
+            this_res = data.frame(origin = rep(sprintf('methyl_%s', r, cgi), nres),
+                                setFamily = rep(db, nres),
+                                set = good_res$description,
+                                pval = good_res$pValue, FDR = good_res$FDR)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/webgestalt_geneset_goodSets_FDRp05.csv',
+          row.names=F, quote=F)
 ```
 
+I didn't summarize the developmental results above, so let's work on them
+separately. I'll also work on the disorders set separately because they likely
+won't survive FDR:
+
+```r
+gs = 'disorders'
+all_res = data.frame(set=c(), origin=c(), setFamily=c(), pval=c(), FDR=c()) 
+for (db in gs) {
+    mydir = '~/data/rnaseq_derek'
+    for (r in c('acc', 'caudate')) {
+        good_res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('rnaseq_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness', 'res_fa_cin_cin', 'res_FA_cc',
+                        'res_Caudate_volume', 'res_fa_ATR')) {
+                good_res = read.csv(sprintf('%s/camera_%s_%s_%s_%s.csv', mydir, md, sc, r, db))
+                nres = nrow(good_res)
+                this_res = data.frame(origin = rep(sprintf('imp_%s_%s_%s', md, sc, r), nres),
+                                    setFamily = rep(db, nres),
+                                    set = good_res$description,
+                                    pval = good_res$PValue, FDR = good_res$FDR)
+                all_res = rbind(all_res, this_res)
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        good_res = read.csv(sprintf('%s/camera_%s_%s.csv', mydir, r, db))
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('methyl_%s', r), nres),
+                              setFamily = rep(db, nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            good_res = read.csv(sprintf('%s/camera_%s_%s_%s.csv', mydir, r, cgi, db))
+            nres = nrow(good_res)
+            this_res = data.frame(origin = rep(sprintf('methyl_%s', r, cgi), nres),
+                                setFamily = rep(db, nres),
+                                set = good_res$description,
+                                pval = good_res$PValue, FDR = good_res$FDR)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/camera_disorders_summary.csv',
+          row.names=F, quote=F)
+```
+
+```r
+all_res = data.frame(set=c(), origin=c(), pval=c(), FDR=c()) 
+for (db in gs) {
+    mydir = '~/data/rnaseq_derek'
+    for (r in c('acc', 'caudate')) {
+        good_res = read.csv(sprintf('%s/camera_%s_%s_developmental.csv', mydir, r, r))
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('rnaseq_%s', r), nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+    }
+    mydir = '~/data/expression_impute'
+    for (md in c('MASHR', 'EN')) {
+        for (sc in c('effect', 'zscore')) {
+            for (r in c('res_ACC_thickness_ACC', 'res_fa_cin_cin_ACC',
+                         'res_FA_cc_ACC',
+                        'res_Caudate_volume_caudate', 'res_fa_ATR_caudate')) {
+                good_res = read.csv(sprintf('%s/camera_%s_%s_%s_developmental.csv', mydir, md, sc, r))
+                nres = nrow(good_res)
+                this_res = data.frame(origin = rep(sprintf('imp_%s_%s_%s', md, sc, r), nres),
+                                    set = good_res$description,
+                                    pval = good_res$PValue, FDR = good_res$FDR)
+                all_res = rbind(all_res, this_res)
+            }
+        }
+    }
+    mydir = '~/data/methylation_post_mortem'
+    for (r in c('acc', 'caudate')) {
+        good_res = read.csv(sprintf('%s/camera_%s_%s_developmental.csv', mydir, r, r))
+        nres = nrow(good_res)
+        this_res = data.frame(origin = rep(sprintf('methyl_%s', r), nres),
+                              set = good_res$description,
+                              pval = good_res$PValue, FDR = good_res$FDR)
+        all_res = rbind(all_res, this_res)
+        for (cgi in c("island", "opensea", "shelf", "shore")) {
+            good_res = read.csv(sprintf('%s/camera_%s_%s_%s_developmental.csv', mydir, r, cgi, r))
+            nres = nrow(good_res)
+            this_res = data.frame(origin = rep(sprintf('methyl_%s', r, cgi), nres),
+                                set = good_res$description,
+                                pval = good_res$PValue, FDR = good_res$FDR)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/camera_dev_summary.csv',
+          row.names=F, quote=F)
+```
+ -->
 # 2020-11-09 20:10:33
 
 Let's explore a bit more the genes that overlap in the RNAseq analysis:
