@@ -47,9 +47,30 @@ rownames(all_res) = gs
 write.csv(t(all_res), file='~/data/post_mortem/webgestalt2_geneset_summary_FDRp05.csv')
 ```
 
-Not everything is done yet... 
+Not everything is done yet... figuring out what's missing.
 
+```bash
 for f in `cut -d"," -f 1 phenos.txt`; do nfiles=`ls WG2*${f}*10K.csv 2>/dev/null | wc -l`; echo $f $nfiles; done
+
+/bin/bash
+mydir=~/data/expression_impute;
+for r in `cat ~/data/expression_impute/phenos.txt`; do
+    for db in 'geneontology_Biological_Process_noRedundant' \
+                'geneontology_Cellular_Component_noRedundant' \
+                'geneontology_Molecular_Function_noRedundant' \
+                'pathway_KEGG' 'disease_Disgenet' \
+                'phenotype_Human_Phenotype_Ontology' \
+                'network_PPI_BIOGRID'; do
+        for md in 'MASHR' 'EN'; do
+            for sc in 'effect' 'zscore'; do
+                if [ ! -e $mydir/WG2_${md}_${sc}_${r}_${db}_10K.csv ]; then
+                    echo $r $md $sc $r $db;
+                fi;
+            done;
+        done;
+    done;
+done
+```
 
 ## camera
 
@@ -226,3 +247,46 @@ imputation results, for "serotonin receptor signaling pathway".
 So, these results are not very conclusive. For example, if I choose effect I
 lose one set of results, and choosing zscore I lose the other. Maybe the GSEA
 results will shed some light?
+
+
+```r
+cc = cor(data)
+M = nrow(cc)
+cnt = 0
+for (j in 1:M) {
+    print(j)
+    for (k in 1:M) {
+        cnt = cnt + (1 - cc[j, k]**2)
+    }
+}
+meff = 1 + cnt / M
+cat(sprintf('Galwey Meff = %.2f\n', meff))
+```
+
+But that assumes samples as rows, which is not our case. And we cannot put a
+square matrix of 650K in memory. So, maybe we can change this to compute on the
+fly?
+
+
+```r
+# calculates Meff without computing the costly big cc matrix, but paying in run
+# time to calculate each correlation in the loop.
+# mydata is vars by samples
+slow_meff = function(mydata) {
+    M = nrow(mydata)
+    cnt = 0
+    for (j in 1:M) {
+        # print(j)
+        for (k in 1:M) {
+            cnt = cnt + (1 - cor(mydata[j, ], mydata[k, ])**2)
+        }
+    }
+    meff = 1 + cnt / M
+    cat(sprintf('Galwey Meff = %.2f\n', meff))
+    return(meff)
+}
+```
+
+# TODO
+ * Meff?
+ * top X results, and then plot the worst p-value for each top and dataset

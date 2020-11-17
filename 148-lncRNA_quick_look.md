@@ -319,6 +319,24 @@ ncrna_caudate = rnaseq_caudate[order(rnaseq_caudate$P.Value),]
 
 Nothing significant here though.
 
+## overlap
+
+Is there an overlap between the acc and caudate markers?
+
+```r
+library(GeneOverlap)
+t = .05
+ra = ncrna_acc[ncrna_acc$P.Value < t, 'ensembl_gene_id']
+rc = ncrna_caudate[ncrna_caudate$P.Value < t, 'ensembl_gene_id']
+gom.obj <- newGeneOverlap(ra, rc,
+                          genome.size=length(union(ncrna_acc$ensembl_gene_id,
+                                                   ncrna_caudate$ensembl_gene_id)))
+testGeneOverlap(gom.obj)
+```
+
+There's actually no intersect whatsoever, even when using nominal p < .05. Not
+much else to do here other than trying out some transcriptome gene sets.
+
+
 # TODO
- * overlaps between caudate and ACC?
  * compare to some sort of developmental expression list like in the paper?
