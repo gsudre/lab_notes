@@ -209,3 +209,20 @@ write.csv(all_res, file='~/data/post_mortem/camera2_dev_goodSets.csv',
           row.names=F, quote=F)
 ```
 
+# 2020-11-17 06:21:23
+
+Once again, the effect results were much better than the zscore results using
+camera, if we look at the big gene sets. Difference between MASHR and EN models
+is a bit more subtle. Might have to do it based on gene set overlap. On the
+other hand, the zscore results had more hits related to ADHD gene sets than the
+effect results, so it's not out of the question yet. EN had more than MASHR by
+about 90-50 ratio. If we take the Demonstis genes as a benchmark, then MASHR and
+EN do equally well, but they are all zscore. TWAS1 leans towards EN, and all
+zscore too. In the dev results, all hits were for EN, heavily leaning towards
+effect, although zscore was the only one related to rd_cin_cin and infancy set.
+
+MASHR effect was also the only intersection between rnaseq_acc and the
+imputation results, for "serotonin receptor signaling pathway". 
+So, these results are not very conclusive. For example, if I choose effect I
+lose one set of results, and choosing zscore I lose the other. Maybe the GSEA
+results will shed some light?
