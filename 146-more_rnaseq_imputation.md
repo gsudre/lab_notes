@@ -409,6 +409,8 @@ for (phen in phenotypes) {
                 desc = desc[!duplicated(desc$geneSet), ]
                 m = merge(res_camera, desc, by.x=0, by.y=1)
                 m = m[order(m$PValue), ]
+                # make sure our CSV is not corrupted by extra commas
+                m$description = gsub(x=m$description, pattern=',', replacement=';')
                 out_fname = sprintf('%s/camera2_%s_%s_%s_%s.csv', data_dir,
                                     md, score, phen, db)
                 write.csv(m, file=out_fname, quote=F, row.names=F)
@@ -420,7 +422,7 @@ for (phen in phenotypes) {
 
 And then we do WebGestaltR:
 
-<!-- ```bash
+```bash
 # bw
 source /data/$USER/conda/etc/profile.d/conda.sh
 conda activate radian
@@ -438,60 +440,37 @@ G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
 G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
 G_list = G_list[G_list$hgnc_symbol!='',]
 G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
-ncpu=31
+ncpu=8
 
 for (phen in phenotypes) {
     if (grepl(x=phen, pattern='Caudate') || grepl(x=phen, pattern='ATR')) {
-        region = 'Caudate'
+        region = 'caudate'
     } else {
         region = 'ACC'
     }
     for (md in c('EN', 'MASHR')) {
-            res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
-                            header=1)
-            id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
-            dups = duplicated(id_num)
-            id_num = id_num[!dups]
-            res$id_num = id_num
+        res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                        header=1)
+        id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+        dups = duplicated(id_num)
+        id_num = id_num[!dups]
+        res$id_num = id_num
 
-            imnamed = res$id_num %in% G_list$ensembl_gene_id
-            res = res[imnamed, ]
-            G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
-            imautosome = which(G_list2$chromosome_name != 'X' &
-                            G_list2$chromosome_name != 'Y' &
-                            G_list2$chromosome_name != 'MT')
-            G_list2 = G_list2[imautosome, ]
+        imnamed = res$id_num %in% G_list$ensembl_gene_id
+        res = res[imnamed, ]
+        G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+        imautosome = which(G_list2$chromosome_name != 'X' &
+                        G_list2$chromosome_name != 'Y' &
+                        G_list2$chromosome_name != 'MT')
+        G_list2 = G_list2[imautosome, ]
 
         for (score in c('zscore', 'effect')) {
             tmp2 = G_list2[, c('hgnc_symbol', score)]
-            for (db in c('geneontology_Biological_Process_noRedundant',
-                            'geneontology_Cellular_Component_noRedundant',
-                            'geneontology_Molecular_Function_noRedundant',
-                            'pathway_KEGG', 'disease_Disgenet',
-                            'phenotype_Human_Phenotype_Ontology',
-                            'network_PPI_BIOGRID')) {
-                cat(md, score, phen, db, '\n')
-                project_name = sprintf('%s_%s_%s_%s', md, score, phen, db)
-                enrichResult <- WebGestaltR(enrichMethod="GSEA",
-                                            organism="hsapiens",
-                                            enrichDatabase=db,
-                                            interestGene=tmp2,
-                                            interestGeneType="genesymbol",
-                                            sigMethod="top", topThr=150000,
-                                            outputDirectory = data_dir,
-                                            minNum=5, projectName=project_name,
-                                            isOutput=T, isParallel=T,
-                                            nThreads=ncpu, perNum=10000)
-                out_fname = sprintf('%s/WG_%s_%s_%s_%s_10K.csv', data_dir,
-                                    md, score, phen, db)
-                write.csv(enrichResult, file=out_fname, quote=F,
-                            row.names=F)
-            }
             # my own GMTs
             for (db in c('disorders', 'adhd_genes',
                          sprintf('%s_developmental', region))) {
                 cat(md, score, phen, db, '\n')
-                project_name = sprintf('%s_%s_%s_%s', md, score, phen, db)
+                project_name = sprintf('%s_%s_%s_%s_v2', md, score, phen, db)
                 db_file = sprintf('~/data/post_mortem/%s.gmt', db)
                 enrichResult <- WebGestaltR(enrichMethod="GSEA",
                                             organism="hsapiens",
@@ -505,7 +484,30 @@ for (phen in phenotypes) {
                                             nThreads=ncpu, perNum=10000,
                                             outputDirectory = data_dir,
                                             projectName=project_name)
-                out_fname = sprintf('%s/WG_%s_%s_%s_%s_10K.csv', data_dir,
+                out_fname = sprintf('%s/WG2_%s_%s_%s_%s_10K.csv', data_dir,
+                                    md, score, phen, db)
+                write.csv(enrichResult, file=out_fname, quote=F,
+                            row.names=F)
+            }
+            for (db in c('geneontology_Biological_Process_noRedundant',
+                            'geneontology_Cellular_Component_noRedundant',
+                            'geneontology_Molecular_Function_noRedundant',
+                            'pathway_KEGG', 'disease_Disgenet',
+                            'phenotype_Human_Phenotype_Ontology',
+                            'network_PPI_BIOGRID')) {
+                cat(md, score, phen, db, '\n')
+                project_name = sprintf('%s_%s_%s_%s_v2', md, score, phen, db)
+                enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                            organism="hsapiens",
+                                            enrichDatabase=db,
+                                            interestGene=tmp2,
+                                            interestGeneType="genesymbol",
+                                            sigMethod="top", topThr=150000,
+                                            outputDirectory = data_dir,
+                                            minNum=5, projectName=project_name,
+                                            isOutput=T, isParallel=T,
+                                            nThreads=ncpu, perNum=10000)
+                out_fname = sprintf('%s/WG2_%s_%s_%s_%s_10K.csv', data_dir,
                                     md, score, phen, db)
                 write.csv(enrichResult, file=out_fname, quote=F,
                             row.names=F)
@@ -515,79 +517,13 @@ for (phen in phenotypes) {
 }
 ```
 
-# 2020-11-08 16:34:57
+I'm actually thinking this will go much faster if I swarm it... let me get some
+results with camera and once that's done I'll re-evaluate. I can also read those
+two papers Philip sent in while these things run.
 
-Also run the redundant sets for a better comparisons to the camera results:
 
-```r
-for (db in c('geneontology_Biological_Process',
-                'geneontology_Cellular_Component',
-                'geneontology_Molecular_Function')) {
-```
 
-I'll try without parallelism so it doesn't blow up:
-
-```r
-# bw
-library(WebGestaltR)
-
-data_dir = '~/data/expression_impute/'
-phenotypes = list(ACC=c('res_fa_cin_cin', 'res_FA_cc', 'res_ACC_thickness'),
-                  caudate=c('res_fa_ATR', 'res_Caudate_volume'))
-
-G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
-G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
-G_list = G_list[G_list$hgnc_symbol!='',]
-G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
-
-for (md in c('EN', 'MASHR')) {
-     for (region in c('ACC', 'caudate')) {
-         for (phen in phenotypes[[region]]) {
-             res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
-                              header=1)
-             id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
-             dups = duplicated(id_num)
-             id_num = id_num[!dups]
-             res$id_num = id_num
-
-             imnamed = res$id_num %in% G_list$ensembl_gene_id
-             res = res[imnamed, ]
-             G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
-             imautosome = which(G_list2$chromosome_name != 'X' &
-                               G_list2$chromosome_name != 'Y' &
-                               G_list2$chromosome_name != 'MT')
-             G_list2 = G_list2[imautosome, ]
-
-            for (score in c('zscore', 'effect')) {
-                tmp2 = G_list2[, c('hgnc_symbol', score)]
-                for (db in c('geneontology_Cellular_Component',
-                             'geneontology_Molecular_Function',
-                             'geneontology_Biological_Process')) {
-                    cat(md, score, phen, db, '\n')
-                    project_name = sprintf('%s_%s_%s_%s', md, score, phen, db)
-                    enrichResult <- WebGestaltR(enrichMethod="GSEA",
-                                                organism="hsapiens",
-                                                enrichDatabase=db,
-                                                interestGene=tmp2,
-                                                interestGeneType="genesymbol",
-                                                sigMethod="top", topThr=150000,
-                                                outputDirectory = data_dir,
-                                                minNum=5, projectName=project_name,
-                                                isOutput=T, isParallel=F,
-                                                perNum=10000)
-                    out_fname = sprintf('%s/WG_%s_%s_%s_%s_10K.csv', data_dir,
-                                        md, score, phen, db)
-                    write.csv(enrichResult, file=out_fname, quote=F,
-                              row.names=F)
-                }
-            }
-         }
-      }
-}
-```
 
 
 # TODO
- * run overrepresentation across all results, including imputation
- * ask Kwangmi and Sam about the software to compare GWAS results
- -->
+

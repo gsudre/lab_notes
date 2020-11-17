@@ -734,7 +734,96 @@ write.csv(all_res, file='~/data/post_mortem/camera_dev_summary.csv',
           row.names=F, quote=F)
 ```
 
+# 2020-11-12 20:30:51
 
+I have new RNAseq results (after fixing the reference group) and newADHD gene
+set from Gauri. Let's re-rerun camera for RNAseq:
+
+```r
+library(limma)
+library(WebGestaltR)  # for readGmt()
+
+get_enrich_order2 = function( res, gene_sets ){
+  if( !is.null(res$z.std) ){
+    stat = res$z.std
+  }else if( !is.null(res$F.std) ){
+    stat = res$F.std
+  }else if( !is.null(res$t) ){
+    stat = res$t
+  }else{
+    stat = res$F
+  }
+  names(stat) = res$hgnc_symbol
+  stat = stat[!is.na(names(stat))]
+  index = ids2indices(gene_sets, names(stat))
+  cameraPR( stat, index )
+}
+
+data_dir = '~/data/rnaseq_derek/'
+load(sprintf('%s/rnaseq_results_11122020.rData', data_dir))
+
+for (region in c('acc', 'caudate')) {
+    eval(parse(text=sprintf('res = rnaseq_%s', region)))
+
+    tmp2 = res[, c('hgnc_symbol', 't')]
+    # my own GMTs
+    for (db in c('disorders', 'adhd_genes', sprintf('%s_developmental', region))) {
+        cat(region, db, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        gmt = readGmt(db_file) # already in gene symbols
+        # and convert it to lists
+        mylist = list()
+        for (s in unique(gmt$geneSet)) {
+            mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+        }
+        res_camera = get_enrich_order2( tmp2, mylist )
+        # some massaging to look like the other results
+        desc = gmt[, c(1,2)]
+        desc = desc[!duplicated(desc$geneSet), ]
+        m = merge(res_camera, desc, by.x=0, by.y=1)
+        m = m[order(m$PValue), ]
+        out_fname = sprintf('%s/camera2_%s_%s.csv', data_dir, region, db)
+        write.csv(m, file=out_fname, quote=F, row.names=F)
+    }
+    for (db in c('geneontology_Biological_Process_noRedundant',
+                    'geneontology_Cellular_Component_noRedundant',
+                    'geneontology_Molecular_Function_noRedundant',
+                    'pathway_KEGG', 'disease_Disgenet',
+                    'phenotype_Human_Phenotype_Ontology',
+                    'network_PPI_BIOGRID',
+                    'geneontology_Biological_Process',
+                    'geneontology_Cellular_Component',
+                    'geneontology_Molecular_Function')) {
+        cat(region, db, '\n')
+        # assigning hgnc to our gene set lists
+        gs = loadGeneSet(enrichDatabase=db)
+        gmt = gs$geneSet
+        a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+                    targetIdType='genesymbol')
+        gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+                    by.y='userId', all.x=F, all.y=F)
+        # and convert it to lists
+        mylist = list()
+        for (s in unique(gmt2$geneSet)) {
+            mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+        }
+        res_camera = get_enrich_order2( tmp2, mylist )
+        if (is.null(gs$geneSetDes)) {
+            # PPI doesn't have descriptions
+            m = cbind(rownames(res_camera), res_camera, NA)
+            colnames(m)[1] = 'Row.names'
+            colnames(m)[ncol(m)] = 'description'
+        } else {
+            # attach gene set description
+            m = merge(res_camera, gs$geneSetDes, by.x=0, by.y=1)
+            m = m[order(m$PValue), ]
+            m$description = gsub(x=m$description, pattern=',', replacement=';')
+        }
+        out_fname = sprintf('%s/camera2_%s_%s.csv', data_dir, region, db)
+        write.csv(m, file=out_fname, quote=F, row.names=F)
+    }
+}
+```
 
 # TODO
  * look at the bioinformatics tools used in the Demonstis GWAS paper?
