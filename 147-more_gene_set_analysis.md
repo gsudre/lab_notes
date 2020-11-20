@@ -620,13 +620,14 @@ genes = calcNormFactors( genes)
 
 lcpm <- cpm(genes, log=TRUE)
 
-
-```r
-cc = cor(data)
+cc = cor(t(lcpm))
 M = nrow(cc)
 cnt = 0
 for (j in 1:M) {
-    print(j)
+    # print counter
+    if (j %% 500 == 0) {
+        print(j)
+    }
     for (k in 1:M) {
         cnt = cnt + (1 - cc[j, k]**2)
     }
@@ -635,29 +636,9 @@ meff = 1 + cnt / M
 cat(sprintf('Galwey Meff = %.2f\n', meff))
 ```
 
-But that assumes samples as rows, which is not our case. And we cannot put a
-square matrix of 650K in memory. So, maybe we can change this to compute on the
-fly?
-
-
-```r
-# calculates Meff without computing the costly big cc matrix, but paying in run
-# time to calculate each correlation in the loop.
-# mydata is vars by samples
-slow_meff = function(mydata) {
-    M = nrow(mydata)
-    cnt = 0
-    for (j in 1:M) {
-        # print(j)
-        for (k in 1:M) {
-            cnt = cnt + (1 - cor(mydata[j, ], mydata[k, ])**2)
-        }
-    }
-    meff = 1 + cnt / M
-    cat(sprintf('Galwey Meff = %.2f\n', meff))
-    return(meff)
-}
-```
+For Caudate I got 16399.33, which is not great, given that we have 17674 genes.
+That's would make a .05 become 3.048905e-06, and again nothing survives. For ACC
+I get 16013.30, which makes the p-value 3.122405e-06. Again, nothing there.
 
 # 2020-11-19 20:01:58
 
