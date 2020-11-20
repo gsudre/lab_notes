@@ -1098,8 +1098,8 @@ data_dir = '~/data/rnaseq_derek/'
 load(sprintf('%s/rnaseq_results_11122020.rData', data_dir))
 ncpu=8
 
-region='acc'
-# region='caudate'
+# region='acc'
+region='caudate'
 eval(parse(text=sprintf('res = rnaseq_%s', region)))
 
 tmp2 = res[, c('hgnc_symbol', 't')]
@@ -1120,8 +1120,7 @@ for (db in c('disorders', 'adhd_genes', sprintf('%s_developmental', region))) {
                                 isOutput=T, isParallel=T,
                                 nThreads=ncpu, perNum=10000)
     out_fname = sprintf('%s/WG2_%s_%s_10K.csv', data_dir, region, db)
-    write.csv(enrichResult, file=out_fname, quote=F,
-                row.names=F)
+    write.csv(enrichResult, file=out_fname, row.names=F)
 }
 for (db in c('geneontology_Biological_Process_noRedundant',
                 'geneontology_Cellular_Component_noRedundant',
@@ -1142,9 +1141,47 @@ for (db in c('geneontology_Biological_Process_noRedundant',
                                 isOutput=T, isParallel=T,
                                 nThreads=ncpu, perNum=10000)
     out_fname = sprintf('%s/WG2_%s_%s_10K.csv', data_dir, region, db)
-    write.csv(enrichResult, file=out_fname, quote=F,
-                row.names=F)
+    write.csv(enrichResult, file=out_fname, row.names=F)
 }
 ```
+
+# 2020-11-19 17:52:39
+
+It turns out that the overlap developmenta set has more than 500 genes, so we
+need to increase that. I don't want to re-run everything, so let's just do the
+developmental stuff:
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/rnaseq_derek/'
+load(sprintf('%s/rnaseq_results_11122020.rData', data_dir))
+ncpu=8
+
+for (region in c('acc', 'caudate')) {
+    eval(parse(text=sprintf('res = rnaseq_%s', region)))
+    tmp2 = res[, c('hgnc_symbol', 't')]
+    db = sprintf('%s_developmental', region)
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000,
+                                maxNum=1000)
+    out_fname = sprintf('%s/WG2_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+```
+
 
 # TODO

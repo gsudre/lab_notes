@@ -471,6 +471,9 @@ for (phen in phenotypes) {
                          sprintf('%s_developmental', region))) {
                 cat(md, score, phen, db, '\n')
                 project_name = sprintf('%s_%s_%s_%s_v2', md, score, phen, db)
+                # make sure no dots in the name
+                project_name = gsub(x=project_name, pattern='\\.',
+                                    replacement='_')
                 db_file = sprintf('~/data/post_mortem/%s.gmt', db)
                 enrichResult <- WebGestaltR(enrichMethod="GSEA",
                                             organism="hsapiens",
@@ -486,8 +489,9 @@ for (phen in phenotypes) {
                                             projectName=project_name)
                 out_fname = sprintf('%s/WG2_%s_%s_%s_%s_10K.csv', data_dir,
                                     md, score, phen, db)
-                write.csv(enrichResult, file=out_fname, quote=F,
-                            row.names=F)
+                out_fname = gsub(x=out_fname, pattern='\\.',
+                                 replacement='_')
+                write.csv(enrichResult, file=out_fname, row.names=F)
             }
             for (db in c('geneontology_Biological_Process_noRedundant',
                             'geneontology_Cellular_Component_noRedundant',
@@ -497,6 +501,9 @@ for (phen in phenotypes) {
                             'network_PPI_BIOGRID')) {
                 cat(md, score, phen, db, '\n')
                 project_name = sprintf('%s_%s_%s_%s_v2', md, score, phen, db)
+                # make sure no dots in the name
+                project_name = gsub(x=project_name, pattern='\\.',
+                                    replacement='_')
                 enrichResult <- WebGestaltR(enrichMethod="GSEA",
                                             organism="hsapiens",
                                             enrichDatabase=db,
@@ -509,8 +516,9 @@ for (phen in phenotypes) {
                                             nThreads=ncpu, perNum=10000)
                 out_fname = sprintf('%s/WG2_%s_%s_%s_%s_10K.csv', data_dir,
                                     md, score, phen, db)
-                write.csv(enrichResult, file=out_fname, quote=F,
-                            row.names=F)
+                out_fname = gsub(x=out_fname, pattern='\\.',
+                                 replacement='_')
+                write.csv(enrichResult, file=out_fname, row.names=F)
             }
         }
     }
@@ -521,7 +529,78 @@ I'm actually thinking this will go much faster if I swarm it... let me get some
 results with camera and once that's done I'll re-evaluate. I can also read those
 two papers Philip sent in while these things run.
 
+# 2020-11-19 18:00:15
 
+It turns out that the overlap developmenta set has more than 500 genes, so we
+need to increase that. I don't want to re-run everything, so let's just do the
+developmental stuff:
+
+```r
+# bw
+library(WebGestaltR)
+
+data_dir = '~/data/expression_impute/'
+phenotypes = read.table(sprintf('%s/phenos.txt', data_dir))[,1]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+ncpu=31
+
+for (phen in phenotypes) {
+    if (grepl(x=phen, pattern='Caudate') || grepl(x=phen, pattern='ATR')) {
+        region = 'caudate'
+    } else {
+        region = 'ACC'
+    }
+    for (md in c('EN', 'MASHR')) {
+        res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                        header=1)
+        id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+        dups = duplicated(id_num)
+        id_num = id_num[!dups]
+        res$id_num = id_num
+
+        imnamed = res$id_num %in% G_list$ensembl_gene_id
+        res = res[imnamed, ]
+        G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+        imautosome = which(G_list2$chromosome_name != 'X' &
+                        G_list2$chromosome_name != 'Y' &
+                        G_list2$chromosome_name != 'MT')
+        G_list2 = G_list2[imautosome, ]
+
+        for (score in c('zscore', 'effect')) {
+            tmp2 = G_list2[, c('hgnc_symbol', score)]
+            db = sprintf('%s_developmental', region)
+            cat(md, score, phen, db, '\n')
+            project_name = sprintf('%s_%s_%s_%s_v2', md, score, phen, db)
+            # make sure no dots in the name
+            project_name = gsub(x=project_name, pattern='\\.',
+                                replacement='_')
+            db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+            enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                        organism="hsapiens",
+                                        enrichDatabaseFile=db_file,
+                                        enrichDatabaseType="genesymbol",
+                                        interestGene=tmp2,
+                                        interestGeneType="genesymbol",
+                                        sigMethod="top", topThr=150000,
+                                        minNum=3,
+                                        isOutput=T, isParallel=T,
+                                        nThreads=ncpu, perNum=10000,
+                                        outputDirectory = data_dir,
+                                        projectName=project_name,
+                                        maxNum=1000)
+            out_fname = sprintf('%s/WG2_%s_%s_%s_%s_10K.csv', data_dir,
+                                md, score, phen, db)
+            out_fname = gsub(x=out_fname, pattern='\\.',
+                                replacement='_')
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+}
+```
 
 
 
