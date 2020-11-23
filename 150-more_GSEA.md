@@ -256,12 +256,279 @@ r$> head(fgseaResS[order(pval),])
 
 Which leads me to believe we need to do all of them. This will become especially
 important when we compare it to GAGE results. Before we do that, let's clean up
-the duplicated genes in the results
+the duplicated genes in the results.
+
+```r
+library(WebGestaltR)
+library(fgsea)
+
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_acc
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+ranks = res$logFC
+names(ranks) = res$hgnc_symbol
+
+db = 'geneontology_Biological_Process_noRedundant'
+gs = loadGeneSet(enrichDatabase=db)
+gmt = gs$geneSet
+a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+            targetIdType='genesymbol')
+gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+            by.y='userId', all.x=F, all.y=F)
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt2$geneSet)) {
+    mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+}
+fgseaRes <- fgsea(pathways=mylist, stats=ranks, scoreType='std')
+m = merge(fgseaRes, gs$geneSetDes, by.x='pathway', by.y='geneSet')
+m = m[order(m$pval), ]
+
+cp <- collapsePathways(m[m$padj < 0.05, ], mylist, ranks)
+mp <- m[pathway %in% cp$mainPathways, ]
+```
+
+Let's play a bit more with positives and negatives. But I'll just use our
+developmental sets to go faster:
+
+```r
+db_file = '~/data/post_mortem/acc_developmental.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt$geneSet)) {
+    mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+}
+fgseaRes <- fgsea(pathways=mylist, stats=ranks, scoreType='std')
+```
+
+```
+r$> fgseaResS[, 1:2]
+        pathway        pval
+1:    dev1_c0.9 0.684931507
+2:    dev2_c0.9 0.126033058
+3:    dev3_c0.9 0.709864603
+4:    dev4_c0.9 0.998076923
+5:    dev5_c0.9 0.009184051
+6: overlap_c0.9 0.125000000
+
+r$> fgseaResP[, 1:2]
+        pathway      pval
+1:    dev1_c0.9 1.0000000
+2:    dev2_c0.9 0.9710290
+3:    dev3_c0.9 0.3416583
+4:    dev4_c0.9 0.6813187
+5:    dev5_c0.9 0.9950050
+6: overlap_c0.9 1.0000000
+
+r$> fgseaResN[, 1:2]
+        pathway        pval
+1:    dev1_c0.9 0.291708292
+2:    dev2_c0.9 0.083916084
+3:    dev3_c0.9 0.425574426
+4:    dev4_c0.9 0.793206793
+5:    dev5_c0.9 0.002830363
+6: overlap_c0.9 0.051948052
+```
+
+We already knew this... using std, neg, or pos makes a difference. But what does
+it do? What if I only put in ositive or negative values? So far, if I do
+`fgseaResNP <- fgsea(pathways=mylist, stats=ranks[ranks>0], scoreType='neg')` it
+goes into an infinite loop, and similarly if I do `fgseaResPN <-
+fgsea(pathways=mylist, stats=ranks[ranks<=0], scoreType='pos')`. It also doesn't
+run if I use std. Let's play with gage a bit until we figure it out.
+
+```r
+library(gage)
+library(webGestaltR)
+
+db_file = '~/data/post_mortem/acc_developmental.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt$geneSet)) {
+    mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+}
+
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_acc
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+res = res[order(res$P.Value),]
+ranks = res$logFC
+names(ranks) = res$hgnc_symbol
+
+a = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=T)
+
+b = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=F)
+```
+
+This makes a bit more sense to me. This way we can find positively regulated
+(greater) or negatively regulated (less). If we use same.dir=F, we are testing
+for gene sets coregulated towards the same direction, but same.dir=T captures
+pathways perturbed towards both directions simultaneously.
+
+If we do something like this for BiologicalProcesses for example, we'll need to
+potentially trim down the set of results:
+
+```r
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_acc
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+ranks = res$logFC
+names(ranks) = res$hgnc_symbol
+
+db = 'geneontology_Biological_Process_noRedundant'
+gs = loadGeneSet(enrichDatabase=db)
+gmt = gs$geneSet
+a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+            targetIdType='genesymbol')
+gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+            by.y='userId', all.x=F, all.y=F)
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt2$geneSet)) {
+    mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+}
+
+resSameDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=T)
+sigSameDir = sigGeneSet(resSameDir)
+sigSameDir$less = merge(sigSameDir$less, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+sigSameDir$greater = merge(sigSameDir$greater, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+
+resBothDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=F)
+sigBothDir = sigGeneSet(resBothDir)
+sigBothDir$greater = merge(sigBothDir$greater, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+```
+
+We got some interesting results, but the drawback is that it wasn't FDR <.05.
+
+![](images/2020-11-23-13-04-07.png)
+
+There was nothing in both directions. How about we test logP?
+
+```
+                                                 description
+1                                       synapse organization
+2                     regulation of trans-synaptic signaling
+3                regulation of synapse structure or activity
+4                regulation of neuron projection development
+5          negative regulation of nervous system development
+6                                           axon development
+7                                 neuron projection guidance
+8                    negative regulation of cell development
+9                                                  cognition
+10                                  response to ammonium ion
+11 cell-cell adhesion via plasma-membrane adhesion molecules
+12                          regulation of membrane potential
+13                                      dendrite development
+14                 regulation of ion transmembrane transport
+15       negative regulation of cell projection organization
+16             central nervous system neuron differentiation
+```
+
+These are beautiful, and all q < .05.
+
+Can/should we reduce them a bit?
+
+What if we try KEGG?
+
+```r
+data(kegg.gs)
+resSameDir = gage(ranks, gsets = kegg.gs, compare='unpaired', set.size=c(5, 800), same.dir=T)
+sigSameDir = sigGeneSet(resSameDir)
+sigSameDir$less = merge(sigSameDir$less, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+sigSameDir$greater = merge(sigSameDir$greater, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+
+resBothDir = gage(ranks, gsets = kegg.gs, compare='unpaired', set.size=c(5, 800), same.dir=F)
+sigBothDir = sigGeneSet(resBothDir)
+sigBothDir$greater = merge(sigBothDir$greater, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+```
+
+Nothing there for ACC...
+
+But let's try again the developmental and ADHD gene sets with logP:
+
+```r
+ranks = -log(res$P.Value) * sign(res$logFC) 
+names(ranks) = res$hgnc_symbol
+
+db_file = '~/data/post_mortem/acc_developmental.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt$geneSet)) {
+    mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+}
+gmt_desc = gmt[, c('geneSet', 'description')]
+gmt_desc = gmt_desc[!duplicated(gmt_desc),]
+resSameDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=T)
+sigSameDir = sigGeneSet(resSameDir)
+sigSameDir$less = merge(sigSameDir$less, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+sigSameDir$greater = merge(sigSameDir$greater, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+
+resBothDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=F)
+sigBothDir = sigGeneSet(resBothDir)
+sigBothDir$greater = merge(sigBothDir$greater, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+```
+
+Yes, results much stronger using logP:
+
+![](images/2020-11-23-13-28-42.png)
+
+```r
+ranks = -log(res$P.Value) * sign(res$logFC) 
+names(ranks) = res$hgnc_symbol
+
+db_file = '~/data/post_mortem/adhd_genes.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+# and convert it to lists
+mylist = list()
+for (s in c('GWAS1', 'GWAS', 'TWAS1', 'TWAS2', 'TWAS', 'CNV1', 'CNV2')) {
+    mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+}
+gmt_desc = gmt[, c('geneSet', 'description')]
+gmt_desc = gmt_desc[!duplicated(gmt_desc),]
+resSameDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=T)
+sigSameDir = sigGeneSet(resSameDir)
+sigSameDir$less = merge(sigSameDir$less, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+sigSameDir$greater = merge(sigSameDir$greater, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+
+resBothDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=F)
+sigBothDir = sigGeneSet(resBothDir)
+sigBothDir$greater = merge(sigBothDir$greater, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+```
+
+![](images/2020-11-23-13-33-08.png)
+
+Results are not really stellar here. There's some nominal stuff though.
+
 
 # TODO
  * What's the effect of setting the score type to pos or neg?
  * what's the effect of just using the positive ranks or the negative ranks?
- * deal with duplicate ids
  * play with EPS for fgsea
  * gage
+ * kegg with gage
+ * look into gagePipe and gageComp to compare across ACC and Caudate
  * try overlap with gene lists too (our lists)
