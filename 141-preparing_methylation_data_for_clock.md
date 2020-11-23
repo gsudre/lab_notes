@@ -321,3 +321,33 @@ mean of x mean of y
 ```
 
 Nothing for Caudate either... well, valiant effort.
+
+# 2020-11-20 17:18:02
+
+Philip asked me to combine the metadata with Gauri's age predictions.
+
+```r
+library(gdata)
+df = read.xls('~/data/epigenetic_values_matched.xlsx', 'all_data')
+pm_gf = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+pm_gf = pm_gf[!duplicated(pm_gf$hbcc_brain_id),]
+data = merge(df, pm_gf[, c('hbcc_brain_id', 'Diagnosis', 'Sex', 'Race.x',
+                           'Ethnicity.x',
+                           sapply(1:10, function(x) sprintf('C%d', x)))],
+             by.y='hbcc_brain_id', by.x='SID', all.x=T, all.y=F)
+
+a = readRDS('~/data/expression_impute/results/NCR_v3_ACC_1KG_mashr.rds')
+a$IID = iid2
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+pcs$SID = as.numeric(gsub(x=pcs$IID, pattern='SID\\.', replacement=''))
+data = merge(data, pcs, by='SID', all.x=T, all.y=F)
+
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('~/data/expression_impute//augmented_anon_clinical_10242020.csv')
+clin2 = clin[clin$age_clin!='child',]
+clin2$age2 = as.numeric(clin2$age_clin)
+m = mergeOnClosestAge(data, clin2, unique(data$SID), x.id='SID', y.id='SID', x.age='age_acq', y.age='age2')
+write.csv(m, file='~/data/epiclock_predictions_withMeta.csv', row.names=F)
+```
+
+And then I did some massaging of it in Excel.
