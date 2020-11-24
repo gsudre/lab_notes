@@ -519,13 +519,226 @@ sigBothDir = sigGeneSet(resBothDir)
 sigBothDir$greater = merge(sigBothDir$greater, gmt_desc, by.x=0, by.y='geneSet', sort=F)
 ```
 
-![](images/2020-11-23-13-33-08.png)
+![](images/2020-11-23-20-39-44.png)
 
 Results are not really stellar here. There's some nominal stuff though.
 
+## Combining both methods
+
+We can also combine both methods like https://bioinformaticsbreakdown.com/how-to-gsea/:
+
+```r
+GSEA = function(gene_list, myGO, mypval) {
+  set.seed(54321)
+  library(dplyr)
+  library(gage)
+  library(fgsea)
+  library(ggplot2)
+  min_set = 5
+  max_set = 800
+  
+  if ( any( duplicated(names(gene_list)) )  ) {
+    warning("Duplicates in gene names")
+    gene_list = gene_list[!duplicated(names(gene_list))]
+  }
+  if  ( !all( order(gene_list, decreasing = TRUE) == 1:length(gene_list)) ){
+    warning("Gene list not sorted")
+    gene_list = sort(gene_list, decreasing = TRUE)
+  }
+
+    # use negative pvalues to work with nominal p!
+  if (mypval > 0) {
+    fgRes <- fgsea::fgsea(pathways = myGO, 
+                             stats = gene_list,
+                             minSize=min_set,
+                             maxSize=max_set, eps=0) %>% 
+                    as.data.frame() %>% 
+                    dplyr::filter(padj < !!mypval)
+  } else {
+      fgRes <- fgsea::fgsea(pathways = myGO, 
+                             stats = gene_list,
+                             minSize=min_set,
+                             maxSize=max_set, eps=0) %>% 
+                    as.data.frame() %>% 
+                    dplyr::filter(pval < !!-mypval)
+  }
+  #print(dim(fgRes))
+    
+## Filter FGSEA by using gage results. Must be significant and in same direction to keep 
+  gaRes = gage::gage(gene_list, gsets=myGO, same.dir=TRUE, compare='unpaired',
+                     set.size =c(min_set,max_set))
+  
+  if (mypval > 0) {
+    ups = as.data.frame(gaRes$greater) %>% 
+      tibble::rownames_to_column("pathway") %>% 
+      dplyr::filter(!is.na(p.geomean) & q.val < pval ) %>%
+      dplyr::select("pathway")
+    
+    downs = as.data.frame(gaRes$less) %>% 
+      tibble::rownames_to_column("pathway") %>% 
+      dplyr::filter(!is.na(p.geomean) & q.val < pval ) %>%
+      dplyr::select("pathway")
+  } else {
+      ups = as.data.frame(gaRes$greater) %>% 
+        tibble::rownames_to_column("pathway") %>% 
+        dplyr::filter(!is.na(p.geomean) & p.val < -mypval ) %>%
+        dplyr::select("pathway")
+      
+      downs = as.data.frame(gaRes$less) %>% 
+        tibble::rownames_to_column("pathway") %>% 
+        dplyr::filter(!is.na(p.geomean) & p.val < -mypval ) %>%
+        dplyr::select("pathway")
+  }
+  
+  #print(dim(rbind(ups,downs)))
+  keepups = fgRes[fgRes$NES > 0 & !is.na(match(fgRes$pathway, ups$pathway)), ]
+  keepdowns = fgRes[fgRes$NES < 0 & !is.na(match(fgRes$pathway, downs$pathway)), ]
+  
+#   ### Collapse redundant pathways
+#   Up = fgsea::collapsePathways(keepups, pathways = myGO, stats = gene_list,  nperm = 500, pval.threshold = 0.05)
+#   Down = fgsea::collapsePathways(keepdowns, pathways=myGO, stats=gene_list,  nperm = 500, pval.threshold = 0.05) 
+  
+#   fgRes = fgRes[ !is.na(match(fgRes$pathway, 
+#            c( Up$mainPathways, Down$mainPathways))), ] %>% 
+#     arrange(desc(NES))
+
+    # fgRes = fgRes[ !is.na(match(fgRes$pathway, c(keepups$pathway, keepdowns$pathway))), ] %>% 
+    #          arrange(desc(NES))
+    fgRes = rbind(keepups, keepdowns)
+    fgRes = fgRes[order(fgRes$pval),]
+  fgRes$pathway = stringr::str_replace(fgRes$pathway, "GO_" , "")
+  
+  fgRes$Enrichment = ifelse(fgRes$NES > 0, "Up-regulated", "Down-regulated")
+  filtRes = rbind(head(fgRes, n = 10),
+                  tail(fgRes, n = 10 ))
+  g = ggplot(filtRes, aes(reorder(pathway, NES), NES)) +
+    geom_segment( aes(reorder(pathway, NES), xend=pathway, y=0, yend=NES)) +
+  geom_point( size=5, aes( fill = Enrichment),
+              shape=21, stroke=2) +
+    scale_fill_manual(values = c("Down-regulated" = "dodgerblue",
+                      "Up-regulated" = "firebrick") ) +
+    coord_flip() +
+    labs(x="Pathway", y="Normalized Enrichment Score") + 
+    theme_minimal()
+  
+  output = list("Results" = fgRes, "Plot" = g)
+  return(output)
+}
+```
+
+Then we just do:
+
+```r
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_acc
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+ranks = -log(res$P.Value) * sign(res$logFC)
+names(ranks) = res$hgnc_symbol
+ranks = sort(ranks, decreasing=T)
+
+db = 'geneontology_Biological_Process_noRedundant'
+gs = loadGeneSet(enrichDatabase=db)
+gmt = gs$geneSet
+a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+            targetIdType='genesymbol')
+gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+            by.y='userId', all.x=F, all.y=F)
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt2$geneSet)) {
+    mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+}
+a = GSEA(ranks, mylist, .05)
+a$Results = merge(a$Results, gs$geneSetDes, by.x='pathway', by.y='geneSet', sort=F)
+```
+
+This works well, especially for rnaseq_acc.
+
+![](images/2020-11-23-20-14-48.png)
+
+But how about other gene sets or even rnaseq_caudate and other phenotypes?
+
+```r
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_caudate
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+ranks = -log(res$P.Value) * sign(res$logFC)
+names(ranks) = res$hgnc_symbol
+ranks = sort(ranks, decreasing=T)
+
+db = 'geneontology_Biological_Process_noRedundant'
+gs = loadGeneSet(enrichDatabase=db)
+gmt = gs$geneSet
+a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+            targetIdType='genesymbol')
+gmt2 = merge(gmt, a$mapped[, c('userId', 'geneSymbol')], by.x = 'gene',
+            by.y='userId', all.x=F, all.y=F)
+# and convert it to lists
+mylist = list()
+for (s in unique(gmt2$geneSet)) {
+    mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
+}
+a = GSEA(ranks, mylist, .05)
+a$Results = merge(a$Results, gs$geneSetDes, by.x='pathway', by.y='geneSet', sort=F)
+```
+
+The caudate results are not that unexpected. 
+
+![](images/2020-11-23-20-27-16.png)
+
+Can we get anything good for the other sets and acc?
+
+```r
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+tmp = rnaseq_acc
+
+dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
+res = tmp[!tmp$hgnc_symbol %in% dup_genes, ]
+for (g in dup_genes) {
+  gene_data = tmp[tmp$hgnc_symbol==g, ]
+  best_res = which.min(gene_data$P.Value)
+  res = rbind(res, gene_data[best_res, ])
+}
+ranks = -log(res$P.Value) * sign(res$logFC)
+names(ranks) = res$hgnc_symbol
+ranks = sort(ranks, decreasing=T)
+
+db_file = '~/data/post_mortem/adhd_genes.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+# and convert it to lists
+mylist = list()
+for (s in c('GWAS1', 'GWAS', 'TWAS1', 'TWAS2', 'TWAS', 'CNV1', 'CNV2')) {
+    mylist[[s]] = unique(gmt$gene[gmt$geneSet==s])
+}
+gmt_desc = gmt[, c('geneSet', 'description')]
+gmt_desc = gmt_desc[!duplicated(gmt_desc),]
+
+a = GSEA(ranks, mylist, -.05)
+a$Results = merge(a$Results, gmt_desc, by.x=0, by.y='geneSet', sort=F)
+```
+
+I'm losing the ACC results now. I should probably just stick with gage results,
+because I can still do up and down, but at least I'm getting the nominal GWAS1
+results there.
+
 
 # TODO
- * What's the effect of setting the score type to pos or neg?
+ * What's the effect of setting the score type to pos or neg? Is it similar to
+   gage's options?
  * what's the effect of just using the positive ranks or the negative ranks?
  * play with EPS for fgsea
  * gage
