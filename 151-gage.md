@@ -327,12 +327,12 @@ phenotypes = read.table('~/data/expression_impute/phenos.txt')[,1]
 data_dir = '~/data/post_mortem/'
 DBs = c('geneontology_Biological_Process_noRedundant',
             'geneontology_Cellular_Component_noRedundant',
-            'geneontology_Molecular_Function_noRedundant')
-            # 'pathway_KEGG')
+            'geneontology_Molecular_Function_noRedundant',
+            'pathway_KEGG')
 
 for (phen in phenotypes) {
     for (db in DBs) {
-        fname = sprintf('%s/gage_imp_%s_%s_OneDir_%sp06.csv',
+        fname = sprintf('%s/gage_imp_%s_%s_OneDir_%s_p06.csv',
                         data_dir, md, phen, db)
         res = read.csv(fname)
         if (nrow(res) > 0) {
@@ -343,7 +343,7 @@ for (phen in phenotypes) {
 }
 for (phen in c('acc', 'caudate')) {
     for (db in DBs) {
-        fname = sprintf('%s/gage_rnaseq_%s_OneDir_%s_q05.csv',
+        fname = sprintf('%s/gage_rnaseq_%s_OneDir_%s_q1.csv',
                         data_dir, phen, db)
         res = read.csv(fname)
         if (nrow(res) > 0) {
@@ -355,3 +355,111 @@ for (phen in c('acc', 'caudate')) {
 write.csv(all_res, file='~/data/post_mortem/compile_gage_ontologies.csv', row.names=F)
 ```
 
+Based on these results, I'm leaning towards using as phenotypes:
+
+ACC_volume, Caudate_volume, ad,rd for cin_cin L and R, ad,rd for ATR L and R
+
+so, 10 phenotypes. Let's check a few different overlap options:
+
+```r
+data_dir = '~/data/expression_impute/'
+md = 'MASHR'
+
+clean_imp_res = function(res) {
+    G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+    G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+    G_list = G_list[G_list$hgnc_symbol!='',]
+    G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+
+    id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+    dups = duplicated(id_num)
+    id_num = id_num[!dups]
+    res$id_num = id_num
+
+    imnamed = res$id_num %in% G_list$ensembl_gene_id
+    res = res[imnamed, ]
+    G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+    imautosome = which(G_list2$chromosome_name != 'X' &
+                    G_list2$chromosome_name != 'Y' &
+                    G_list2$chromosome_name != 'MT')
+    G_list2 = G_list2[imautosome, ]
+    return(G_list2[, c('hgnc_symbol', 'pvalue')])
+}
+md = 'MASHR'
+phen = 'res_ACC_volume'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_acc_imp = clean_imp_res(res)
+phen = 'res_Caudate_volume'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_caudate_imp = clean_imp_res(res)
+phen = 'res_ad_cin_cin_l'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_cincinADl_imp = clean_imp_res(res)
+phen = 'res_ad_cin_cin_r'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_cincinADr_imp = clean_imp_res(res)
+phen = 'res_rd_cin_cin_l'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_cincinRDl_imp = clean_imp_res(res)
+phen = 'res_rd_cin_cin_r'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_cincinRDr_imp = clean_imp_res(res)
+phen = 'res_ad_ATR_l'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_atrADl_imp = clean_imp_res(res)
+phen = 'res_ad_ATR_r'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_atrADr_imp = clean_imp_res(res)
+phen = 'res_rd_ATR_l'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_atrRDl_imp = clean_imp_res(res)
+phen = 'res_rd_ATR_r'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen), header=1)
+res_atrRDr_imp = clean_imp_res(res)
+```
+
+Now we can just put them into the matrix:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+res_rnaseq_acc = rnaseq_acc[, c('hgnc_symbol', 'P.Value')]
+res_rnaseq_caudate = rnaseq_caudate[, c('hgnc_symbol', 'P.Value')]
+colnames(res_rnaseq_acc)[2] = 'pvalue'
+colnames(res_rnaseq_caudate)[2] = 'pvalue'
+
+res_var = c('res_rnaseq_acc', 'res_rnaseq_caudate',
+            'res_acc_imp', 'res_caudate_imp',
+            'res_cincinADl_imp', 'res_cincinADr_imp',
+            'res_cincinRDl_imp', 'res_cincinRDr_imp',
+            'res_atrADl_imp', 'res_atrADr_imp',
+            'res_atrRDl_imp', 'res_atrRDr_imp'
+            )
+res_str = c('rnaseq_acc', 'rnaseq_cau',
+            'imp_acc', 'imp_cau',
+            'imp_cinADl', 'imp_cinADr',
+            'imp_cinRDl', 'imp_cinRDr',
+            'imp_atrADl', 'imp_atrADr',
+            'imp_atrRDl', 'imp_atrRDr'
+ )
+
+thres=.01
+pvals = matrix(nrow=length(res_var), ncol=length(res_var),
+               dimnames=list(res_str, res_str))
+for (i in 1:length(res_var)) {
+    for (j in 1:length(res_var)) {
+        eval(parse(text=sprintf('res1 = eval(parse(text=res_var[i]))')))
+        eval(parse(text=sprintf('res2 = eval(parse(text=res_var[j]))')))
+        uni = union(res1$hgnc_symbol, res2$hgnc_symbol)
+
+        go.obj <- newGeneOverlap(res1$hgnc_symbol[res1$pvalue < thres],
+                                 res2$hgnc_symbol[res2$pvalue < thres],
+                                 genome.size=length(uni))
+        go.obj <- testGeneOverlap(go.obj)
+        pvals[res_str[i], res_str[j]] = getPval(go.obj)
+    }
+}
+```
+
+The gene overlap between left and right was huge, so we either pick one, or go
+with the combination.
