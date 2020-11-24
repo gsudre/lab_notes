@@ -248,7 +248,7 @@ for (phen in phenotypes) {
         names(ranks) = res$hgnc_symbol
         ranks = sort(ranks, decreasing=T)
         out_root = sprintf('imp_%s_%s', md, phen)
-        compute_gage(ranks, out_root, isACC)
+        compute_gage(ranks, out_root, isACC, useFDR=F)
     }
 }
 ```
