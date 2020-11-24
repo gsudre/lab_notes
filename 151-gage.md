@@ -114,6 +114,10 @@ compute_gage = function(ranks, out_root, isACC=T, useFDR=T) {
             'pathway_KEGG')
     for (db in DBs) {
         cat(out_root, db, '\n')
+        suffix = ifelse(useFDR, '_q1', '_p06')
+        myc = ifelse(useFDR, .1, .06)
+        myqp = ifelse(useFDR, 'q.val', 'p.val')
+
         gs = loadGeneSet(enrichDatabase=db)
         gmt = gs$geneSet
         a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
@@ -125,23 +129,23 @@ compute_gage = function(ranks, out_root, isACC=T, useFDR=T) {
         for (s in unique(gmt2$geneSet)) {
             mylist[[s]] = unique(gmt2$geneSymbol[gmt2$geneSet==s])
         }
-        resSameDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=T)
-        sigSameDir = ifelse(useFDR,
-                            sigGeneSet(resSameDir, cutoff=.05, qpval='q.val'),
-                            sigGeneSet(resSameDir, cutoff=.06, qpval='p.val'))
-        suffix = ifelse(useFDR, '_q05', 'p06')
+        resSameDir = gage(ranks, gsets = mylist, compare='unpaired',
+                          set.size=c(5, 800), same.dir=T)
+        sigSameDir = sigGeneSet(resSameDir, cutoff=myc, qpval=myqp)
         resOneDir = as.data.frame(rbind(sigSameDir$less, sigSameDir$greater))
-        resOneDir$Enrichment = ifelse(resOneDir$stat.mean > 0, "Up-regulated", "Down-regulated")
-        resOneDir = merge(resOneDir, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
+        resOneDir$Enrichment = ifelse(resOneDir$stat.mean > 0,
+                                      "Up-regulated", "Down-regulated")
+        resOneDir = merge(resOneDir, gs$geneSetDes, by.x=0, by.y='geneSet',
+                          sort=F)
         out_fname = sprintf('~/data/post_mortem/gage_%s_OneDir_%s%s.csv',
                             out_root, db, suffix)
         write.csv(resOneDir, file=out_fname, row.names=F)
-        resBothDir = gage(ranks, gsets = mylist, compare='unpaired', set.size=c(5, 800), same.dir=F)
-        sigBothDir = ifelse(useFDR,
-                            sigGeneSet(resBothDir, cutoff=.05, qpval='q.val'),
-                            sigGeneSet(resBothDir, cutoff=.06, qpval='p.val'))
-        sigBothDir = merge(sigBothDir$greater, gs$geneSetDes, by.x=0, by.y='geneSet', sort=F)
-        out_fname = sprintf('~/data/post_mortem/gage_%s_BothDir_%s_%s.csv',
+        resBothDir = gage(ranks, gsets = mylist, compare='unpaired',
+                          set.size=c(5, 800), same.dir=F)
+        sigBothDir = sigGeneSet(resBothDir, cutoff=myc, qpval=myqp)
+        sigBothDir = merge(sigBothDir$greater, gs$geneSetDes, by.x=0,
+                           by.y='geneSet', sort=F)
+        out_fname = sprintf('~/data/post_mortem/gage_%s_BothDir_%s%s.csv',
                             out_root, db, suffix)
         write.csv(sigBothDir, file=out_fname, row.names=F)
     }
@@ -192,7 +196,7 @@ for (g in dup_genes) {
 ranks = -log(res$P.Value) * sign(res$logFC)
 names(ranks) = res$hgnc_symbol
 ranks = sort(ranks, decreasing=T)
-compute_gage(ranks, 'rnaseq_acc', T)
+compute_gage(ranks, 'rnaseq_acc', isACC=T, useFDR=T)
 
 tmp = rnaseq_caudate
 dup_genes = tmp$hgnc_symbol[duplicated(tmp$hgnc_symbol)]
@@ -205,7 +209,7 @@ for (g in dup_genes) {
 ranks = -log(res$P.Value) * sign(res$logFC)
 names(ranks) = res$hgnc_symbol
 ranks = sort(ranks, decreasing=T)
-compute_gage(ranks, 'rnaseq_caudate', F)
+compute_gage(ranks, 'rnaseq_caudate', isACC=F, useFDR=T)
 ```
 
 And now we run the same stuff for the imputations:
@@ -252,3 +256,102 @@ for (phen in phenotypes) {
     }
 }
 ```
+
+And as usual we can compile everything for comparisons:
+
+```r
+all_res = c()
+phenotypes = read.table('~/data/expression_impute/phenos.txt')[,1]
+data_dir = '~/data/post_mortem/'
+
+for (phen in phenotypes) {
+    r = ifelse(grepl(x=phen, pattern='Caudate') || grepl(x=phen, pattern='ATR'),
+               'caudate', 'acc')
+    for (md in c('EN', 'MASHR')) {
+        fname = sprintf('%s/gage_imp_%s_%s_OneDir_%s_developmental_p06.csv',
+                        data_dir, md, phen, r)
+        res = read.csv(fname)
+        if (nrow(res) > 0) {
+            res$phen = sprintf('imp_%s_%s', md, phen)
+            all_res = rbind(all_res, res)
+        }
+    }
+}
+for (phen in c('acc', 'caudate')) {
+    fname = sprintf('%s/gage_rnaseq_%s_OneDir_%s_developmental_p06.csv',
+                        data_dir, phen, phen)
+    res = read.csv(fname)
+    if (nrow(res) > 0) {
+        res$phen = sprintf('rnaseq_%s', phen)
+        all_res = rbind(all_res, res)
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/compile_gage_dev.csv', row.names=F)
+```
+
+And repeat the same thing for adhd_genes:
+
+```r
+all_res = c()
+phenotypes = read.table('~/data/expression_impute/phenos.txt')[,1]
+data_dir = '~/data/post_mortem/'
+
+for (phen in phenotypes) {
+    for (md in c('EN', 'MASHR')) {
+        fname = sprintf('%s/gage_imp_%s_%s_OneDir_adhd_genes_p06.csv',
+                        data_dir, md, phen)
+        res = read.csv(fname)
+        if (nrow(res) > 0) {
+            res$phen = sprintf('imp_%s_%s', md, phen)
+            all_res = rbind(all_res, res)
+        }
+    }
+}
+for (phen in c('acc', 'caudate')) {
+    fname = sprintf('%s/gage_rnaseq_%s_OneDir_adhd_genes_p06.csv',
+                        data_dir, phen)
+    res = read.csv(fname)
+    if (nrow(res) > 0) {
+        res$phen = sprintf('rnaseq_%s', phen)
+        all_res = rbind(all_res, res)
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/compile_gage_adhd_genes.csv', row.names=F)
+```
+
+And other phenotypes:
+
+```r
+all_res = c()
+phenotypes = read.table('~/data/expression_impute/phenos.txt')[,1]
+data_dir = '~/data/post_mortem/'
+DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+            # 'pathway_KEGG')
+
+for (phen in phenotypes) {
+    for (db in DBs) {
+        fname = sprintf('%s/gage_imp_%s_%s_OneDir_%sp06.csv',
+                        data_dir, md, phen, db)
+        res = read.csv(fname)
+        if (nrow(res) > 0) {
+            res$phen = sprintf('imp_%s_%s', md, phen)
+            all_res = rbind(all_res, res)
+        }
+    }
+}
+for (phen in c('acc', 'caudate')) {
+    for (db in DBs) {
+        fname = sprintf('%s/gage_rnaseq_%s_OneDir_%s_q05.csv',
+                        data_dir, phen, db)
+        res = read.csv(fname)
+        if (nrow(res) > 0) {
+            res$phen = sprintf('rnaseq_%s', phen)
+            all_res = rbind(all_res, res)
+        }
+    }
+}
+write.csv(all_res, file='~/data/post_mortem/compile_gage_ontologies.csv', row.names=F)
+```
+
