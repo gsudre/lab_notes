@@ -99,3 +99,11 @@ for (r in c('acc', 'caudate')) {
     }
 }
 ```
+
+Doesn't look like there's much there... some relationship of caudate to TWAS1,
+and nominal to a couple interesting neural biological GO sets. ACC had a couple
+nominal hits for developmental mean of both, a nominal hit for axon guidance
+(KEGG), maybe a couple biological nominal hits. In the end they add some results
+as weak as the imputation results. Not sure if worth the extra complications in
+the story.
+
