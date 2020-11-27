@@ -1,0 +1,16 @@
+INFO [2020-11-27 15:38:22] [[1]]
+INFO [2020-11-27 15:38:22] list(MASHR = G_list2$hgnc_symbol, GWAS = gmt[gmt$geneSet == "GWAS1", 
+INFO [2020-11-27 15:38:22]     "gene"])
+INFO [2020-11-27 15:38:22] 
+INFO [2020-11-27 15:38:22] $euler.d
+INFO [2020-11-27 15:38:22] [1] TRUE
+INFO [2020-11-27 15:38:22] 
+INFO [2020-11-27 15:38:22] $fill
+INFO [2020-11-27 15:38:22] c("red", "green")
+INFO [2020-11-27 15:38:22] 
+INFO [2020-11-27 15:38:22] $main
+INFO [2020-11-27 15:38:22] thres
+INFO [2020-11-27 15:38:22] 
+INFO [2020-11-27 15:38:22] $filename
+INFO [2020-11-27 15:38:22] sprintf("overlap%.2f.tiff", thres)
+INFO [2020-11-27 15:38:22] 
