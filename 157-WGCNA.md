@@ -160,3 +160,15 @@ net = blockwiseModules(datExpr, power = 9,
                      saveTOMs = TRUE,
                      saveTOMFileBase = "pmACC", maxBlockSize=nGenes,
                     verbose = 3)
+```
+
+```
+r$> table(net$colors)                                                                                                                                               
+
+    0     1     2     3     4     5 
+  133 16318   796   336    47    47 
+```
+
+I don't think this looks right. We have one module with 16K genes, and then 4
+others? (0 is not assigned). Will need to tweak some stuff around before  go
+further on this. 
