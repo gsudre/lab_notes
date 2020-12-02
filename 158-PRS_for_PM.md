@@ -182,3 +182,6 @@ post-mortem data to hg19, which seemed to work, but shapeit gives an error
 because there is massive misalignment between the lifted data and the reference
 panel (that never happened when I played with data native to hg19). Any ideas?
 ```
+
+Maybe try beagle for phasing?
+Maybe calculate PRS on the non-imputed data? what's the overlap?
