@@ -281,3 +281,39 @@ Rscript /data/NCR_SBRB/software/PRSice_2.2.5/PRSice.R  \
 ```
 
 Now it's just a matter of putting it all together for analysis!
+
+# 2020-12-03 05:54:06
+
+```r
+# this takes a while because we're reading in TXT files!
+my_dir = '~/data/post_mortem/genotyping/1KG/'
+a = read.table(sprintf('%s/PM_1KG_PRS_adhd_jun2017.all.score', my_dir),
+               header=1)
+b = read.table(sprintf('%s/PM_1KG_PRS_adhd_eur_jun2017.all.score', my_dir),
+                header=1)
+
+# keep only some of the PRs columns that were created
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4', 'X0.3', 'X0.2')
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHD_PRS%f', x)))
+af = a[, mycols]
+colnames(af) = new_names
+bf = b[, mycols]
+new_names = gsub('ADHD', x=new_names, 'ADHDeur')
+colnames(bf) = new_names
+
+m = merge(af, bf, by='IID')
+
+write.csv(m, file='~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv', row.names=F)
+```
+
+Now, when we run this analysis, we can do it in different ways. Primarily, we
+can do the same thing the Science paper did and just try to evaluate it against
+the first PC. But we can also just replace Diagnosis by PRS in the main
+regression and see if anything comes out of that.
+
+Within those two options, we can use the WNH PRS on the WNH samples only, then
+the general on everyone, then the most appropriate PRS for each group.
