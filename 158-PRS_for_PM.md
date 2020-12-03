@@ -317,3 +317,129 @@ regression and see if anything comes out of that.
 
 Within those two options, we can use the WNH PRS on the WNH samples only, then
 the general on everyone, then the most appropriate PRS for each group.
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+# we're down from 60K to 38K samples by only looking at the ones with hgnc symbol. We might be losing too much here, so it's a step to reconsider in the future
+
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+lcpm = cpm(genes, log=T)
+set.seed(42)
+lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+
+library(nFactors)
+eigs <- lcpm.pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(lcpm.pca$x[, keep_me])
+
+data2 = cbind(data, mydata)
+# we don't residualize Diagnosis!
+
+form = ~ PC1 + PC2 + PC7 + PC8 + PC9
+design = model.matrix( form, data2)
+vobj = voom( genes, design, plot=FALSE)
+fit <- lmFit(vobj, design)
+fit2 <- eBayes( fit )
+resids = residuals(fit2, genes)
+```
+
+Let's first break down the 3 different sets of PRS we will try:
+
+```r
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using whole population PRS
+m = merge(data, prs, by='hbcc_brain_id')
+m = m[, 1:63]
+colnames(m)[52:63] = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('PRS%f', x))
+data_whole = m
+
+# WNH samples only
+m = merge(data, prs, by='hbcc_brain_id')
+m = m[, c(1:51, 64:75)]
+colnames(m)[52:63] = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('PRS%f', x))
+keep_me = m$hbcc_brain_id %in% wnh_brains
+data_wnh = m[keep_me, ]
+
+# using the most appropriate PRS
+m = merge(data, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data_app = m[, c(1:51, 76:87)]
+```
+
+And of course we'll need to try this for all possible PRS values. Let's try the
+PCA approach first, as it's easier to quantify the results.
