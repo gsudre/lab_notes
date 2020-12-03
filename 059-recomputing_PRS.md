@@ -402,6 +402,9 @@ If the possible genotypes reported by 23andMe and another source do not match, i
 
 Each individual has two copies of each chromosome. For example:
 https://www.genome.gov/sites/default/files/tg/en/illustration/single_nucleotide_polymorphism_snps.jpg.
+
+![](images/2020-12-02-10-33-39.png)
+
 So, when we say someone is T/C, assuming the top copy (copy 1) in the figure is
 always the positive (forward) strand, then we're saying they have a T and a C in that
 position. Of course, because we know that T goes to A, and C goes to G, that's
