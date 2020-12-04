@@ -683,3 +683,34 @@ for (phen in phenotypes) {
     write.csv(enrichResult, file=out_fname, row.names=F)
 }
 ```
+
+# 2020-12-04 09:37:04
+
+I don't think we're getting much from splitting the TWAS genes. For example,
+here are the original results:
+
+![](images/2020-12-04-09-37-27.png)
+
+It's hard to compare the FDR values as it depends on the other sets, but we can
+compare the normalized enrichment score. Basically, it'd make sense to split the
+TWAS set if we got better NES in the new sets, as it'd result in better p-value
+and potentially tip the FDR. The TWAS set in the original result had a union of
+TWAS1 and TWAS2 sets. TWAS2 didn't have the up/down details, so these new
+results are only for TWAS1 (Liao et al 2019). 
+
+![](images/2020-12-04-09-41-35.png)
+
+This could be because splitting the sets doesn't necessarily help, or just that
+most of the results were driven by TWAS2.
+
+Here is the same comparison for caudate results. Top one is the original:
+
+![](images/2020-12-04-09-42-34.png)
+
+![](images/2020-12-04-09-43-07.png)
+
+Another issue I ran into was that some of the sets were too small to run, which
+is fine.
+
+Do we gain anything in the imputed results? None of the sets were even nominally
+significant for ACC_volume or Caudate_volume.

@@ -933,10 +933,75 @@ t=0.005, prs=125, pm=117, in=0, p=1.000000
 t=0.001, prs=27, pm=26, in=0, p=1.000000
 ```
 
+# 2020-12-04 09:49:11
+
+Might as well save the results for all PRS thresholds:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC2 + PC7 + PC8 + PC9', p))
+    design = model.matrix( form, data2)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t, 'hgnc_symbol']
+        dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/post_mortem/all_acc_prs_overlap_results.csv',
+          row.names=F)
+```
+
+And run the same thing for Caudate:
+
+```r
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC3 + PC5 + PC6 + PC8', p))
+    design = model.matrix( form, data2)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/post_mortem/all_caudate_prs_overlap_results.csv',
+          row.names=F)
+```
 
 # TODO
-* PRS to full gene set
-* PRS to first PC
-* is there a difference if we use residuals from lmFit?
-* look at Caudate even if ACC is a bust?
 * do WNH analysis from scratch?
