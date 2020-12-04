@@ -560,3 +560,126 @@ for (phen in phenotypes) {
 }
 ```
 
+# 2020-12-04 06:10:40
+
+Let me recreate my_sets.gmt but splitting the TWAS set into under and over based
+on Gauri's file. There was no way to establish that for the Qi paper, so she
+only did it for Liao (TWAS1). That paper is actually a lot more nuanced, and
+there are different gene sets there. Let me parse them out.
+
+```r
+library(ActivePathways)
+gmt = read.GMT('~/data/post_mortem/my_acc_sets.gmt')
+liao = read.csv('~/data/post_mortem/twas_liao_finer.csv')
+for (i in 1:ncol(liao)) {
+    tmp = list(id = colnames(liao)[i], genes = liao[liao[,i]!='', i],
+               name = colnames(liao)[i])
+    gmt[[i]] = tmp
+}
+write.GMT(gmt, '~/data/post_mortem/my_liao_twas.gmt')
+```
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/rnaseq_derek/'
+load(sprintf('%s/rnaseq_results_11122020.rData', data_dir))
+ncpu=2
+
+for (region in c('acc', 'caudate')) {
+    eval(parse(text=sprintf('res = rnaseq_%s', region)))
+
+    ranks = -log(res$P.Value) * sign(res$logFC)
+    tmp2 = data.frame(hgnc_symbol=res$hgnc_symbol, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    # my own GMTs
+    db = 'my_liao_twas'
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=800)
+    out_fname = sprintf('%s/WG3_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+```
+
+And repeat it for imputations:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/expression_impute/'
+phenotypes = c('res_rh_caudalanteriorcingulate_volume',
+               'res_norm_ACC_vol', 'res_ACC_volume',
+               'res_norm_Caudate_vol', 'res_Caudate_volume')
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+ncpu=2
+md = 'MASHR'
+
+for (phen in phenotypes) {
+    if (grepl(x=phen, pattern='Caudate') || grepl(x=phen, pattern='ATR')) {
+        region = 'caudate'
+    } else {
+        region = 'ACC'
+    }
+    res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                    header=1)
+    id_num = sapply(res$gene, function(x) strsplit(x=x, split='\\.')[[1]][1])
+    dups = duplicated(id_num)
+    id_num = id_num[!dups]
+    res$id_num = id_num
+
+    imnamed = res$id_num %in% G_list$ensembl_gene_id
+    res = res[imnamed, ]
+    G_list2 = merge(G_list, res, by.x='ensembl_gene_id', by.y='id_num')
+    imautosome = which(G_list2$chromosome_name != 'X' &
+                    G_list2$chromosome_name != 'Y' &
+                    G_list2$chromosome_name != 'MT')
+    G_list2 = G_list2[imautosome, ]
+    tmp = G_list2[, c('hgnc_symbol', 'pvalue', 'zscore')]
+    ranks = -log(tmp$pvalue) * sign(tmp$zscore)
+    tmp2 = data.frame(hgnc_symbol=tmp$hgnc_symbol, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+    
+    db = 'my_liao_twas'
+    cat(md, phen, db, '\n')
+    project_name = sprintf('logP_%s_%s_%s', md, phen, db)
+    # make sure no dots in the name
+    project_name = gsub(x=project_name, pattern='\\.',
+                        replacement='_')
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                minNum=3,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000,
+                                outputDirectory = data_dir,
+                                projectName=project_name,
+                                maxNum=800)
+    out_fname = sprintf('%s/WG3_%s_%s_%s_10K.csv', data_dir,
+                        md, phen, db)
+    out_fname = gsub(x=out_fname, pattern='\\.',
+                        replacement='_')
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+```
