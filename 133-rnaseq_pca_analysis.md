@@ -1011,7 +1011,7 @@ fit2 <- eBayes( fit )
 rnaseq_acc = topTable(fit2, coef='DiagnosisCase', number=Inf)
 ```
 
-And we repeat it for ACC:
+And we repeat it for Caudate:
 
 ```r
 myregion = 'Caudate'

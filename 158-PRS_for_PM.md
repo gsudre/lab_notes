@@ -443,3 +443,500 @@ data_app = m[, c(1:51, 76:87)]
 
 And of course we'll need to try this for all possible PRS values. Let's try the
 PCA approach first, as it's easier to quantify the results.
+
+Now that I'm re-reading the paper, they only took the first PC in Fig 3 to
+compare the different modalities. For PRS, they used the formula in the
+supplement. So, let's just go with that. I can use the formula to obtain the
+best PRS threshold, and start examining that, but I'll likely eventually run all
+of them just for comparison.
+
+Actually, I think it's both. To come up with a single R2, you need one summary
+value, so in that case it has to be the first PC.
+
+```r
+library('fmsb')
+library(lmtest)
+mod.baseline = glm(Diagnosis ~ Sex + Age, family=binomial, data=data_whole)
+mod.full = glm(Diagnosis ~ PRS0.000100 + Sex + Age, family=binomial, data=data_whole)
+adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+prs.significance = lrtest(mod.baseline, mod.full)
+```
+
+So, if we are goig to try all of them:
+
+```r
+mydata = data_wnh
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+for (prs in prs_names) {
+    # fm_root = 'Diagnosis ~ %s Sex + Age'
+    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, '')
+    mod.baseline = glm(as.formula(fm_str), family=binomial, data=mydata)
+    fm_str = sprintf(fm_root, sprintf('%s +', prs))
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
+    adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, mod.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f\n', fm_str, myp))
+}
+```
+
+```
+(whole)
+Diagnosis ~ PRS0.000100 + Sex + Age: pval = 0.980
+Diagnosis ~ PRS0.001000 + Sex + Age: pval = 0.424
+Diagnosis ~ PRS0.010000 + Sex + Age: pval = 0.226
+Diagnosis ~ PRS0.100000 + Sex + Age: pval = 0.706
+Diagnosis ~ PRS0.000050 + Sex + Age: pval = 0.933
+Diagnosis ~ PRS0.000500 + Sex + Age: pval = 0.289
+Diagnosis ~ PRS0.005000 + Sex + Age: pval = 0.285
+Diagnosis ~ PRS0.050000 + Sex + Age: pval = 0.209
+Diagnosis ~ PRS0.500000 + Sex + Age: pval = 0.715
+Diagnosis ~ PRS0.400000 + Sex + Age: pval = 0.834
+Diagnosis ~ PRS0.300000 + Sex + Age: pval = 0.753
+Diagnosis ~ PRS0.200000 + Sex + Age: pval = 0.501
+
+(appropriate)
+Diagnosis ~ PRS0.000100 + Sex + Age: pval = 0.519
+Diagnosis ~ PRS0.001000 + Sex + Age: pval = 0.069
+Diagnosis ~ PRS0.010000 + Sex + Age: pval = 0.150
+Diagnosis ~ PRS0.100000 + Sex + Age: pval = 0.273
+Diagnosis ~ PRS0.000050 + Sex + Age: pval = 0.062
+Diagnosis ~ PRS0.000500 + Sex + Age: pval = 0.178
+Diagnosis ~ PRS0.005000 + Sex + Age: pval = 0.041
+Diagnosis ~ PRS0.050000 + Sex + Age: pval = 0.107
+Diagnosis ~ PRS0.500000 + Sex + Age: pval = 0.681
+Diagnosis ~ PRS0.400000 + Sex + Age: pval = 0.601
+Diagnosis ~ PRS0.300000 + Sex + Age: pval = 0.837
+Diagnosis ~ PRS0.200000 + Sex + Age: pval = 0.842
+
+(WNH)
+Diagnosis ~ PRS0.000100 + Sex + Age: pval = 0.670
+Diagnosis ~ PRS0.001000 + Sex + Age: pval = 0.910
+Diagnosis ~ PRS0.010000 + Sex + Age: pval = 0.802
+Diagnosis ~ PRS0.100000 + Sex + Age: pval = 0.744
+Diagnosis ~ PRS0.000050 + Sex + Age: pval = 0.624
+Diagnosis ~ PRS0.000500 + Sex + Age: pval = 0.854
+Diagnosis ~ PRS0.005000 + Sex + Age: pval = 0.586
+Diagnosis ~ PRS0.050000 + Sex + Age: pval = 0.618
+Diagnosis ~ PRS0.500000 + Sex + Age: pval = 0.968
+Diagnosis ~ PRS0.400000 + Sex + Age: pval = 0.934
+Diagnosis ~ PRS0.300000 + Sex + Age: pval = 0.999
+Diagnosis ~ PRS0.200000 + Sex + Age: pval = 0.941
+```
+
+It looks like using the "Appropriate" dataset has better results in predicting
+Diagnosis. But there are other cofounders there too, such as comorbidity and
+substance abuse, that are not being taken into this analysis. Let's at least add
+the population PCs just to mirror the Science paper a bit more and see if they
+have any difference. Just the first 5:
+
+```
+(whole)
+Diagnosis ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.435
+Diagnosis ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.380
+Diagnosis ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.117
+Diagnosis ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.092
+Diagnosis ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.542
+Diagnosis ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.585
+Diagnosis ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.054
+Diagnosis ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.194
+Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.015
+Diagnosis ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.018
+Diagnosis ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.045
+Diagnosis ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.138
+
+(appropriate)
+Diagnosis ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.676
+Diagnosis ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.471
+Diagnosis ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.140
+Diagnosis ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.057
+Diagnosis ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.405
+Diagnosis ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.528
+Diagnosis ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.013
+Diagnosis ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.125
+Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.004
+Diagnosis ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.009
+Diagnosis ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.019
+Diagnosis ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.065
+
+(WNH)
+Diagnosis ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.356
+Diagnosis ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.208
+Diagnosis ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.645
+Diagnosis ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.244
+Diagnosis ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.662
+Diagnosis ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.276
+Diagnosis ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.019
+Diagnosis ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.201
+Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.436
+Diagnosis ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.537
+Diagnosis ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.559
+Diagnosis ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.493
+```
+
+That made a huge difference. Good thing I tried it. Didn't impact WNH results as
+much, but that's fine.
+
+```r
+resids.pca = prcomp(t(resids), scale=TRUE)
+print(summary(resids.pca)$importance[, 'PC1'][2])
+pcs = resids.pca$x
+rownames(pcs) = data$hbcc_brain_id
+
+mydata = merge(pcs, data_app, by.x=0, by.y='hbcc_brain_id')
+for (prs in prs_names) {
+    fm_root = 'PC1 ~ %s Sex + Age'
+    fm_root = 'PC1 ~ %s 1'
+    # fm_root = 'PC1 ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, '')
+    mod.baseline = glm(as.formula(fm_str), family=gaussian, data=mydata)
+    fm_str = sprintf(fm_root, sprintf('%s + ', prs))
+    mod.full = glm(as.formula(fm_str), family=gaussian, data=mydata)
+    adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, mod.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f\n', fm_str, myp))
+}
+```
+
+```
+(whole)
+PC1 ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.794
+PC1 ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.434
+PC1 ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.543
+PC1 ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.667
+PC1 ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.081
+PC1 ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.997
+PC1 ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.912
+PC1 ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.960
+PC1 ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.295
+PC1 ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.250
+PC1 ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.437
+PC1 ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.866
+
+(appropriate)
+PC1 ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.465
+PC1 ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.365
+PC1 ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.690
+PC1 ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.952
+PC1 ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.370
+PC1 ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.620
+PC1 ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.525
+PC1 ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.863
+PC1 ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.471
+PC1 ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.387
+PC1 ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.528
+PC1 ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.924
+```
+
+Not much going on there. Maybe there is something if I remove the PCs? They were
+already somewhat removed to begin with...
+
+```
+(whole)
+PC1 ~ PRS0.000100 + Sex + Age: pval = 0.659
+PC1 ~ PRS0.001000 + Sex + Age: pval = 0.302
+PC1 ~ PRS0.010000 + Sex + Age: pval = 0.169
+PC1 ~ PRS0.100000 + Sex + Age: pval = 0.298
+PC1 ~ PRS0.000050 + Sex + Age: pval = 0.094
+PC1 ~ PRS0.000500 + Sex + Age: pval = 0.527
+PC1 ~ PRS0.005000 + Sex + Age: pval = 0.375
+PC1 ~ PRS0.050000 + Sex + Age: pval = 0.392
+PC1 ~ PRS0.500000 + Sex + Age: pval = 0.787
+PC1 ~ PRS0.400000 + Sex + Age: pval = 0.771
+PC1 ~ PRS0.300000 + Sex + Age: pval = 0.890
+PC1 ~ PRS0.200000 + Sex + Age: pval = 0.525
+
+(appropriate)
+PC1 ~ PRS0.000100 + Sex + Age: pval = 0.791
+PC1 ~ PRS0.001000 + Sex + Age: pval = 0.271
+PC1 ~ PRS0.010000 + Sex + Age: pval = 0.372
+PC1 ~ PRS0.100000 + Sex + Age: pval = 0.671
+PC1 ~ PRS0.000050 + Sex + Age: pval = 0.318
+PC1 ~ PRS0.000500 + Sex + Age: pval = 0.349
+PC1 ~ PRS0.005000 + Sex + Age: pval = 0.412
+PC1 ~ PRS0.050000 + Sex + Age: pval = 0.210
+PC1 ~ PRS0.500000 + Sex + Age: pval = 0.558
+PC1 ~ PRS0.400000 + Sex + Age: pval = 0.654
+PC1 ~ PRS0.300000 + Sex + Age: pval = 0.916
+PC1 ~ PRS0.200000 + Sex + Age: pval = 0.612
+```
+
+Not really. But if that's the logic, then I should remove age and sex as well:
+
+```
+(whole)
+PC1 ~ PRS0.000100 +  1: pval = 0.794
+PC1 ~ PRS0.001000 +  1: pval = 0.353
+PC1 ~ PRS0.010000 +  1: pval = 0.196
+PC1 ~ PRS0.100000 +  1: pval = 0.386
+PC1 ~ PRS0.000050 +  1: pval = 0.144
+PC1 ~ PRS0.000500 +  1: pval = 0.637
+PC1 ~ PRS0.005000 +  1: pval = 0.422
+PC1 ~ PRS0.050000 +  1: pval = 0.506
+PC1 ~ PRS0.500000 +  1: pval = 0.639
+PC1 ~ PRS0.400000 +  1: pval = 0.618
+PC1 ~ PRS0.300000 +  1: pval = 0.931
+PC1 ~ PRS0.200000 +  1: pval = 0.678
+
+(appropriate)
+PC1 ~ PRS0.000100 +  1: pval = 0.644
+PC1 ~ PRS0.001000 +  1: pval = 0.254
+PC1 ~ PRS0.010000 +  1: pval = 0.349
+PC1 ~ PRS0.100000 +  1: pval = 0.605
+PC1 ~ PRS0.000050 +  1: pval = 0.288
+PC1 ~ PRS0.000500 +  1: pval = 0.277
+PC1 ~ PRS0.005000 +  1: pval = 0.393
+PC1 ~ PRS0.050000 +  1: pval = 0.188
+PC1 ~ PRS0.500000 +  1: pval = 0.701
+PC1 ~ PRS0.400000 +  1: pval = 0.805
+PC1 ~ PRS0.300000 +  1: pval = 0.753
+PC1 ~ PRS0.200000 +  1: pval = 0.769
+```
+
+How about WNH?
+
+```r
+keep_me = data$hbcc_brain_id %in% wnh_brains
+resids.pca = prcomp(t(resids[, keep_me]), scale=TRUE)
+print(summary(resids.pca)$importance[, 'PC1'][2])
+pcs = resids.pca$x
+rownames(pcs) = data[keep_me,]$hbcc_brain_id
+
+mydata = merge(pcs, data_wnh, by.x=0, by.y='hbcc_brain_id')
+for (prs in prs_names) {
+    # fm_root = 'PC1 ~ %s Sex + Age'
+    # fm_root = 'PC1 ~ %s 1'
+    fm_root = 'PC1 ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, '')
+    mod.baseline = glm(as.formula(fm_str), family=gaussian, data=mydata)
+    fm_str = sprintf(fm_root, sprintf('%s + ', prs))
+    mod.full = glm(as.formula(fm_str), family=gaussian, data=mydata)
+    adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, mod.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f\n', fm_str, myp))
+}
+```
+
+```
+(WNH)
+PC1 ~ PRS0.000100 +  1: pval = 0.544
+PC1 ~ PRS0.001000 +  1: pval = 0.135
+PC1 ~ PRS0.010000 +  1: pval = 0.273
+PC1 ~ PRS0.100000 +  1: pval = 0.639
+PC1 ~ PRS0.000050 +  1: pval = 0.539
+PC1 ~ PRS0.000500 +  1: pval = 0.330
+PC1 ~ PRS0.005000 +  1: pval = 0.191
+PC1 ~ PRS0.050000 +  1: pval = 0.646
+PC1 ~ PRS0.500000 +  1: pval = 0.761
+PC1 ~ PRS0.400000 +  1: pval = 0.784
+PC1 ~ PRS0.300000 +  1: pval = 0.800
+PC1 ~ PRS0.200000 +  1: pval = 0.784
+
+PC1 ~ PRS0.000100 +  Sex + Age: pval = 0.306
+PC1 ~ PRS0.001000 +  Sex + Age: pval = 0.043
+PC1 ~ PRS0.010000 +  Sex + Age: pval = 0.210
+PC1 ~ PRS0.100000 +  Sex + Age: pval = 0.621
+PC1 ~ PRS0.000050 +  Sex + Age: pval = 0.330
+PC1 ~ PRS0.000500 +  Sex + Age: pval = 0.096
+PC1 ~ PRS0.005000 +  Sex + Age: pval = 0.158
+PC1 ~ PRS0.050000 +  Sex + Age: pval = 0.546
+PC1 ~ PRS0.500000 +  Sex + Age: pval = 0.820
+PC1 ~ PRS0.400000 +  Sex + Age: pval = 0.819
+PC1 ~ PRS0.300000 +  Sex + Age: pval = 0.842
+PC1 ~ PRS0.200000 +  Sex + Age: pval = 0.733
+
+PC1 ~ PRS0.000100 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.814
+PC1 ~ PRS0.001000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.111
+PC1 ~ PRS0.010000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.875
+PC1 ~ PRS0.100000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.221
+PC1 ~ PRS0.000050 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.702
+PC1 ~ PRS0.000500 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.121
+PC1 ~ PRS0.005000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.811
+PC1 ~ PRS0.050000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.271
+PC1 ~ PRS0.500000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.034
+PC1 ~ PRS0.400000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.040
+PC1 ~ PRS0.300000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.025
+PC1 ~ PRS0.200000 +  Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.045
+```
+
+Nothing to write home about... maybe there is something there in WNH-only, but
+that's only 30 subjects. If we're doing a WNH analysis, I think we'd need to do
+it from scratch, including the initial removal of PCs?
+
+Just because I'll wonder about this later, doing resids(fit) = resids(fit2), so
+we don't need to worry about doing it in the results of lmFit or Bayes.
+
+But let's check on the individual genes. Anything interesting there? Let's go
+with our best PRS and then I can try other things:
+
+```r
+lcpm = cpm(genes, log=T)
+set.seed(42)
+lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+
+library(nFactors)
+eigs <- lcpm.pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(lcpm.pca$x[, keep_me])
+rownames(mydata) = data$hbcc_brain_id
+
+data2 = merge(data_app, mydata, by.x='hbcc_brain_id', by.y=0)
+genes2 = genes[, data$hbcc_brain_id %in% data2$hbcc_brain_id]
+form = ~ PRS0.500000 + PC1 + PC2 + PC7 + PC8 + PC9
+design = model.matrix( form, data2)
+vobj = voom( genes2, design, plot=FALSE)
+prs.fit <- lmFit(vobj, design)
+prs.fit2 <- eBayes( prs.fit )
+res = topTable(prs.fit2, coef='PRS0.500000', number=Inf)
+```
+
+OK, now I have lots of results. What to do? Maybe first we should check if there
+is a significant overlap between these genes and the PM_ACC genes?
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+for (t in c(.05, .01, .005, .001)) {
+    prs_genes = res[res$P.Value < t, 'hgnc_symbol']
+    dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
+    go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+    go.obj <- testGeneOverlap(go.obj)
+    inter = intersect(prs_genes, dx_genes)
+    pval = getPval(go.obj)
+    cat(sprintf('t=%.3f, prs=%d, pm=%d, in=%d, p=%f\n', t,
+                length(prs_genes), length(dx_genes), length(inter), pval))
+}
+```
+
+This is a potentially cool result. 
+
+```
+t=0.050, prs=1504, pm=1335, in=202, p=0.000000
+t=0.010, prs=305, pm=325, in=19, p=0.000004
+t=0.005, prs=168, pm=165, in=10, p=0.000004
+t=0.001, prs=42, pm=38, in=1, p=0.086516
+```
+
+So, these are quite cool. Anything in the caudate?
+
+```r
+myregion = 'Caudate'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+# we're down from 60K to 38K samples by only looking at the ones with hgnc symbol. We might be losing too much here, so it's a step to reconsider in the future
+
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+lcpm = cpm(genes, log=T)
+set.seed(42)
+lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+
+library(nFactors)
+eigs <- lcpm.pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(lcpm.pca$x[, keep_me])
+rownames(mydata) = data$hbcc_brain_id
+
+data2 = merge(data_app, mydata, by.x='hbcc_brain_id', by.y=0)
+genes2 = genes[, data$hbcc_brain_id %in% data2$hbcc_brain_id]
+form = ~ PRS0.500000 + PC1 + PC3 + PC5 + PC6 + PC8
+design = model.matrix( form, data2)
+vobj = voom( genes2, design, plot=FALSE)
+prs.fit <- lmFit(vobj, design)
+prs.fit2 <- eBayes( prs.fit )
+res2 = topTable(prs.fit2, coef='PRS0.500000', number=Inf)
+```
+
+Then we run the same over-representation analysis:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+for (t in c(.05, .01, .005, .001)) {
+    prs_genes = res2[res2$P.Value < t, 'hgnc_symbol']
+    dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t, 'hgnc_symbol']
+    go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+    go.obj <- testGeneOverlap(go.obj)
+    inter = intersect(prs_genes, dx_genes)
+    pval = getPval(go.obj)
+    cat(sprintf('t=%.3f, prs=%d, pm=%d, in=%d, p=%f\n', t,
+                length(prs_genes), length(dx_genes), length(inter), pval))
+}
+```
+
+And this is the Caudate... interesting:
+
+```
+t=0.050, prs=1339, pm=1063, in=72, p=0.860254
+t=0.010, prs=264, pm=220, in=1, p=0.964251
+t=0.005, prs=125, pm=117, in=0, p=1.000000
+t=0.001, prs=27, pm=26, in=0, p=1.000000
+```
+
+
+# TODO
+* PRS to full gene set
+* PRS to first PC
+* is there a difference if we use residuals from lmFit?
+* look at Caudate even if ACC is a bust?
+* do WNH analysis from scratch?

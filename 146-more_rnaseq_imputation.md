@@ -602,7 +602,54 @@ for (phen in phenotypes) {
 }
 ```
 
+# 2020-12-03 20:00:04
 
+Let's see if our currently chosen phenotypes show any sort of relationship to
+our clinical metrics. Based on our results, we'll go with: Caudate_volume and
+ACC_volume.
+
+Let's try to do it with the WNH cohort we have been playing with. We can add
+more people later if needed.
+
+```r
+phen = 'ACC_volume'
+my_dir = '~/data/expression_impute/'
+brain_data = read.delim(sprintf('%s/phen_res_%s.tab', my_dir, phen))
+brain_data$SID = as.numeric(gsub(x=brain_data$IID, replacement = '',
+                                 pattern = 'SID.'))
+
+clin = read.csv('~/data/expression_impute//augmented_anon_clinical_10242020.csv')
+clin_slim = clin[, c('SID', 'everADHD_dsm', 'maxOverTimeSX_inatt',
+                     'maxOverTimeSX_hi')]
+clin_slim = clin_slim[!duplicated(clin_slim$SID),]
+m = merge(brain_data, clin_slim, by='SID')
+
+num_vars = c('maxOverTimeSX_inatt', 'maxOverTimeSX_hi')
+pvals = c()
+for (x in num_vars) {
+    res = cor.test(m[, x], m$phen)
+    pvals = c(pvals, res$p.value)
+}
+categ_vars = c('everADHD_dsm')
+for (x in categ_vars) {
+    idx = m[,x] == levels(factor(m[,x]))[1]
+    res = t.test(m[idx, 'phen'], m[!idx, phen])
+    pvals = c(pvals, res$p.value)
+}
+names(pvals) = c(num_vars, categ_vars)
+print(pvals)
+```
+
+```
+(Caudate)
+maxOverTimeSX_inatt    maxOverTimeSX_hi        everADHD_dsm 
+          0.3590426           0.6421900           0.7521822 
+(ACC)
+maxOverTimeSX_inatt    maxOverTimeSX_hi        everADHD_dsm 
+          0.3970843           0.7550794           0.4280699 
+```
+
+Nothing here.
 
 # TODO
 
