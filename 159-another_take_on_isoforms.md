@@ -4,7 +4,7 @@ Let's try a similar approach for isoforms, similar to what what did for the gene
 expression analysis.
 
 ```r
-df = read.delim('~/data/isoforms/Downloads/OneDrive_1_12-1-2020//shaw_adhd.rsem_output.tpm.tsv')
+df = read.delim('~/data/isoforms/shaw_adhd.rsem_output.tpm.tsv')
 a = lapply(df[,1], function(x) strsplit(x, split='\\|'))
 meta_iso = t(data.frame(a))
 colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name', 'hgnb_symbol','id4', 'read_type')
@@ -31,6 +31,13 @@ data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
 data$MoD = factor(data$Manner.of.Death)
 data$batch = factor(data$run_date)
 data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
 samples = data
 
 # align data and samples without merging them
@@ -49,6 +56,7 @@ myregion = 'ACC'
 idx = samples$Region==myregion
 meta = samples[idx, ]
 data = data_iso[, idx]
+rownames(data) = meta_iso[,'id1']
 
 library(edgeR)
 library(ggplot2)
@@ -68,25 +76,22 @@ necessary.
 
 Let's then set up our usual PCA analysis:
 
-
-
-
-
-
-
-
-
-
 ```r
+# remove some bad variables
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(data), method = pp_order)
+X = predict(pp, t(data))
+trans_quant = t(X)
+
 set.seed(42)
-lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+pca <- prcomp(t(trans_quant), scale=TRUE)
 library(nFactors)
-eigs <- lcpm.pca$sdev^2
+eigs <- pca$sdev^2
 nS = nScree(x=eigs)
 keep_me = 1:nS$Components$nkaiser
-mydata = data.frame(lcpm.pca$x[, keep_me])
 
-std_dev <- lcpm.pca$sdev
+std_dev <- pca$sdev
 pr_var <- std_dev^2
 prop_varex <- pr_var/sum(pr_var)
 plot(prop_varex, xlab = "Principal Component",
@@ -94,11 +99,13 @@ plot(prop_varex, xlab = "Principal Component",
              type = "b")
 ```
 
-![](images/2020-10-06-06-34-10.png)
+![](images/2020-12-08-09-46-56.png)
 
-Kaiser selects 11 as well, which makes sense in the variance explained plot too.
+Kaiser selects 14 as well, which is a bit high based on the plot but not too
+extreme.
 
 ```r
+mydata = data.frame(pca$x[, keep_me])
 num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
              'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
 pc_vars = colnames(mydata)
@@ -107,7 +114,7 @@ num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
 num_pvals = num_corrs
 for (x in num_vars) {
     for (y in pc_vars) {
-        res = cor.test(data[, x], mydata[, y])
+        res = cor.test(meta[, x], mydata[, y])
         num_corrs[x, y] = res$estimate
         num_pvals[x, y] = res$p.value
     }
@@ -117,7 +124,7 @@ library(corrplot)
 corrplot(t(num_corrs), method='color', tl.cex=.5, cl.cex=.5)
 ```
 
-![](images/2020-10-06-06-35-33.png)
+![](images/2020-12-08-09-49-40.png)
 
 ```r
 categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
@@ -127,7 +134,7 @@ categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
 categ_pvals = categ_corrs
 for (x in categ_vars) {
     for (y in pc_vars) {
-        res = kruskal.test(mydata[, y], data[, x])
+        res = kruskal.test(mydata[, y], meta[, x])
         categ_corrs[x, y] = res$statistic
         categ_pvals[x, y] = res$p.value
     }
@@ -135,29 +142,59 @@ for (x in categ_vars) {
 corrplot(t(categ_corrs), method='color', tl.cex=.5, cl.cex=.5, is.corr=F)
 ```
 
-![](images/2020-10-06-06-35-56.png)
+![](images/2020-12-08-10-01-24.png)
 
 ```
 r$> which(num_pvals < .01, arr.ind = T)                               
                         row col
-RINe                      4   1
-pcnt_optical_duplicates   1   3
-clusters                  2   6
-Age                       3   6
-PMI                       5   6
-Age                       3   8
+clusters                  2   1
+PMI                       5   1
+pcnt_optical_duplicates   1   2
+C6                       11   3
+RINe                      4  12
 
 r$> which(categ_pvals < .01, arr.ind = T)                             
       row col
 batch   1   1
+batch   1   2
 batch   1   3
 batch   1   5
 batch   1   6
-MoD     3   8
+batch   1   9
+
+r$> min(categ_pvals['Diagnosis',])                                                 
+[1] 0.08803465
 ```
+
+OK, so let's remove PCs 1, 2, 3, 5, 6, 9, and 12.
+
+```r
+data2 = DGEList(trans_quant,
+                genes=meta_iso[meta_iso[, 'id1'] %in% rownames(trans_quant),],
+                samples=cbind(meta, mydata))
+form = ~ Diagnosis + PC1 + PC2 + PC3 + PC5 + PC6 + PC9 + PC12
+design = model.matrix( form, t(data2))
+fit <- lmFit(t(data2), design)
+fit <- eBayes(fit)
+iso_res = topTable(fit, coef='Diagnosis', number=Inf)
+```
+
+This last bit is not working. Why not follow a more standard pipeline, like
+this:
+
+http://www.bioconductor.org/packages/devel/workflows/vignettes/rnaseqDTU/inst/doc/rnaseqDTU.html
+
 
 
 
 # TODO
  * do the FDR results change if we slice it first?
  * redo DGE analysis using annotations and slicing from isoform data
+
+# Good resources
+ * DTE: https://mikelove.github.io/counts-model/index.html
+ * https://www.longdom.org/open-access/bioinformatics-tools-for-rnaseq-gene-and-isoform-quantification-2469-9853-1000140.pdf
+ * DTE: https://ycl6.gitbook.io/guide-to-rna-seq-analysis/differential-expression-analysis/differential-transcript-expression/dte-analysis-with-salmon-input
+ * http://bioconductor.org/packages/release/bioc/vignettes/IHW/inst/doc/introduction_to_ihw.html
+ * DTU: http://bioconductor.org/packages/release/workflows/vignettes/rnaseqDTU/inst/doc/rnaseqDTU.html
+ * DTE: https://angus.readthedocs.io/en/2019/diff-ex-and-viz.html
