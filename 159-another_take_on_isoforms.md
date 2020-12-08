@@ -184,12 +184,36 @@ this:
 
 http://www.bioconductor.org/packages/devel/workflows/vignettes/rnaseqDTU/inst/doc/rnaseqDTU.html
 
+Will try later. For now, I can also just parallelize lm?
 
+```r
+library(vows)
+form = (~ meta$Diagnosis + mydata$PC1 + mydata$PC2 + mydata$PC3 + mydata$PC5
+        + mydata$PC6 + mydata$PC9 + mydata$PC12)
+res = summary(lm.mp(t(trans_quant), form))
+pvals = res$pvalue['meta$DiagnosisCase',]
+```
+
+So, this would be the exact same thing we did for our previous DGE analysis,
+except that now I'm using the raw TPM data I got from David. Not sur eif that's
+Kosher, but that's what they did in the Science paper. It might be nice to try
+some of the more standardized pipelines I outlined below, which take into
+consideration uncertainties and multiple isoforms for the same gene. Also, I
+still need to run DTU, but that's simply a rescaling of the DTE data, if using
+the same pipeline from the Science paper.
+
+Note that I cannot just use David's results here because I don't have the
+p-values for his method using PRS as the predictor.
 
 
 # TODO
- * do the FDR results change if we slice it first?
+ * DTU
+ * gene enrichment with DTE
+ * PRS overlap
+ * do the DTE FDR results change if we slice it first?
  * redo DGE analysis using annotations and slicing from isoform data
+ * how about a local differential splicing analysis like the one in the paper?
+
 
 # Good resources
  * DTE: https://mikelove.github.io/counts-model/index.html
