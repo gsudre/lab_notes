@@ -7,22 +7,18 @@ expression analysis.
 df = read.delim('~/data/isoforms/shaw_adhd.rsem_output.tpm.tsv')
 a = lapply(df[,1], function(x) strsplit(x, split='\\|'))
 meta_iso = t(data.frame(a))
-colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name',
-                        'hgnb_symbol','id4', 'read_type')
+colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name', 'hgnb_symbol','id4', 'read_type')
 data_iso = df[, 2:ncol(df)] 
 
 # let's add some sample data
-fname = '~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv'
-df = read.csv(fname)
+df = read.csv('~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv')
 df = df[!duplicated(df$submitted_name),]
 sn = gsub(x=rownames(data), pattern='X', replacement='')
 pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
 m = merge(df, pop_code, by='hbcc_brain_id')
 pcs = read.table('~/data/rnaseq_derek/HM3_b37mds.mds', header=1)
-myids = sapply(1:nrow(pcs),
-               function(x) as.numeric(gsub('BR', '',
-                                           strsplit(as.character(pcs[x,'IID']),
-                                                    '_')[[1]][1])))
+myids = sapply(1:nrow(pcs), function(x) as.numeric(gsub('BR', '',
+                                                        strsplit(as.character(pcs[x,'IID']), '_')[[1]][1])))
 pcs$numids = myids
 data = merge(m, pcs, by.x='hbcc_brain_id', by.y='numids', all.x=T, all.y=F)
 data$POP_CODE = as.character(data$POP_CODE)
@@ -166,7 +162,7 @@ batch   1   5
 batch   1   6
 batch   1   9
 
-r$> min(categ_pvals['Diagnosis',]                                                 
+r$> min(categ_pvals['Diagnosis',])                                                 
 [1] 0.08803465
 ```
 
@@ -208,6 +204,82 @@ the same pipeline from the Science paper.
 
 Note that I cannot just use David's results here because I don't have the
 p-values for his method using PRS as the predictor.
+
+# 2020-12-09 14:21:41
+
+Let's capture all those results:
+
+```r
+junk = data.frame(P.Value=res$pvalue['meta$DiagnosisCase',],
+                  t=res$tstat['meta$DiagnosisCase',],
+                  adj.P.Val=p.adjust(res$pvalue['meta$DiagnosisCase',],
+                                     method='fdr'))
+res_dx = merge(junk, meta_iso, by.x=0, by.y='id1')
+res_dx = res_dx[order(res_dx$P.Value), ]
+```
+
+And do the same for PRS:
+
+```r
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using the most appropriate PRS
+m = merge(meta, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data_app = m[, c(1:50, 76:87)]
+data_app = data_app[order(data_app$submitted_name),]
+```
+
+NEED TO MAKE SURE SAMPLE INFORMATION ALIGN BETWEEN META, MYDATE, AND ACTUAL
+DATA!
+
+We might as well run it for all thresholds:
+
+```r
+library(GeneOverlap)
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ meta$%s + mydata$PC1 + mydata$PC2 + mydata$PC7 + mydata$PC8 + mydata$PC9', p))
+    res = summary(lm.mp(t(trans_quant), form))
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t, 'hgnc_symbol']
+        dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/post_mortem/all_acc_prs_overlap_results.csv',
+          row.names=F)
+```
+
+
 
 
 # TODO
