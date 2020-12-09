@@ -5,7 +5,7 @@ expression analysis.
 
 ```r
 df = read.delim('~/data/isoforms/shaw_adhd.rsem_output.tpm.tsv')
-a = lapply(df[,1], function(x) strsplit(x, split='\\|'))
+a = lapply(df[,1], function(x) strsplit(as.character(x), split="\\|"))
 meta_iso = t(data.frame(a))
 colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name',
                         'hgnb_symbol','id4', 'read_type')
