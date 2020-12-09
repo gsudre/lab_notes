@@ -7,18 +7,22 @@ expression analysis.
 df = read.delim('~/data/isoforms/shaw_adhd.rsem_output.tpm.tsv')
 a = lapply(df[,1], function(x) strsplit(x, split='\\|'))
 meta_iso = t(data.frame(a))
-colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name', 'hgnb_symbol','id4', 'read_type')
+colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name',
+                        'hgnb_symbol','id4', 'read_type')
 data_iso = df[, 2:ncol(df)] 
 
 # let's add some sample data
-df = read.csv('~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv')
+fname = '~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv'
+df = read.csv(fname)
 df = df[!duplicated(df$submitted_name),]
 sn = gsub(x=rownames(data), pattern='X', replacement='')
 pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
 m = merge(df, pop_code, by='hbcc_brain_id')
 pcs = read.table('~/data/rnaseq_derek/HM3_b37mds.mds', header=1)
-myids = sapply(1:nrow(pcs), function(x) as.numeric(gsub('BR', '',
-                                                        strsplit(as.character(pcs[x,'IID']), '_')[[1]][1])))
+myids = sapply(1:nrow(pcs),
+               function(x) as.numeric(gsub('BR', '',
+                                           strsplit(as.character(pcs[x,'IID']),
+                                                    '_')[[1]][1])))
 pcs$numids = myids
 data = merge(m, pcs, by.x='hbcc_brain_id', by.y='numids', all.x=T, all.y=F)
 data$POP_CODE = as.character(data$POP_CODE)
@@ -162,7 +166,7 @@ batch   1   5
 batch   1   6
 batch   1   9
 
-r$> min(categ_pvals['Diagnosis',])                                                 
+r$> min(categ_pvals['Diagnosis',]                                                 
 [1] 0.08803465
 ```
 
