@@ -172,3 +172,10 @@ r$> table(net$colors)
 I don't think this looks right. We have one module with 16K genes, and then 4
 others? (0 is not assigned). Will need to tweak some stuff around before  go
 further on this. 
+
+# 2020-12-10 07:19:43
+
+Philip said I should check out this paper for networks:
+
+https://www.nature.com/articles/s41380-018-0304-1
+

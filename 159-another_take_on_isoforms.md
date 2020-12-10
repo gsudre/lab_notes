@@ -7,18 +7,22 @@ expression analysis.
 df = read.delim('~/data/isoforms/shaw_adhd.rsem_output.tpm.tsv')
 a = lapply(df[,1], function(x) strsplit(as.character(x), split="\\|"))
 meta_iso = t(data.frame(a))
-colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name', 'hgnb_symbol','id4', 'read_type')
+colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name',
+                        'hgnc_symbol','id4', 'read_type')
 data_iso = df[, 2:ncol(df)] 
 
 # let's add some sample data
-df = read.csv('~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv')
+fname = '~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv'
+df = read.csv(fname)
 df = df[!duplicated(df$submitted_name),]
 sn = gsub(x=rownames(data), pattern='X', replacement='')
 pop_code = read.csv('~/data/rnaseq_derek/file_pop.csv')
 m = merge(df, pop_code, by='hbcc_brain_id')
 pcs = read.table('~/data/rnaseq_derek/HM3_b37mds.mds', header=1)
-myids = sapply(1:nrow(pcs), function(x) as.numeric(gsub('BR', '',
-                                                        strsplit(as.character(pcs[x,'IID']), '_')[[1]][1])))
+myids = sapply(1:nrow(pcs),
+               function(x) as.numeric(gsub('BR', '',
+                                           strsplit(as.character(pcs[x,'IID']),
+                                                    '_')[[1]][1])))
 pcs$numids = myids
 data = merge(m, pcs, by.x='hbcc_brain_id', by.y='numids', all.x=T, all.y=F)
 data$POP_CODE = as.character(data$POP_CODE)
@@ -162,7 +166,7 @@ batch   1   5
 batch   1   6
 batch   1   9
 
-r$> min(categ_pvals['Diagnosis',])                                                 
+r$> min(categ_pvals['Diagnosis',]                                                 
 [1] 0.08803465
 ```
 
@@ -244,13 +248,15 @@ data_app = m[, c(1:50, 76:87)]
 data_app = data_app[order(data_app$submitted_name),]
 ```
 
-NEED TO MAKE SURE SAMPLE INFORMATION ALIGN BETWEEN META, MYDATE, AND ACTUAL
-DATA!
-
 We might as well run it for all thresholds:
 
 ```r
 library(GeneOverlap)
+library(vows)
+
+# first sample doesn't have prs
+trans_quant2 = trans_quant[, 2:ncol(trans_quant)]
+mydata2 = mydata[2:nrow(mydata), ]
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
@@ -258,13 +264,19 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
 all_res = c()
 for (p in prs_names) {
     cat(p, '\n')
-    form = as.formula(sprintf('~ meta$%s + mydata$PC1 + mydata$PC2 + mydata$PC7 + mydata$PC8 + mydata$PC9', p))
-    res = summary(lm.mp(t(trans_quant), form))
-
+    p_str = sprintf('data_app$%s', p)
+    form = as.formula(sprintf('~ %s + mydata2$PC1 + mydata2$PC2 + mydata2$PC3 +
+                              mydata2$PC5 + mydata2$PC6 + mydata2$PC9 +
+                              mydata2$PC12', p_str))
+    res = summary(lm.mp(t(trans_quant2), form))
+    junk = data.frame(P.Value=res$pvalue[p_str,], t=res$tstat[p_str,],
+                      adj.P.Val=p.adjust(res$pvalue[p_str,], method='fdr'))
+    res_prs = merge(junk, meta_iso, by.x=0, by.y='id1')
+    res_prs = res_prs[order(res_prs$P.Value), ]
     for (t in c(.05, .01, .005, .001)) {
-        prs_genes = res[res$P.Value < t, 'hgnc_symbol']
-        dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t, 'hgnc_symbol']
-        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        prs_genes = res_prs[res_prs$P.Value < t, 'hgnc_symbol']
+        dx_genes = res_dx[res_dx$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res_prs))
         go.obj <- testGeneOverlap(go.obj)
         inter = intersect(prs_genes, dx_genes)
         pval = getPval(go.obj)
@@ -275,10 +287,565 @@ for (p in prs_names) {
 }
 colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
                       'overlap', 'pval')
-write.csv(all_res, file='~/data/post_mortem/all_acc_prs_overlap_results.csv',
+write.csv(all_res, file='~/data/isoforms/DTE_acc_prs_overlap_results.csv',
           row.names=F)
 ```
 
+And we can run a similar analysis for Caudate:
+
+```r
+myregion = 'Caudate'
+
+idx = samples$Region==myregion
+meta = samples[idx, ]
+data = data_iso[, idx]
+rownames(data) = meta_iso[,'id1']
+set.seed(42)
+mds = plotMDS(data, plot=F)
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       batch=meta$batch,
+                       group=meta$Diagnosis)
+quartz()
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
+```
+
+![](images/2020-12-09-20-29-36.png)
+
+We again have a clear batch effect, but this time we could consider the two
+samples top left and the one bottom left as outliers. Let's get rid of them
+before running the usual PCA analysis:
+
+```r
+mds_good = mds$y < 3000 & mds$y > -3000
+meta = meta[mds_good, ]
+data = data[, mds_good]
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(data), method = pp_order)
+X = predict(pp, t(data))
+trans_quant = t(X)
+set.seed(42)
+pca <- prcomp(t(trans_quant), scale=TRUE)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+std_dev <- pca$sdev
+pr_var <- std_dev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+![](images/2020-12-09-20-35-13.png)
+
+Kaiser selects 15 this time, which is alright.
+
+```r
+mydata = data.frame(pca$x[, keep_me])
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(meta[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+library(corrplot)
+corrplot(t(num_corrs), method='color', tl.cex=.5, cl.cex=.5)
+```
+
+![](images/2020-12-09-20-36-04.png)
+
+```r
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], meta[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+corrplot(t(categ_corrs), method='color', tl.cex=.5, cl.cex=.5, is.corr=F)
+```
+
+![](images/2020-12-09-20-36-27.png)
+
+```
+r$> which(num_pvals < .01, arr.ind = T)                                                                                        
+                        row col
+clusters                  2   1
+RINe                      4   1
+PMI                       5   1
+pcnt_optical_duplicates   1   3
+RINe                      4   4
+C10                      15   4
+C1                        6  14
+C2                        7  14
+C4                        9  14
+
+r$> which(categ_pvals < .01, arr.ind = T)                                                                                      
+               row col
+batch            1   1
+batch            1   2
+comorbid_group   5   2
+batch            1   3
+Diagnosis        2  14
+batch            1  15
+```
+
+The issue here is that PC14 is related to Diagnosis and also several population
+components, so I can't really take it out... let's remove 1, 2, 3, 4, and 15.
+
+```r
+form = (~ meta$Diagnosis + mydata$PC1 + mydata$PC2 + mydata$PC3 + mydata$PC4
+        + mydata$PC15)
+res = summary(lm.mp(t(trans_quant), form))
+junk = data.frame(P.Value=res$pvalue['meta$DiagnosisCase',],
+                  t=res$tstat['meta$DiagnosisCase',],
+                  adj.P.Val=p.adjust(res$pvalue['meta$DiagnosisCase',],
+                                     method='fdr'))
+res_dx = merge(junk, meta_iso, by.x=0, by.y='id1')
+res_dx = res_dx[order(res_dx$P.Value), ]
+
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using the most appropriate PRS
+m = merge(meta, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data_app = m[, c(1:50, 76:87)]
+data_app = data_app[order(data_app$submitted_name),]
+
+# first sample doesn't have prs
+trans_quant2 = trans_quant[, 2:ncol(trans_quant)]
+mydata2 = mydata[2:nrow(mydata), ]
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    p_str = sprintf('data_app$%s', p)
+    form = as.formula(sprintf('~ %s + mydata2$PC1 + mydata2$PC2 + mydata2$PC3 +
+                              mydata2$PC4 + mydata2$PC15', p_str))
+    res = summary(lm.mp(t(trans_quant2), form))
+    junk = data.frame(P.Value=res$pvalue[p_str,], t=res$tstat[p_str,],
+                      adj.P.Val=p.adjust(res$pvalue[p_str,], method='fdr'))
+    res_prs = merge(junk, meta_iso, by.x=0, by.y='id1')
+    res_prs = res_prs[order(res_prs$P.Value), ]
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res_prs[res_prs$P.Value < t, 'hgnc_symbol']
+        dx_genes = res_dx[res_dx$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res_prs))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/isoforms/DTE_caudate_prs_overlap_results.csv',
+          row.names=F)
+```
+
+A quick note that we had no hits at FDR q < .05 in either Caudate or ACC for the
+DX analysis.
+
+# 2020-12-10 06:56:28
+
+Let's try the same code above, but using DTU this time. According to David, the
+percentages were calculated in his code: it's just the counts divided by the sum
+of isoform counts for a particular gene. So, let's do that for the entire
+matrix so we do it only once, then just repeat the entire analysis:
+
+```r
+data_pct = data_iso
+for (g in unique(meta_iso[,'hgnc_symbol'])) {
+    gene_rows = meta_iso[,'hgnc_symbol']==g
+    gene_data = data_iso[gene_rows, ]
+    gene_sums = colSums(gene_data)
+    data_pct[gene_rows, ] = gene_data / gene_sums
+}
+# saving it because it took a while to compute
+saveRDS(data_pct, file='~/data/isoforms/shaw_adhd.rsem_output_DTU.rds')
+
+myregion = 'ACC'
+
+idx = samples$Region==myregion
+meta = samples[idx, ]
+data = data_pct[, idx]
+rownames(data) = meta_iso[,'id1']
+set.seed(42)
+mds = plotMDS(data, plot=F)
+plot_data = data.frame(x=mds$x, y=mds$y,
+                       batch=meta$batch,
+                       group=meta$Diagnosis)
+quartz()
+ggplot(plot_data, aes(x=x, y=y, shape=group, color=batch)) + geom_point()
+```
+
+![](images/2020-12-10-10-26-41.png)
+
+This has a weird distribution... I don't want to remve anyone yet, but it might
+be needed in the future...
+
+```r
+# remove markers with at least one NA or Inf... introduced in the percentage calculation
+data = data[rowSums(is.na(data)) == 0, ]
+data = data[rowSums(data == Inf) == 0, ]
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(data), method = pp_order)
+X = predict(pp, t(data))
+trans_quant = t(X)
+set.seed(42)
+pca <- prcomp(t(trans_quant), scale=TRUE)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+std_dev <- pca$sdev
+pr_var <- std_dev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+![](images/2020-12-10-10-37-26.png)
+
+Kaiser selects 19 this time, which is alright.
+
+```r
+mydata = data.frame(pca$x[, keep_me])
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(meta[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+library(corrplot)
+corrplot(t(num_corrs), method='color', tl.cex=.5, cl.cex=.5)
+```
+
+![](images/2020-12-10-10-38-02.png)
+
+```r
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], meta[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+corrplot(t(categ_corrs), method='color', tl.cex=.5, cl.cex=.5, is.corr=F)
+```
+
+![](images/2020-12-10-10-38-26.png)
+
+```
+r$> which(num_pvals < .01, arr.ind = T)                                     
+                        row col
+clusters                  2   1
+PMI                       5   1
+pcnt_optical_duplicates   1   2
+RINe                      4   3
+C6                       11   3
+RINe                      4  10
+RINe                      4  14
+C10                      15  18
+
+r$> which(categ_pvals < .01, arr.ind = T)                                   
+      row col
+batch   1   1
+batch   1   2
+batch   1   6
+MoD     3  11
+batch   1  13
+```
+
+Let's remove 1, 2, 3, 6, 10, 11, 13, 14 and 18.
+
+```r
+form = (~ meta$Diagnosis + mydata$PC1 + mydata$PC2 + mydata$PC3 + mydata$PC6
+        + mydata$PC10 + mydata$PC11 + mydata$PC13 + mydata$PC14 + mydata$PC18)
+res = summary(lm.mp(t(trans_quant), form))
+junk = data.frame(P.Value=res$pvalue['meta$DiagnosisCase',],
+                  t=res$tstat['meta$DiagnosisCase',],
+                  adj.P.Val=p.adjust(res$pvalue['meta$DiagnosisCase',],
+                                     method='fdr'))
+res_dx = merge(junk, meta_iso, by.x=0, by.y='id1')
+res_dx = res_dx[order(res_dx$P.Value), ]
+
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using the most appropriate PRS
+m = merge(meta, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data_app = m[, c(1:50, 76:87)]
+data_app = data_app[order(data_app$submitted_name),]
+
+# first sample doesn't have prs
+trans_quant2 = trans_quant[, 2:ncol(trans_quant)]
+mydata2 = mydata[2:nrow(mydata), ]
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    p_str = sprintf('data_app$%s', p)
+    form = as.formula(sprintf('~ %s + mydata2$PC1 + mydata2$PC2 + mydata2$PC3 +
+                               mydata2$PC6 + mydata2$PC10 + mydata2$PC11 +
+                               mydata2$PC13 + mydata2$PC14 + mydata2$PC18',
+                              p_str))
+    res = summary(lm.mp(t(trans_quant2), form))
+    junk = data.frame(P.Value=res$pvalue[p_str,], t=res$tstat[p_str,],
+                      adj.P.Val=p.adjust(res$pvalue[p_str,], method='fdr'))
+    res_prs = merge(junk, meta_iso, by.x=0, by.y='id1')
+    res_prs = res_prs[order(res_prs$P.Value), ]
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res_prs[res_prs$P.Value < t, 'hgnc_symbol']
+        dx_genes = res_dx[res_dx$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res_prs))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/isoforms/DTU_acc_prs_overlap_results.csv',
+          row.names=F)
+```
+
+And repeat the same stuff for Caudate:
+
+```r
+myregion = 'Caudate'
+
+idx = samples$Region==myregion
+meta = samples[idx, ]
+data = data_pct[, idx]
+rownames(data) = meta_iso[,'id1']
+# remove markers with at least one NA or Inf... introduced in the percentage calculation
+data = data[rowSums(is.na(data)) == 0, ]
+data = data[rowSums(data == Inf) == 0, ]
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(data), method = pp_order)
+X = predict(pp, t(data))
+trans_quant = t(X)
+set.seed(42)
+pca <- prcomp(t(trans_quant), scale=TRUE)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+std_dev <- pca$sdev
+pr_var <- std_dev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+![](images/2020-12-10-10-49-10.png)
+
+Kaiser selects 18 this time, which is alright.
+
+```r
+mydata = data.frame(pca$x[, keep_me])
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(meta[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+corrplot(t(num_corrs), method='color', tl.cex=.5, cl.cex=.5)
+```
+
+![](images/2020-12-10-10-49-44.png)
+
+```r
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], meta[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+corrplot(t(categ_corrs), method='color', tl.cex=.5, cl.cex=.5, is.corr=F)
+```
+
+![](images/2020-12-10-10-49-59.png)
+
+```
+r$> which(num_pvals < .01, arr.ind = T)                                     
+         row col
+clusters   2   1
+RINe       4   1
+PMI        5   1
+RINe       4   5
+C10       15   6
+clusters   2   7
+C1         6  17
+C2         7  17
+C4         9  17
+
+r$> which(categ_pvals < .01, arr.ind = T)                                   
+               row col
+batch            1   1
+batch            1   2
+batch            1   3
+comorbid_group   5   3
+batch            1   4
+batch            1   7
+batch            1  13
+```
+
+Let's remove 1, 2, 3, 4, 5, 6, 7, 13, and 17.
+
+```r
+form = (~ meta$Diagnosis + mydata$PC1 + mydata$PC2 + mydata$PC3 + mydata$PC4
+        + mydata$PC5 + mydata$PC6 + mydata$PC6 + mydata$PC7 + mydata$PC13
+        + mydata$PC17)
+res = summary(lm.mp(t(trans_quant), form))
+junk = data.frame(P.Value=res$pvalue['meta$DiagnosisCase',],
+                  t=res$tstat['meta$DiagnosisCase',],
+                  adj.P.Val=p.adjust(res$pvalue['meta$DiagnosisCase',],
+                                     method='fdr'))
+res_dx = merge(junk, meta_iso, by.x=0, by.y='id1')
+res_dx = res_dx[order(res_dx$P.Value), ]
+
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using the most appropriate PRS
+m = merge(meta, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data_app = m[, c(1:50, 76:87)]
+data_app = data_app[order(data_app$submitted_name),]
+
+# first sample doesn't have prs
+trans_quant2 = trans_quant[, 2:ncol(trans_quant)]
+mydata2 = mydata[2:nrow(mydata), ]
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    p_str = sprintf('data_app$%s', p)
+    form = as.formula(sprintf('~ %s + mydata2$PC1 + mydata2$PC2 + mydata2$PC3 +
+                               mydata2$PC4 + mydata2$PC5 + mydata2$PC6 +
+                               mydata2$PC6 + mydata2$PC7 + mydata2$PC13 +
+                               mydata2$PC17',
+                              p_str))
+    res = summary(lm.mp(t(trans_quant2), form))
+    junk = data.frame(P.Value=res$pvalue[p_str,], t=res$tstat[p_str,],
+                      adj.P.Val=p.adjust(res$pvalue[p_str,], method='fdr'))
+    res_prs = merge(junk, meta_iso, by.x=0, by.y='id1')
+    res_prs = res_prs[order(res_prs$P.Value), ]
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res_prs[res_prs$P.Value < t, 'hgnc_symbol']
+        dx_genes = res_dx[res_dx$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res_prs))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval = getPval(go.obj)
+        this_res = c(p, t, length(prs_genes), length(dx_genes), length(inter),
+                     pval)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res, file='~/data/isoforms/DTU_caudate_prs_overlap_results.csv',
+          row.names=F)
+```
 
 
 
