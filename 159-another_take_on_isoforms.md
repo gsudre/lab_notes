@@ -857,7 +857,7 @@ file.
 
 ```r
 library(WebGestaltR)
-
+library(tidyverse)
 data_dir = '~/data/isoforms/'
 load(sprintf('%s/DX_dte_dtu_results_12102020.RData', data_dir))
 ncpu=7
@@ -865,10 +865,14 @@ ncpu=7
 for (md in c('dte', 'dtu')) {
     for (region in c('acc', 'caudate')) {
         eval(parse(text=sprintf('tmp = %s_%s_dx', md, region)))
+        # selecting the best probe hit to run enrichment with
+        res = tmp %>% group_by(hgnc_symbol) %>%
+              slice_min(n=1, P.Value, with_ties=F)
+        res = as.data.frame(res)
 
         res = c()
         # will do it this way because of the two tails of T distribution... 
-        # just selecting the best probe hit to run enrichment with
+        
         for (g in unique(tmp$hgnc_symbol)) {
             gene_data = tmp[tmp$hgnc_symbol==g, ]
             best_res = which.max(abs(gene_data$t))
@@ -920,20 +924,8 @@ for (md in c('dte', 'dtu')) {
         }
     }
 }
-
 ```
 
-```r
-
-  merged_ids <- lapply(genes, function(g, df) {
-                                gdf = subset(df, hgnc_symbol == g);
-                                return(gdf[which.max(gdf$t),])},
-                       tmp)
-  # bind by rows the ID-specific merged dataframes
-  res_df = do.call(rbind, merged_ids)
-
-  return(res_df)
-  ```
 
 # TODO
  * DTU
