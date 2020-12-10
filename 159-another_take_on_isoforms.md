@@ -847,7 +847,93 @@ write.csv(all_res, file='~/data/isoforms/DTU_caudate_prs_overlap_results.csv',
           row.names=F)
 ```
 
+Again, results are highly significant... 
 
+## Gene enrichment
+
+Let's see if we find any enrichment for the DX results. Just so I don't have to
+keep re-running it all the time, I'll run the code above and save it in a RData
+file.
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/isoforms/'
+load(sprintf('%s/DX_dte_dtu_results_12102020.RData', data_dir))
+ncpu=7
+
+for (md in c('dte', 'dtu')) {
+    for (region in c('acc', 'caudate')) {
+        eval(parse(text=sprintf('tmp = %s_%s_dx', md, region)))
+
+        res = c()
+        # will do it this way because of the two tails of T distribution... 
+        # just selecting the best probe hit to run enrichment with
+        for (g in unique(tmp$hgnc_symbol)) {
+            gene_data = tmp[tmp$hgnc_symbol==g, ]
+            best_res = which.max(abs(gene_data$t))
+            res = rbind(res, gene_data[best_res, ])
+        }
+
+        ranks = -log(res$P.Value) * sign(res$t)
+        tmp2 = data.frame(hgnc_symbol=res$hgnc_symbol, rank=ranks)
+        tmp2 = tmp2[order(ranks, decreasing=T),]
+
+        # my own GMTs
+        db = sprintf('my_%s_sets', region)
+        cat(md, region, db, '\n')
+        project_name = sprintf('%s_%s_%s', md, region, db)
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabaseFile=db_file,
+                                    enrichDatabaseType="genesymbol",
+                                    interestGene=tmp2,
+                                    outputDirectory = data_dir,
+                                    interestGeneType="genesymbol",
+                                    sigMethod="top", topThr=150000,
+                                    minNum=3, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000, maxNum=800)
+        out_fname = sprintf('%s/WG3_%s_%s_%s_10K.csv', data_dir, md, region, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+
+        DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+        for (db in DBs) {
+            cat(md, region, db, '\n')
+            project_name = sprintf('%s_%s_%s', md, region, db)
+            enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                        organism="hsapiens",
+                                        enrichDatabase=db,
+                                        interestGene=tmp2,
+                                        interestGeneType="genesymbol",
+                                        sigMethod="top", topThr=150000,
+                                        outputDirectory = data_dir,
+                                        minNum=5, projectName=project_name,
+                                        isOutput=T, isParallel=T,
+                                        nThreads=ncpu, perNum=10000, maxNum=800)
+            out_fname = sprintf('%s/WG3_%s_%s_%s_10K.csv', data_dir,
+                                md, region, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+}
+
+```
+
+```r
+
+  merged_ids <- lapply(genes, function(g, df) {
+                                gdf = subset(df, hgnc_symbol == g);
+                                return(gdf[which.max(gdf$t),])},
+                       tmp)
+  # bind by rows the ID-specific merged dataframes
+  res_df = do.call(rbind, merged_ids)
+
+  return(res_df)
+  ```
 
 # TODO
  * DTU
