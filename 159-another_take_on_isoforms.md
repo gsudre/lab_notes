@@ -870,15 +870,6 @@ for (md in c('dte', 'dtu')) {
               slice_min(n=1, P.Value, with_ties=F)
         res = as.data.frame(res)
 
-        res = c()
-        # will do it this way because of the two tails of T distribution... 
-        
-        for (g in unique(tmp$hgnc_symbol)) {
-            gene_data = tmp[tmp$hgnc_symbol==g, ]
-            best_res = which.max(abs(gene_data$t))
-            res = rbind(res, gene_data[best_res, ])
-        }
-
         ranks = -log(res$P.Value) * sign(res$t)
         tmp2 = data.frame(hgnc_symbol=res$hgnc_symbol, rank=ranks)
         tmp2 = tmp2[order(ranks, decreasing=T),]
@@ -926,14 +917,150 @@ for (md in c('dte', 'dtu')) {
 }
 ```
 
+## Type-sliced transcripts
+
+First, let's see if our FDR results change at all if we slice the transcripts based
+on their types:
+
+```r
+load(sprintf('%s/DX_dte_dtu_results_12102020.RData', data_dir))
+
+for (md in c('dte', 'dtu')) {
+    for (region in c('acc', 'caudate')) {
+        eval(parse(text=sprintf('tmp = %s_%s_dx', md, region)))
+        for (dt in c('protein_coding$', 'lncRNA$', 'pseudogene$')) {
+            idx = grepl(x=tmp$read_type, pattern=dt)
+            res = tmp[idx, ]
+            tmp$FDR = p.adjust(tmp$P.Value, method='fdr')
+            print(sprintf('%s, %s, %s = %d / %d', md, region, dt,
+                          sum(tmp$FDR<.1), nrow(res)))
+        }
+    }
+}
+```
+
+```
+[1] "dte, acc, protein_coding$ = 0 / 66771"
+[1] "dte, acc, lncRNA$ = 0 / 49450"
+[1] "dte, acc, pseudogene$ = 0 / 8348"
+[1] "dte, caudate, protein_coding$ = 0 / 66154"
+[1] "dte, caudate, lncRNA$ = 0 / 48287"
+[1] "dte, caudate, pseudogene$ = 0 / 8038"
+[1] "dtu, acc, protein_coding$ = 0 / 61490"
+[1] "dtu, acc, lncRNA$ = 0 / 35070"
+[1] "dtu, acc, pseudogene$ = 0 / 439"
+[1] "dtu, caudate, protein_coding$ = 0 / 61214"
+[1] "dtu, caudate, lncRNA$ = 0 / 34556"
+[1] "dtu, caudate, pseudogene$ = 0 / 437"
+```
+
+So, the slicing didn't change the results at all. Let's see if it changes the
+WebGestalt results:
+
+```r
+library(WebGestaltR)
+library(tidyverse)
+data_dir = '~/data/isoforms/'
+load(sprintf('%s/DX_dte_dtu_results_12102020.RData', data_dir))
+nncpu=7
+
+for (md in c('dte', 'dtu')) {
+    for (region in c('acc', 'caudate')) {
+        eval(parse(text=sprintf('tmp = %s_%s_dx', md, region)))
+        for (dt in c('protein_coding', 'lncRNA', 'pseudogene')) {
+            idx = grepl(x=tmp$read_type, pattern=sprintf('%s$', dt))
+            res = tmp[idx, ]
+            # selecting the best probe hit to run enrichment with
+            res = res %>% group_by(hgnc_symbol) %>%
+                  slice_min(n=1, P.Value, with_ties=F)
+            res = as.data.frame(res)
+
+            ranks = -log(res$P.Value) * sign(res$t)
+            tmp2 = data.frame(hgnc_symbol=res$hgnc_symbol, rank=ranks)
+            tmp2 = tmp2[order(ranks, decreasing=T),]
+
+            # my own GMTs
+            db = sprintf('my_%s_sets', region)
+            cat(md, region, dt, db, '\n')
+            project_name = sprintf('%s_%s_%s_%s', md, region, dt, db)
+            db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+            enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                        organism="hsapiens",
+                                        enrichDatabaseFile=db_file,
+                                        enrichDatabaseType="genesymbol",
+                                        interestGene=tmp2,
+                                        outputDirectory = data_dir,
+                                        interestGeneType="genesymbol",
+                                        sigMethod="top", topThr=150000,
+                                        minNum=3, projectName=project_name,
+                                        isOutput=T, isParallel=T,
+                                        nThreads=ncpu, perNum=10000, maxNum=800)
+            out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, md,
+                                region, dt, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+
+            DBs = c('geneontology_Biological_Process_noRedundant',
+                    'geneontology_Cellular_Component_noRedundant',
+                    'geneontology_Molecular_Function_noRedundant')
+            for (db in DBs) {
+                cat(md, region, dt, db, '\n')
+                project_name = sprintf('%s_%s_%s_%s', md, region, dt, db)
+                enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                            organism="hsapiens",
+                                            enrichDatabase=db,
+                                            interestGene=tmp2,
+                                            interestGeneType="genesymbol",
+                                            sigMethod="top", topThr=150000,
+                                            outputDirectory = data_dir,
+                                            minNum=5, projectName=project_name,
+                                            isOutput=T, isParallel=T,
+                                            nThreads=ncpu, perNum=10000, maxNum=800)
+                out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir,
+                                    md, region, dt, db)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
+        }
+    }
+}
+```
+
+And for PRS (have to rerun the code above to retrieve the PCs!):
+
+```r
+# ...
+    for (t in c(.05, .01, .005, .001)) {
+        for (dt in c('protein_coding', 'lncRNA', 'pseudogene')) {
+            idx = grepl(x=res_prs$read_type, pattern=sprintf('%s$', dt))
+            res_prs2 = res_prs[idx, ]
+            idx = grepl(x=res_dx$read_type, pattern=sprintf('%s$', dt))
+            res_dx2 = res_dx[idx, ]
+
+            prs_genes = res_prs2[res_prs2$P.Value < t, 'hgnc_symbol']
+            dx_genes = res_dx2[res_dx2$P.Value < t, 'hgnc_symbol']
+            go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                     genome.size=nrow(res_prs2))
+            go.obj <- testGeneOverlap(go.obj)
+            inter = intersect(prs_genes, dx_genes)
+            pval = getPval(go.obj)
+            this_res = c(dt, p, t, length(prs_genes), length(dx_genes),
+                         length(inter), pval)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+colnames(all_res) = c('read_type', 'PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pval')
+write.csv(all_res,
+          file='~/data/isoforms/DTUsplit_caudate_prs_overlap_results.csv',
+          row.names=F)
+```
+
 
 # TODO
- * DTU
- * gene enrichment with DTE
- * PRS overlap
- * do the DTE FDR results change if we slice it first?
  * redo DGE analysis using annotations and slicing from isoform data
  * how about a local differential splicing analysis like the one in the paper?
+ * try all the analysis I ran in this note, but using the more specific
+   pipelines for DTE and DTU
 
 
 # Good resources
