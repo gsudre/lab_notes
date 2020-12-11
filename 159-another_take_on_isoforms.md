@@ -1996,7 +1996,9 @@ write.csv(all_res,
           row.names=F)
 ```
 
-
+Looking over the HTML reports, there are significant hits, especially in DTE
+caudate. They're a bit hard to interpret, so we'll need to consider whether
+they're woth including, and if they make the story harder or easier to tell.
 
 # TODO
  * redo DGE analysis using annotations and slicing from isoform data

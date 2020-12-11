@@ -179,3 +179,104 @@ Philip said I should check out this paper for networks:
 
 https://www.nature.com/articles/s41380-018-0304-1
 
+# 2020-12-11 17:24:15
+
+Let's see if we can do a better job removing our covariates if we use the
+empiricalBayes function from WGCNA. Maybe that's the origin of the weird
+networks we are getting?
+
+I'd rather use the same cleaning we used before, but let's just chekc if that's
+what's causing the weird behavior.
+
+```r
+library(WGCNA)
+datExpr0 = t(cpm(genes, log=T))
+rm_vars = data[, c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                    'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10',
+                    'batch', 'MoD', 'substance_group',
+                    'comorbid_group', 'POP_CODE', 'Sex')]
+# one sample doesn't have PCs
+rm_vars2 = irmi(rm_vars, imp_var=F) 
+keep_vars = matrix(data[, c('Diagnosis')])
+datExpr1 = empiricalBayesLM(datExpr0, rm_vars2, keep_vars)
+```
+
+That's breaking... not sure what's going on.
+
+Actually, it ran if I used less variables to remove. Matrix likely becoming
+singular. But it ran when everything was numeric... maybe that's what I need to
+fix?
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- 
+gsg = goodSamplesGenes(datExpr0, verbose = 3);
+# everything is OK!
+
+sampleTree = hclust(dist(datExpr0), method = "average")
+quartz()
+plot(sampleTree, main = "Sample clustering to detect outliers", sub="",
+     xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+```
+
+![](images/2020-11-30-19-46-02.png)
+
+Maybe 54 is bad, but I don't want to remove it for now.
+
+```r
+datExpr = datExpr0
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+
+enableWGCNAThreads()
+
+# Choose a set of soft-thresholding powers
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+# Call the network topology analysis function
+sft = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
+# Plot the results:
+quartz()
+par(mfrow = c(1,2));
+cex1 = 0.9;
+# Scale-free topology fit index as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+    main = paste("Scale independence"));
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+    labels=powers,cex=cex1,col="red");
+# this line corresponds to using an R^2 cut-off of h
+abline(h=0.90,col="red")
+# Mean connectivity as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+    xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+    main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+```
+
+![](images/2020-11-30-19-55-28.png)
+
+In our case, the lowest power for which the scale-free topology fit index curve
+flattens out upon reaching a high value is 9 (or maybe 10).
+
+```r
+net = blockwiseModules(datExpr, power = 9,
+                     TOMType = "unsigned", minModuleSize = 30,
+                     reassignThreshold = 0, mergeCutHeight = 0.25,
+                     numericLabels = TRUE, pamRespectsDendro = FALSE,
+                     saveTOMs = TRUE,
+                     saveTOMFileBase = "pmACC", maxBlockSize=nGenes,
+                    verbose = 3)
+```
+
+```
+r$> table(net$colors)                                                                         -->
