@@ -415,7 +415,7 @@ for (p in prs_names) {
         out_fname = '~/data/post_mortem/allSplit_caudate_prs_overlap_results.csv'
     }
     design = model.matrix( form, data2)
-    vobj = voom( genes2, design, plot=FALSE)
+n    vobj = voom( genes2, design, plot=FALSE)
     prs.fit <- lmFit(vobj, design)
     prs.fit2 <- eBayes( prs.fit )
     res_prs = topTable(prs.fit2, coef=p, number=Inf)
@@ -444,5 +444,20 @@ colnames(all_res) = c('read_type', 'PRS', 'nomPvalThresh', 'PRsgenes', 'PMgenes'
 write.csv(all_res, file=out_fname, row.names=F)
 ```
 
+# 2020-12-11 06:50:36
 
+Time to summarize the WG results. Looking at the HTMLs, the pseudogenes didn't
+run in WG... they weren't represented in any of the lists. The lncRNA set didn't
+have any FDR good results and, even worse, the protein coding sets didn't have
+any FDR-significant results either. Our usual sets were still there, just not
+significant anymore. 
+
+I wonder if some of those issues happened because of autossome differences, or
+maybe even some other analysis issues. In any case, it doesn't look like it
+helped much.
+
+# TODO:
+ * run same thing autossome only?
+ * run DTE autossome only?
+ * 
 
