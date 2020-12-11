@@ -955,7 +955,8 @@ for (md in c('dte', 'dtu')) {
 ```
 
 So, the slicing didn't change the results at all. Let's see if it changes the
-WebGestalt results:
+WebGestalt results... note that lncRNA was breaking the Molecular function
+database!
 
 ```r
 library(WebGestaltR)
@@ -967,7 +968,7 @@ nncpu=7
 for (md in c('dte', 'dtu')) {
     for (region in c('acc', 'caudate')) {
         eval(parse(text=sprintf('tmp = %s_%s_dx', md, region)))
-        for (dt in c('protein_coding', 'lncRNA', 'pseudogene')) {
+        for (dt in c('protein_coding', 'pseudogene', 'lncRNA')) {
             idx = grepl(x=tmp$read_type, pattern=sprintf('%s$', dt))
             res = tmp[idx, ]
             # selecting the best probe hit to run enrichment with
@@ -984,7 +985,8 @@ for (md in c('dte', 'dtu')) {
             cat(md, region, dt, db, '\n')
             project_name = sprintf('%s_%s_%s_%s', md, region, dt, db)
             db_file = sprintf('~/data/post_mortem/%s.gmt', db)
-            enrichResult <- WebGestaltR(enrichMethod="GSEA",
+            # some sets are crapping out WG because nothing is in it!
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",
                                         enrichDatabaseFile=db_file,
                                         enrichDatabaseType="genesymbol",
@@ -994,10 +996,12 @@ for (md in c('dte', 'dtu')) {
                                         sigMethod="top", topThr=150000,
                                         minNum=3, projectName=project_name,
                                         isOutput=T, isParallel=T,
-                                        nThreads=ncpu, perNum=10000, maxNum=800)
-            out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, md,
+                                        nThreads=ncpu, perNum=10000, maxNum=800))
+            if (class(enrichResult) != "try-error") {
+                out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, md,
                                 region, dt, db)
-            write.csv(enrichResult, file=out_fname, row.names=F)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
 
             DBs = c('geneontology_Biological_Process_noRedundant',
                     'geneontology_Cellular_Component_noRedundant',
@@ -1005,7 +1009,7 @@ for (md in c('dte', 'dtu')) {
             for (db in DBs) {
                 cat(md, region, dt, db, '\n')
                 project_name = sprintf('%s_%s_%s_%s', md, region, dt, db)
-                enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                             organism="hsapiens",
                                             enrichDatabase=db,
                                             interestGene=tmp2,
@@ -1014,10 +1018,12 @@ for (md in c('dte', 'dtu')) {
                                             outputDirectory = data_dir,
                                             minNum=5, projectName=project_name,
                                             isOutput=T, isParallel=T,
-                                            nThreads=ncpu, perNum=10000, maxNum=800)
-                out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir,
-                                    md, region, dt, db)
-                write.csv(enrichResult, file=out_fname, row.names=F)
+                                            nThreads=ncpu, perNum=10000, maxNum=800))
+                if (class(enrichResult) != "try-error") {
+                    out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir,
+                                        md, region, dt, db)
+                    write.csv(enrichResult, file=out_fname, row.names=F)
+                }
             }
         }
     }
