@@ -233,7 +233,7 @@ net = blockwiseModules(datExpr, power = 10,
 ```
 
 ```
-r$> table(net$colors)                                                                                                              
+r$> table(net$colors)                                                                  
 
     0     1     2     3     4     5 
   162 15885   733   506   340    51 
@@ -287,65 +287,57 @@ Age                       3   8
 Age                       3   9
 ```
 
+Not sure what's going on with that function... many times it doesn't run. Not
+looking very reliable. Also, I'd much rather use the same data, so let's try
+playing a bit more with that.
 
+![](images/2020-12-14-17-26-13.png)
 
-
-
-
-
-
-<!-- 
-gsg = goodSamplesGenes(datExpr0, verbose = 3);
-# everything is OK!
-
-sampleTree = hclust(dist(datExpr0), method = "average")
-quartz()
-plot(sampleTree, main = "Sample clustering to detect outliers", sub="",
-     xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
-```
-
-![](images/2020-11-30-19-46-02.png)
-
-Maybe 54 is bad, but I don't want to remove it for now.
+I got the plot above using the data pre-regression, so the residualization
+procedure is definitely doing something here. The questions is how much we cna
+get away with here. For example, can I run the analysis on this, and then just
+add the covariates to the regression later? Or, maybe add the technical
+variables first, and the biological ones later?
 
 ```r
-datExpr = datExpr0
+datExpr0 = t(cpm(genes, log=T))
+rm_vars = data[, c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                    'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10',
+                    'batch', 'MoD', 'substance_group',
+                    'comorbid_group', 'POP_CODE', 'Sex')]
+# one sample doesn't have PCs
+rm_vars2 = irmi(rm_vars, imp_var=F) 
+keep_vars = matrix(data[, c('Diagnosis')])
+datExpr1 = empiricalBayesLM(datExpr0, rm_vars2, keep_vars)
+```
+
+This is much better too:
+
+![](images/2020-12-14-17-46-02.png)
+
+And I got it by using just the technical nuisances. Maybe I can leave the
+biological ones for the final regressions then.
+
+```r
+datExpr0 = t(cpm(genes, log=T))
+rm_vars = data[,c('pcnt_optical_duplicates', 'clusters', 'RINe', 'batch')]
+rm_vars$batch = as.numeric(rm_vars$batch)
+datExpr1 = empiricalBayesLM(datExpr0, rm_vars, verbose=2) 
+datExpr = datExpr1$adjustedData
+```
+
+Note that I can potentially force the Diagnosis variable to stay in the data
+after the Bayesian adjustment, but I won't for now. Maybe something for the
+future.
+
+So, I ran the code from above to get the network plot to chose p=6.
+
+```r
 nGenes = ncol(datExpr)
 nSamples = nrow(datExpr)
 
 enableWGCNAThreads()
-
-# Choose a set of soft-thresholding powers
-powers = c(c(1:10), seq(from = 12, to=20, by=2))
-# Call the network topology analysis function
-sft = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
-# Plot the results:
-quartz()
-par(mfrow = c(1,2));
-cex1 = 0.9;
-# Scale-free topology fit index as a function of the soft-thresholding power
-plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
-     xlab="Soft Threshold (power)",
-     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
-    main = paste("Scale independence"));
-text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
-    labels=powers,cex=cex1,col="red");
-# this line corresponds to using an R^2 cut-off of h
-abline(h=0.90,col="red")
-# Mean connectivity as a function of the soft-thresholding power
-plot(sft$fitIndices[,1], sft$fitIndices[,5],
-    xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
-    main = paste("Mean connectivity"))
-text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
-```
-
-![](images/2020-11-30-19-55-28.png)
-
-In our case, the lowest power for which the scale-free topology fit index curve
-flattens out upon reaching a high value is 9 (or maybe 10).
-
-```r
-net = blockwiseModules(datExpr, power = 9,
+net = blockwiseModules(datExpr, power = 6,
                      TOMType = "unsigned", minModuleSize = 30,
                      reassignThreshold = 0, mergeCutHeight = 0.25,
                      numericLabels = TRUE, pamRespectsDendro = FALSE,
@@ -354,5 +346,5 @@ net = blockwiseModules(datExpr, power = 9,
                     verbose = 3)
 ```
 
-```
-r$> table(net$colors)                                                                         -->
+# TODO
+ * keep diagnosis variable during removal
