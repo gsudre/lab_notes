@@ -207,9 +207,85 @@ Actually, it ran if I used less variables to remove. Matrix likely becoming
 singular. But it ran when everything was numeric... maybe that's what I need to
 fix?
 
+# 2020-12-14 06:02:27
 
+I tried that, but it also failed... let's just use our residualized data, and
+play with parameters that way. Let me see if setting the power to 10 makes a
+difference:
 
+```r
+resids = residuals(fit2, genes)
 
+library(WGCNA)
+datExpr0 = t(resids)
+datExpr = datExpr0
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+
+enableWGCNAThreads()
+net = blockwiseModules(datExpr, power = 10,
+                     TOMType = "unsigned", minModuleSize = 30,
+                     reassignThreshold = 0, mergeCutHeight = 0.25,
+                     numericLabels = TRUE, pamRespectsDendro = FALSE,
+                     saveTOMs = TRUE,
+                     saveTOMFileBase = "pmACC", maxBlockSize=nGenes,
+                    verbose = 3)
+```
+
+```
+r$> table(net$colors)                                                                                                              
+
+    0     1     2     3     4     5 
+  162 15885   733   506   340    51 
+```
+
+Not as bad, but still not great. 
+
+```r
+consMEs = net$multiMEs;
+moduleLabels = net$colors;
+# Convert the numeric labels to color labels
+moduleColors = labels2colors(moduleLabels)
+consTree = net$dendrograms[[1]];
+quartz()
+plotDendroAndColors(consTree, moduleColors,
+"Module colors",
+dendroLabels = FALSE, hang = 0.03,
+addGuide = TRUE, guideHang = 0.05,
+main = "Consensus gene dendrogram and module colors")
+```
+
+![](images/2020-12-14-06-51-46.png)
+
+That's a funky shape, especially considering the examples in the tutotials which
+are quite flat on the top.
+
+I could play with other parameters for the blockWise function, but I'm still
+somewhat worried about the residualized data. Let's check what happens if we
+just remove some key variables.
+
+These were the results in the PCA analysis for ACC:
+
+```
+r$> which(categ_pvals < .01, arr.ind = T)                              
+                row col
+batch             1   1
+batch             1   2
+batch             1   7
+MoD               3   9
+substance_group   4   9
+r$> which(num_pvals < .01, arr.ind = T)                                
+                        row col
+clusters                  2   1
+RINe                      4   1
+PMI                       5   1
+RINe                      4   2
+C6                       11   2
+pcnt_optical_duplicates   1   7
+clusters                  2   7
+Age                       3   8
+Age                       3   9
+```
 
 
 
