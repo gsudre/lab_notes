@@ -346,5 +346,251 @@ net = blockwiseModules(datExpr, power = 6,
                     verbose = 3)
 ```
 
+# 2020-12-15 06:09:52
+
+I saved the network above in ~/data/pmACC. Let's keep going with the analysis:
+
+```r
+moduleLabels = net$colors
+moduleColors = labels2colors(net$colors)
+MEs = net$MEs;
+geneTree = net$dendrograms[[1]];
+
+MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
+MEs = orderMEs(MEs0)
+
+keep_me = !is.na(data$C1)
+mydata = cbind(MEs, data)[keep_me,]
+res_MEs = MEs[keep_me,]
+library(MASS)
+for (v in colnames(MEs)) {
+    fm_str = sprintf('%s ~ Age + C1 + C2 + C3 + C4 + C5 + C6 + C7 + C8 + C9 +
+                     C10 + MoD + substance_group + comorbid_group + POP_CODE +
+                     Sex', v)
+    res.lm <- lm(as.formula(fm_str), data = mydata, na.action=na.exclude)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    res_MEs[, sprintf('%s', v)] = scale(residuals(step))
+}
+```
+
+Now let's run the module functions in the residuals:
+
+```r
+moduleTraitCor = cor(res_MEs, as.numeric(mydata[, 'Diagnosis']), use = "p");
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples);
+```
+
+Nothing there... what if I restrict stepAIC?
+
+```r
+for (v in colnames(MEs)) {
+    fm_str = sprintf('%s ~ Diagnosis + Age + C1 + C2 + C3 + C4 + C5 + C6 + C7 + C8 + C9 +
+                     C10 + MoD + substance_group + comorbid_group + POP_CODE +
+                     Sex', v)
+    res.lm <- lm(as.formula(fm_str), data = mydata)
+    step <- stepAIC(res.lm, direction = "both", trace = F,
+                    scope = list(lower = as.formula('~ Diagnosis')))
+    myp = summary(step)$coefficients['DiagnosisCase', 'Pr(>|t|)']
+    cat(sprintf('%s', v), 'p =', myp, '\n')
+}
+```
+
+```
+MEmagenta p = 0.05510031 
+MEred p = 0.1098933 
+MEroyalblue p = 0.02084991 
+MEblue p = 0.09584912 
+MEgreenyellow p = 0.07901374 
+MEpurple p = 0.1873297 
+MElightyellow p = 0.0237611 
+MEblack p = 0.002744299 
+MEdarkred p = 0.9225837 
+MEorange p = 0.5808351 
+MEwhite p = 0.09178202 
+MEbrown p = 0.7058958 
+MEtan p = 0.5011443 
+MEsalmon p = 0.453834 
+MEyellow p = 0.7547417 
+MElightcyan p = 0.9040457 
+MEpink p = 0.3592843 
+MEdarkorange p = 0.6102331 
+MEgreen p = 0.2379241 
+MElightgreen p = 0.05584383 
+MEdarkgrey p = 0.09893959 
+MEdarkturquoise p = 0.6170546 
+MEdarkgreen p = 0.1316697 
+MEskyblue p = 0.8227799 
+MEcyan p = 0.821995 
+MEmidnightblue p = 0.07363499 
+MEgrey60 p = 0.4768334 
+MEturquoise p = 0.1395857 
+MEgrey p = 0.7687877 
+```
+
+So, there's some stuff there. I'm just not sure about a few things:
+
+   - how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
+   - is the stepwise procedure fine?
+   - check FDR
+   - use signed networks? (that's what Science paper did, and removed all
+     covariates first too)
+   - use robustness (bicor) 
+   - try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
+
+Before I go checking stability and other network options, why not check if the
+networks I found are interesting at all? Before I do that, let me just double
+check the effects of stepAIC:
+
+```r
+for (v in colnames(MEs)) {
+    fm_str = sprintf('%s ~ Diagnosis + Age + C1 + C2 + C3 + C4 + C5 + C6 + C7 + C8 + C9 +
+                     C10 + MoD + substance_group + comorbid_group + POP_CODE +
+                     Sex', v)
+    res.lm <- lm(as.formula(fm_str), data = mydata)
+    myp = summary(res.lm)$coefficients['DiagnosisCase', 'Pr(>|t|)']
+    cat(sprintf('%s', v), 'p =', myp, '\n')
+}
+```
+
+```
+MEmagenta p = 0.1775988 
+MEred p = 0.5775573 
+MEroyalblue p = 0.1181499 
+MEblue p = 0.3214901 
+MEgreenyellow p = 0.5141781 
+MEpurple p = 0.1781428 
+MElightyellow p = 0.5723202 
+MEblack p = 0.1058265 
+MEdarkred p = 0.9561837 
+MEorange p = 0.5162689 
+MEwhite p = 0.2767875 
+MEbrown p = 0.5826955 
+MEtan p = 0.347995 
+MEsalmon p = 0.6927764 
+MEyellow p = 0.9387944 
+MElightcyan p = 0.4887964 
+MEpink p = 0.5723803 
+MEdarkorange p = 0.595375 
+MEgreen p = 0.2396214 
+MElightgreen p = 0.1121284 
+MEdarkgrey p = 0.06545046 
+MEdarkturquoise p = 0.5094936 
+MEdarkgreen p = 0.4902291 
+MEskyblue p = 0.7627912 
+MEcyan p = 0.64849 
+MEmidnightblue p = 0.2277629 
+MEgrey60 p = 0.2781501 
+MEturquoise p = 0.2005832 
+MEgrey p = 0.7867566 
+```
+
+Yes, it makes a big difference. 
+
+What modules should we look into?
+
+```r
+myps = c()
+for (v in colnames(MEs)) {
+    fm_str = sprintf('%s ~ Diagnosis + Age + C1 + C2 + C3 + C4 + C5 + C6 + C7 + C8 + C9 +
+                     C10 + MoD + substance_group + comorbid_group + POP_CODE +
+                     Sex', v)
+    res.lm <- lm(as.formula(fm_str), data = mydata)
+    step <- stepAIC(res.lm, direction = "both", trace = F,
+                    scope = list(lower = as.formula('~ Diagnosis')))
+    myps = c(myps, summary(step)$coefficients['DiagnosisCase', 'Pr(>|t|)'])
+}
+names(myps) = colnames(MEs)
+```
+
+```
+r$> myps[myps<.05]                                 
+  MEroyalblue MElightyellow       MEblack 
+  0.020849906   0.023761104   0.002744299 
+```
+
+Let's see if there's anything interesting there.
+
+```r
+mygenes = names(moduleLabels)[moduleColors=='royalblue']
+a = G_list[G_list$ensembl_gene_id %in% mygenes, 'hgnc_symbol']
+write.table(a, file='~/tmp/royalblue.txt', col.names=F, row.names=F, quote=F)
+```
+
+I also exported the other 2 and will play with them a bit in WG.
+
+There seems to be something there... let's script it.
+
+```r
+library(WebGestaltR)
+
+ncpu=7
+data_dir = '~/data/WGCNA/'
+region = 'acc'
+for (col in c('royalblue', 'lightyellow', 'black')) {
+    mygenes = names(moduleLabels)[moduleColors==col]
+    tmp2 = G_list[G_list$ensembl_gene_id %in% mygenes, 'hgnc_symbol']
+
+    # my own GMTs
+    db = sprintf('my_%s_sets', region)
+    cat(region, db, col, '\n')
+    project_name = sprintf('%s_%s_%s', region, col, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- WebGestaltR(enrichMethod="ORA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="genesymbol",
+                                referenceSet='genome',
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=900)
+    out_fname = sprintf('%s/WG3_%s_%s_%s_10K.csv', data_dir, region, db, col)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+
+    DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+    for (db in DBs) {
+        cat(region, db, col, '\n')
+        project_name = sprintf('%s_%s_%s', region, col, db)
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        enrichResult <- WebGestaltR(enrichMethod="ORA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    enrichDatabaseType="genesymbol",
+                                    interestGene=tmp2,
+                                    outputDirectory = data_dir,
+                                    interestGeneType="genesymbol",
+                                    referenceSet='genome',
+                                    sigMethod="top", topThr=150000,
+                                    minNum=3, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000, maxNum=900)
+        out_fname = sprintf('%s/WG3_%s_%s_%s_10K.csv', data_dir, region, db, col)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
+Results for ACC WGCNA look good. Largely mirror what we were getting for DGE.
+I'm attaching a few tables. There are 3 modules there are nominally related to
+DX, and you'll see WG results for each of them. In a nutshell, we're getting the
+same pathways as before (e.g. glutamate, synapses, etc), and the adult
+developmental set. Not much in terms of overlap with GWAS or TWAS though. I
+still need to evaluate the stability of those modules, and then run the same
+thing for Caudate. But if the results stay this way, they're mostly
+confirmatory, which is reassuring. There might be room to do something more
+interesting with the imputed data... maybe the modules extracted there will be
+more revealing than what we're getting with the current imputation results?
+
+
 # TODO
- * keep diagnosis variable during removal
+ * clean up imputed data with caret first?
+ * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
+ * check FDR after stability analysis
+ * use signed networks? (that's what Science paper did, and removed all      covariates first too)
+ * use robustness (bicor)
+ * try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
