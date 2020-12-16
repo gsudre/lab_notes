@@ -334,15 +334,67 @@ Not looking very promising...
 
 ```r
 net3 = blockwiseModules(Xgrex, power = 3,
-                     TOMType = "signed", minModuleSize = 30,
+                     TOMType = "unsigned", minModuleSize = 30,
                      reassignThreshold = 0, mergeCutHeight = 0.25,
                      numericLabels = TRUE, pamRespectsDendro = FALSE,
                      saveTOMs = F, maxBlockSize=nGenes, verbose = 3,
                      corType='bicor')
 ```
 
+Yep, no significant modules detected...
+
+How about other methods for creating the network? Not using the automatic tool?
+
+# 2020-12-16 10:55:15
+
+How about we take the modules we found in the PM data, group the imputed genes
+based on that, and just take a PCA of the genes in each module? Then, my
+regression could be brain ~ DX*PC1mod + nuisanceVariables? I guess I could also
+just try PC1mod ~ DX.
+
+Lert's first check if any of the genes in the good modules were predicted:
+
+```r
+id_num = sapply(colnames(datExpr), function(x) strsplit(x=x, split='\\.')[[1]][1])
+colnames(datExpr) = id_num
+
+for (col in c('royalblue', 'lightyellow', 'black')) {
+    mygenes = names(moduleLabels)[moduleColors==col]
+    print(sprintf('%s: %d / %d', col,
+                  length(intersect(mygenes, colnames(datExpr))),
+                  length(mygenes)))
+}
+```
+
+OK, let's see how much variance the first component explains:
+
+```r
+for (col in c('royalblue', 'lightyellow', 'black')) {
+    mygenes = names(moduleLabels)[moduleColors==col]
+    imimputed = intersect(mygenes, colnames(datExpr))
+    set.seed(42)
+    pca <- prcomp(datExpr[, imimputed], scale=TRUE)
+    std_dev <- pca$sdev
+    pr_var <- std_dev^2
+    prop_varex <- pr_var/sum(pr_var)
+    quartz()
+    plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b", main=col)
+}
+```
+
+![](images/2020-12-16-12-04-51.png)
+
+I was expecting it to explain the data a bit more, especially since it's so
+sparse... but let's see what we get anyways:
+
+
+
+
 # TODO
  * DX*brain analysis on modules?
+ * How about other methods for creating the network? Not using the automatic tool?
  * clean up imputation results using caret?
  * maybe EN results will do better?
  * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)

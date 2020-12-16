@@ -929,6 +929,46 @@ Here are some number for the Adult-male WNH sample:
 
 ![](images/2020-09-09-11-52-07.png)
 
+# 2020-12-16 17:01:15
+
+It looks like the ABCD imputation never finished. I can see that after 10h it
+only processed 4 chromossomes. And it uses a single thread, less than 1Gb of
+memory. So, it's best to just sbatch it so we can give it more time than what we
+can use in a sinteractive session.
+
+So, put this in ~/data/expression_impute/ABCD_ACC_MASHR.sh:
+
+```bash
+#!/bin/bash
+
+#SBATCH -o ~/data/expression_impute/ABCD_ACC_MASHR.out
+#SBATCH -e ~/data/expression_impute/ABCD_ACC_MASHR.err
+module load python
+source /data/$USER/conda/etc/profile.d/conda.sh
+conda activate imlabtools
+
+mydir=~/data/expression_impute;
+python3 $mydir/MetaXcan-master/software/Predict.py \
+    --model_db_path $mydir/eqtl/mashr/mashr_Brain_Anterior_cingulate_cortex_BA24.db \
+    --vcf_genotypes /data/NCR_SBRB/ABCD/v201/1KG/chr*.dose.vcf.gz \
+    --vcf_mode imputed \
+    --prediction_output $mydir/results/ABCD_v201_ACC_predict_1KG_mashr.txt \
+    --prediction_summary_output $mydir/results/ABCD_v201_ACC_summary_1KG_mashr.txt \
+    --verbosity 9 --throw --model_db_snp_key varID \
+    --on_the_fly_mapping METADATA "chr{}_{}_{}_{}_b38" \
+    --liftover $mydir/hg19ToHg38.over.chain.gz
+```
+
+Then we can do:
+
+```bash
+sbatch --mem=8g --time 6-00:00:00 ~/data/expression_impute/ABCD_ACC_MASHR.sh
+```
+
+which allocates 2 CPU and 8Gb... plenty.
+
+And repeat the steps above for Caudate and then the 2 EN models.
+
 
 # TODO
  * try using the elastic net models
