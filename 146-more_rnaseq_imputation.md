@@ -726,6 +726,13 @@ imputation, and I'm also waiting on the download of the S-PrediXcan models, I
 might as well get the code ready to run our data and then it's just a matter of
 running ABCD as well.
 
+If that still doesn't work, even for ABCD, then I could come up with a
+meta-phenotype. Basically, use PLS to predict ADHD using all our brain
+phenotypes, and use that linear combination of brain phenotypes as our
+meta-phenotype to be regressed against the predicted gene expression. That might
+actually be a better approach in the sense that we don't know for sure which
+brain phenotype is supposed to be most linked to gene expression in the brain.
+It's just harder to understand.
 
 # TODO
 
