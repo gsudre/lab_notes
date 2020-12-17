@@ -716,5 +716,16 @@ for (cl in clin_vars) {
 
 Nothing here either...
 
+# 2020-12-16 20:54:59
+
+I'm finding it hard to believe that our brian phenotypes don't have any association
+with the ADHD clinical phenotypes. It might be easier to go backwards after we
+find a good phenotype, following the rationale I outlined in note 163. Of course
+it could also be done in ABCD, and since I'm waiting on that PrediXcan
+imputation, and I'm also waiting on the download of the S-PrediXcan models, I
+might as well get the code ready to run our data and then it's just a matter of
+running ABCD as well.
+
+
 # TODO
 

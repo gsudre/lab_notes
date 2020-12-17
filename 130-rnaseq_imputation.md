@@ -497,18 +497,78 @@ than plots like the one in the documentation:
 
 ![](images/2020-09-16-14-05-48.png)
 
+# 2020-12-16 19:31:45
 
+Let's try using the same PCA approach we used for RNAseq, but for the imputed
+data. I'm going to go ahead and inverse normalize the data, but it might not be
+necessary in the end?
 
+```r
+a = readRDS('~/data/expression_impute/results/NCR_v3_ACC_1KG_mashr.rds')
+iid2 = sapply(a$IID, function(x) strsplit(x, '_')[[1]][2])
+a$IID = iid2
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+imp_data = merge(a, pcs, by='IID', all.x=F, all.y=F)
+gf = read.csv('~/data/expression_impute/gf_823_09102020_onePerFamily.csv')
+imp_data = merge(imp_data, gf, by.x='IID', by.y='Subject.Code...Subjects', all.x=F, all.y=F)
+grex_vars = colnames(imp_data)[grepl(colnames(imp_data), pattern='^ENS')]
+keep_me = imp_data$PC01 < 0 & imp_data$PC02 > 0
+imp_data = imp_data[keep_me, ]
 
+library(caret)
+set.seed(42)
+pp_order = c('zv', 'nzv')
+pp = preProcess(imp_data[, grex_vars], method = pp_order)
+X = predict(pp, imp_data[, grex_vars])
+grex_vars = colnames(X)
+imp_data = imp_data[, !grepl(colnames(imp_data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+colnames(X) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+grex_vars = id_num
+X = t(X[, !dups])
 
-design = model.matrix( form, data)
-vobj_tmp = voom( genes, design, plot=FALSE)
-dupcor <- duplicateCorrelation(vobj_tmp, design, block=data$batch)
-vobj = voom( genes, design, plot=FALSE, block=data$batch,
-             correlation=dupcor$consensus)
-fit <- lmFit(vobj, design, block=data$batch, correlation=dupcor$consensus)
-fitDC <- eBayes( fit )
-resDC = topTable(fitDC, coef='DiagnosisControl', number=Inf)
+library(biomaRt)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list0 <- getBM(filters= "ensembl_gene_id", attributes= c("ensembl_gene_id",
+                 "hgnc_symbol", "chromosome_name"),values=id_num,mart= mart)
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(X) %in% G_list$ensembl_gene_id
+X = X[imnamed, ]
+grex_vars = grex_vars[imnamed]
+G_list2 = merge(G_list, X, by.x=1, by.y=0)
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+G_list2 = G_list2[imautosome, ]
+X = G_list2[, 4:ncol(G_list2)]
+rownames(X) = G_list2$ensembl_gene_id
+grex_vars = G_list2$ensembl_gene_id
+
+library(doParallel)
+ncores = 2 #as.numeric(Sys.getenv('SLURM_CPUS_PER_TASK'))
+cl = makeCluster(ncores)
+nzeros = rowSums(X==0)
+keep_me = nzeros < (ncol(X)/2)
+good_grex = grex_vars[keep_me]
+mydata = cbind(imp_data, t(X))
+clusterExport(cl, c("mydata"))
+stats = parLapply(cl, good_grex,
+                  function(x) {
+                    fm_str = sprintf('%s ~ Diagnosis + Sex...Subjects + age_base + sample_type + PC01 + PC02 + PC03 + PC04 + PC05', x)
+                    fit = lm(as.formula(fm_str), data=mydata)
+                    return(summary(fit)$coefficients[2, c(3,4)])})
+imp_res = cbind(G_list2[keep_me, 1:2], do.call(rbind, stats))
+colnames(imp_res)[3] = 'F'  # quick hack to work with function
+
+adhd_imp2_camera = get_enrich_order2( imp_res, t2 )
+c5_imp2_camera = get_enrich_order2( imp_res, c5_all)
+dis_imp2_camera = get_enrich_order2( imp_res, disorders)
+dev_imp2_camera = get_enrich_order2( imp_res, genes_unique )
+```
 
 
 # TODO

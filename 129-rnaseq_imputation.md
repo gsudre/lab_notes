@@ -969,7 +969,6 @@ which allocates 2 CPU and 8Gb... plenty.
 
 And repeat the steps above for Caudate and then the 2 EN models.
 
-
 # TODO
  * try using the elastic net models
  * play with zero threshold
