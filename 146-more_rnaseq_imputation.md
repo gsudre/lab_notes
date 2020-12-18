@@ -718,7 +718,7 @@ Nothing here either...
 
 # 2020-12-16 20:54:59
 
-I'm finding it hard to believe that our brian phenotypes don't have any association
+I'm finding it hard to believe that our brain phenotypes don't have any association
 with the ADHD clinical phenotypes. It might be easier to go backwards after we
 find a good phenotype, following the rationale I outlined in note 163. Of course
 it could also be done in ABCD, and since I'm waiting on that PrediXcan
@@ -733,6 +733,98 @@ meta-phenotype to be regressed against the predicted gene expression. That might
 actually be a better approach in the sense that we don't know for sure which
 brain phenotype is supposed to be most linked to gene expression in the brain.
 It's just harder to understand.
+
+# 2020-12-17 17:12:28
+
+```r
+fname = '/Volumes/NCR/brain_data_compiled/all_freesurfer_12042020.csv'
+df = read.csv(fname)
+# restrict it to within our age range
+df = df[df$age_scan >= 6.69 & df$age_scan <= 38.83,]
+keep_idx = (df$mprage_score <= 2.5 & df$ext_avg_score <=2.5 &
+            df$int_avg_score <= 2.5)
+# keep_idx = (df$mprage_score <= 2 & df$ext_avg_score <=2 &
+#             df$int_avg_score <= 2)
+df = df[keep_idx,]
+# keep only the best scan for each subject
+brain_data = c()
+for (sid in unique(df$SID)) {
+    sdata = df[which(df$SID == sid), ]
+    if (nrow(sdata) == 1) {
+        brain_data = rbind(brain_data, sdata)
+    } else {
+        scores = rowMeans(sdata[, c('mprage_score', 'ext_avg_score',
+                                    'int_avg_score')])
+        brain_data = rbind(brain_data, sdata[which.min(scores), ])
+    }
+}
+brain_data$lh_ACC_volume = brain_data$lh_caudalanteriorcingulate_volume + brain_data$lh_rostralanteriorcingulate_volume
+brain_data$rh_ACC_volume = brain_data$rh_caudalanteriorcingulate_volume + brain_data$rh_rostralanteriorcingulate_volume
+brain_data$ACC_volume = brain_data$lh_ACC_volume + brain_data$rh_ACC_volume
+brain_data$cACC_volume = brain_data$lh_caudalanteriorcingulate_volume + brain_data$rh_caudalanteriorcingulate_volume
+brain_data$rACC_volume = brain_data$lh_rostralanteriorcingulate_volume + brain_data$rh_rostralanteriorcingulate_volume
+
+data2$norm_rh_cACC_vol = data2$rh_caudalanteriorcingulate_volume / data2$EstimatedTotalIntraCranialVol
+data2$norm2_rh_cACC_vol = data2$rh_caudalanteriorcingulate_volume / data2$rhCortexVol
+data2$norm_cACC_vol = data2$ACC_volume / data2$EstimatedTotalIntraCranialVol
+data2$norm_cACC_vol = data2$ACC_volume / data2$CortexVol
+data2$norm_lh_Caudate_vol = data2$Left.Caudate / data2$EstimatedTotalIntraCranialVol
+data2$norm_rh_Caudate_vol = data2$Right.Caudate / data2$EstimatedTotalIntraCranialVol
+data2$norm_Caudate_vol = data2$Caudate_volume / data2$EstimatedTotalIntraCranialVol
+brain_vars = c(brain_vars, c('norm_lh_ACC_vol', 'norm_rh_ACC_vol',
+                             'norm_ACC_vol', 'norm_lh_Caudate_vol','norm_rh_Caudate_vol', 'norm_Caudate_vol'))
+data2$MeanThickness = data2$lh_MeanThickness_thickness + data2$rh_MeanThickness_thickness
+data2$norm_lh_ACC_thi = data2$lh_caudalanteriorcingulate_thickness / data2$MeanThickness
+data2$norm_rh_ACC_thi = data2$rh_caudalanteriorcingulate_thickness / data2$MeanThickness
+data2$norm_ACC_thi = data2$ACC_thickness / data2$MeanThickness
+brain_vars = c(brain_vars, c('norm_lh_ACC_thi', 'norm_rh_ACC_thi',
+                             'norm_ACC_thi'))
+
+brain_vars = 
+# remove outliers
+for (v in brain_vars) {
+    m = mean(data2[, v], na.rm=T)
+    s = sd(data2[, v], na.rm=T)
+    data2[which(data2[, v] > m + 3*s), v] = NA
+    data2[which(data2[, v] < m - 3*s), v] = NA
+}
+
+# bring in the clinical variables
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('~/data/expression_impute//augmented_anon_clinical_10242020.csv')
+clin$SX_total = clin$SX_inatt + clin$SX_hi
+clin$maxOverTimeSX_total = clin$maxOverTimeSX_inatt + clin$maxOverTimeSX_hi
+clin_slim = clin[clin$age_clin!='child',]
+clin_slim$age_clin = as.numeric(clin_slim$age_clin)
+data2 = mergeOnClosestAge(brain_data, clin_slim, brain_data$SID, x.id='SID',
+                          y.id='SID', x.age='age_scan', y.age='age_clin')
+data2$ACC_vol = (data2$lh_caudalanteriorcingulate_volume +
+                 data2$rh_caudalanteriorcingulate_volume)
+data2$Caudate_vol = (data2$Left.Caudate + data2$Right.Caudate)
+```
+
+Now it's just a matter of setting up the LMEs. First, let's try it with stepAIC:
+
+```r
+library(nlme)
+library(MASS)
+data3 = data2[which(data2$DX_dsm != 'other'),]
+brain_vars = c('ACC_vol', 'Caudate_vol')
+clin_vars = colnames(clin)[c(3:4, 6:8, 12:13, 15:16)]
+all_res = c()
+for (cl in clin_vars) {
+    for (v in brain_vars) {
+        fm_str = sprintf('%s ~ %s + sex + scanner_update + age_scan + mprage_score + ext_avg_score + int_avg_score', v, cl)
+        fit <- lme(as.formula(fm_str), random=~1|famID, data = data3,
+                   na.action=na.omit, method='ML')
+        myres = summary(fit)$tTable[2, ]
+        myres$brain = v
+        myres$clin = cl
+        all_res = rbind(all_res, myres)
+        # step <- stepAIC(fit, direction = "both", trace = F, na.action=na.exclude)
+    }
+}
+```
 
 # TODO
 
