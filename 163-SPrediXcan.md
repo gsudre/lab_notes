@@ -340,5 +340,7 @@ r$> rna_nums
 
 My original idea was to make a nice plot here, but the results are not worth it.
 
-At least the correlation result looks nice. Let's spend some time in the brain
-phenotype then.
+At least the correlation result looks nice. Maybe I could do some WG analysis in
+the imputed results? Maybe... I'll see what Philip says.
+
+Let's spend some time in the brain phenotype then.

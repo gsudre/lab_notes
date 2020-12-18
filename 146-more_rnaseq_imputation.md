@@ -758,35 +758,29 @@ for (sid in unique(df$SID)) {
         brain_data = rbind(brain_data, sdata[which.min(scores), ])
     }
 }
-brain_data$lh_ACC_volume = brain_data$lh_caudalanteriorcingulate_volume + brain_data$lh_rostralanteriorcingulate_volume
+# whole rhACC
 brain_data$rh_ACC_volume = brain_data$rh_caudalanteriorcingulate_volume + brain_data$rh_rostralanteriorcingulate_volume
-brain_data$ACC_volume = brain_data$lh_ACC_volume + brain_data$rh_ACC_volume
-brain_data$cACC_volume = brain_data$lh_caudalanteriorcingulate_volume + brain_data$rh_caudalanteriorcingulate_volume
-brain_data$rACC_volume = brain_data$lh_rostralanteriorcingulate_volume + brain_data$rh_rostralanteriorcingulate_volume
+brain_data$rh_ACC_thickness = brain_data$rh_caudalanteriorcingulate_thickness + brain_data$rh_rostralanteriorcingulate_thickness
+brain_data$rh_ACC_area = brain_data$rh_caudalanteriorcingulate_area + brain_data$rh_rostralanteriorcingulate_area
+# whole caACC
+brain_data$caACC_volume = brain_data$lh_caudalanteriorcingulate_volume + brain_data$rh_caudalanteriorcingulate_volume
+brain_data$caACC_area = brain_data$lh_caudalanteriorcingulate_area + brain_data$rh_caudalanteriorcingulate_area
+brain_data$caACC_thickness = brain_data$lh_caudalanteriorcingulate_thickness + brain_data$rh_caudalanteriorcingulate_thickness
+# whole roACC
+brain_data$roACC_volume = brain_data$lh_rostralanteriorcingulate_volume + brain_data$rh_rostralanteriorcingulate_volume
+brain_data$roACC_area = brain_data$lh_rostralanteriorcingulate_area + brain_data$rh_rostralanteriorcingulate_area
+brain_data$roACC_thickness = brain_data$lh_rostralanteriorcingulate_thickness + brain_data$rh_rostralanteriorcingulate_thickness
+# whole ACC
+brain_data$ACC_volume = brain_data$roACC_volume + brain_data$caACC_volume
+brain_data$ACC_area = brain_data$roACC_area + brain_data$caACC_area
+brain_data$ACC_thickness = brain_data$roACC_thickness + brain_data$caACC_thickness
 
-data2$norm_rh_cACC_vol = data2$rh_caudalanteriorcingulate_volume / data2$EstimatedTotalIntraCranialVol
-data2$norm2_rh_cACC_vol = data2$rh_caudalanteriorcingulate_volume / data2$rhCortexVol
-data2$norm_cACC_vol = data2$ACC_volume / data2$EstimatedTotalIntraCranialVol
-data2$norm_cACC_vol = data2$ACC_volume / data2$CortexVol
-data2$norm_lh_Caudate_vol = data2$Left.Caudate / data2$EstimatedTotalIntraCranialVol
-data2$norm_rh_Caudate_vol = data2$Right.Caudate / data2$EstimatedTotalIntraCranialVol
-data2$norm_Caudate_vol = data2$Caudate_volume / data2$EstimatedTotalIntraCranialVol
-brain_vars = c(brain_vars, c('norm_lh_ACC_vol', 'norm_rh_ACC_vol',
-                             'norm_ACC_vol', 'norm_lh_Caudate_vol','norm_rh_Caudate_vol', 'norm_Caudate_vol'))
-data2$MeanThickness = data2$lh_MeanThickness_thickness + data2$rh_MeanThickness_thickness
-data2$norm_lh_ACC_thi = data2$lh_caudalanteriorcingulate_thickness / data2$MeanThickness
-data2$norm_rh_ACC_thi = data2$rh_caudalanteriorcingulate_thickness / data2$MeanThickness
-data2$norm_ACC_thi = data2$ACC_thickness / data2$MeanThickness
-brain_vars = c(brain_vars, c('norm_lh_ACC_thi', 'norm_rh_ACC_thi',
-                             'norm_ACC_thi'))
-
-brain_vars = 
-# remove outliers
-for (v in brain_vars) {
-    m = mean(data2[, v], na.rm=T)
-    s = sd(data2[, v], na.rm=T)
-    data2[which(data2[, v] > m + 3*s), v] = NA
-    data2[which(data2[, v] < m - 3*s), v] = NA
+brain_vars = c()
+for (p in c('area', 'thickness', 'volume')) {
+    for (bv in c('rh_ACC', 'caACC', 'roACC', 'ACC',
+                 'rh_rostralanteriorcingulate', 'rh_caudalanteriorcingulate')) {
+        brain_vars = c(brain_vars, sprintf('%s_%s', bv, p))
+    }
 }
 
 # bring in the clinical variables
@@ -798,33 +792,191 @@ clin_slim = clin[clin$age_clin!='child',]
 clin_slim$age_clin = as.numeric(clin_slim$age_clin)
 data2 = mergeOnClosestAge(brain_data, clin_slim, brain_data$SID, x.id='SID',
                           y.id='SID', x.age='age_scan', y.age='age_clin')
-data2$ACC_vol = (data2$lh_caudalanteriorcingulate_volume +
-                 data2$rh_caudalanteriorcingulate_volume)
-data2$Caudate_vol = (data2$Left.Caudate + data2$Right.Caudate)
+
+# remove outliers
+for (v in brain_vars) {
+    m = mean(data2[, v], na.rm=T)
+    s = sd(data2[, v], na.rm=T)
+    data2[which(data2[, v] > m + 3*s), v] = NA
+    data2[which(data2[, v] < m - 3*s), v] = NA
+}
 ```
 
-Now it's just a matter of setting up the LMEs. First, let's try it with stepAIC:
+And we run the LMEs to use as much data as we can:
 
 ```r
 library(nlme)
 library(MASS)
 data3 = data2[which(data2$DX_dsm != 'other'),]
-brain_vars = c('ACC_vol', 'Caudate_vol')
+data3$DX_dsm = factor(data3$DX_dsm)
+data3$everADHD_dsm = factor(data3$everADHD_dsm)
+data3$sex = factor(data3$sex)
+data3$scanner_update = factor(data3$scanner_update)
 clin_vars = colnames(clin)[c(3:4, 6:8, 12:13, 15:16)]
 all_res = c()
 for (cl in clin_vars) {
+    cat(cl, '\n')
     for (v in brain_vars) {
         fm_str = sprintf('%s ~ %s + sex + scanner_update + age_scan + mprage_score + ext_avg_score + int_avg_score', v, cl)
         fit <- lme(as.formula(fm_str), random=~1|famID, data = data3,
                    na.action=na.omit, method='ML')
-        myres = summary(fit)$tTable[2, ]
+        step <- stepAIC(fit, direction = "both", trace = F,
+                        scope = list(lower = as.formula(sprintf('~ %s', cl))))
+        myres = summary(step)$tTable[2, ]
         myres$brain = v
         myres$clin = cl
         all_res = rbind(all_res, myres)
-        # step <- stepAIC(fit, direction = "both", trace = F, na.action=na.exclude)
     }
 }
 ```
 
-# TODO
+That gives me 700 subjects (scans), but there was nothing there... I could try
+the normalized version of the brain metrics, but let's first try other
+populations:
 
+```r
+pcs = read.csv('~/data/expression_impute/pop_pcs.csv')
+pcs$SID = as.numeric(gsub(x=pcs$IID, pattern='SID.', replacement=''))
+imp_data = merge(brain_data, pcs, by='SID', all.x=F, all.y=F)
+imwnh = imp_data$PC01<0 & imp_data$PC02>-.02
+
+data2 = mergeOnClosestAge(imp_data[imwnh, ], clin_slim, imp_data$SID, x.id='SID',
+                          y.id='SID', x.age='age_scan', y.age='age_clin')
+
+# remove outliers
+for (v in brain_vars) {
+    m = mean(data2[, v], na.rm=T)
+    s = sd(data2[, v], na.rm=T)
+    data2[which(data2[, v] > m + 3*s), v] = NA
+    data2[which(data2[, v] < m - 3*s), v] = NA
+}
+
+data3 = data2[which(data2$DX_dsm != 'other'),]
+data3$DX_dsm = factor(data3$DX_dsm)
+data3$everADHD_dsm = factor(data3$everADHD_dsm)
+data3$sex = factor(data3$sex)
+data3$scanner_update = factor(data3$scanner_update)
+clin_vars = colnames(clin)[c(3:4, 6:8, 12:13, 15:16)]
+all_res = c()
+for (cl in clin_vars) {
+    cat(cl, '\n')
+    for (v in brain_vars) {
+        fm_str = sprintf('%s ~ %s + sex + scanner_update + age_scan + mprage_score + ext_avg_score + int_avg_score', v, cl)
+        fit <- try(lme(as.formula(fm_str), random=~1|famID, data = data3,
+                   na.action=na.omit, method='ML'))
+        if (length(fit) < 2) {
+            myres = NA
+        } else {
+            step <- try(stepAIC(fit, direction = "both", trace = F,
+                        scope = list(lower = as.formula(sprintf('~ %s', cl)))))
+            if (length(step) < 2) {
+                myres = summary(fit)$tTable[2, ]
+            } else {
+                myres = summary(step)$tTable[2, ]
+            }
+            myres$brain = v
+            myres$clin = cl
+        }
+        all_res = rbind(all_res, myres)
+    }
+}
+```
+
+Now we're down to 403 scans, and still no significant results. Let's do just one
+more cut, and include a single person per family:
+
+```r
+data3 = c()
+for (f in unique(data2$famID)) {
+    fdata = data2[data2$famID == f, ]
+    if (nrow(fdata) == 1) {
+        data3 = rbind(data3, fdata)
+    } else {
+        qc_score = rowMeans(fdata[, c('mprage_score', 'ext_avg_score',
+                                      'int_avg_score')])
+        data3 = rbind(data3, fdata[which.min(qc_score), ])
+    }
+}
+for (v in brain_vars) {
+    m = mean(data3[, v], na.rm=T)
+    s = sd(data3[, v], na.rm=T)
+    data3[which(data3[, v] > m + 3*s), v] = NA
+    data3[which(data3[, v] < m - 3*s), v] = NA
+}
+
+data4 = data3[which(data3$DX_dsm != 'other'),]
+data4$DX_dsm = factor(data4$DX_dsm)
+data4$everADHD_dsm = factor(data4$everADHD_dsm)
+data4$sex = factor(data4$sex)
+data4$scanner_update = factor(data4$scanner_update)
+clin_vars = colnames(clin)[c(3:4, 6:8, 12:13, 15:16)]
+all_res = c()
+for (cl in clin_vars) {
+    cat(cl, '\n')
+    for (v in brain_vars) {
+        fm_str = sprintf('%s ~ %s + sex + scanner_update + age_scan + mprage_score + ext_avg_score + int_avg_score', v, cl)
+        fit <- lm(as.formula(fm_str), data = data4, na.action=na.omit)
+        step <- stepAIC(fit, direction = "both", trace = F,
+                        scope = list(lower = as.formula(sprintf('~ %s', cl))))
+        myres = summary(step)$coefficients[2, ]
+        myres$brain = v
+        myres$clin = cl
+        myres$fm1 = fm_str
+        myres$fm2 = as.character(step$terms)[3]
+        all_res = rbind(all_res, myres)
+    }
+}
+```
+
+```
+r$> all_res[all_res[, 'Pr(>|t|)'] < .05, c('t value', 'Pr(>|t|)', 'brain', 'clin', 'fm2')]                          
+      t value   Pr(>|t|)    brain                                  clin                 
+myres 3.098029  0.002192765 "rh_caudalanteriorcingulate_thickness" "SX_hi"              
+myres 2.30815   0.02185271  "caACC_area"                           "DX_dsm"             
+myres 2.007541  0.04583219  "caACC_volume"                         "DX_dsm"             
+myres 2.350956  0.01956695  "rh_caudalanteriorcingulate_thickness" "everADHD_dsm"       
+myres -2.057895 0.0408471   "caACC_area"                           "outcome_dsm"        
+myres 1.976865  0.04941067  "caACC_thickness"                      "outcome_dsm"        
+myres 2.7882    0.005801412 "rh_caudalanteriorcingulate_thickness" "outcome_dsm"        
+myres -2.02599  0.04388622  "ACC_area"                             "maxOverTimeSX_inatt"
+myres -2.0484   0.04162741  "rh_rostralanteriorcingulate_area"     "maxOverTimeSX_inatt"
+myres -2.092556 0.03745286  "caACC_area"                           "maxOverTimeSX_hi"   
+myres -2.112829 0.03566145  "ACC_area"                             "maxOverTimeSX_hi"   
+myres 1.993297  0.04740029  "caACC_thickness"                      "maxOverTimeSX_hi"   
+myres 2.791436  0.005686526 "rh_caudalanteriorcingulate_thickness" "maxOverTimeSX_hi"   
+myres -2.052371 0.04124636  "caACC_area"                           "SX_total"           
+myres 2.623474  0.009291295 "rh_caudalanteriorcingulate_thickness" "SX_total"           
+myres -2.090015 0.03768274  "caACC_area"                           "maxOverTimeSX_total"
+myres -2.205685 0.02836651  "ACC_area"                             "maxOverTimeSX_total"
+myres 2.173595  0.03075196  "rh_caudalanteriorcingulate_thickness" "maxOverTimeSX_total"
+      fm2                                                                    
+myres "SX_hi + sex + scanner_update + age_scan + ext_avg_score"              
+myres "DX_dsm + sex + int_avg_score"                                         
+myres "DX_dsm + sex + age_scan + int_avg_score"                              
+myres "everADHD_dsm + sex + scanner_update + age_scan + ext_avg_score"       
+myres "outcome_dsm + sex + int_avg_score"                                    
+myres "outcome_dsm + sex + scanner_update + age_scan + ext_avg_score"        
+myres "outcome_dsm + scanner_update + age_scan + ext_avg_score"              
+myres "maxOverTimeSX_inatt + sex + int_avg_score"                            
+myres "maxOverTimeSX_inatt + sex + int_avg_score"                            
+myres "maxOverTimeSX_hi + sex + int_avg_score"                               
+myres "maxOverTimeSX_hi + sex + int_avg_score"                               
+myres "maxOverTimeSX_hi + sex + scanner_update + age_scan + ext_avg_score"   
+myres "maxOverTimeSX_hi + sex + scanner_update + age_scan + ext_avg_score"   
+myres "SX_total + sex + int_avg_score"                                       
+myres "SX_total + sex + scanner_update + age_scan + ext_avg_score"           
+myres "maxOverTimeSX_total + sex + int_avg_score"                            
+myres "maxOverTimeSX_total + sex + int_avg_score"                            
+myres "maxOverTimeSX_total + sex + scanner_update + age_scan + ext_avg_score"
+```
+
+We get a few nice hits here. That's good as it's our ideal population too, even
+though it only has 241 scans.
+
+Now we need to check the association between the brain phenotype and the imputed
+expression. We will need to do this without covariates, fixed covariates, and
+then just the best fit for DX.
+
+
+# TODO
+ * is the direction of the association correct?
