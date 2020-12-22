@@ -344,3 +344,45 @@ At least the correlation result looks nice. Maybe I could do some WG analysis in
 the imputed results? Maybe... I'll see what Philip says.
 
 Let's spend some time in the brain phenotype then.
+
+# 2020-12-21 19:12:00
+
+Philip suggested I should use for rank the sign of the effect as well, similar
+to what we did before. Let's see if that changes the results:
+
+```r
+spred = read.csv('~/data/expression_impute/spredixcan/eqtl/ADHD_ACC_MASHR.csv')
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+both_res = merge(rnaseq_acc, spred, by.x='hgnc_symbol', by.y='gene_name',
+                 all.x=F, all.y=F)
+```
+
+There was no relationship if we took into consideration the up and down
+regulation (ACC first):
+
+```
+r$> cor.test(sign(both_res$t)*both_res$pvalue, sign(both_res$zscore)*both_res$P.Value, method='spearman')                  
+
+        Spearman's rank correlation rho
+
+data:  sign(both_res$t) * both_res$pvalue and sign(both_res$zscore) * both_res$P.Value
+S = 1.8963e+11, p-value = 0.7406
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+        rho 
+0.003238165
+
+[...]
+
+r$> cor.test(sign(both_res$t)*both_res$pvalue, sign(both_res$zscore)*both_res$P.Value, method='spearman')                  
+
+        Spearman's rank correlation rho
+
+data:  sign(both_res$t) * both_res$pvalue and sign(both_res$zscore) * both_res$P.Value
+S = 2.2199e+11, p-value = 0.5368
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+         rho 
+-0.005894363 
+```
+

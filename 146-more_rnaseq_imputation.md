@@ -977,6 +977,101 @@ Now we need to check the association between the brain phenotype and the imputed
 expression. We will need to do this without covariates, fixed covariates, and
 then just the best fit for DX.
 
+Actually, the direction of the association is wrong. More ADHD should lead to
+thinner cortex. 
+
+But can I simply check the correlation, like what I did for SPredXcan?
+
+```r
+data_dir = '~/data/expression_impute/'
+md = 'MASHR'
+phen = 'res_ACC_volume'
+res = read.table(sprintf('%s/assoc_%s_%s.txt', data_dir, md, phen),
+                        header=1)
+spred = read.csv('~/data/expression_impute/spredixcan/eqtl/ADHD_ACC_MASHR.csv')
+both_res = merge(res, spred, by='gene', all.x=F, all.y=F)
+```
+
+```
+r$> cor.test(both_res$pvalue.y, both_res$pvalue.x, method='spearman')                     
+
+        Spearman's rank correlation rho
+
+data:  both_res$pvalue.y and both_res$pvalue.x
+S = 3.4179e+11, p-value = 0.8697
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+        rho 
+0.001455058 
+```
+
+Nothing there...
+
+What if instead of using the association from PredXcan, I did a PLS from genes +
+nuiscanceVars to brain, and ranked the genes based on that, to be later compared
+to ranks from PM or GWAS impute?
+
+
+```r
+library(pls)
+pls.model = plsr(pref ~ ., data = colas, validation = "CV")
+ install.packages('pls')
+library(pls)
+pls.model = plsr(pref ~ ., data = colas, validation = "CV")
+pls.model
+summary(pls.model)
+cv = RMSEP(pls.model)
+best.dims = which.min(cv$val[estimate = "adjCV", , ]) - 1
+best_dims
+best.dims
+pls.model = plsr(pref ~ ., data = colas, ncomp = best.dims)
+pls.model
+coefficients = coef(pls.model)
+sum.coef = sum(sapply(coefficients, abs))
+coefficients = coefficients * 100 / sum.coef
+coefficients = sort(coefficients[, 1 , 1])
+barplot(tail(coefficients, 5))
+```
+
+# 2020-12-21 06:35:48
+
+I could try that, but wouldn't the most applicable analysis, that would lend
+itself most closely ot the previous stuff, just be a impGene ~ brain +
+nuiscanceVars? Or even put a DX interaction there?
+
+```r
+imp = read.delim('~/data/expression_impute/ANAT_cropped_imp_EN_ACC.tab')
+datExpr0 = imp[, 3:ncol(imp)]
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(datExpr0, method = pp_order)
+X = predict(pp, datExpr0)
+
+library(bestNormalize)
+Xnorm = X
+for (v in 1:ncol(Xnorm)) {
+    if ((v %% 100)==0) {
+        print(sprintf('%d / %d', v, ncol(Xnorm)))
+    }
+    bn = orderNorm(Xnorm[, v])
+    Xnorm[, v] = bn$x.t
+}
+```
+
+library(vows)
+form = (~ meta$Diagnosis + mydata$PC1 + mydata$PC2 + mydata$PC3 + mydata$PC4
+        + mydata$PC5 + mydata$PC6 + mydata$PC7 + mydata$PC9 + mydata$PC11
+        + mydata$PC13 + mydata$PC14 + mydata$PC17)
+res = summary(lm.mp(t(trans_quant), form))
+junk = data.frame(P.Value=res$pvalue['meta$DiagnosisCase',],
+                  t=res$tstat['meta$DiagnosisCase',],
+                  adj.P.Val=p.adjust(res$pvalue['meta$DiagnosisCase',],
+                                     method='fdr'))
+res_dx = merge(junk, meta_iso, by.x=0, by.y='id1')
+res_dx = res_dx[order(res_dx$P.Value), ]
+``` 
 
 # TODO
  * is the direction of the association correct?
+ * no need for interaction!
+ * explore ABCD as well
