@@ -403,6 +403,74 @@ sample estimates:
 -0.01163867 
 ```
 
+# 2020-12-23 09:35:38
+
+We can certainly run some enrichment for ABCD as well:
+
+```r
+library(WebGestaltR)
+
+ncpu=7
+data_dir = '~/data/expression_impute/'
+region = 'acc'
+
+imp = readRDS('~/data/expression_impute/ABCD_brainToGenesNorm_12222020.rds')
+imp = imp[imp$Term=='ACC_vol', ]
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+imp$ensembl_gene_id = sapply(imp$Variable,
+                             function(x) strsplit(x=x, split='\\.')[[1]][1])
+both_res = merge(rnaseq_acc, imp, by='ensembl_gene_id', all.x=F, all.y=F)
+
+ranks = -log(both_res$P) * sign(both_res$t.y)
+tmp2 = data.frame(hgnc_symbol=both_res$hgnc_symbol, rank=ranks)
+tmp2 = tmp2[order(ranks, decreasing=T),]
+
+# my own GMTs
+db = sprintf('my_%s_sets', region)
+cat(region, db, '\n')
+project_name = sprintf('ABCD_%s_%s', region, db)
+db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="genesymbol",
+                            sigMethod="top", topThr=150000,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=800))
+if (class(enrichResult) != "try-error") {
+    out_fname = sprintf('%s/ABCD_%s_%s_10K.csv', data_dir,
+                        region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(region, db, '\n')
+    project_name = sprintf('ABCD_%s_%s', region, db)
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=800))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/ABCD_%s_%s_10K.csv', data_dir,
+                            region, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
 # TODO
  * identify which genes are overlapping
  * make some nice plots of the overlap

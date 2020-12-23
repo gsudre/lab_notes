@@ -1067,7 +1067,68 @@ write.csv(all_res, file='~/data/post_mortem/all_accUpDown_prs_overlap_results.cs
           row.names=F)
 ```
 
-The results weren't as conclusive as the no-direction results.
+The results weren't as conclusive as the no-direction results. Similarly, we run
+this for the Caudate:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC3 + PC5 + PC6 + PC8', p))
+    design = model.matrix( form, data2)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t > 0, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t & rnaseq_caudate$t > 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allUp = union(res[res$t > 0, 'hgnc_symbol'],
+                      rnaseq_caudate[rnaseq_caudate$t > 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'up', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t < 0, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t & rnaseq_caudate$t < 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allDown = union(res[res$t < 0, 'hgnc_symbol'],
+                      rnaseq_caudate[rnaseq_caudate$t < 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'down', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'direction', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pvalWhole', 'pvalDirOnly')
+write.csv(all_res,
+          file='~/data/post_mortem/all_caudateUpDown_prs_overlap_results.csv',
+          row.names=F)
+```
+
 
 # 2020-12-23 06:07:42
 
