@@ -299,7 +299,6 @@ for (bv in brain_vars) {
         }
     }
 }
-write.csv(df, file='~/data/expression_impute/ABCD_overlaps.csv', row.names=F)
 ```
 
 As expected, nothing but negatives:
@@ -312,7 +311,7 @@ df$FDR = p.adjust(df$pval, method='fdr')
 
 ![](images/2020-12-22-13-40-50.png)
 
-Just because I have these results up, let me ru the overlaps within PM:
+Just because I have these results up, let me run the overlaps within PM:
 
 ```r
 load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
@@ -361,6 +360,48 @@ inter = intersect(acc_genes, cau_genes)
 
 ![](images/2020-12-22-14-28-33.png)
 
+## Correlations
+
+Let's see if there is a correlation between ABCD and PM results:
+
+```r
+imp = readRDS('~/data/expression_impute/ABCD_brainToGenesNorm_12222020.rds')
+imp = imp[imp$Term=='ACC_vol', ]
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+imp$ensembl_gene_id = sapply(imp$Variable,
+                             function(x) strsplit(x=x, split='\\.')[[1]][1])
+both_res = merge(rnaseq_acc, imp, by='ensembl_gene_id', all.x=F, all.y=F)
+```
+
+No soup for you...
+
+```
+r$> cor.test(both_res$P, both_res$P.Value, method='spearman')                                                                  
+
+        Spearman's rank correlation rho
+
+data:  both_res$P and both_res$P.Value
+S = 1.7371e+11, p-value = 0.7636
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+        rho 
+0.002986394 
+
+Warning message:
+In cor.test.default(both_res$P, both_res$P.Value, method = "spearman") :
+  Cannot compute exact p-value with ties
+
+r$> cor.test(sign(both_res$t.y)*both_res$P, sign(both_res$t.x)*both_res$P.Value, method='spearman')                            
+
+        Spearman's rank correlation rho
+
+data:  sign(both_res$t.y) * both_res$P and sign(both_res$t.x) * both_res$P.Value
+S = 1.7626e+11, p-value = 0.241
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+        rho 
+-0.01163867 
+```
 
 # TODO
  * identify which genes are overlapping

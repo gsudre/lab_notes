@@ -454,10 +454,10 @@ Actually, I think it's both. To come up with a single R2, you need one summary
 value, so in that case it has to be the first PC.
 
 ```r
-library('fmsb')
+library(fmsb)
 library(lmtest)
-mod.baseline = glm(Diagnosis ~ Sex + Age, family=binomial, data=data_whole)
-mod.full = glm(Diagnosis ~ PRS0.000100 + Sex + Age, family=binomial, data=data_whole)
+mod.baseline = glm(Diagnosis ~ Sex + Age, family=binomial, data=data_app)
+mod.full = glm(Diagnosis ~ PRS0.000100 + Sex + Age, family=binomial, data=data_app)
 adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
 prs.significance = lrtest(mod.baseline, mod.full)
 ```
@@ -465,7 +465,7 @@ prs.significance = lrtest(mod.baseline, mod.full)
 So, if we are goig to try all of them:
 
 ```r
-mydata = data_wnh
+mydata = data_app
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
@@ -1003,5 +1003,171 @@ write.csv(all_res, file='~/data/post_mortem/all_caudate_prs_overlap_results.csv'
           row.names=F)
 ```
 
+# 2020-12-22 20:46:32
+
+Do these results change if we classify the genes between over and under
+expressed? Or can we at leat quantify the overlap between over and under
+expressed?
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC2 + PC7 + PC8 + PC9', p))
+    design = model.matrix( form, data2)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t > 0, 'hgnc_symbol']
+        dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t & rnaseq_acc$t > 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allUp = union(res[res$t > 0, 'hgnc_symbol'],
+                      rnaseq_acc[rnaseq_acc$t > 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'up', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t < 0, 'hgnc_symbol']
+        dx_genes = rnaseq_acc[rnaseq_acc$P.Value < t & rnaseq_acc$t < 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allDown = union(res[res$t < 0, 'hgnc_symbol'],
+                      rnaseq_acc[rnaseq_acc$t < 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'down', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'direction', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pvalWhole', 'pvalDirOnly')
+write.csv(all_res, file='~/data/post_mortem/all_accUpDown_prs_overlap_results.csv',
+          row.names=F)
+```
+
+The results weren't as conclusive as the no-direction results.
+
+# 2020-12-23 06:07:42
+
+Let's then just make Venn diagrams of the significant results:
+
+```r
+library(GeneOverlap)
+library(VennDiagram)
+
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC2 + PC7 + PC8 + PC9', p))
+    design = model.matrix( form, data2)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        up_prs = res[res$P.Value < t & res$t > 0, 'hgnc_symbol']
+        up_pm = rnaseq_acc[rnaseq_acc$P.Value < t & rnaseq_acc$t > 0,
+                           'hgnc_symbol']
+        main_str = sprintf('%s - %.3f - up', p, t)
+        out_fname = sprintf('~/tmp/up_%s_%.3f.png', p, t)
+        venn.plot = venn.diagram(list(PM = up_pm, PRS = up_prs),
+                          euler.d=TRUE, fill=c('red','green'), main=main_str,
+                          filename=out_fname, imagetype='png')
+        
+        down_prs = res[res$P.Value < t & res$t < 0, 'hgnc_symbol']
+        down_pm = rnaseq_acc[rnaseq_acc$P.Value < t & rnaseq_acc$t < 0,
+                           'hgnc_symbol']
+        main_str = sprintf('%s - %.3f - down', p, t)
+        out_fname = sprintf('~/tmp/down_%s_%.3f.png', p, t)
+        venn.plot = venn.diagram(list(PM = down_pm, PRS = down_prs),
+                          euler.d=TRUE, fill=c('red','green'), main=main_str,
+                          filename=out_fname, imagetype='png')
+    }
+}
+```
+
+Not much of an overlap in these results, even if I invert the sign of the PRS in
+case I coded it in the wrong direction. Actually, let's check this...
+
+```r
+library(fmsb)
+library(lmtest)
+mod.baseline = glm(Diagnosis ~ Sex + Age + C1 + C2 + C3 + C4 + C5, family=binomial, data=data_app)
+mod.full = glm(Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5, family=binomial, data=data_app)
+adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+prs.significance = lrtest(mod.baseline, mod.full)
+```
+
+```
+r$> summary(mod.full)                                                                                                                          
+
+Call:
+glm(formula = Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + 
+    C3 + C4 + C5, family = binomial, data = data_app)
+
+Deviance Residuals: 
+     Min        1Q    Median        3Q       Max  
+-2.57234  -0.73259  -0.07879   0.78486   1.65693  
+
+Coefficients:
+              Estimate Std. Error z value Pr(>|z|)  
+(Intercept)  3.542e+01  1.518e+01   2.334   0.0196 *
+PRS0.500000  3.348e+04  1.388e+04   2.413   0.0158 *
+SexM         2.585e+00  1.377e+00   1.877   0.0605 .
+Age         -1.363e-01  7.423e-02  -1.836   0.0664 .
+C1           1.642e+02  1.527e+02   1.075   0.2823  
+C2           2.919e+02  2.543e+02   1.148   0.2510  
+C3           1.559e+01  3.312e+02   0.047   0.9624  
+C4           4.746e+02  2.440e+02   1.945   0.0518 .
+C5           2.093e+02  1.988e+02   1.053   0.2923  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 74.192  on 53  degrees of freedom
+Residual deviance: 46.660  on 45  degrees of freedom
+AIC: 64.66
+
+Number of Fisher Scoring iterations: 6
+
+
+r$> summary(data_app$Diagnosis)                                                                                                                
+Control    Case 
+     30      24 
+```
+
+Yes, so higher PRS is associated with the higher level, or Case in this
+variable.
+
+
+
 # TODO
-* do WNH analysis from scratch?
+  * 

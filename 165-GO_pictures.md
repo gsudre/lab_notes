@@ -86,12 +86,37 @@ rnaseq_acc = topTable(fit2, coef='DiagnosisCase', number=Inf)
 Now let's make one plot for each gene:
 
 ```r
+out_dir = '~/data/rnaseq_derek/go_pics/glutamate_raw'
+df = read.delim('~/data/post_mortem/summary_results/PM_enrichment/enrichment_results_acc_geneontology_Biological_Process_noRedundant.txt')
+junk = df[df$description=='glutamate receptor signaling pathway', 'userId']
+go_genes = strsplit(x = junk, split=';')[[1]]
+for (g in go_genes) {
+    pdf(sprintf('%s/%s.pdf', out_dir, g))
+    idx = which(genes$genes$hgnc_symbol == g)
+    plot_df = data.frame(lcpm=lcpm[idx, ], DX=data$Diagnosis)
+    boxplot(lcpm ~ DX, data=plot_df, notch=TRUE, col=(c("green","red")),
+            main=g, xlab="DX", ylab='lCPM')
+    dev.off()
+}
+```
+
+And we can run the residualized version too:
+
+```r
+out_dir = '~/data/rnaseq_derek/go_pics/serotonin_resids'
 df = read.delim('~/data/post_mortem/summary_results/PM_enrichment/enrichment_results_acc_geneontology_Biological_Process_noRedundant.txt')
 junk = df[df$description=='serotonin receptor signaling pathway', 'userId']
 go_genes = strsplit(x = junk, split=';')[[1]]
-g = go_genes[1]
-idx = which(genes$genes$hgnc_symbol == g)
-plot_df = data.frame(lcpm=lcpm[idx, ], DX=data$Diagnosis)
-boxplot(lcpm ~ DX, data=plot_df, notch=TRUE, col=(c("green","red")),
-        main=g, xlab="DX", ylab='lCPM')
+for (g in go_genes) {
+    pdf(sprintf('%s/%s.pdf', out_dir, g))
+    idx = which(genes$genes$hgnc_symbol == g)
+    ens = genes$genes$ensembl_gene_id[idx]
+    data2 = data.frame(t(rbind(lcpm, t(mydata))))
+    fm_str = '%s ~ PC1 + PC2 + PC7 + PC8 + PC9'
+    y = resid(lm(as.formula(sprintf(fm_str, ens)), data=data2))
+    plot_df = data.frame(res=y, DX=data$Diagnosis)
+    boxplot(res ~ DX, data=plot_df, notch=TRUE, col=(c("green","red")),
+            main=g, xlab="DX", ylab='Adjusted lCPM')
+    dev.off()
+}
 ```
