@@ -72,7 +72,7 @@ Even though the up/down splits weren't veyr significant, we can still visualize
 them by splitting the more significant results that used just the pvalues into
 up and down-regulated, and displaing them in Venn diagrams (venn_pics.zip).
 
-## ABCD_overlap
+## ABCD
 Here we use the ABCD genotypes to impute the gene expression in the brain. That
 gives two big tables (ACC and Caudate), listing the imputed gene expression for
 each subject. We then use the brain scans of each subject in the model
@@ -81,24 +81,72 @@ generates a list of genes with associated stats, which we can compare to the PM
 gene lists.
 
 Similarly to what I did for the PRS analysis, I ran ORA for different nominal
-p-value cut-offs (imp*.pnc). I also listed the 
-Another way to check the overlap between PRS and DX result is to calculate
+p-value cut-offs (imp*.pnc). I also listed the 27 genes at the most significant
+cut-off for ACC (acc_top_genes.png). And I also ran the ORA splitting between up
+and down-regulated genes (all*upDown*csv).
+
+I also ran GSEA for the ABCd results (enrichment*txt) using the GO sets and our
+own sets, but there was nothing significant.
+
+## SPredXcan
+
+This analysis does not use any genotypes or brain data (either ours or ABCD).
+Instead, it goes directly from the ADHD GWAS results, using the MetaXcan
+databases, to a list of expressed genes in either ACC or Caudate, with stats on
+how each imputed gene differs by the two groups in the GWAS. 
+
+There was no significant overlap between imputed trnscripts and the RNA pmACC
+results (acc_overlaps.txt). That result is formatted a bit differently (older
+scripts), and you'll see a matrix for the intersection numbers and one for
+pvalues, where rows and columns correspond to imputation and pmACC nominal
+thresholds. Note that here the same question about the gene count for the
+universe applies. The pvalues I used in the .txt files is for all genes, which
+would give the best possible (lowest) p-value. Still, not much there, so I
+didn't compute the per-direction p-value.
+
+Another way to check the overlap between imputed and PM result is to calculate
 Spearman correlation between the two ranked list of genes. Here, we can rank the
 lists based on p-value, or the same rank used for GSEA (`-log(P) * sign(t)`).
+Those results are in correlations.txt. It worked for the absolute values of ACC,
+but that was it.
+
+## imputation_enrichment
+
+These results are somewhat similar (analytically) to the ABCd results. The main
+difference is that here we use our own data, and I use the MetaXcan tools not
+only to run the imputation (from our genotypes to imputed genes in the two brain
+regions), but I also use their tool for association between brain and imputed
+genes. Specifically, I first calculated `resid(brain ~ sex + age + 3QCmetrics)`
+running an LME with all our WNH subjects, and then used that adjusted phenotype
+in the PrediXcanAssociation tool to calculate `impGenes ~ adjBrainPhenotype`.
+But looking at their code, all they do is a
+OLS in python. Their tool is extremely finicky too, so that's why when I ran the
+ABCD dataset I decided to do it myself in R. I also prefer the model that takes
+into account the covariates in the same regression.
+
+There was no significant overlap between these results and the PM brain. The
+enrichment results here are the ones we've been looking at for a while. The
+enrichment to Gene Ontology had nothing earth-shattering either.
+
+## WGCNA_WG_pmACC
+
+This was my first stab at network analysis with the PM data. I only ran it for
+the ACC, and it gave 3 clusters nominally associated with Diagnosis (p < .05),
+here referenced as black, yellow, and royalblue. The enrichment results for
+those clusters somewhat mirror what we saw when enriching the actual PM results.
+WCGNA might be more powerful if they survive some FDR threshold after removing
+non-robust clusters. Not sure if they will (in fact, I can't even tell whether
+those 3 clusters are robust). That's the next step.
+
+
 # TODO
-[8:33 AM] Shaw, Philip (NIH/NHGRI) [E]
-    1) GWAS (xPrediXcan) results for gene expression in ACC/caudate--- the correlation (p and logP*signFC); the hyper.   Just to know there ins't much there.  
-​[8:34 AM] Shaw, Philip (NIH/NHGRI) [E]
-    2) For the ABCD--- the hypergeo, when split by up/down regulation.  (Just to see how far away from sig this is). 
-
-
-[Yesterday 9:25 PM] Sudre, Gustavo (NIH/NHGRI) [E]
-    FYI, here are the items I still have in my list:
-
-	make Venn diagrams for PRS PM overlaps
-	run DX*brain for PM brain
-	beef up WGCNA results (check ACC clusters robustness, make pictures of the genes there, repeat everything for Caudate)
-	check PRS to ABCD imputation overlap (regardless of circularity)
-	check how diagnosis for each brain bank was conducted
-	run more traditional DTE and DTU pipelines while paper is being written 
+ * run DX*brain for PM brain
+ * beef up WGCNA results
+   * check ACC clusters robustness
+   * make pictures of the genes there
+   * repeat everything for Caudate
+ * check PRS to ABCD imputation overlap (regardless of circularity)
+ * check how diagnosis for each brain bank was conducted
+ * run more traditional DTE and DTU pipelines while paper is being written
+ * run FUSION
 

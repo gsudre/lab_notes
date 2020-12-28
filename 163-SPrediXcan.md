@@ -386,3 +386,202 @@ sample estimates:
 -0.005894363 
 ```
 
+# 2020-12-23 19:47:41
+
+For completeness, let's run the overlaps for Caudate too:
+
+```r
+library(GeneOverlap)
+spred = read.csv('~/data/expression_impute/spredixcan/eqtl/ADHD_Caudate_MASHR.csv')
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+both_res = merge(rnaseq_caudate, spred, by.x='hgnc_symbol', by.y='gene_name',
+                 all.x=F, all.y=F)
+thresh = c(.05, .01, .005, .001)
+imp_nums = vector(length=length(thresh), mode='numeric')
+rna_nums = vector(length=length(thresh), mode='numeric')
+pvals = matrix(data=NA, nrow=length(thresh), ncol=length(thresh))
+inter_nums = pvals
+for (ti in 1:length(thresh)) {
+    imp_genes = both_res[both_res$pvalue < thresh[ti], 'hgnc_symbol']
+    imp_nums[ti] = length(imp_genes)
+    for (tr in 1:length(thresh)) {
+        rna_genes = both_res[both_res$P.Value < thresh[tr], 'hgnc_symbol']
+        rna_nums[tr] = length(rna_genes)
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval = getPval(go.obj)
+        pvals[tr, ti] = pval
+        inter_nums[tr, ti] = length(intersect(rna_genes, imp_genes))
+    }
+}
+```
+
+```
+r$> inter_nums                                                               
+     [,1] [,2] [,3] [,4]
+[1,]   52   14    8    3
+[2,]    7    1    0    0
+[3,]    5    1    0    0
+[4,]    2    0    0    0
+
+r$> pvals                                                                    
+          [,1]      [,2]      [,3]      [,4]
+[1,] 0.8408676 0.8162856 0.8335295 0.7553795
+[2,] 0.9661511 0.9735131 1.0000000 1.0000000
+[3,] 0.8187877 0.8658020 1.0000000 1.0000000
+[4,] 0.5078964 1.0000000 1.0000000 1.0000000
+
+r$> imp_nums                                                                 
+[1] 921 270 167  63
+
+r$> rna_nums                                                                 
+[1] 700 146  81  20
+```
+
+And let's also split it into up and down overlaps:
+
+```r
+imp_nums = vector(length=length(thresh), mode='numeric')
+rna_nums = vector(length=length(thresh), mode='numeric')
+pvals = matrix(data=NA, nrow=length(thresh), ncol=length(thresh))
+inter_nums = pvals
+for (ti in 1:length(thresh)) {
+    imp_genes = both_res[both_res$pvalue < thresh[ti] & both_res$zscore > 0,
+                         'hgnc_symbol']
+    imp_nums[ti] = length(imp_genes)
+    for (tr in 1:length(thresh)) {
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t > 0,
+                             'hgnc_symbol']
+        rna_nums[tr] = length(rna_genes)
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval = getPval(go.obj)
+        pvals[tr, ti] = pval
+        inter_nums[tr, ti] = length(intersect(rna_genes, imp_genes))
+    }
+}
+```
+
+```
+r$> inter_nums                                                               
+     [,1] [,2] [,3] [,4]
+[1,]   15    3    2    1
+[2,]    1    0    0    0
+[3,]    1    0    0    0
+[4,]    0    0    0    0
+
+r$> pvals                                                                    
+          [,1]      [,2]      [,3]      [,4]
+[1,] 0.3246385 0.7873672 0.7212565 0.5958648
+[2,] 0.9552399 1.0000000 1.0000000 1.0000000
+[3,] 0.7926250 1.0000000 1.0000000 1.0000000
+[4,] 1.0000000 1.0000000 1.0000000 1.0000000
+
+r$> imp_nums                                                                 
+[1] 484 155  95  35
+
+r$> rna_nums                                                                 
+[1] 297  69  35   5
+```
+
+```r
+imp_nums = vector(length=length(thresh), mode='numeric')
+rna_nums = vector(length=length(thresh), mode='numeric')
+pvals = matrix(data=NA, nrow=length(thresh), ncol=length(thresh))
+inter_nums = pvals
+for (ti in 1:length(thresh)) {
+    imp_genes = both_res[both_res$pvalue < thresh[ti] & both_res$zscore < 0,
+                         'hgnc_symbol']
+    imp_nums[ti] = length(imp_genes)
+    for (tr in 1:length(thresh)) {
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t < 0,
+                             'hgnc_symbol']
+        rna_nums[tr] = length(rna_genes)
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval = getPval(go.obj)
+        pvals[tr, ti] = pval
+        inter_nums[tr, ti] = length(intersect(rna_genes, imp_genes))
+    }
+}
+```
+
+```
+r$> inter_nums                                                               
+     [,1] [,2] [,3] [,4]
+[1,]   12    4    3    0
+[2,]    1    0    0    0
+[3,]    1    0    0    0
+[4,]    1    0    0    0
+
+r$> pvals                                                                    
+          [,1]      [,2]      [,3] [,4]
+[1,] 0.8842204 0.6136058 0.4955246    1
+[2,] 0.9566065 1.0000000 1.0000000    1
+[3,] 0.8461238 1.0000000 1.0000000    1
+[4,] 0.4563373 1.0000000 1.0000000    1
+
+r$> imp_nums                                                                 
+[1] 439 117  74  30
+
+r$> rna_nums                                                                 
+[1] 403  77  46  15
+```
+
+And run the same as above, but for ACC. Positive first:
+
+```
+r$> inter_nums                                                               
+     [,1] [,2] [,3] [,4]
+[1,]   12    3    1    0
+[2,]    3    2    1    0
+[3,]    1    1    0    0
+[4,]    1    1    0    0
+
+r$> pvals                                                                    
+          [,1]      [,2]      [,3] [,4]
+[1,] 0.9222497 0.9092427 0.9719417    1
+[2,] 0.8280637 0.4132002 0.6030825    1
+[3,] 0.9377178 0.5798048 1.0000000    1
+[4,] 0.5047314 0.1970506 1.0000000    1
+
+r$> imp_nums                                                                 
+[1] 427 138  91  33
+
+r$> rna_nums                                                                 
+[1] 419 110  67  17
+```
+
+and then negative:
+
+```
+r$> inter_nums                                                               
+     [,1] [,2] [,3] [,4]
+[1,]   14    3    3    0
+[2,]    2    1    1    0
+[3,]    0    0    0    0
+[4,]    0    0    0    0
+
+r$> pvals                                                                    
+          [,1]      [,2]      [,3] [,4]
+[1,] 0.4795519 0.7412857 0.3793677    1
+[2,] 0.7766495 0.5521911 0.3700810    1
+[3,] 1.0000000 1.0000000 1.0000000    1
+[4,] 1.0000000 1.0000000 1.0000000    1
+
+r$> imp_nums                                                                 
+[1] 395 115  68  23
+
+r$> rna_nums                                                                 
+[1] 360  75  33   6
+```
+
+I also tried running cor.test(sign(both_res$t)*log(both_res$pvalue), sign(both_res$zscore)*log
+    (both_res$P.Value), method='spearman'), but that didn't change the results
+    from before by much.

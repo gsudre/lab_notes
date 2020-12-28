@@ -267,6 +267,7 @@ for (bv in brain_vars) {
                          p.adjust = "none")
     all_res = rbind(all_res, myres)
 }
+saveRDS(all_res, file='~/data/expression_impute/ABCD_caudateToGenesNorm_12232020.rds')
 
 load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
 thresh = c(.05, .01, .005, .001)
@@ -469,6 +470,158 @@ for (db in DBs) {
         write.csv(enrichResult, file=out_fname, row.names=F)
     }
 }
+```
+
+# 2020-12-23 11:30:59
+
+Let's check ups and downs in the ABCD result overlaps:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+thresh = c(.05, .01, .005, .001)
+df = data.frame(brain=c(), dir=c(), brain_p=c(), rna_p=c(), brain_hit=c(),
+                rna_hits=c(), overlap=c(), pvalWhole=c(), pvalDir=c())
+cnt = 1
+bv = 'ACC_vol'
+
+imp_res = readRDS('~/data/expression_impute/ABCD_brainToGenesNorm_12222020.rds')
+imp_res =  imp_res[imp_res$Term == bv,]
+imp_res$ensembl_gene_id = sapply(imp_res$Variable,
+                                    function(x) strsplit(x=x, split='\\.')[[1]][1])
+both_res = merge(rnaseq_acc, imp_res, by='ensembl_gene_id', all.x=F,
+                    all.y=F)
+for (ti in 1:length(thresh)) {
+    for (tr in 1:length(thresh)) {
+        imp_genes = both_res[both_res$P < thresh[ti] & both_res$t.y > 0,
+                             'hgnc_symbol']
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t.x > 0,
+                             'hgnc_symbol']
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval1 = getPval(go.obj)
+        thisDir = union(both_res[both_res$t.x > 0, 'hgnc_symbol'],
+                        both_res[both_res$t.y > 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=length(thisDir))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        df[cnt, 'brain'] = bv
+        df[cnt, 'dir'] = 'up'
+        df[cnt, 'brain_p'] = thresh[ti]
+        df[cnt, 'rna_p'] = thresh[tr]
+        df[cnt, 'brain_hit'] = length(imp_genes)
+        df[cnt, 'rna_hit'] = length(rna_genes)
+        df[cnt, 'overlap'] = length(inter)
+        df[cnt, 'pvalWhole'] = pval1
+        df[cnt, 'pvalDir'] = pval2
+        cnt = cnt + 1
+
+        imp_genes = both_res[both_res$P < thresh[ti] & both_res$t.y < 0,
+                             'hgnc_symbol']
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t.x < 0,
+                             'hgnc_symbol']
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval1 = getPval(go.obj)
+        thisDir = union(both_res[both_res$t.x < 0, 'hgnc_symbol'],
+                        both_res[both_res$t.y < 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=length(thisDir))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        df[cnt, 'brain'] = bv
+        df[cnt, 'dir'] = 'down'
+        df[cnt, 'brain_p'] = thresh[ti]
+        df[cnt, 'rna_p'] = thresh[tr]
+        df[cnt, 'brain_hit'] = length(imp_genes)
+        df[cnt, 'rna_hit'] = length(rna_genes)
+        df[cnt, 'overlap'] = length(inter)
+        df[cnt, 'pvalWhole'] = pval1
+        df[cnt, 'pvalDir'] = pval2
+        cnt = cnt + 1
+    }
+}
+write.csv(df, file='~/data/expression_impute/ABCD_accUpDown_overlaps.csv', row.names=F)
+```
+
+And do the same thing for Caudate:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+thresh = c(.05, .01, .005, .001)
+df = data.frame(brain=c(), dir=c(), brain_p=c(), rna_p=c(), brain_hit=c(),
+                rna_hits=c(), overlap=c(), pvalWhole=c(), pvalDir=c())
+cnt = 1
+bv = 'Caudate_vol'
+
+imp_res = readRDS('~/data/expression_impute/ABCD_caudateToGenesNorm_12232020.rds')
+imp_res =  imp_res[imp_res$Term == bv,]
+imp_res$ensembl_gene_id = sapply(imp_res$Variable,
+                                    function(x) strsplit(x=x, split='\\.')[[1]][1])
+both_res = merge(rnaseq_caudate, imp_res, by='ensembl_gene_id', all.x=F,
+                    all.y=F)
+for (ti in 1:length(thresh)) {
+    for (tr in 1:length(thresh)) {
+        imp_genes = both_res[both_res$P < thresh[ti] & both_res$t.y > 0,
+                             'hgnc_symbol']
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t.x > 0,
+                             'hgnc_symbol']
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval1 = getPval(go.obj)
+        thisDir = union(both_res[both_res$t.x > 0, 'hgnc_symbol'],
+                        both_res[both_res$t.y > 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=length(thisDir))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        df[cnt, 'brain'] = bv
+        df[cnt, 'dir'] = 'up'
+        df[cnt, 'brain_p'] = thresh[ti]
+        df[cnt, 'rna_p'] = thresh[tr]
+        df[cnt, 'brain_hit'] = length(imp_genes)
+        df[cnt, 'rna_hit'] = length(rna_genes)
+        df[cnt, 'overlap'] = length(inter)
+        df[cnt, 'pvalWhole'] = pval1
+        df[cnt, 'pvalDir'] = pval2
+        cnt = cnt + 1
+
+        imp_genes = both_res[both_res$P < thresh[ti] & both_res$t.y < 0,
+                             'hgnc_symbol']
+        rna_genes = both_res[both_res$P.Value < thresh[tr] & both_res$t.x < 0,
+                             'hgnc_symbol']
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(imp_genes, rna_genes)
+        pval1 = getPval(go.obj)
+        thisDir = union(both_res[both_res$t.x < 0, 'hgnc_symbol'],
+                        both_res[both_res$t.y < 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(imp_genes, rna_genes,
+                                 genome.size=length(thisDir))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        df[cnt, 'brain'] = bv
+        df[cnt, 'dir'] = 'down'
+        df[cnt, 'brain_p'] = thresh[ti]
+        df[cnt, 'rna_p'] = thresh[tr]
+        df[cnt, 'brain_hit'] = length(imp_genes)
+        df[cnt, 'rna_hit'] = length(rna_genes)
+        df[cnt, 'overlap'] = length(inter)
+        df[cnt, 'pvalWhole'] = pval1
+        df[cnt, 'pvalDir'] = pval2
+        cnt = cnt + 1
+    }
+}
+write.csv(df, file='~/data/expression_impute/ABCD_caudateUpDown_overlaps.csv', row.names=F)
 ```
 
 # TODO

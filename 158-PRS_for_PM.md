@@ -1228,7 +1228,73 @@ Control    Case
 Yes, so higher PRS is associated with the higher level, or Case in this
 variable.
 
+# 2020-12-28 16:03:58
 
+But is it the case that the PRS for ADHD is always higher? First, let's re-run
+the LRtests spitting out the R2 as well:
+
+```r
+mydata = data_app
+
+library(fmsb)
+library(lmtest)
+prs_names = sapply(sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2)),
+                   function(x) sprintf('PRS%f', x))
+for (prs in prs_names) {
+    # fm_root = 'Diagnosis ~ %s Sex + Age'
+    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, '')
+    mod.baseline = glm(as.formula(fm_str), family=binomial, data=mydata)
+    fm_str = sprintf(fm_root, sprintf('%s +', prs))
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
+    adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, mod.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f, R2=%.3f\n', fm_str, myp, adjustedR2))
+}
+```
+
+```
+Diagnosis ~ PRS0.000050 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.405, R2=0.012
+Diagnosis ~ PRS0.000100 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.676, R2=0.003
+Diagnosis ~ PRS0.000500 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.528, R2=0.007
+Diagnosis ~ PRS0.001000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.471, R2=0.009
+Diagnosis ~ PRS0.005000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.013, R2=0.101
+Diagnosis ~ PRS0.010000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.140, R2=0.037
+Diagnosis ~ PRS0.050000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.125, R2=0.040
+Diagnosis ~ PRS0.100000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.057, R2=0.061
+Diagnosis ~ PRS0.200000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.065, R2=0.057
+Diagnosis ~ PRS0.300000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.019, R2=0.090
+Diagnosis ~ PRS0.400000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.009, R2=0.111
+Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.004, R2=0.132
+```
+
+```r
+for (p in c(.3, .4, .5)) {
+    prs_str = sprintf('PRS%f', p)
+    fm_str = sprintf('Diagnosis ~ %s + Sex + Age + C1 + C2 + C3 + C4 + C5',
+                     prs_str)
+    mod.full = glm(as.formula(fm_str), family=binomial, data=data_app)
+    print(prs_str)
+    print(summary(mod.full)$coefficients[prs_str,])
+}
+```
+
+```
+[1] "PRS0.300000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+1.893616e+04 9.092819e+03 2.082540e+00 3.729319e-02 
+[1] "PRS0.400000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+2.566708e+04 1.142387e+04 2.246793e+00 2.465325e-02 
+[1] "PRS0.500000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+3.348286e+04 1.387801e+04 2.412655e+00 1.583680e-02 
+```
+
+So, in the 3 thresholds where PRS mattered, it's a positive Z, meaning that the
+higher class (Case) has higher PRS.
 
 # TODO
   * 

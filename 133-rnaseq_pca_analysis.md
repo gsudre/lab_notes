@@ -1183,5 +1183,260 @@ for (region in c('acc', 'caudate')) {
 }
 ```
 
+# 2020-12-28 12:37:05
+
+Philip updated the comorbid group category, and also added a new variable to see
+if the evidence level for the clinical assessment matters. Let's see if either
+one is correlated with previous or new PCs:
+
+# 2020-11-12 20:20:56
+
+Derek gave me a heads up that I was using the Case category as the reference.
+Let's re-run everything again with Controls as reference. I checked and nothing
+changes, except now Up and Down regulated genes are swapped.
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+# we're down from 60K to 38K samples by only looking at the ones with hgnc symbol. We might be losing too much here, so it's a step to reconsider in the future
+
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$substance_group = factor(data$substance_group)
+data$comorbid_group = factor(data$comorbid_group_update)
+data$evidence_level = factor(data$evidence_level)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+lcpm = cpm(genes, log=T)
+set.seed(42)
+lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+library(nFactors)
+eigs <- lcpm.pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(lcpm.pca$x[, keep_me])
+
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(data[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], data[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+```
+
+```
+r$> which(num_pvals < .01, arr.ind = T)                                        
+                        row col
+clusters                  2   1
+RINe                      4   1
+PMI                       5   1
+RINe                      4   2
+C6                       11   2
+pcnt_optical_duplicates   1   7
+clusters                  2   7
+Age                       3   8
+Age                       3   9
+
+r$> which(categ_pvals < .01, arr.ind = T)           
+                row col
+batch             1   1
+batch             1   2
+batch             1   7
+MoD               3   9
+substance_group   4   9
+```
+
+Nothing changed for ACC. Let's check the caudate:
+
+```r
+myregion = 'Caudate'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+id_num = sapply(grex_vars, function(x) strsplit(x=x, split='\\.')[[1]][1])
+rownames(count_matrix) = id_num
+dups = duplicated(id_num)
+id_num = id_num[!dups]
+count_matrix = count_matrix[!dups, ]
+
+G_list0 = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+G_list <- G_list0[!is.na(G_list0$hgnc_symbol),]
+G_list = G_list[G_list$hgnc_symbol!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = rownames(count_matrix) %in% G_list$ensembl_gene_id
+count_matrix = count_matrix[imnamed, ]
+# we're down from 60K to 38K samples by only looking at the ones with hgnc symbol. We might be losing too much here, so it's a step to reconsider in the future
+
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+data$substance_group = factor(data$substance_group)
+data$comorbid_group = factor(data$comorbid_group_update)
+data$evidence_level = factor(data$evidence_level)
+
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(count_matrix), method = pp_order)
+X = predict(pp, t(count_matrix))
+geneCounts = t(X)
+G_list2 = merge(rownames(geneCounts), G_list, by=1)
+colnames(G_list2)[1] = 'ensembl_gene_id'
+imautosome = which(G_list2$chromosome_name != 'X' &
+                   G_list2$chromosome_name != 'Y' &
+                   G_list2$chromosome_name != 'MT')
+geneCounts = geneCounts[imautosome, ]
+G_list2 = G_list2[imautosome, ]
+library(edgeR)
+isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
+genes = DGEList( geneCounts[isexpr,], genes=G_list2[isexpr,] ) 
+genes = calcNormFactors( genes)
+
+lcpm <- cpm(genes, log=TRUE)
+set.seed(42)
+lcpm.pca <- prcomp(t(lcpm), scale=TRUE)
+library(nFactors)
+eigs <- lcpm.pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(lcpm.pca$x[, keep_me])
+
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(data[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], data[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+```
+
+```
+r$> which(num_pvals < .01, arr.ind = T)                                                                           
+                        row col
+RINe                      4   1
+pcnt_optical_duplicates   1   3
+clusters                  2   6
+Age                       3   6
+PMI                       5   6
+Age                       3   8
+
+r$> which(categ_pvals < .01, arr.ind = T)                                                                         
+               row col
+batch            1   1
+batch            1   3
+batch            1   5
+comorbid_group   5   5
+batch            1   6
+MoD              3   8
+```
+
+Also, nothing changed for Caudate!
+
 
 # TODO
