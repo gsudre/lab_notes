@@ -1271,7 +1271,8 @@ Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3 + C4 + C5: pval = 0.004, R2=0
 ```
 
 ```r
-for (p in c(.3, .4, .5)) {
+for (p in sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05, .5, .4, .3,
+                .2))) {
     prs_str = sprintf('PRS%f', p)
     fm_str = sprintf('Diagnosis ~ %s + Sex + Age + C1 + C2 + C3 + C4 + C5',
                      prs_str)

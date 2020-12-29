@@ -361,29 +361,31 @@ There was no relationship if we took into consideration the up and down
 regulation (ACC first):
 
 ```
-r$> cor.test(sign(both_res$t)*both_res$pvalue, sign(both_res$zscore)*both_res$P.Value, method='spearman')                  
+r$> cor.test(sign(both_res$zscore)*both_res$pvalue, sign(both_res$t)*both_res$P.Value, method='spearman'
+    , na.action = na.rm)                                                                                
 
-        Spearman's rank correlation rho
+K        Spearman's rank correlation rho
 
-data:  sign(both_res$t) * both_res$pvalue and sign(both_res$zscore) * both_res$P.Value
-S = 1.8963e+11, p-value = 0.7406
+data:  sign(both_res$zscore) * both_res$pvalue and sign(both_res$t) * both_res$P.Value
+S = 1.8962e+11, p-value = 0.7346
 alternative hypothesis: true rho is not equal to 0
 sample estimates:
         rho 
-0.003238165
+0.003316684 
 
 [...]
 
-r$> cor.test(sign(both_res$t)*both_res$pvalue, sign(both_res$zscore)*both_res$P.Value, method='spearman')                  
+r$> cor.test(sign(both_res$zscore)*both_res$pvalue, sign(both_res$t)*both_res$P.Value, method='spearman'
+    , na.action = na.rm)                                                                                
 
-        Spearman's rank correlation rho
+K        Spearman's rank correlation rho
 
-data:  sign(both_res$t) * both_res$pvalue and sign(both_res$zscore) * both_res$P.Value
-S = 2.2199e+11, p-value = 0.5368
+data:  sign(both_res$zscore) * both_res$pvalue and sign(both_res$t) * both_res$P.Value
+S = 2.1487e+11, p-value = 0.3703
 alternative hypothesis: true rho is not equal to 0
 sample estimates:
-         rho 
--0.005894363 
+        rho 
+0.008576183 
 ```
 
 # 2020-12-23 19:47:41

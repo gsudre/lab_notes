@@ -154,8 +154,92 @@ not go in, even if it's robust.
 
 So, let's see what other networks we can create here:
 
+# 2020-12-29 14:39:06
 
+This actually might be a good idea if we can find complementary results to the
+main PM results, but also if these results correlate better to PRS?
 
+```r
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+sft_bs = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5,
+                           corFnc = 'bicor', networkType = 'signed')
+sft_bu = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5,
+                           corFnc = 'bicor', networkType = 'unsigned')
+sft_bh = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5,
+                           corFnc = 'bicor', networkType = 'signed hybrid')
+source('~/tmp/code1.R')                               
+library(doParallel)
+sft_bh2 = hpickSoftThreshold(datExpr, powerVector = powers, corFnc = bicor,
+                             networkType = "hybrid2", verbose = 5)
+```
+
+Let's compare some of those results:
+
+```r
+quartz()
+par(mfrow = c(2,2));
+cex1 = 0.9;
+
+plot(sft_bs$fitIndices[,1], -sign(sft_bs$fitIndices[,3])*sft_bs$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+    main = 'signed');
+text(sft_bs$fitIndices[,1], -sign(sft_bs$fitIndices[,3])*sft_bs$fitIndices[,2],
+    labels=powers,cex=cex1,col="red");
+
+plot(sft_bu$fitIndices[,1], -sign(sft_bu$fitIndices[,3])*sft_bu$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+    main = 'unsigned');
+text(sft_bu$fitIndices[,1], -sign(sft_bu$fitIndices[,3])*sft_bu$fitIndices[,2],
+    labels=powers,cex=cex1,col="red");
+
+plot(sft_bh$fitIndices[,1], -sign(sft_bh$fitIndices[,3])*sft_bh$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+    main = 'hybrid');
+text(sft_bh$fitIndices[,1], -sign(sft_bh$fitIndices[,3])*sft_bh$fitIndices[,2],
+    labels=powers,cex=cex1,col="red");
+
+plot(sft_bh2$fitIndices[,1], -sign(sft_bh2$fitIndices[,3])*sft_bh2$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+    main = 'hybrid2');
+text(sft_bh2$fitIndices[,1], -sign(sft_bh2$fitIndices[,3])*sft_bh2$fitIndices[,2],
+    labels=powers,cex=cex1,col="red");
+```
+
+![](images/2020-12-29-14-54-17.png)
+
+We clearly have a lot of work to do here. Apparently different network
+configurations might give different results. Let's go slowly then:
+
+```r
+nets = blockwiseModules(datExpr, power = 9, corType='bicor',
+                        TOMType = "signed", minModuleSize = 30,
+                        reassignThreshold = 0, mergeCutHeight = 0.25,
+                        numericLabels = TRUE, pamRespectsDendro = FALSE,
+                        saveTOMs = F, maxBlockSize=nGenes, verbose = 3)
+
+netu = blockwiseModules(datExpr, power = 5, corType='bicor',
+                        TOMType = "unsigned", minModuleSize = 30,
+                        reassignThreshold = 0, mergeCutHeight = 0.25,
+                        numericLabels = TRUE, pamRespectsDendro = FALSE,
+                        saveTOMs = F, maxBlockSize=nGenes, verbose = 3)
+
+neth = blockwiseModules(datExpr, power = 4, corType='bicor',
+                        TOMType = "signed hybrid", minModuleSize = 30,
+                        reassignThreshold = 0, mergeCutHeight = 0.25,
+                        numericLabels = TRUE, pamRespectsDendro = FALSE,
+                        saveTOMs = F, maxBlockSize=nGenes, verbose = 3)
+
+adj = Hadjacency(datExpr=datExpr, type='hybrid2', power=12, corFnc='bicor')
+neth2 = blockwiseModules(adj, power = 4, corType='bicor',
+                        TOMType = "signed hybrid", minModuleSize = 30,
+                        reassignThreshold = 0, mergeCutHeight = 0.25,
+                        numericLabels = TRUE, pamRespectsDendro = FALSE,
+                        saveTOMs = F, maxBlockSize=nGenes, verbose = 3)
+```
 
 # TODO
  * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
@@ -163,3 +247,4 @@ So, let's see what other networks we can create here:
  * use signed networks? (that's what Science paper did, and removed all      covariates first too)
  * use robustness (bicor)
  * try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
+ * is bicor the best thing to use here?
