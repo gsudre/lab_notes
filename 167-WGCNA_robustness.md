@@ -743,10 +743,12 @@ for (n in c('nets', 'netu', 'neth', 'netps', 'netpu', 'netph')) {
             if (file.exists(fname)) {
                 df = read.delim(fname)
                 res = df[df$FDR<.05,]
-                res$net = n
-                res$col = ora_col
-                res$db = db
-                all_res = rbind(all_res, res)
+                if (nrow(res) > 0) {
+                    res$net = n
+                    res$col = ora_col
+                    res$db = db
+                    all_res = rbind(all_res, res)
+                }
             }
         }
         db = 'my_acc_sets'
@@ -756,16 +758,100 @@ for (n in c('nets', 'netu', 'neth', 'netps', 'netpu', 'netph')) {
         if (file.exists(fname)) {
             df = read.delim(fname)
             res = df[df$pValue<.05,]
-            res$net = n
-            res$description = res$link
-            res$col = ora_col
-            res$db = db
-            all_res = rbind(all_res, res)
+            if (nrow(res) > 0) {
+                res$net = n
+                res$description = res$link
+                res$col = ora_col
+                res$db = db
+                all_res = rbind(all_res, res)
+            }
         }
     }
 }
-out_fname
+out_fname = '~/data/WGCNA/many_nets_ORA_q05_p05.csv'
+write.csv(all_res, out_fname, row.names=F)
 ```
+
+So, we have many good results now. We do need to check the robustness of these
+networks though, so we can trim things a bit more.
+
+```r
+# bw
+load('~/data/WGCNA/bicor_networks.RData')
+load('~/data/WGCNA/pearson_networks.RData')
+
+library(WGCNA)
+enableWGCNAThreads(nThreads = 32)
+multiExpr = multiData(Set1 = datExpr, Set2 = datExpr)
+moduleLabels = netpu$colors
+moduleColors = labels2colors(moduleLabels)
+colorList = list(Set1 = moduleColors)
+
+mp = modulePreservation(multiExpr, colorList, referenceNetworks=1,
+                          nPermutations = 1000,
+                          networkType = "unsigned",
+                          randomSeed = 42,
+                          quickCor=0, corFnc = "cor", parallelCalculation = T,
+                          verbose = 4, 
+                          indent = 0)
+```
+
+And I saved the mp results to ~/data/WGCNA/modulePreservation_1K.RData.
+
+```r
+library(WGCNA)
+load('~/data/WGCNA/bicor_networks.RData')
+load('~/data/WGCNA/pearson_networks.RData')
+load('~/data/WGCNA/modulePreservation_1K.RData')
+
+plot_quality = function(mp, net, t_str) {
+    stats = mp$quality$Z[[1]][[2]][, -1]
+    moduleLabels = net$colors
+    moduleColors = labels2colors(moduleLabels)
+    moduleSizes = table(moduleColors)
+    # to match table output
+    stats = stats[order(rownames(stats)), ]
+    # remove bad modules module
+    stats = stats[!rownames(stats) %in% c('gold'),]
+    ms = as.vector(moduleSizes)
+    names(ms) = rownames(stats)
+    keep_me = !rownames(stats) %in% c('grey')
+    stats = stats[keep_me,]
+    ms = ms[keep_me]
+
+    quartz()
+    par(mfrow = c(2, 3))
+    for (s in 1:6) {
+        plot(ms, stats[, s], pch = 20,
+            main = t_str,
+            cex = 2, ylab = colnames(stats)[s], type = "n", xlab = "Module size",
+            cex.main = 1)
+        text(ms, stats[, s], labels = rownames(stats))
+        abline(h=0)
+        abline(h=2, col = "blue", lty = 2);
+        abline(h=10, col = "darkgreen", lty = 2);
+    }
+}
+plot_quality(mp_ps1K, netps, 'Pearson signed')
+plot_quality(mp_pu1K, netpu, 'Pearson unsigned')
+plot_quality(mp_ph1K, netph, 'Pearson hybrid')
+
+plot_quality(mp_s1K, nets, 'Bicor signed')
+plot_quality(mp_u1K, netu, 'Bicor unsigned')
+plot_quality(mp_h1K, neth, 'Bicor hybrid')
+```
+
+![](images/2020-12-30-14-51-18.png)
+
+![](images/2020-12-30-14-52-35.png)
+
+![](images/2020-12-30-14-53-53.png)
+
+![](images/2020-12-30-14-55-06.png)
+
+![](images/2020-12-30-14-55-23.png)
+
+![](images/2020-12-30-14-55-39.png)
 
 # TODO
  * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
