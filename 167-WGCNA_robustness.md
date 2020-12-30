@@ -359,8 +359,6 @@ library(MASS)
 test_network = function(net, datExpr, data) {
     moduleLabels = net$colors
     moduleColors = labels2colors(net$colors)
-    MEs = net$MEs;
-    geneTree = net$dendrograms[[1]];
 
     MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
     MEs = orderMEs(MEs0)
@@ -411,6 +409,32 @@ r$> print(myps[myps<.05])
  0.045479132  0.003717134  0.025081553  0.004669829  0.017769053  0.016028208  0.018631847  0.037184452 
 ```
 
+For completeness, here are the same plots and results for the Pearson networks:
+
+![](images/2020-12-30-06-59-06.png)
+
+```
+r$> myps = test_network(netps, datExpr, data)                                                           
+
+r$> print(myps[myps<.05])                                                                               
+    MEblack   MEmagenta 
+0.006549514 0.004716908 
+
+r$> myps = test_network(netpu, datExpr, data)                                                           
+
+r$> print(myps[myps<.05])                                                                               
+MElightgreen      MEgreen 
+ 0.007919262  0.046446573 
+
+r$> myps = test_network(netph, datExpr, data)                                                           
+
+r$> print(myps[myps<.05])                                                                               
+   MElightcyan        MEgreen      MEmagenta    MEroyalblue   MElightgreen MEmidnightblue 
+   0.005697386    0.047098583    0.017611509    0.043009596    0.047101048    0.013534146 
+   MEdarkgreen          MEred  MEdarkmagenta 
+   0.015583847    0.048103504    0.006810022 
+```
+
 So, we have several options here. The main question is where these modules map
 to, and whether they're stable. I can at least leave running WG for all of the
 significant ones, and check their robustness later:
@@ -421,7 +445,8 @@ library(WebGestaltR)
 ncpu=7
 data_dir = '~/data/WGCNA/'
 region = 'acc'
-for (n in c('nets', 'netu', 'neth')) {
+# for (n in c('nets', 'netu', 'neth')) {
+for (n in c('netps', 'netpu', 'netph')) {
     eval(parse(text=sprintf('myps = test_network(%s, datExpr, data)', n)))
     eval(parse(text=sprintf('moduleLabels = %s$colors', n)))
     moduleColors = labels2colors(moduleLabels)
@@ -436,7 +461,7 @@ for (n in c('nets', 'netu', 'neth')) {
         cat(region, db, n, col, '\n')
         project_name = sprintf('%s_%s_%s_%s', region, n, col, db)
         db_file = sprintf('~/data/post_mortem/%s.gmt', db)
-        enrichResult <- WebGestaltR(enrichMethod="ORA",
+        enrichResult <- try(WebGestaltR(enrichMethod="ORA",
                                     organism="hsapiens",
                                     enrichDatabaseFile=db_file,
                                     enrichDatabaseType="genesymbol",
@@ -447,10 +472,12 @@ for (n in c('nets', 'netu', 'neth')) {
                                     sigMethod="top", topThr=150000,
                                     minNum=3, projectName=project_name,
                                     isOutput=T, isParallel=T,
-                                    nThreads=ncpu, perNum=10000, maxNum=900)
-        out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region, db,
-                            n, col)
-        write.csv(enrichResult, file=out_fname, row.names=F)
+                                    nThreads=ncpu, perNum=10000, maxNum=900))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region, db,
+                                n, col)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
 
         DBs = c('geneontology_Biological_Process_noRedundant',
                 'geneontology_Cellular_Component_noRedundant',
@@ -459,7 +486,7 @@ for (n in c('nets', 'netu', 'neth')) {
             cat(region, db, n, col, '\n')
             project_name = sprintf('%s_%s_%s_%s', region, n, col, db)
             db_file = sprintf('~/data/post_mortem/%s.gmt', db)
-            enrichResult <- WebGestaltR(enrichMethod="ORA",
+            enrichResult <- try(WebGestaltR(enrichMethod="ORA",
                                         organism="hsapiens",
                                         enrichDatabase=db,
                                         enrichDatabaseType="genesymbol",
@@ -470,15 +497,275 @@ for (n in c('nets', 'netu', 'neth')) {
                                         sigMethod="top", topThr=150000,
                                         minNum=3, projectName=project_name,
                                         isOutput=T, isParallel=T,
-                                        nThreads=ncpu, perNum=10000, maxNum=900)
-            out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region,
-                                db, n, col)
-            write.csv(enrichResult, file=out_fname, row.names=F)
+                                        nThreads=ncpu, perNum=10000, maxNum=900))
+            if (class(enrichResult) != "try-error") {
+                out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region,
+                                    db, n, col)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
         }
     }
 }
 ```
 
+# 2020-12-30 09:29:07
+
+Before I spend too much time looking into the WG results and robustness, what's
+the association of these modules and PRS?
+
+```r
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using the most appropriate PRS, make sure we don't switch subject order
+m = merge(data, prs, by='hbcc_brain_id', sort=F)
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+m[keep_me, prs_names] = m[keep_me, 64:75]
+m[!keep_me, prs_names] = m[!keep_me, 52:63]
+data.prs = m[, c(1:51, 76:87)]
+
+library(MASS)
+test_network_prs = function(net, datExpr, data) {
+    moduleLabels = net$colors
+    moduleColors = labels2colors(moduleLabels)
+    
+    MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
+    MEs = orderMEs(MEs0)
+
+    mydata = cbind(MEs, data)
+
+    prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+    myps = matrix(nrow=length(colnames(MEs)), ncol=length(prs_names),
+                  dimnames=list(colnames(MEs), prs_names))
+    for (iv in 1:length(colnames(MEs))) {
+        v = colnames(MEs)[iv]
+        for (ip in 1:length(prs_names)) {
+            p = prs_names[ip]
+            fm_str = sprintf('%s ~ %s + Age + C1 + C2 + C3 + C4 + C5 + MoD + substance_group + comorbid_group + POP_CODE +
+                        Sex', v, p)
+            res.lm <- lm(as.formula(fm_str), data = mydata)
+            keep_str = sprintf('~ %s', p)
+            step <- stepAIC(res.lm, direction = "both", trace = F,
+                            scope = list(lower = as.formula(keep_str)))
+            myp = summary(step)$coefficients[p, 'Pr(>|t|)']
+            myps[iv, ip] = myp
+        }
+    }
+    return(myps)
+}
+keep_me = !is.na(data$C1)
+myps_dx = test_network(nets, datExpr, data)
+myps_prs = test_network_prs(nets, datExpr[keep_me,], data.prs)
+print(myps_prs[names(myps_dx)[myps_dx<.05],])
+
+myps_dx = test_network(netu, datExpr, data)
+myps_prs = test_network_prs(netu, datExpr[keep_me,], data.prs)
+print(myps_prs[names(myps_dx)[myps_dx<.05],])
+
+myps_dx = test_network(neth, datExpr, data)
+myps_prs = test_network_prs(neth, datExpr[keep_me,], data.prs)
+print(myps_prs[names(myps_dx)[myps_dx<.05],])
+```
+
+Here I'm only showing the modules that were significant for DX as well.
+
+![](images/2020-12-30-09-56-52.png)
+
+![](images/2020-12-30-09-58-52.png)
+
+![](images/2020-12-30-10-00-23.png)
+
+Overall the pattern is similar to what we saw for the straight-up PM results,
+with the highest PRS profiles not doing so great. Does it change for the Pearson
+modules?
+
+![](images/2020-12-30-10-03-38.png)
+
+![](images/2020-12-30-10-04-50.png)
+
+![](images/2020-12-30-10-06-02.png)
+
+Results are somewhat similar, but we might be able to extend up to .1? 
+
+Let me try a stepwise regression for DX ~ PRS to see if that makes a difference.
+The lrtest only works if we have similar terms, so let's decide on the best
+model with PRS and then remove it for baseline.
+
+```r
+mydata = data.prs
+
+library(fmsb)
+library(lmtest)
+prs_names = sapply(sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2)),
+                   function(x) sprintf('PRS%f', x))
+for (prs in prs_names) {
+    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, sprintf('%s +', prs))
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
+    keep_str = sprintf('~ %s', prs)
+    step.full <- stepAIC(mod.full, direction = "both", trace = F,
+                         scope = list(lower = as.formula(keep_str)))
+    myterms = attr(step.full$terms, 'term.labels')
+    right_hand = paste(myterms[2:length(myterms)], collapse = ' + ')
+    fm_str = sprintf('Diagnosis ~ %s', right_hand)
+    mod.baseline = glm(as.formula(fm_str), family=binomial, data=mydata)
+    adjustedR2 = NagelkerkeR2(step.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, step.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f, R2=%.3f\n', prs, myp, adjustedR2))
+}
+```
+
+```
+PRS0.000050: pval = 0.412, R2=0.012
+PRS0.000100: pval = 0.676, R2=0.003
+PRS0.000500: pval = 0.531, R2=0.007
+PRS0.001000: pval = 0.479, R2=0.009
+PRS0.005000: pval = 0.014, R2=0.099
+PRS0.010000: pval = 0.178, R2=0.032
+PRS0.050000: pval = 0.425, R2=0.012
+PRS0.100000: pval = 0.068, R2=0.059
+PRS0.200000: pval = 0.081, R2=0.054
+PRS0.300000: pval = 0.037, R2=0.077
+PRS0.400000: pval = 0.008, R2=0.122
+PRS0.500000: pval = 0.003, R2=0.148
+```
+
+Didn't change much from the previous results... at least we have several modules
+significant at .005. Let's play a bit with the idea of module membership as a
+rank:
+
+```r
+library(WebGestaltR)
+
+ncpu=7
+data_dir = '~/data/WGCNA/'
+region = 'acc'
+for (n in c('nets', 'netu', 'neth')) {
+# for (n in c('netps', 'netpu', 'netph')) {
+    eval(parse(text=sprintf('myps = test_network(%s, datExpr, data)', n)))
+    eval(parse(text=sprintf('moduleLabels = %s$colors', n)))
+    moduleColors = labels2colors(moduleLabels)
+    MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
+    MEs = orderMEs(MEs0)
+    geneModuleMembership = as.data.frame(cor(datExpr, MEs, use = "p"))
+    good_modules = names(myps)[myps<.05] 
+    for (col in good_modules) {
+        ranks = geneModuleMembership[, col]
+        tmp2 = data.frame(hgnc_symbol=genes$genes$hgnc_symbol, rank=ranks)
+        tmp2 = tmp2[order(ranks, decreasing=T),]
+
+        # my own GMTs
+        db = sprintf('my_%s_sets', region)
+        cat(region, db, n, col, '\n')
+        project_name = sprintf('%s_%s_%s_%s', region, n, col, db)
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="genesymbol",
+                            sigMethod="top", topThr=150000,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=800))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region, db,
+                                n, col)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+
+        DBs = c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant')
+        for (db in DBs) {
+            cat(region, db, n, col, '\n')
+            project_name = sprintf('%s_%s_%s_%s', region, n, col, db)
+            db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="genesymbol",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=800))
+            if (class(enrichResult) != "try-error") {
+                out_fname = sprintf('%s/WG3_%s_%s_%s_%s_10K.csv', data_dir, region,
+                                    db, n, col)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
+        }
+    }
+}
+```
+
+Now, we have a shit-ton of results. Let's start by compiling everything into a
+big spreadsheet. Note that the ORA results are net_color names, and the GSEA
+results are net_MEcolor.
+
+```r
+load('~/data/WGCNA/bicor_networks.RData')
+load('~/data/WGCNA/pearson_networks.RData')
+data_dir = '~/data/WGCNA/'
+library(WGCNA)
+all_res = c()
+for (n in c('nets', 'netu', 'neth', 'netps', 'netpu', 'netph')) {
+    eval(parse(text=sprintf('myps = test_network(%s, datExpr, data)', n)))
+    good_modules = names(myps)[myps<.05] 
+    for (col in good_modules) {
+        ora_col = substring(col, 3)
+        DBs = c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant')
+        for (db in DBs) {
+            mydir = sprintf('%s/Project_acc_%s_%s_%s', data_dir, n, ora_col, db)
+            fname = sprintf('%s/enrichment_results_acc_%s_%s_%s.txt', mydir, n,
+                            ora_col, db)
+            if (file.exists(fname)) {
+                df = read.delim(fname)
+                res = df[df$FDR<.05,]
+                res$net = n
+                res$col = ora_col
+                res$db = db
+                all_res = rbind(all_res, res)
+            }
+        }
+        db = 'my_acc_sets'
+        mydir = sprintf('%s/Project_acc_%s_%s_%s', data_dir, n, ora_col, db)
+        fname = sprintf('%s/enrichment_results_acc_%s_%s_%s.txt', mydir, n,
+                        ora_col, db)
+        if (file.exists(fname)) {
+            df = read.delim(fname)
+            res = df[df$pValue<.05,]
+            res$net = n
+            res$description = res$link
+            res$col = ora_col
+            res$db = db
+            all_res = rbind(all_res, res)
+        }
+    }
+}
+out_fname
+```
 
 # TODO
  * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
@@ -488,3 +775,4 @@ for (n in c('nets', 'netu', 'neth')) {
  * try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
  * is bicor the best thing to use here?
  * recutBlockwiseTrees?
+ * how about ranking the genes based on some sort of module membership value?
