@@ -652,11 +652,11 @@ rank:
 ```r
 library(WebGestaltR)
 
-ncpu=7
+ncpu=32
 data_dir = '~/data/WGCNA/'
 region = 'acc'
-for (n in c('nets', 'netu', 'neth')) {
-# for (n in c('netps', 'netpu', 'netph')) {
+# for (n in c('nets', 'netu', 'neth')) {
+for (n in c('netps', 'netpu', 'netph')) {
     eval(parse(text=sprintf('myps = test_network(%s, datExpr, data)', n)))
     eval(parse(text=sprintf('moduleLabels = %s$colors', n)))
     moduleColors = labels2colors(moduleLabels)
@@ -854,11 +854,7 @@ plot_quality(mp_h1K, neth, 'Bicor hybrid')
 ![](images/2020-12-30-14-55-39.png)
 
 # TODO
- * how stable are these networks? (http://pages.stat.wisc.edu/~yandell/statgen/ucla/WGCNA/wgcna.html)
  * check FDR after stability analysis
- * use signed networks? (that's what Science paper did, and removed all      covariates first too)
- * use robustness (bicor)
  * try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
- * is bicor the best thing to use here?
  * recutBlockwiseTrees?
  * how about ranking the genes based on some sort of module membership value?
