@@ -1276,13 +1276,40 @@ for (p in sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05, .5, .4, .3,
     prs_str = sprintf('PRS%f', p)
     fm_str = sprintf('Diagnosis ~ %s + Sex + Age + C1 + C2 + C3 + C4 + C5',
                      prs_str)
-    mod.full = glm(as.formula(fm_str), family=binomial, data=data_app)
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
     print(prs_str)
     print(summary(mod.full)$coefficients[prs_str,])
 }
 ```
 
 ```
+[1] "PRS0.000050"
+   Estimate  Std. Error     z value    Pr(>|z|) 
+167.5074650 203.9730329   0.8212236   0.4115189 
+[1] "PRS0.000100"
+  Estimate Std. Error    z value   Pr(>|z|) 
+128.336661 307.244564   0.417702   0.676165 
+[1] "PRS0.000500"
+   Estimate  Std. Error     z value    Pr(>|z|) 
+289.7433100 462.4103268   0.6265935   0.5309257 
+[1] "PRS0.001000"
+   Estimate  Std. Error     z value    Pr(>|z|) 
+352.9522752 491.9767824   0.7174165   0.4731171 
+[1] "PRS0.005000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+2.952099e+03 1.303044e+03 2.265540e+00 2.347955e-02 
+[1] "PRS0.010000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+1968.7666479 1385.3749438    1.4211074    0.1552855 
+[1] "PRS0.050000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+3919.3573933 2635.4055270    1.4871933    0.1369638 
+[1] "PRS0.100000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+7.925705e+03 4.346325e+03 1.823542e+00 6.822138e-02 
+[1] "PRS0.200000"
+    Estimate   Std. Error      z value     Pr(>|z|) 
+1.181924e+04 6.904267e+03 1.711875e+00 8.691973e-02 
 [1] "PRS0.300000"
     Estimate   Std. Error      z value     Pr(>|z|) 
 1.893616e+04 9.092819e+03 2.082540e+00 3.729319e-02 
