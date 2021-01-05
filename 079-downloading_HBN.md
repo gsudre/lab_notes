@@ -24,10 +24,13 @@ to script it out.
 ```bash
 brew install duck
 
-duck --username anonymous --list s3:/fcp-indi/data/Archives/HBN/MRI/Site-RU | grep "sub-" > ~/tmp/files.txt
-cd /Volumes/NCR/HBN/MRI/Site-RU/
-for f in `cat ~/tmp/files.txt`; do
-    wget https://fcp-indi.s3.amazonaws.com/data/Archives/HBN/MRI/Site-RU/$f;
+s=RU;
+duck --username anonymous --list s3:/fcp-indi/data/Archives/HBN/MRI/Site-${s}/ | grep "sub-" > ~/tmp/files-${s}.txt
+cd /Volumes/NCR/HBN/MRI/Site-${s}/
+for f in `cat ~/tmp/files-${s}.txt`; do
+    if [ ! -e $f ]; then
+        wget https://fcp-indi.s3.amazonaws.com/data/Archives/HBN/MRI/Site-${s}/$f;
+    fi;
 done
 ```
 
@@ -55,3 +58,6 @@ https://s3.amazonaws.com/fcp-indi/data/Projects/RocklandSample/RawDataBIDS/parti
 I'll wait until they post the ages for all scans in RawDataBIDSLatest. I sent
 them an e-mail with a request for it... worst case scenario I could go with the
 ones above, but I'd be missing a dozen or so scans.
+
+# 2021-01-04 19:46:12
+

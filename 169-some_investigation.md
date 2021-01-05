@@ -288,6 +288,96 @@ Another example that works, now in a different direction.
 This is one of the fails, and it's clearly inverted. But the thing is that
 there's no real relationship between PRS and the gene.
 
+# 2020-12-31 12:15:22
+
+If we look at the higher PRSs, such as .5, the overlap is still not good, but if
+we look at the more stringent ones (e.g. .00005), they are highly significant.
+And that makes sense, as more stringent PRS means we're more likely to be
+working with genes that have the expected PRS pattern (higher PRS for cases than
+controls), which would match what we get in the DGE for CaseVScontrols. 
+
+The plots above use PRS0.5, for
+two genes that match direction (top), and one that doesn't match (bottom). The
+important thing in those plots is the placement of red and green dots with
+respect to PRS (X axis in the scatterplot). In the ideal world, we'd expect red
+points to the right and green points to the left. And by using more stringent
+PRS cutoffs I think we're zooming in on those "ideal" genes, and this way
+increasing the overlap.
+
+Let me run these results for Caudate too, and then I can figure out the best way
+to summarize them for the paper:
+
+```r
+library(GeneOverlap)
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+for (p in prs_names) {
+    cat(p, '\n')
+    form = as.formula(sprintf('~ %s + PC1 + PC3 + PC5 + PC6 + PC8', p))
+    design = model.matrix( form, data.prs)
+    vobj = voom( genes2, design, plot=FALSE)
+    prs.fit <- lmFit(vobj, design)
+    prs.fit2 <- eBayes( prs.fit )
+    res = topTable(prs.fit2, coef=p, number=Inf)
+
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t > 0, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t & rnaseq_acc$t > 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allUp = union(res[res$t > 0, 'hgnc_symbol'],
+                      rnaseq_acc[rnaseq_acc$t > 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'up', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t & res$t < 0, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t & rnaseq_acc$t < 0,
+                              'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allDown = union(res[res$t < 0, 'hgnc_symbol'],
+                      rnaseq_acc[rnaseq_acc$t < 0, 'hgnc_symbol'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(p, t, 'down', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = res[res$P.Value < t, 'hgnc_symbol']
+        dx_genes = rnaseq_caudate[rnaseq_caudate$P.Value < t, 'hgnc_symbol']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=nrow(res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        pval2 = NA
+        this_res = c(p, t, 'abs', length(prs_genes), length(dx_genes), length(inter),
+                     pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('PRS', 'nomPvalThresh', 'direction', 'PRsgenes', 'PMgenes',
+                      'overlap', 'pvalWhole', 'pvalDirOnly')
+out_fname = '~/data/post_mortem/all_caudateUpDown_prs_overlap_results_12312020.csv'
+write.csv(all_res, file=out_fname, row.names=F)
+```
+
+
 
 
 # TODO

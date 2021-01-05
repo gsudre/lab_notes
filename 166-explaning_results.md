@@ -53,13 +53,11 @@ the PM cohort, again split between ACC and caudate. That also results in a list
 of genes with p-values and statistics. I thresholded the lists using different
 nominal p-values, and did an ORA analysis against the genes in the
 `geneExpression ~ DX + nuiscancePCs` result, and that's listed in the two .csv
-files.
-
-However, that result doesn't take into consideration whether genes are over or
-under expressed. I then created *UpDown*.csv results, which calculates the
-overlap only within the list of genes up or down regulated, based on their
-tstats. The issue then is how to calculate the gene universe for the
-hypergeometric test. We select a certain number of PRsgenes and PMgenes, and
+files. Those files include results without taking into consideration whether
+genes are over or under expressed (dir=="abs"). They also include results where
+the overlap was calculated only within the list of genes up or down regulated,
+based on their tstats. The issue then is how to calculate the gene universe for
+the hypergeometric test. We select a certain number of PRsgenes and PMgenes, and
 check if their overlap is significant. The bigger the universe of possible
 selections, the more significant the overlap. When not splitting between
 up/down, the universe is straight-forward: it's simply all genes we're working
@@ -68,9 +66,9 @@ genes up (or down), or it's still the entire gene universe (as being up or down
 could be seen as another form of selection). I provided p-values for both
 (pvalWhole is the latter scenario).
 
-Even though the up/down splits weren't veyr significant, we can still visualize
-them by splitting the more significant results that used just the pvalues into
-up and down-regulated, and displaing them in Venn diagrams (venn_pics.zip).
+Gauri then ran the list of 13 genes that overlap for ACC under PRS0.005 and
+nominal P of .005, absolute value. Her search results are in
+candidate_gene_search_01052021_GGS.xlsx.
 
 ## ABCD
 Here we use the ABCD genotypes to impute the gene expression in the brain. That
@@ -81,11 +79,11 @@ generates a list of genes with associated stats, which we can compare to the PM
 gene lists.
 
 Similarly to what I did for the PRS analysis, I ran ORA for different nominal
-p-value cut-offs (imp*.pnc). I also listed the 27 genes at the most significant
+p-value cut-offs (imp*.png). I also listed the 27 genes at the most significant
 cut-off for ACC (acc_top_genes.png). And I also ran the ORA splitting between up
-and down-regulated genes (all*upDown*csv).
+and down-regulated genes (ABCD_*overlaps.csv).
 
-I also ran GSEA for the ABCd results (enrichment*txt) using the GO sets and our
+I also ran GSEA for the ABCD results (enrichment*txt) using the GO sets and our
 own sets, but there was nothing significant.
 
 ## SPredXcan
@@ -112,7 +110,7 @@ but that was it.
 
 ## imputation_enrichment
 
-These results are somewhat similar (analytically) to the ABCd results. The main
+These results are somewhat similar (analytically) to the ABCD results. The main
 difference is that here we use our own data, and I use the MetaXcan tools not
 only to run the imputation (from our genotypes to imputed genes in the two brain
 regions), but I also use their tool for association between brain and imputed
@@ -128,25 +126,10 @@ There was no significant overlap between these results and the PM brain. The
 enrichment results here are the ones we've been looking at for a while. The
 enrichment to Gene Ontology had nothing earth-shattering either.
 
-## WGCNA_WG_pmACC
-
-This was my first stab at network analysis with the PM data. I only ran it for
-the ACC, and it gave 3 clusters nominally associated with Diagnosis (p < .05),
-here referenced as black, yellow, and royalblue. The enrichment results for
-those clusters somewhat mirror what we saw when enriching the actual PM results.
-WCGNA might be more powerful if they survive some FDR threshold after removing
-non-robust clusters. Not sure if they will (in fact, I can't even tell whether
-those 3 clusters are robust). That's the next step.
 
 
 # TODO
  * run DX*brain for PM brain
- * beef up WGCNA results
-   * check ACC clusters robustness
-   * make pictures of the genes there
-   * repeat everything for Caudate
  * check PRS to ABCD imputation overlap (regardless of circularity)
- * check how diagnosis for each brain bank was conducted
  * run more traditional DTE and DTU pipelines while paper is being written
- * run FUSION
 

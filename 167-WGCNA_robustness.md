@@ -853,8 +853,236 @@ plot_quality(mp_h1K, neth, 'Bicor hybrid')
 
 ![](images/2020-12-30-14-55-39.png)
 
+Now, do any of the networks that are related to DX also show high robustness
+across all measures? I'll also list how many are above the Z=10 threshold.
+
+```
+Bicor signed: (7)
+   MEgreen*     MEcyan   MEpurple    MEblack 
+0.01294846 0.04933322 0.03069839 0.02049723 
+
+Bicor unsigned: (7)
+         MEcyan*        MEsalmon           MEtan         MEgreen   MEgreenyellow(maybe) MEdarkturquoise 
+    0.006688690     0.022805288     0.024347245     0.029962506     0.005653356     0.045000607 
+
+Bicor hybrid: (6)
+  MEdarkgrey      MEplum1    MEdarkred  MEsteelblue  MElightcyan        MEtan* MEorangered4     MEviolet 
+ 0.045479132  0.003717134  0.025081553  0.004669829  0.017769053  0.016028208  0.018631847  0.037184452 
+
+Pearson signed: (5)
+    MEblack*   MEmagenta 
+0.006549514 0.004716908 
+
+Pearson unsigned: (4)
+MElightgreen      MEgreen(maybe) 
+ 0.007919262  0.046446573 
+
+Pearson hybrid: (3)
+   MElightcyan        MEgreen      MEmagenta    MEroyalblue   MElightgreen MEmidnightblue* 
+   0.005697386    0.047098583    0.017611509    0.043009596    0.047101048    0.013534146 
+   MEdarkgreen          MEred  MEdarkmagenta 
+   0.015583847    0.048103504    0.006810022 
+```
+
+# 2020-12-31 10:06:26
+
+I could also choose the top X most stable on the first PC? OR come up with some
+summed rank across all 6 metrics?
+
+```r
+# Z = 3 is p < .001, so we're fine at Z = 5
+minZ = 5
+mp = mp_u1K
+stats = mp$quality$Z[[1]][[2]][, -1]
+stats[stats < minZ] = -Inf
+# lower numbers are more stable
+rank_stats = apply(stats, 2,
+                   function(x) sort(x, index.return=T, decreasing=T)$ix)
+sum_stats = rowSums(rank_stats)
+best_mods = sort(sum_stats, index.return=T)$ix
+```
+
+OK, so just for kicks, let's see how stable the ADHD DX modules actually are:
+
+```r
+for (n in c('s', 'u', 'h', 'ps', 'pu', 'ph')) {
+    eval(parse(text=sprintf('myps = test_network(net%s, datExpr, data)', n)))
+    good_modules = names(myps)[myps<.05]
+    eval(parse(text=sprintf('stats = mp_%s1K$quality$Z[[1]][[2]][, -1]', n)))
+    stats[stats < minZ] = -Inf
+    # lower numbers are more stable
+    rank_stats = apply(stats, 2,
+                    function(x) sort(x, index.return=T, decreasing=T)$ix)
+    sum_stats = rowSums(rank_stats)
+    best_mods = rownames(stats)[sort(sum_stats, index.return=T)$ix]
+    print(n)
+    for (me in good_modules) {
+        m = substring(me, 3)
+        print(sprintf('%s (%d/%d): p = %.4f', m, which(best_mods==m),
+                      length(best_mods), myps[me]))
+    }
+}
+```
+
+```
+[1] "s"
+[1] "green (1/22): p = 0.0129"
+[1] "cyan (20/22): p = 0.0493"
+[1] "purple (17/22): p = 0.0307"
+[1] "black (21/22): p = 0.0205"
+[1] "u"
+[1] "cyan (29/33): p = 0.0067"
+[1] "salmon (13/33): p = 0.0228"
+[1] "tan (33/33): p = 0.0243"
+[1] "green (21/33): p = 0.0300"
+[1] "greenyellow (20/33): p = 0.0057"
+[1] "darkturquoise (12/33): p = 0.0450"
+[1] "h"
+[1] "darkgrey (8/41): p = 0.0455"
+[1] "plum1 (24/41): p = 0.0037"
+[1] "darkred (4/41): p = 0.0251"
+[1] "steelblue (39/41): p = 0.0047"
+[1] "lightcyan (21/41): p = 0.0178"
+[1] "tan (35/41): p = 0.0160"
+[1] "orangered4 (15/41): p = 0.0186"
+[1] "violet (26/41): p = 0.0372"
+[1] "ps"
+[1] "black (24/24): p = 0.0065"
+[1] "magenta (13/24): p = 0.0047"
+[1] "pu"
+[1] "lightgreen (11/28): p = 0.0079"
+[1] "green (22/28): p = 0.0464"
+[1] "ph"
+[1] "lightcyan (30/41): p = 0.0057"
+[1] "green (32/41): p = 0.0471"
+[1] "magenta (5/41): p = 0.0176"
+[1] "royalblue (35/41): p = 0.0430"
+[1] "lightgreen (27/41): p = 0.0471"
+[1] "midnightblue (6/41): p = 0.0135"
+[1] "darkgreen (40/41): p = 0.0156"
+[1] "red (18/41): p = 0.0481"
+[1] "darkmagenta (12/41): p = 0.0068"
+```
+
+So, we could do top 10 in s, h, and ph. A couple of those might work for top 5,
+but then we would only have a couple possible options to play with. 
+
+Or maybe we could use just the Zsummary variable?
+
+```r
+for (n in c('s', 'u', 'h', 'ps', 'pu', 'ph')) {
+    eval(parse(text=sprintf('myps = test_network(net%s, datExpr, data)', n)))
+    good_modules = names(myps)[myps<.05]
+    eval(parse(text=sprintf('stats = mp_%s1K$quality$Z[[1]][[2]][, -1]', n)))
+    stats[stats < minZ] = -Inf
+    # lower numbers are more stable
+    rank_stats = sort(stats[, "Zsummary.qual"], index.return=T, decreasing=T)$ix
+    best_mods = rownames(stats)[sort(rank_stats, index.return=T)$ix]
+    print(n)
+    for (me in good_modules) {
+        m = substring(me, 3)
+        print(sprintf('%s (%d/%d): p = %.4f', m, which(best_mods==m),
+                      length(best_mods), myps[me]))
+    }
+}
+```
+
+```
+[1] "s"
+[1] "green (4/22): p = 0.0129"
+[1] "cyan (15/22): p = 0.0493"
+[1] "purple (12/22): p = 0.0307"
+[1] "black (21/22): p = 0.0205"
+[1] "u"
+[1] "cyan (22/33): p = 0.0067"
+[1] "salmon (29/33): p = 0.0228"
+[1] "tan (32/33): p = 0.0243"
+[1] "green (27/33): p = 0.0300"
+[1] "greenyellow (16/33): p = 0.0057"
+[1] "darkturquoise (12/33): p = 0.0450"
+[1] "h"
+[1] "darkgrey (21/41): p = 0.0455"
+[1] "plum1 (22/41): p = 0.0037"
+[1] "darkred (4/41): p = 0.0251"
+[1] "steelblue (16/41): p = 0.0047"
+[1] "lightcyan (39/41): p = 0.0178"
+[1] "tan (41/41): p = 0.0160"
+[1] "orangered4 (32/41): p = 0.0186"
+[1] "violet (10/41): p = 0.0372"
+[1] "ps"
+[1] "black (24/24): p = 0.0065"
+[1] "magenta (6/24): p = 0.0047"
+[1] "pu"
+[1] "lightgreen (17/28): p = 0.0079"
+[1] "green (26/28): p = 0.0464"
+[1] "ph"
+[1] "lightcyan (38/41): p = 0.0057"
+[1] "green (22/41): p = 0.0471"
+[1] "magenta (27/41): p = 0.0176"
+[1] "royalblue (28/41): p = 0.0430"
+[1] "lightgreen (26/41): p = 0.0471"
+[1] "midnightblue (14/41): p = 0.0135"
+[1] "darkgreen (37/41): p = 0.0156"
+[1] "red (5/41): p = 0.0481"
+[1] "darkmagenta (3/41): p = 0.0068"
+```
+
+Now we could do top 10 for h, but potentially better top 5 for ph. Do those
+modules tell us anything different in WG? I'll look at the ORA results, but
+let's also create the summary table for GSEA:
+
+```r
+load('~/data/WGCNA/bicor_networks.RData')
+load('~/data/WGCNA/pearson_networks.RData')
+mydir = '~/data/WGCNA/GSEA/'
+library(WGCNA)
+all_res = c()
+for (n in c('nets', 'netu', 'neth', 'netps', 'netpu', 'netph')) {
+    eval(parse(text=sprintf('myps = test_network(%s, datExpr, data)', n)))
+    good_modules = names(myps)[myps<.05] 
+    for (col in good_modules) {
+        ora_col = substring(col, 3)
+        DBs = c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant')
+        for (db in DBs) {
+            fname = sprintf('%s/enrichment_results_acc_%s_%s_%s.txt', mydir, n,
+                            col, db)
+            if (file.exists(fname)) {
+                df = read.delim(fname)
+                res = df[df$FDR<.05,]
+                if (nrow(res) > 0) {
+                    res$net = n
+                    res$col = ora_col
+                    res$db = db
+                    all_res = rbind(all_res, res)
+                }
+            }
+        }
+        db = 'my_acc_sets'
+        fname = sprintf('%s/enrichment_results_acc_%s_%s_%s.txt', mydir, n,
+                        col, db)
+        if (file.exists(fname)) {
+            df = read.delim(fname)
+            res = df[df$pValue<.05,]
+            if (nrow(res) > 0) {
+                res$net = n
+                res$description = res$link
+                res$col = ora_col
+                res$db = db
+                all_res = rbind(all_res, res)
+            }
+        }
+    }
+}
+out_fname = '~/data/WGCNA/many_nets_GSEA_q05_p05.csv'
+write.csv(all_res, out_fname, row.names=F)
+```
+
+It doesn't look like it. For ORA, only one of them has overlaps. For GSEA, the
+results are re-assuring, but not different enough between the two modules.
+
+
+
 # TODO
- * check FDR after stability analysis
- * try csuWGCNA (https://github.com/RujiaDai/csuWGCNA, like in Science paper)
  * recutBlockwiseTrees?
- * how about ranking the genes based on some sort of module membership value?
