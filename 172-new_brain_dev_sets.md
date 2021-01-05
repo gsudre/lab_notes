@@ -89,7 +89,7 @@ for (region in c('acc', 'caudate')) {
                         isOutput=F, isParallel=T,
                         nThreads=ncpu, perNum=10000, maxNum=1000))
     if (class(enrichResult) != "try-error") {
-        out_fname = sprintf('%s/WGnoOverLap_%s_10K.csv', data_dir, region)
+        out_fname = sprintf('%s/WGnoOverlap_%s_10K.csv', data_dir, region)
         write.csv(enrichResult, file=out_fname, row.names=F)
     }
 }
@@ -100,3 +100,6 @@ The results were very extreme... let's try a different cut-off.
 Here's a good way of understanding the GSEA metrics, including the FDR:
 
 https://www.gsea-msigdb.org/gsea/doc/GSEAUserGuideFrame.html?Interpreting_GSEA
+
+I'm not sure if it's fair to add the GWAS and TWAS sets here... the FDR
+correction shoiuld be made among sets in a similar domain, right?

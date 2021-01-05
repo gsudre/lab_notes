@@ -41,17 +41,21 @@ colnames(meta_iso) = c('id1', 'ensembleID', 'id2', 'id3', 'iso_name',
                         'hgnc_symbol','id4', 'read_type')
 data_iso = df[, 2:ncol(df)]
 
-subjs = colnames(data_iso)[1:3]
+subjs = colnames(data_iso)
 fnames = c()
 for (s in subjs) {
     print(s)
     sdf = cbind(meta_iso, data_iso[, s])
     colnames(sdf)[ncol(sdf)] = 'tpm'
-    m = merge(sdf, cnts[, c('sample_id', s)], by.x='id1', by.y='sample_id')
-    colnames(m)[ncol(m)] = 'count'
-    fname = sprintf('~/tmp/%s.tsv', s)
-    write.table(m, file=fname, sep='\t', row.names=F, quote=F)
-    fnames = c(fnames, fname)
+    if (s %in% colnames(cnts)) {
+        m = merge(sdf, cnts[, c('sample_id', s)], by.x='id1', by.y='sample_id')
+        colnames(m)[ncol(m)] = 'count'
+        fname = sprintf('~/tmp/%s.tsv', s)
+        write.table(m, file=fname, sep='\t', row.names=F, quote=F)
+        fnames = c(fnames, fname)
+    } else {
+        cat('not found\n')
+    }
 }
 b = tximport(fnames, type='none', geneIdCol = 'ensembleID', txIdCol='id1',
              abundanceCol = 'tpm', lengthCol='id4', countsCol='count',
