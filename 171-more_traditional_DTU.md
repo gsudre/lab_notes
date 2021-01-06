@@ -57,7 +57,17 @@ for (s in subjs) {
         cat('not found\n')
     }
 }
-b = tximport(fnames, type='none', geneIdCol = 'ensembleID', txIdCol='id1',
+txdf = data.frame(TXNAME=meta_iso[,'id1'], GENEID=meta_iso[,'ensembleID'])
+txdf = txdf[order(txdf$GENEID),] 
+rownames(txdf) = NULL
+rsem = tximport(fnames, type='none', geneIdCol = 'ensembleID', txIdCol='id1',
              abundanceCol = 'tpm', lengthCol='id4', countsCol='count',
-             txOut=T, importer=read.delim)
+             txOut=T, importer=read.delim, countsFromAbundance="dtuScaledTPM",
+             tx2gene=txdf)
+save(rsem, subjs, file='~/data/isoforms/tximport_rsem_DTU.RData')
 ```
+
+Now, let's go back to the analysis. I'm actually using this as the basis:
+
+https://ycl6.gitbook.io/guide-to-rna-seq-analysis/differential-expression-analysis/differential-transcript-usage/dtu-using-drimseq
+
