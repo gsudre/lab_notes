@@ -221,8 +221,8 @@ enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                     sigMethod="top", topThr=150000,
                     minNum=3,
                     isOutput=F, isParallel=T,
-                    nThreads=ncpu, perNum=1000, maxNum=800))
-out_fname = sprintf('%s/WG_ENSID_%s_%s_1K.csv', data_dir, region, db)
+                    nThreads=ncpu, perNum=10000, maxNum=800))
+out_fname = sprintf('%s/WG_ENSID_%s_%s_10K.csv', data_dir, region, db)
 write.csv(enrichResult, file=out_fname, row.names=F)
 
 DBs = c('geneontology_Biological_Process_noRedundant',
@@ -239,9 +239,11 @@ for (db in DBs) {
                                 outputDirectory = data_dir,
                                 minNum=5,
                                 isOutput=F, isParallel=T,
-                                nThreads=ncpu, perNum=1000)
-    out_fname = sprintf('%s/WG_ENSID_%s_%s_1K.csv', data_dir, region, db)
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_ENSID_%s_%s_10K.csv', data_dir, region, db)
     write.csv(enrichResult, file=out_fname, row.names=F)
 }
 ```
 
+Results are there, but FDR for GO is not as significant. Maybe if I remove some
+genes using nz? Maybe the overlap with the fusion results will remain?
