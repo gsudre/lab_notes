@@ -215,9 +215,192 @@ system.time({
 })
 ```
 
+# 2021-01-07 11:45:15
+
+Continuing the analysis:
+
+```r
+# Single p-value per gene
+res.g = DRIMSeq::results(d)
+
+# Single p-value per transcript
+res.t = DRIMSeq::results(d, level = "feature")
+
+# setting NAs to 1 so it doesn't screw up future analysis
+no.na <- function(x) ifelse(is.na(x), 1, x)
+res.g$pvalue <- no.na(res.g$pvalue)
+res.t$pvalue <- no.na(res.t$pvalue)
+```
+
+We actually have some results there surviving FDR:
+
+```
+r$> table(res.g$adj_pvalue < 0.05)                                                              
+
+FALSE  TRUE 
+10597    57 
+
+r$> table(res.t$adj_pvalue < 0.05)                                                              
+
+FALSE  TRUE 
+30883    99 
+```
+
+```r
+# posthoc procedure to improve the false discovery rate (FDR) and overall false discovery rate (OFDR) control. It sets the p-values and adjusted p-values for transcripts with small per-sample proportion SD to 1
+
+smallProportionSD <- function(d, filter = 0.1) {
+        # Generate count table
+        cts = as.matrix(subset(counts(d), select = -c(gene_id, feature_id)))
+        # Summarise count total per gene
+        gene.cts = rowsum(cts, counts(d)$gene_id)
+        # Use total count per gene as count per transcript
+        total.cts = gene.cts[match(counts(d)$gene_id, rownames(gene.cts)),]
+        # Calculate proportion of transcript in gene
+        props = cts/total.cts
+        rownames(props) = rownames(total.cts)
+        
+        # Calculate standard deviation
+        propSD = sqrt(matrixStats::rowVars(props))
+        # Check if standard deviation of per-sample proportions is < 0.1
+        propSD < filter
+}
+
+filt = smallProportionSD(d)
+
+res.t.filt = DRIMSeq::results(d, level = "feature")
+res.t.filt$pvalue[filt] = 1
+res.t.filt$adj_pvalue[filt] = 1
+```
+
+```
+r$> table(filt)                                                                                 
+filt
+FALSE  TRUE 
+12883 17902 
+```
+
+So, about 18K of the 31K have small per-sample proportion and were adjusted to
+1.
+
+```
+r$> table(res.t$adj_pvalue < 0.05)                                                            
+
+FALSE  TRUE 
+30883    99 
+
+r$> table(res.t.filt$adj_pvalue < 0.05)                                                       
+
+FALSE  TRUE 
+30894    88 
+```
+
+So, there are 88 after filtering, instead of the original 99.
+
+Now we do the stageR procedure:
+
+```r
+strp <- function(x) substr(x,1,15)
+# Construct a vector of per-gene p-values for the screening stage
+pScreen = res.g$pvalue
+names(pScreen) = strp(res.g$gene_id)
+# Construct a one column matrix of the per-transcript confirmation p-values
+pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+# res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
+tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+                     res.t[,c("feature_id", "gene_id")])
+
+for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+
+library(stageR)
+stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                     pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
+drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+                               onlySignificantGenes = TRUE)
+# this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
+drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+                  by.y = c("geneID","txID"))
+```
+
+```
+r$> length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id))                                 
+[1] 57
+
+r$> table(drim.padj$transcript < 0.05)                                                        
+
+FALSE  TRUE 
+  108    71 
+```
+
+There are 57 screened genes in this dataset, and 71 transcripts pass the
+confirmation stage on a target 5% overall false discovery rate (OFDR). This
+means that, in expectation, no more than 5% of the genes that pass screening
+will either (1) not contain any DTU, so be falsely screened genes, or (2)
+contain a falsely confirmed transcript.
+
+Let's make a quick plot:
+
+```r
+gene_id = unique(drim.padj[order(drim.padj$transcript,
+                                 drim.padj$gene),]$gene_id.1)[1]
+
+quartz()
+plotProportions(d, gene_id = gene_id, group_variable = "group",
+                plot_type = "boxplot1")
+```
+
+![](images/2021-01-07-12-08-29.png)
+
+So, that's interesting... lots to explore here.
+
+Let's finish the code to export the results:
+
+```r
+# just need to do this once
+library(GenomicFeatures)
+txdb <- makeTxDbFromGFF('~/Downloads/gencode.v36.annotation.gtf')
+saveDb(txdb, '~/data/post_mortem/gencode.v36.annotation.sqlite')
+```
+
+```r
+txdb <- loadDb('~/data/post_mortem/gencode.v36.annotation.sqlite')
+
+# Create a data.frame containing counts in long-format data with reshape2::melt
+drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                      drim.prop$feature_id),]
+# Calculate proportions from counts
+library(dplyr)
+drim.prop = drim.prop %>%
+        group_by(gene_id, variable) %>%
+        mutate(total = sum(value)) %>%
+        group_by(variable, add=TRUE) %>%
+        mutate(prop = value/total)
+drim.prop = reshape2::dcast(drim.prop[,c(1,2,3,6)],
+                            gene_id + feature_id ~ variable)
+# Average proportions calculated from fitted proportions
+drim.mean = as.data.frame(sapply( levels(samples$group),
+                          function(lvl) rowMeans(proportions(d)[, 3:ncol(proportions(d))][, samples$group == lvl, drop = FALSE]) ))
+# log2 fold change in proportions
+drim.log2fcp = log2(drim.mean[2]/drim.mean[1])
+colnames(drim.log2fcp) = "log2fcp"
+rownames(drim.log2fcp) = proportions(d)$feature_id
+# Merge to create result data
+drimData = cbind(drim.prop[,1:2], drim.mean, drim.prop[, 3:ncol(drim.prop)])
+
+# NEED TO WORK ON THIS LATER... SOMETHING FUNKY WITH THE DIFFERENT LIBRARY LOADING ORDER
+drimData = merge(annoData, drimData, by.x = c("GeneID","TranscriptID"), by.y = c("gene_id","feature_id"))
+drimData = drimData[order(drimData$GeneID, drimData$TranscriptID),]
+```
+
+
+
+
 # TODO
  * keep going with analysis
- * run the other tool as well
+ * run DEXSeq as well
  * try DTE
  * try DGE using these tools
  * try Kallisto

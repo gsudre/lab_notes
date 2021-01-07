@@ -324,6 +324,69 @@ https://gtexportal.org/home/datasets
 
 They list the gtf files they used, so maybe that's a good thing to start with?
 
+I think I might have better luck if I replace the IDs in the results file by
+their Gene ID (ENS).
+
+```r
+wei = read.delim('~/data/expression_impute/fusion_twas-master/WEIGHTS/Brain_Anterior_cingulate_cortex_BA24.P01.pos')
+cnt = 75
+wei$geneid = substring(wei$WGT, cnt, cnt+14)
+```
+
+Now we're down to 524, but that's still 20% of the predicted genes. Is it
+because they were removed for not having hugo ids? Yes, if I just look at the
+headers in the data form Derek, I'd be missing only 111 (5%). 
+
+The issue here is that it looks like Derek aligned his counts to GrCh38, and
+GTex v7 is defined on hg19. So, a few variants don't exist anymore, or have
+switched gene ids. BTW, Gtex v8 is in hg38. Here's an example:
+
+```
+r$> wei[180,]                                                                                   
+                                   PANEL
+180 Brain_Anterior_cingulate_cortex_BA24
+                                                                                                     WGT
+180 Brain_Anterior_cingulate_cortex_BA24/Brain_Anterior_cingulate_cortex_BA24.ENSG00000090920.9.wgt.RDat
+       ID CHR       P0       P1   N          geneid
+180 FCGBP  19 40353963 40440533 109 ENSG00000090920
+
+r$> which(G_list$hgnc_symbol=='FCGBP')                                                          
+[1] 37023
+
+r$> G_list[37023,]                                                                              
+      ensembl_gene_id hgnc_symbol chromosome_name
+53281 ENSG00000275395       FCGBP              19
+
+r$> which(id_num=='ENSG00000275395')                                                            
+ENSG00000275395.6 
+            53392 
+```
+
+In other words, in the weight file (gtex v7), FCGBP is mapped to
+ENSG00000090920, which is confirmed by the ensembl website:
+
+http://grch37.ensembl.org/Homo_sapiens/Gene/Summary?g=ENSG00000090920;r=19:40353963-40440533
+
+However, if we look for that same ID in hg38 it says it's been deprecated. If we
+look for FCGBP in hg38, we get ENSG00000275395, which is in Derek's header, and
+also in our G_list. This complicates things a bit, and I'll need to make sure
+the rest of the analysis was all done with the same reference.
+
+For reference, the GWAS was imputed to 1000 Genomes Project Phase 3 reference
+panel, which is in hg19/GRCh37. So, at least the GWAS going to fusion is in the same
+reference as the fusion database.
+
+I'm somewhat curious to see what would happen to the DGE analysis if it was all
+done in hg19 as well... if anything, the PRS for the PM cohort was. 
+
+Before I re-run this whole thing, let me revisit the FUSION results again... so,
+it turns out that 4 hits in fusion acc survive bonferroni and 9 survive FDR. But
+of those 9, only 4 are in the results matrix (and in the G_list), but all 9 are
+actually in the matrix Derek sent... so, that would be another argument for
+re-running the whole analysis without removing those genes a priori. 
+
+I re-ran it and now I have 8 out of the 9 that survive FDR, so I might be able
+to do some GSEA with that?
 
 
 # TODO
