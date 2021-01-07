@@ -277,7 +277,43 @@ PM_0.001 1.00000000 1.00000000 1.0000000 1.00000000
 
 Maybe there's a hint here for upregulated, but nothing for down (not shown).
 
-# TODO
- * pos/neg
- * GSEA
+# 2021-01-06 20:40:45
 
+Philip asked me to look a bit closer at these results, maybe going through with
+the analysis further. Before I do that, there are a few weird things. For
+example:
+
+```
+r$> dim(rnaseq_acc)                                                                                             
+[1] 17677     9
+
+r$> dim(fusion)                                                                                                 
+[1] 2603    3
+
+r$> dim(both_res)                                                                                               
+[1] 1651   11
+```
+
+So, I lose almost half of my fusion genes when I merge them with the PM results.
+That's a bit weird. What's going on there?
+
+```
+r$> sum(! fusion$ID %in% G_list$hgnc_symbol)                                                                    
+[1] 768
+```
+
+So, close to 800 genes in fusion are not even in our initial lsit of 38K genes.
+In other words, it's not our cleaning that's doing this. 
+
+Would we get a different result if we used ALL the genes, instead of just the
+p<.01 most heritable ones?
+
+http://gusevlab.org/projects/fusion/weights/GTEx.Brain_Anterior_cingulate_cortex_BA24.ALL.tar.bz2
+http://gusevlab.org/projects/fusion/weights/GTEx.Brain_Caudate_basal_ganglia.ALL.tar.bz2
+
+# TODO
+ * why are some predicted genes no in our study? issue with reference genome?
+ * try ALL instead of p01?
+ * try coloc?
+ * try focus?
+ * try mesc?
