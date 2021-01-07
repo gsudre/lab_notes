@@ -211,7 +211,7 @@ system.time({
     # Fit regression coefficients
     d <- dmFit(d, design = design)
     # Perform null hypothesis testing on the coefficient of interest
-    d <- dmTest(d, coef = "DiagnosisCase")     
+    d <- dmTest(d, coef = "groupCase")     
 })
 ```
 

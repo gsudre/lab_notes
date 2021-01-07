@@ -311,8 +311,24 @@ p<.01 most heritable ones?
 http://gusevlab.org/projects/fusion/weights/GTEx.Brain_Anterior_cingulate_cortex_BA24.ALL.tar.bz2
 http://gusevlab.org/projects/fusion/weights/GTEx.Brain_Caudate_basal_ganglia.ALL.tar.bz2
 
+# 2021-01-07 07:23:02
+
+To be precise, in the weights file for ACC there are 2109 genes, but 804 of
+those (30%) are not listed in our universe of PM genes. And that's even before
+any sort of cleaning. What's going on here? Are they even in Derek's initial
+file?
+
+As a clue, it looks like gtex v7 used hg19:
+
+https://gtexportal.org/home/datasets
+
+They list the gtf files they used, so maybe that's a good thing to start with?
+
+
+
 # TODO
  * why are some predicted genes no in our study? issue with reference genome?
+ * try permutation test (see their FAQ "How can I validate the TWAS associations)
  * try ALL instead of p01?
  * try coloc?
  * try focus?
