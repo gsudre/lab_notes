@@ -855,6 +855,9 @@ Again nothing...
 I'm still losing about 500 out of 2600 genes in ACC in the switch from hg19 to
 hg38 (FUSION to PM). In Caudate it's about the same, losing about 700 out of 3500. 
 
+Let's give this a break for now because I might be able to show better things
+with DTE/DTU instead.
+
 # TODO
  * Try same thing for the caudate... maybe better luck there?
  * Maybe try all genes, instead of just P01?

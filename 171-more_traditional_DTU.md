@@ -202,7 +202,7 @@ batch   1   3
 So, we need to remove the first 4 PCs:
 
 ```r
-design = model.matrix(~group + PC1 + PC2 + PC3, data = data.pm)
+design = model.matrix(~group + PC1 + PC2 + PC3 + PC4, data = data.pm)
 
 set.seed(42)
 system.time({
@@ -235,15 +235,15 @@ res.t$pvalue <- no.na(res.t$pvalue)
 We actually have some results there surviving FDR:
 
 ```
-r$> table(res.g$adj_pvalue < 0.05)                                                              
+r$> table(res.g$adj_pvalue < 0.05)                                                          
 
 FALSE  TRUE 
-10597    57 
+10610    33 
 
-r$> table(res.t$adj_pvalue < 0.05)                                                              
+r$> table(res.t$adj_pvalue < 0.05)                                                          
 
 FALSE  TRUE 
-30883    99 
+30858    50 
 ```
 
 ```r
@@ -271,6 +271,7 @@ filt = smallProportionSD(d)
 res.t.filt = DRIMSeq::results(d, level = "feature")
 res.t.filt$pvalue[filt] = 1
 res.t.filt$adj_pvalue[filt] = 1
+res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
 ```
 
 ```
@@ -284,18 +285,18 @@ So, about 18K of the 31K have small per-sample proportion and were adjusted to
 1.
 
 ```
-r$> table(res.t$adj_pvalue < 0.05)                                                            
+r$> table(res.t$adj_pvalue < 0.05)                                                          
 
 FALSE  TRUE 
-30883    99 
+30858    50 
 
-r$> table(res.t.filt$adj_pvalue < 0.05)                                                       
+r$> table(res.t.filt$adj_pvalue < 0.05)                                                     
 
 FALSE  TRUE 
-30894    88 
+30927    38 
 ```
 
-So, there are 88 after filtering, instead of the original 99.
+So, there are 38 after filtering, instead of the original 50.
 
 Now we do the stageR procedure:
 
@@ -325,16 +326,16 @@ drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
 ```
 
 ```
-r$> length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id))                                 
-[1] 57
+r$> length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id))                               
+[1] 33
 
-r$> table(drim.padj$transcript < 0.05)                                                        
+r$> table(drim.padj$transcript < 0.05)                                                      
 
 FALSE  TRUE 
-  108    71 
+   89    31 
 ```
 
-There are 57 screened genes in this dataset, and 71 transcripts pass the
+There are 33 screened genes in this dataset, and 31 transcripts pass the
 confirmation stage on a target 5% overall false discovery rate (OFDR). This
 means that, in expectation, no more than 5% of the genes that pass screening
 will either (1) not contain any DTU, so be falsely screened genes, or (2)
@@ -351,13 +352,13 @@ plotProportions(d, gene_id = gene_id, group_variable = "group",
                 plot_type = "boxplot1")
 ```
 
-![](images/2021-01-07-12-08-29.png)
+![](images/2021-01-08-17-17-56.png)
 
 So, that's interesting... lots to explore here.
 
-Let's finish the code to export the results:
+The code to export the results is a bit funky... I'll try it later.
 
-```r
+<!-- ```r
 # just need to do this once
 library(GenomicFeatures)
 txdb <- makeTxDbFromGFF('~/Downloads/gencode.v36.annotation.gtf')
@@ -393,13 +394,107 @@ drimData = cbind(drim.prop[,1:2], drim.mean, drim.prop[, 3:ncol(drim.prop)])
 # NEED TO WORK ON THIS LATER... SOMETHING FUNKY WITH THE DIFFERENT LIBRARY LOADING ORDER
 drimData = merge(annoData, drimData, by.x = c("GeneID","TranscriptID"), by.y = c("gene_id","feature_id"))
 drimData = drimData[order(drimData$GeneID, drimData$TranscriptID),]
+``` -->
+
+# 2021-01-08 11:48:58
+
+Let's try another toolbox just to make sure our DTU results hold. Still folowing
+the same workflow:
+
+```r
+load('~/data/isoforms/tximport_rsem_DTU.RData')
+txi = rsem
+myregion = 'ACC'
+
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in rsem
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+
+# going back to the workflow
+# remove rows that has zero counts across all samples
+cts = txi$counts
+cts = cts[rowSums(cts) > 0,]
+
+txdf.sub = txdf[match(rownames(cts), txdf$TXNAME),]
+counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+counts = cbind(counts, cts)
+
+library(DRIMSeq)
+samples$group = samples$Diagnosis
+samples$sample_id = as.character(samples$submitted_name)
+d0 = dmDSdata(counts = counts, samples = samples)
+
+n = nrow(samples)
+n.small = min(table(samples$group))
+
+d = DRIMSeq::dmFilter(d0,
+                      min_samps_feature_expr = n.small, min_feature_expr = 10,
+                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                      min_samps_gene_expr = n, min_gene_expr = 10)
+
+countData = round(as.matrix(counts(d)[,-c(1:2)]))
 ```
 
+So far there's nothing different, so we'll use the same PCs:
 
+```r
+library(DEXSeq)
+set.seed(42)
+pca <- prcomp(t(countData), scale=TRUE)
+
+library(nFactors)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$submitted_name
+
+fm = ~sample + exon + group:exon + PC1 + PC2 + PC3 + PC4
+dxd = DEXSeqDataSet(countData = countData, sampleData = data.pm, 
+                    design = fm, 
+                    featureID = counts(d)$feature_id,
+                    groupID = counts(d)$gene_id)
+system.time({
+    dxd = estimateSizeFactors(dxd)
+    dxd = estimateDispersions(dxd)
+    dxd = testForDEU(dxd, reducedModel = fm)
+})
+
+dxr = DEXSeqResults(dxd, independentFiltering = FALSE)
+```
+
+This looked a bit confusing with exons, etc. We got some nice results with
+DRIMSeq, so let's just explore that a bit more. And we can also run Salmon, DTE,
+etc.
 
 
 # TODO
- * keep going with analysis
+ * keep going with analysis. Get some results to plot for Philip, and what they mean
  * run DEXSeq as well
  * try DTE
  * try DGE using these tools
