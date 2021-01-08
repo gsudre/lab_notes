@@ -390,9 +390,7 @@ to do some GSEA with that?
 
 
 # TODO
- * why are some predicted genes no in our study? issue with reference genome?
  * try permutation test (see their FAQ "How can I validate the TWAS associations)
- * try ALL instead of p01?
  * try coloc?
  * try focus?
  * try mesc?
