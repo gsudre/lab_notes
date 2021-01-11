@@ -493,10 +493,456 @@ DRIMSeq, so let's just explore that a bit more. And we can also run Salmon, DTE,
 etc.
 
 
+# 2021-01-11 09:52:35
+
+I saved the AC DTU results as an image to ~/data/isoforms/DTU_DRIMSeq_ACC.RData.
+Let's plot them a bit more to see what we get. This time, let's use the ggplot2
+function, which is a bit more transparent and easier to customize later for
+publication plots:
+
+```r
+# We will use this function in both DRIMSeq & DEXSeq workflows
+plotExpression <- function(expData = NULL, geneID = NULL, samps = NULL, isProportion = FALSE) {
+        colnames(expData)[1:2] = c("gid","tid")
+        sub = subset(expData, gid == geneID)
+        sub = reshape2::melt(sub, id = c("gid", "tid"))
+        sub = merge(samps, sub, by.x = "sample_id", by.y = "variable")
+        if(!isProportion) {
+                sub$value = log(sub$value)
+        }
+
+        clrs = c("dodgerblue3", "maroon2",  "forestgreen", "darkorange1", "blueviolet", "firebrick2",
+"deepskyblue", "orchid2", "chartreuse3", "gold", "slateblue1", "tomato" , "blue", "magenta", "green3",
+"yellow", "purple3", "red" ,"darkslategray1", "lightpink1", "lightgreen", "khaki1", "plum3", "salmon")
+
+        p = ggplot(sub, aes(tid, value, color = group, fill = group)) +
+        geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8, lwd = 0.5) +
+        stat_summary(fun = mean, geom = "point", color = "black", shape = 5, size = 3, position=position_dodge(width = 0.8)) +
+        scale_color_manual(values = clrs) + scale_fill_manual(values = clrs) +
+        geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) + theme_bw() +
+        ggtitle(geneID) + xlab("Transcripts")
+
+        if(!isProportion) {
+                p = p + ylab("log(Expression)")
+        } else {
+                p = p + ylab("Proportions")
+        }
+        p
+}
+
+drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                      drim.prop$feature_id),]
+# Calculate proportions from counts
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+drim.prop2 = drim.prop %>%
+        group_by(gene_id, variable) %>%
+        mutate(total = sum(value)) %>%
+        group_by(variable, add=TRUE) %>%
+        mutate(prop = value/total)
+drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+                            gene_id + feature_id ~ variable)
+gene_id = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)[1]
+quartz()
+plotExpression(drim.prop3, gene_id, samples, isProportion = TRUE)
+```
+
+![](images/2021-01-11-10-33-35.png)
+
+This picture still shows that many of our hits are close to zero. That could
+actually be something true... let's see the other genes. Do they all have this
+pattern? Let's look at the first 10:
+
+```r
+gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
+for (g in 2:10) {
+    quartz()
+    print(plotExpression(drim.prop3, gene_ids[g], samples, isProportion = TRUE))
+}
+```
+
+![](images/2021-01-11-10-42-48.png)
+
+So, it's not the case that the zeros are creating the results. So, that's good.
+What are these genes that are affected in DTU (expression switches among the
+isoforms of the gene)? I'll just bet the genes that were confirmed at OFDR <
+.05:
+
+```
+r$> unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])                                
+ [1] "ENSG00000061936" "ENSG00000068831" "ENSG00000070371" "ENSG00000086848"
+ [5] "ENSG00000100462" "ENSG00000103363" "ENSG00000109390" "ENSG00000111077"
+ [9] "ENSG00000119950" "ENSG00000128833" "ENSG00000129933" "ENSG00000146776"
+[13] "ENSG00000146963" "ENSG00000157741" "ENSG00000165476" "ENSG00000180902"
+[17] "ENSG00000182247" "ENSG00000182871" "ENSG00000198933" "ENSG00000214176"
+[21] "ENSG00000221968" "ENSG00000235478" "ENSG00000247572" "ENSG00000248115"
+[25] "ENSG00000263072"
+```
+
+Let's then run some GSEA and ORA on that:
+
+```r
+library(WebGestaltR)
+
+ncpu=4
+data_dir = '~/data/isoforms/'
+region = 'acc'
+
+tmp2 = unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])
+
+# my own GMTs
+db = sprintf('my_%s_sets', region)
+cat(region, db, '\n')
+project_name = sprintf('%s_%s', region, db)
+db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+enrichResult <- try(WebGestaltR(enrichMethod="ORA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            referenceSet='genome',
+                            sigMethod="top", topThr=150000,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=900))
+if (class(enrichResult) != "try-error") {
+    out_fname = sprintf('%s/WG_DTU_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- try(WebGestaltR(enrichMethod="ORA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="ensembl_gene_id",
+                                referenceSet='genome',
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=900))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG_DTU_%s_%s_10K.csv', data_dir, region, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/isoforms/'
+ncpu=6
+
+region='acc'
+
+ranks = -log(res.g$pvalue)
+tmp2 = data.frame(geneid=strp(res.g$gene_id), rank=ranks)
+tmp2 = tmp2[order(ranks, decreasing=T),]
+
+# my own GMTs
+db = sprintf('my_%s_sets', region)
+cat(region, db, '\n')
+db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                    organism="hsapiens",
+                    enrichDatabaseFile=db_file,
+                    enrichDatabaseType="genesymbol",
+                    interestGene=tmp2,
+                    outputDirectory = data_dir,
+                    interestGeneType="ensembl_gene_id",
+                    sigMethod="top", topThr=150000,
+                    minNum=3,
+                    isOutput=F, isParallel=T,
+                    nThreads=ncpu, perNum=10000, maxNum=800))
+out_fname = sprintf('%s/WG_GSEA-DTU_%s_%s_10K.csv', data_dir, region, db)
+write.csv(enrichResult, file=out_fname, row.names=F)
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(region, db, '\n')
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="ensembl_gene_id",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5,
+                                isOutput=F, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_GSEA-DTU_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+```
+
+Nothing particularly interesting in either GSEA and ORA. We did get a nice
+result for GWAS on GSEA, but it's only nominal.
+
+## Caudate
+
+Let's run the exact same thing for the caudate:
+
+```r
+load('~/data/isoforms/tximport_rsem_DTU.RData')
+txi = rsem
+myregion = 'Caudate'
+
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+more = readRDS('~/data/rnaseq_derek/data_from_philip_POP_and_PCs.rds')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid', 'comorbid_group',
+                            'substance', 'substance_group')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+
+cts = txi$counts
+cts = cts[rowSums(cts) > 0,]
+
+txdf.sub = txdf[match(rownames(cts), txdf$TXNAME),]
+counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+counts = cbind(counts, cts)
+
+library(DRIMSeq)
+samples$group = samples$Diagnosis
+samples$sample_id = as.character(samples$submitted_name)
+d0 = dmDSdata(counts = counts, samples = samples)
+
+n = nrow(samples)
+n.small = min(table(samples$group))
+
+d = DRIMSeq::dmFilter(d0,
+                      min_samps_feature_expr = n.small, min_feature_expr = 10,
+                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                      min_samps_gene_expr = n, min_gene_expr = 10)
+
+countData = round(as.matrix(counts(d)[,-c(1:2)]))
+
+set.seed(42)
+pca <- prcomp(t(countData), scale=TRUE)
+
+library(nFactors)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$submitted_name
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(samples[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], samples[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+
+print(which(num_pvals < .01, arr.ind = T))
+print(which(categ_pvals < .01, arr.ind = T))
+```
+
+```
+
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+pcnt_optical_duplicates   1   2
+RINe                      4   2
+PMI                       5   2
+RINe                      4   4
+RINe                      4   5
+               row col
+batch            1   1
+batch            1   2
+MoD              3   6
+comorbid_group   5   8
+```
+
+So, we need to remove the PCs 1, 2, 4, 5, 6, and 8:
+
+```r
+design = model.matrix(~group + PC1 + PC2 + PC4 + PC5 + PC6 + PC8, data = data.pm)
+
+set.seed(42)
+system.time({
+    d <- dmPrecision(d, design = design)
+    d <- dmFit(d, design = design)
+    d <- dmTest(d, coef = "groupCase")     
+})
+res.g = DRIMSeq::results(d)
+res.t = DRIMSeq::results(d, level = "feature")
+
+no.na <- function(x) ifelse(is.na(x), 1, x)
+res.g$pvalue <- no.na(res.g$pvalue)
+res.t$pvalue <- no.na(res.t$pvalue)
+```
+
+We actually have some results there surviving FDR. Fewer than for ACC, but still:
+
+```
+r$> table(res.g$adj_pvalue < .05)                                                           
+
+FALSE  TRUE 
+10326    10 
+
+r$> table(res.t$adj_pvalue < .05)                                                           
+
+FALSE  TRUE 
+28501    17 
+```
+
+```r
+filt = smallProportionSD(d)
+
+res.t.filt = DRIMSeq::results(d, level = "feature")
+res.t.filt$pvalue[filt] = 1
+res.t.filt$adj_pvalue[filt] = 1
+res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
+```
+
+```
+r$> table(filt)                                                                             
+filt
+FALSE  TRUE 
+13059 19921 
+```
+
+So, about 19K of the 32K have small per-sample proportion and were adjusted to
+1.
+
+```
+r$> table(res.t$adj_pvalue < 0.05)                                                          
+
+FALSE  TRUE 
+28501    17 
+
+r$> table(res.t.filt$adj_pvalue < 0.05)                                                     
+
+FALSE  TRUE 
+32095    14
+```
+
+So, there are 14 after filtering, instead of the original 17.
+
+Now we do the stageR procedure:
+
+```r
+strp <- function(x) substr(x,1,15)
+pScreen = res.g$pvalue
+names(pScreen) = strp(res.g$gene_id)
+pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+                     res.t[,c("feature_id", "gene_id")])
+
+for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+
+library(stageR)
+stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                     pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
+drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+                               onlySignificantGenes = TRUE)
+drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+                  by.y = c("geneID","txID"))
+```
+
+```
+r$> length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id))                               
+[1] 9
+
+r$> table(drim.padj$transcript < 0.05)                                                      
+
+FALSE  TRUE 
+   25     8 
+```
+
+There are 9 screened genes in this dataset, and 8 transcripts pass the
+confirmation stage on a target 5% overall false discovery rate (OFDR).
+
+Let's make a quick plot:
+
+```r
+drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                      drim.prop$feature_id),]
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+drim.prop2 = drim.prop %>%
+        group_by(gene_id, variable) %>%
+        mutate(total = sum(value)) %>%
+        group_by(variable, add=TRUE) %>%
+        mutate(prop = value/total)
+drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+                            gene_id + feature_id ~ variable)
+gene_id = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)[1]
+quartz()
+plotExpression(drim.prop3, gene_id, samples, isProportion = TRUE)
+```
+
+![](images/2021-01-11-18-03-16.png)
+
+Data is much noisier... lets save the image to
+~/data/isoforms/DTU_DRIMSeq_Caudate.RData and keep going with the analysis.
+
+
 # TODO
  * keep going with analysis. Get some results to plot for Philip, and what they mean
- * run DEXSeq as well
  * try DTE
- * try DGE using these tools
  * try Kallisto
  * try Salmon
+ * check Science paper to see what other analysis we can do to co bine the two results
+ * make -log10(p) for DGE against DTU
+ * make Volcano plots for each modality? see other forms of plots from main tutorial
