@@ -1086,7 +1086,7 @@ It looks a bit more complicated for ACC, but we can always trim them a bit.
 
 
 # TODO
- * try DTE
+ * does it make a difference if I take the PCA on the prop matrix?
  * try Kallisto
  * try Salmon
  * check Science paper to see what other analysis we can do to co bine the two results
