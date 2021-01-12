@@ -937,9 +937,155 @@ plotExpression(drim.prop3, gene_id, samples, isProportion = TRUE)
 Data is much noisier... lets save the image to
 ~/data/isoforms/DTU_DRIMSeq_Caudate.RData and keep going with the analysis.
 
+# 2021-01-12 07:36:09
+
+Let's get the genes that were confirmed at OFDR < .05:
+
+```
+r$> unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])                                
+ [1] "ENSG00000100181" "ENSG00000113758" "ENSG00000114405" "ENSG00000117298"
+[5] "ENSG00000157557" "ENSG00000187775" "ENSG00000198720" "ENSG00000216937"
+```
+
+And run the gene set analysis:
+
+```r
+library(WebGestaltR)
+
+ncpu=4
+data_dir = '~/data/isoforms/'
+region = 'caudate'
+
+tmp2 = unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])
+
+# my own GMTs
+db = sprintf('my_%s_sets', region)
+cat(region, db, '\n')
+project_name = sprintf('%s_%s', region, db)
+db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+enrichResult <- try(WebGestaltR(enrichMethod="ORA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            referenceSet='genome',
+                            sigMethod="top", topThr=150000,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=900))
+if (class(enrichResult) != "try-error") {
+    out_fname = sprintf('%s/WG_DTU_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(region, db, '\n')
+    project_name = sprintf('%s_%s', region, db)
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- try(WebGestaltR(enrichMethod="ORA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="ensembl_gene_id",
+                                referenceSet='genome',
+                                sigMethod="top", topThr=150000,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=900))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG_DTU_%s_%s_10K.csv', data_dir, region, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/isoforms/'
+ncpu=6
+
+region='caudate'
+
+ranks = -log(res.g$pvalue)
+tmp2 = data.frame(geneid=strp(res.g$gene_id), rank=ranks)
+tmp2 = tmp2[order(ranks, decreasing=T),]
+
+# my own GMTs
+db = sprintf('my_%s_sets', region)
+cat(region, db, '\n')
+db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                    organism="hsapiens",
+                    enrichDatabaseFile=db_file,
+                    enrichDatabaseType="genesymbol",
+                    interestGene=tmp2,
+                    outputDirectory = data_dir,
+                    interestGeneType="ensembl_gene_id",
+                    sigMethod="top", topThr=150000,
+                    minNum=3,
+                    isOutput=F, isParallel=T,
+                    nThreads=ncpu, perNum=10000, maxNum=800))
+out_fname = sprintf('%s/WG_GSEA-DTU_%s_%s_10K.csv', data_dir, region, db)
+write.csv(enrichResult, file=out_fname, row.names=F)
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(region, db, '\n')
+    enrichResult <- WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="ensembl_gene_id",
+                                sigMethod="top", topThr=150000,
+                                outputDirectory = data_dir,
+                                minNum=5,
+                                isOutput=F, isParallel=T,
+                                nThreads=ncpu, perNum=10000)
+    out_fname = sprintf('%s/WG_GSEA-DTU_%s_%s_10K.csv', data_dir, region, db)
+    write.csv(enrichResult, file=out_fname, row.names=F)
+}
+```
+
+Nothing really surviving FDR in either ORA or GSEA for the Caudate.
+
+## DGE vs DTU plots
+
+Let's make a few plots against DGE for ACC and Caudate:
+
+```r
+load('~/data/rnaseq_derek/rnaseq_results_11122020.rData')
+res.g$GENEID = strp(res.g$gene_id)
+both_res = merge(rnaseq_caudate, res.g, by.x='ensembl_gene_id', by.y='GENEID',
+                 all.x=F, all.y=F)
+quartz()
+plot(-log10(both_res$P.Value), -log10(both_res$pvalue),
+     ylab='DTU -log10(p)', xlab='DGE -log10(p)', main='Caudate PM')
+worst_FDR_gene = drim.padj[which.max(drim.padj$gene), 'gene_id']
+worst_p = both_res[both_res$ensembl_gene_id==worst_FDR_gene, 'pvalue']
+abline(h=-log10(worst_p), col='red')
+to_text = which(both_res$pvalue < worst_p)
+text(-log10(both_res$P.Value)[to_text], -log10(both_res$pvalue)[to_text],
+     both_res$hgnc_symbol[to_text], cex=.7, pos=1)
+```
+
+![](images/2021-01-12-10-42-31.png)
+
+![](images/2021-01-12-10-45-32.png)
+
+It looks a bit more complicated for ACC, but we can always trim them a bit.
+
 
 # TODO
- * keep going with analysis. Get some results to plot for Philip, and what they mean
  * try DTE
  * try Kallisto
  * try Salmon

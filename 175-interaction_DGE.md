@@ -247,4 +247,7 @@ for (db in DBs) {
 }
 ```
 
+We only get some FDR < .05 results for those Caudate-related categories, like
+cilium motility, etc.
+
 # TODO
