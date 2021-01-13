@@ -1084,6 +1084,11 @@ text(-log10(both_res$P.Value)[to_text], -log10(both_res$pvalue)[to_text],
 
 It looks a bit more complicated for ACC, but we can always trim them a bit.
 
+# 2021-01-13 11:51:19
+
+What happens to the DTU results when we do the PCA-first method?
+
+
 
 # TODO
  * does it make a difference if I take the PCA on the prop matrix?
