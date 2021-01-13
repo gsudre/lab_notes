@@ -1083,7 +1083,7 @@ ENST00000257696.5                4.857028e-05
 So, that's the same result as before, which is re-assuring. 
 ## Some plots
 
-Let's start with some Volvano plots:
+Let's start with some Volcano plots:
 
 ```r
 library(EnhancedVolcano)
