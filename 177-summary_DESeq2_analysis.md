@@ -266,6 +266,7 @@ Finally, rename the results so we can run comparisons later:
 ```r
 dge_acc = res
 GE_acc = dds
+save(dge_acc, GE_acc, file='~/data/rnaseq_derek/DGE_ACC.RData')
 ```
 
 ## DGE caudate
@@ -315,12 +316,512 @@ As usual, the Caudate results aren't as strong.
 ```r
 dge_caudate = res
 GE_caudate = dds
+save(dge_caudate, GE_caudate, file='~/data/rnaseq_derek/DGE_Caudate.RData')
 ```
 
 ## DTE ACC
 
+Now we go on to the DTE analysis. I used the same filtering scheme used later
+for DRIMSeq, because the edgeR filtering function was still leaving too many
+transcripts with zero expression in many subjects. In the end, we use stageR for
+the 2-stage comparison correction.
+
+```r
+load('~/data/isoforms/tximport_rsem_DTE.RData')
+txi = rsem
+myregion = 'ACC'
+
+# I'll just use the metadata from here
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+# samples has only the metadata now
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+
+# remove samples for the other brain region from the tx counts matrices
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in tximport matrices
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+# cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+
+cts = txi$counts
+cts = cts[rowSums(cts) > 0,]
+
+# remove transcripts with zero or near zero variance
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(cts), method = pp_order)
+X = predict(pp, t(cts))
+txCounts = t(X)
+
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = txdf[match(rownames(txCounts), txdf$TXNAME),]
+counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+counts = cbind(counts, txCounts)
+
+library(DRIMSeq)
+samples$group = samples$Diagnosis
+samples$sample_id = as.character(samples$submitted_name)
+d0 = dmDSdata(counts = counts, samples = samples)
+
+n = nrow(samples)
+n.small = min(table(samples$group))
+
+d = DRIMSeq::dmFilter(d0,
+                      min_samps_feature_expr = n.small, min_feature_expr = 10,
+                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                      min_samps_gene_expr = n, min_gene_expr = 10)
+
+countData = round(as.matrix(counts(d)[,-c(1:2)]))
+
+# determining which PCs to remove later
+set.seed(42)
+pca <- prcomp(t(countData), scale=TRUE)
+
+library(nFactors)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$submitted_name
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(samples[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], samples[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+
+print(which(num_pvals < .01, arr.ind = T))
+print(which(categ_pvals < .01, arr.ind = T))
+```
+
+```
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+RINe                      4   2
+pcnt_optical_duplicates   1   3
+PMI                       5   3
+RINe                      4   4
+      row col
+batch   1   1
+batch   1   3
+```
+
+```r
+fm = ~ Diagnosis + PC1 + PC2 + PC3 + PC4
+library(DESeq2)
+rownames(countData) = counts(d)[, 2]
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = data.pm,
+                              design = fm)
+dds <- DESeq(dds)
+res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05)
+```
+
+```
+r$> summary(res)                                                                           
+
+out of 24482 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.0082%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 8)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+```
+
+```r
+quartz()
+par(mfrow=c(1, 2))
+for (g in 1:2) {
+    topTx <- rownames(res)[sort(res$padj, index.return=T)$ix[g]]
+    cat(topTx, '\n')
+    plotCounts(dds, gene = topTx, intgroup=c("Diagnosis"))
+}
+```
+
+![](images/2021-01-13-19-42-00.png)
+
+They're not stellar examples, but they are both confirmed below.
+
+```
+ENST00000257696.5 
+ENST00000333219.8 
+```
+
+Moving on to stageR:
+
+```r
+### stage-wise testing
+library(stageR)
+library(dplyr)
+
+pConfirmation <- matrix(res$pvalue, ncol=1)
+dimnames(pConfirmation) <- list(rownames(res), c("transcript"))
+# select one qval per gene (min over transcripts)
+m = merge(as.data.frame(res), txdf, by.x=0, by.y='TXNAME')
+qvals = m %>% group_by(GENEID) %>% slice_min(n=1, padj, with_ties=F)
+pScreen = qvals$padj
+names(pScreen) = qvals$GENEID
+
+stageRObj = stageRTx(pScreen=pScreen, pConfirmation=pConfirmation,
+                     pScreenAdjusted=TRUE, tx2gene=txdf)
+stageRObj = stageWiseAdjustment(stageRObj, method="dte", alpha=0.05)
+print(getSignificantGenes(stageRObj))
+print(getSignificantTx(stageRObj))
+```
+
+```
+                   FDR adjusted p-value
+ENSG00000135245.10         5.876053e-05
+ENSG00000153487.12         2.587632e-02
+
+                  stage-wise adjusted p-value
+ENST00000257696.5                1.132152e-05
+ENST00000333219.8                9.971295e-03
+```
+
+And let's do a Volcano plot, but using the FDR values from DESeq2, because
+stageR wouldn't make sense here because it'd be the second step.
+
+```r
+library(EnhancedVolcano)
+pCutoff = 0.05
+FCcutoff = 1.0
+
+p = EnhancedVolcano(data.frame(res), lab = rownames(res), x = 'log2FoldChange',
+                    y = 'padj', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~adjusted~italic(P)),
+                    ylim = c(0, 5),
+                    pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 2.0, title = "Volcano plot",
+                    subtitle = "DTE ACC PM ADHD vs. Normal",
+                    caption = paste0('log2 FC cutoff: ', FCcutoff,
+                                     '; p-value cutoff: ', pCutoff,
+                                     '\nTotal = ', nrow(res), ' variables'),
+                    legendPosition = 'bottom', legendLabSize = 10,
+                    legendIconSize = 4.0)
+print(p)
+```
+
+![](images/2021-01-13-19-44-35.png)
+
+Let's save the results for future comparison:
+
+```r
+dte_acc = res
+TE_acc = dds
+stageR_dte_acc = stageRObj
+save(dte_acc, TE_acc, stageR_dte_acc, file='~/data/isoforms/DTE_ACC.RData')
+```
+
 ## DTE Caudate
+
+Just re-using the ACC DTE code and changing where appropriate:
+
+```
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+pcnt_optical_duplicates   1   2
+RINe                      4   2
+RINe                      4   4
+               row col
+batch            1   1
+batch            1   2
+MoD              3   6
+batch            1   7
+comorbid_group   5   8
+```
+
+```r
+fm = ~ Diagnosis + PC1 + PC2 + PC4 + PC6 + PC7 + PC8
+library(DESeq2)
+rownames(countData) = counts(d)[, 2]
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = data.pm,
+                              design = fm)
+dds <- DESeq(dds)
+res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05)
+print(summary(res))
+```
+
+```
+out of 25613 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 7)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+```
+
+Nothing significant under q < .05 for Caudate. And nothing to be confirmed in stageR.
+
+We can a Volcano plot just in case:
+
+```r
+library(EnhancedVolcano)
+pCutoff = 0.05
+FCcutoff = 1.0
+
+p = EnhancedVolcano(data.frame(res), lab = rownames(res), x = 'log2FoldChange',
+                    y = 'padj', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~adjusted~italic(P)),
+                    ylim = c(0, 2.5),
+                    pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 2.0, title = "Volcano plot",
+                    subtitle = "DTE Caudate PM ADHD vs. Normal",
+                    caption = paste0('log2 FC cutoff: ', FCcutoff,
+                                     '; p-value cutoff: ', pCutoff,
+                                     '\nTotal = ', nrow(res), ' variables'),
+                    legendPosition = 'bottom', legendLabSize = 10,
+                    legendIconSize = 4.0)
+print(p)
+```
+
+![](images/2021-01-13-20-03-18.png)
+
+Let's save the results for future comparison:
+
+```r
+dte_caudate = res
+TE_caudate = dds
+save(dte_caudate, TE_caudate, file='~/data/isoforms/DTE_Caudate.RData')
+```
+
 
 ## DTU ACC
 
+Let's finish this with the DTU analysis, which uses DRIMSeq instead:
+
+```r
+load('~/data/isoforms/tximport_rsem_DTU.RData')
+txi = rsem
+myregion = 'ACC'
+
+# I'll just use the metadata from here
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+# samples has only the metadata now
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+
+# remove samples for the other brain region from the tx counts matrices
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in tximport matrices
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+# cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+
+cts = txi$counts
+cts = cts[rowSums(cts) > 0,]
+
+# remove transcripts with zero or near zero variance
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(cts), method = pp_order)
+X = predict(pp, t(cts))
+txCounts = t(X)
+
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = txdf[match(rownames(txCounts), txdf$TXNAME),]
+counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+counts = cbind(counts, txCounts)
+
+library(DRIMSeq)
+samples$group = samples$Diagnosis
+samples$sample_id = as.character(samples$submitted_name)
+d0 = dmDSdata(counts = counts, samples = samples)
+
+n = nrow(samples)
+n.small = min(table(samples$group))
+
+d = DRIMSeq::dmFilter(d0,
+                      min_samps_feature_expr = n.small, min_feature_expr = 10,
+                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                      min_samps_gene_expr = n, min_gene_expr = 10)
+
+countData = round(as.matrix(counts(d)[,-c(1:2)]))
+
+set.seed(42)
+pca <- prcomp(t(countData), scale=TRUE)
+
+library(nFactors)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$submitted_name
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(samples[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], samples[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+
+print(which(num_pvals < .01, arr.ind = T))
+print(which(categ_pvals < .01, arr.ind = T))
+```
+
+```
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+clusters                  2   2
+PMI                       5   2
+RINe                      4   3
+RINe                      4   4
+               row col
+batch            1   1
+batch            1   2
+evidence_level   8   2
+batch            1   3
+```
+
+```r
+design = model.matrix(~group + PC1 + PC2 + PC3 + PC4, data = data.pm)
+
+set.seed(42)
+system.time({
+    d <- dmPrecision(d, design = design)
+    d <- dmFit(d, design = design)
+    d <- dmTest(d, coef = "groupCase")     
+})
+res.g = DRIMSeq::results(d)
+res.t = DRIMSeq::results(d, level = "feature")
+
+no.na <- function(x) ifelse(is.na(x), 1, x)
+res.g$pvalue <- no.na(res.g$pvalue)
+res.t$pvalue <- no.na(res.t$pvalue)
+```
+
 ## DTU Caudate
+
+Repeating ACC DTU code, but changing appropriately:
+
+```
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+pcnt_optical_duplicates   1   2
+RINe                      4   2
+PMI                       5   2
+RINe                      4   4
+RINe                      4   5
+      row col
+batch   1   1
+batch   1   2
+MoD     3   6
+```
+
+```r
+design = model.matrix(~group + PC1 + PC2 + PC4 + PC5 + PC6, data = data.pm)
+
+set.seed(42)
+system.time({
+    d <- dmPrecision(d, design = design)
+    d <- dmFit(d, design = design)
+    d <- dmTest(d, coef = "groupCase")     
+})
+res.g = DRIMSeq::results(d)
+res.t = DRIMSeq::results(d, level = "feature")
+
+no.na <- function(x) ifelse(is.na(x), 1, x)
+res.g$pvalue <- no.na(res.g$pvalue)
+res.t$pvalue <- no.na(res.t$pvalue)
+```
