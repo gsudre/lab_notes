@@ -27,7 +27,7 @@ forms = forms[!grepl(pattern='subject', forms)]
 forms = forms[!grepl(pattern='_old', forms)]
 
 # load each form
-for_names = c()
+form_names = c()
 for (f in forms) {
     cat(f, '\n')
     form_name = gsub(f, pattern='.xlsx', replacement='')
@@ -49,14 +49,29 @@ for (f in forms) {
 
 # compute last age for each subject
 for (s in 1:nrow(res)) {
-    last_date = which.max(sapply(res[s, form_names],
-                           function(x) as.Date(x, format='%Y-%m-%d')))
-    age = (as.Date(res[s, form_names[last_date]], format="%Y-%m-%d") -
-           as.Date(res[s, 'DOB'], format = '%m/%d/%Y'))
-    res[s, 'lastAge'] = as.numeric(age/365.25)
+    if (! all(res[s, form_names] == '')) {
+        last_date = which.max(sapply(res[s, form_names],
+                            function(x) as.Date(x, format='%Y-%m-%d')))
+        age = (as.Date(res[s, form_names[last_date]], format="%Y-%m-%d") -
+            as.Date(res[s, 'DOB'], format = '%m/%d/%Y'))
+        res[s, 'lastAge'] = as.numeric(age/365.25)
+    }
 }
-write.csv(res, file=sprintf('%s/last_visit.csv', forms_dir), row.names=F)
+
+# now that everything is computed, let's clean it up
+
+# remove anyone that we couldn't compute dates
+res_clean = res[!is.na(res$lastAge), ]
+# only keep people with at least one entry after 2018
+keep_me = c()
+for (s in 1:nrow(res_clean)) {
+    years = as.numeric(substr(res_clean[s, form_names], 1, 4))
+    if (sum(years >= 2018, na.rm=T) > 0) {
+        keep_me = c(keep_me, s)
+    }
+}
+res_clean = res_clean[keep_me, ]
+write.csv(res_clean, file=sprintf('%s/last_visit.csv', forms_dir), row.names=F)
 ```
 
 # TODO
- * make sure the final subject number conforms to last CIER
