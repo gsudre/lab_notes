@@ -1752,6 +1752,74 @@ ENST00000333219.8                9.941918e-03
 
 Again, ENSG00000135245 is HILPDA and ENSG00000153487 is ING1.
 
+## Back to DGE
+
+So, the 7 genes affected by DGE AC are:
+
+ENSG00000135245.10 
+ENSG00000240758.2 
+ENSG00000078401.7 
+ENSG00000090104.12 
+ENSG00000103995.14 
+ENSG00000002016.17 
+ENSG00000268100.1 
+
+If we take it to FDR .1, we get 10:
+
+ENSG00000135245.10 
+ENSG00000240758.2 
+ENSG00000078401.7 
+ENSG00000090104.12 
+ENSG00000103995.14 
+ENSG00000002016.17 
+ENSG00000268100.1 
+ENSG00000169245.6 
+ENSG00000258890.7 
+ENSG00000124659.6 
+
+Now, is this at all a good overlap with the developmental sets?
+
+```r
+library(WebGestaltR)
+data_dir = '~/data/rnaseq_derek/'
+ncpu=2
+region = 'acc'
+mygenes = c()
+resIHW <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05, 
+                      filterFun=ihw)
+for (g in 1:7) { 
+    topTx <- rownames(res)[sort(res$padj, index.return=T)$ix[g]] 
+    mygenes = c(mygenes, substr(topTx, 1, 15))
+}
+DBs = c(sprintf('my_%s_sets', region), # just to get GWAS and TWAS sets
+        sprintf('%s_manySets_co0.990', region),
+        sprintf('%s_manySets_co0.950', region),
+        sprintf('%s_manySets', region))
+for (db in DBs) {
+    cat(region, db, '\n')
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    enrichResult <- try(WebGestaltR(enrichMethod="ORA",
+                                    organism="hsapiens",
+                                    enrichDatabaseFile=db_file,
+                                    enrichDatabaseType="genesymbol",
+                                    interestGene=mygenes,
+                                    outputDirectory = data_dir,
+                                    interestGeneType="ensembl_gene_id",
+                                    referenceSet='genome',
+                                    sigMethod="top", topThr=150000,
+                                    minNum=3,
+                                    isOutput=F, isParallel=T,
+                                    nThreads=ncpu, perNum=10000, maxNum=900))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG4_ORA_%s_%s_10K.csv', data_dir, region, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
+No overlap...
+
+
 # TODO
  * Caudate?
  * do DX*region under this framework
