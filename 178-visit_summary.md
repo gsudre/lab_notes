@@ -26,6 +26,9 @@ forms = list.files(path = forms_dir, pattern = 'xlsx$')
 forms = forms[!grepl(pattern='subject', forms)]
 forms = forms[!grepl(pattern='_old', forms)]
 
+# storing all data for all subjects, for future checks
+all_res = c()
+
 # load each form
 form_names = c()
 for (f in forms) {
@@ -40,6 +43,11 @@ for (f in forms) {
             last_date = max(as.Date(sdata$record.date.collected,
                                     format = '%m/%d/%Y'))
             dates[s] = as.character(last_date)
+
+            junk = data.frame(date = sdata$record.date.collected)
+            junk$form = form_name
+            junk$SID = res$SID[s]
+            all_res = rbind(all_res, junk)
         }
     }
     res = cbind(res, dates)
@@ -58,6 +66,22 @@ for (s in 1:nrow(res)) {
     }
 }
 
+# find date and value for first IQ
+cat('Finding last IQs\n')
+tmp = read.xls(sprintf('%s/IQ.xlsx', forms_dir))
+vals = rep('', length=nrow(res))
+for (s in 1:nrow(res)) {
+    # grab the subject's data in this form and compute the last one
+    sdata = tmp[tmp$subject.id == res$SID[s], ]
+    if (nrow(sdata) > 0) {
+        last_date = which.max(as.Date(sdata$record.date.collected,
+                                       format = '%m/%d/%Y'))
+        vals[s] = as.character(sdata[last_date, 'FSIQ'])
+    }
+}
+res = cbind(res, vals)
+colnames(res)[ncol(res)] = 'lastIQval'
+
 # now that everything is computed, let's clean it up
 
 # remove anyone that we couldn't compute dates
@@ -72,6 +96,36 @@ for (s in 1:nrow(res_clean)) {
 }
 res_clean = res_clean[keep_me, ]
 write.csv(res_clean, file=sprintf('%s/last_visit.csv', forms_dir), row.names=F)
+
+# make sure all consent dates have something on them
+subjects_file = sprintf('%s/manual/all_visits.xlsx', forms_dir)
+df = read.xls(subjects_file)
+date_vars = colnames(df)[grepl(colnames(df), pattern='^Visit')]
+for (s in 1:nrow(df)) {
+    sdates = df[s, date_vars]
+    sdates = sdates[!is.na(sdates)]
+    sdates = sdates[sdates != '']
+    sdates = format(as.Date(sdates, format="%Y-%m-%d"), '%m/%d/%Y')
+    # try to find these subject dates in all_res
+    for (d in sdates) {
+        idx = which(all_res$SID == df[s, 'SID'] & all_res$date == d)
+        if (length(idx) == 0) {
+            cat('Cannot find', df[s, 'SID'], 'on', d, '\n')
+        }
+    }
+}
 ```
 
 # TODO
+ * What is adult self?
+ * Who has been genotyped 
+ * Who has been sequenced
+ * is subject in all_visits? is all_visits subj in res?
+ * Where is the biospecimen acquired >= 2018
+ * Who has been genotyped 
+ * Who has been sequenced
+
+
+Who is in the study, when they signed a consent, and what they did in that day, FSIQ, date when obtained (make sure they match date of visit(, match to participant study membership file
+How it was created, and how it was checked 
+Biomaterials (make sure date matches what’s in the spreadsheet)

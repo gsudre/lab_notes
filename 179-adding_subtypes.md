@@ -696,7 +696,373 @@ I'll wait to contiue with these analysis until I figure out this zero problem.
 
 Finally, let's modularize the subtyping DTU analysis too.
 
+```r
+myregion = 'ACC'
 
+load('~/data/isoforms/tximport_rsem_DTU.RData')
+txi = rsem
+# I'll just use the metadata from here
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+# samples has only the metadata now
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+
+# remove samples for the other brain region from the tx counts matrices
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in tximport matrices
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+# cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "TXNAME"), columns=c('GENEID','TXCHROM'),
+               "TXNAME")
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = txdf[match(substr(rownames(txi$counts), 1, 15), txdf$TXNAME),]
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('transcript_id', 'transcript_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+tx_meta = merge(txdf.sub, bt_slim, by.x='TXNAME', by.y='transcript_id')
+tx_meta$transcript_id = rownames(txi$counts)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = txi$counts[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+At this point, no filtering has been done, except for keeping only autosomes.
+And I added all annotations I wanted. Now, it's just a matter of running the
+rest of the analysis:
+
+```r
+subtype = 'lncRNA'
+
+cat('Starting with', nrow(tx_meta), 'variables\n')
+keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+cat('Keeping', sum(keep_me), subtype, 'variables\n')
+my_count_matrix = count_matrix[keep_me, ]
+my_tx_meta = tx_meta[keep_me, ]
+
+# removing variables with zero or near-zero variance
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(my_count_matrix), method = pp_order)
+X = t(predict(pp, t(my_count_matrix)))
+cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = my_tx_meta[match(rownames(X), my_tx_meta$transcript_id),]
+counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+counts = cbind(counts, X)
+
+library(DRIMSeq)
+samples$group = samples$Diagnosis
+samples$sample_id = as.character(samples$submitted_name)
+d0 = dmDSdata(counts = counts, samples = samples)
+
+n = nrow(samples)
+n.small = min(table(samples$group))
+
+d = DRIMSeq::dmFilter(d0,
+                      min_samps_feature_expr = n.small, min_feature_expr = 10,
+                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                      min_samps_gene_expr = n, min_gene_expr = 10)
+
+countData = round(as.matrix(counts(d)[,-c(1:2)]))
+cat('Keeping', nrow(countData), 'after DRIMSeq expression filtering\n')
+
+set.seed(42)
+pca <- prcomp(t(countData), scale=TRUE)
+library(nFactors)
+eigs <- pca$sdev^2
+nS = nScree(x=eigs)
+keep_me = 1:nS$Components$nkaiser
+mydata = data.frame(pca$x[, keep_me])
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$submitted_name
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+             'C1', 'C2', 'C3', 'C4', 'C5')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                   dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(samples[, x], mydata[, y])
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                   dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], samples[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                    which(categ_pvals < .01, arr.ind = T)[, 'col']))
+fm_str = sprintf('~ group + %s', paste0(pc_vars[use_pcs],
+                                            collapse = ' + '))
+cat('Found', length(use_pcs), 'PCs p < .01\n')
+cat('Using formula:', fm_str, '\n')
+
+design = model.matrix(as.formula(fm_str), data = data.pm)
+
+set.seed(42)
+system.time({
+    d <- dmPrecision(d, design = design)
+    d <- dmFit(d, design = design)
+    d <- dmTest(d, coef = "groupCase")     
+})
+res.g = DRIMSeq::results(d)
+res.t = DRIMSeq::results(d, level = "feature")
+
+# make NA pvalues to be 1 so they don't screw up future steps
+no.na <- function(x) ifelse(is.na(x), 1, x)
+res.g$pvalue <- no.na(res.g$pvalue)
+res.t$pvalue <- no.na(res.t$pvalue)
+print(table(res.g$adj_pvalue < .05))
+print(table(res.t$adj_pvalue < .05))
+```
+
+```
+FALSE  TRUE 
+10599    33 
+
+FALSE  TRUE 
+30827    50 
+```
+
+We have some results surviving FDR at both gene and transcript level. Let's do
+some Diagnosis-agnostic screening to try to improve FDR and OFDR:
+
+```r
+# posthoc procedure to improve the false discovery rate (FDR) and overall false discovery rate (OFDR) control. It sets the p-values and adjusted p-values for transcripts with small per-sample proportion SD to 1
+
+smallProportionSD <- function(d, filter = 0.1) {
+        # Generate count table
+        cts = as.matrix(subset(counts(d), select = -c(gene_id, feature_id)))
+        # Summarise count total per gene
+        gene.cts = rowsum(cts, counts(d)$gene_id)
+        # Use total count per gene as count per transcript
+        total.cts = gene.cts[match(counts(d)$gene_id, rownames(gene.cts)),]
+        # Calculate proportion of transcript in gene
+        props = cts/total.cts
+        rownames(props) = rownames(total.cts)
+        
+        # Calculate standard deviation
+        propSD = sqrt(matrixStats::rowVars(props))
+        # Check if standard deviation of per-sample proportions is < 0.1
+        propSD < filter
+}
+
+filt = smallProportionSD(d)
+
+res.t.filt = DRIMSeq::results(d, level = "feature")
+res.t.filt$pvalue[filt] = 1
+res.t.filt$adj_pvalue[filt] = 1
+res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
+print(table(filt))
+print(table(res.t.filt$adj_pvalue < 0.05))
+```
+
+```
+filt
+FALSE  TRUE 
+12865 17900 
+
+FALSE  TRUE 
+30896    38 
+```
+
+Keeping 12.8K transcripts for further investigation. We go down to 38
+transcripts, instead of the original 50. Now we go on to the stageR procedure:
+
+```r
+strp <- function(x) substr(x,1,15)
+# Construct a vector of per-gene p-values for the screening stage
+pScreen = res.g$pvalue
+names(pScreen) = strp(res.g$gene_id)
+# Construct a one column matrix of the per-transcript confirmation p-values
+pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+# res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
+tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+                     res.t[,c("feature_id", "gene_id")])
+# remove version from gene name
+for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+
+library(stageR)
+stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                     pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
+drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+                               onlySignificantGenes = TRUE)
+# this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
+drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+                  by.y = c("geneID","txID"))
+print(length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)))
+print(table(drim.padj$transcript < 0.05))
+```
+
+```
+[1] 33
+
+FALSE  TRUE 
+   89    31 
+```
+
+There are 33 screened genes in this dataset, and 31 transcripts pass the
+confirmation stage on a target 5% overall false discovery rate (OFDR).
+
+Let's make a few plots:
+
+```r
+plotExpression <- function(expData = NULL, geneID = NULL, samps = NULL, isProportion = FALSE) {
+        colnames(expData)[1:2] = c("gid","tid")
+        sub = subset(expData, gid == geneID)
+        sub = reshape2::melt(sub, id = c("gid", "tid"))
+        sub = merge(samps, sub, by.x = "sample_id", by.y = "variable")
+        if(!isProportion) {
+                sub$value = log(sub$value)
+        }
+
+        clrs = c("dodgerblue3", "maroon2",  "forestgreen", "darkorange1", "blueviolet", "firebrick2",
+"deepskyblue", "orchid2", "chartreuse3", "gold", "slateblue1", "tomato" , "blue", "magenta", "green3",
+"yellow", "purple3", "red" ,"darkslategray1", "lightpink1", "lightgreen", "khaki1", "plum3", "salmon")
+
+        p = ggplot(sub, aes(tid, value, color = group, fill = group)) +
+        geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8, lwd = 0.5) +
+        stat_summary(fun = mean, geom = "point", color = "black", shape = 5, size = 3, position=position_dodge(width = 0.8)) +
+        scale_color_manual(values = clrs) + scale_fill_manual(values = clrs) +
+        geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) + theme_bw() +
+        ggtitle(geneID) + xlab("Transcripts")
+
+        if(!isProportion) {
+                p = p + ylab("log(Expression)")
+        } else {
+                p = p + ylab("Proportions")
+        }
+        p
+}
+
+# condensing the counts to be converted to proportions
+drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                      drim.prop$feature_id),]
+# Calculate proportions from counts
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+drim.prop2 = drim.prop %>%
+        group_by(gene_id, variable) %>%
+        mutate(total = sum(value)) %>%
+        group_by(variable, add=TRUE) %>%
+        mutate(prop = value/total)
+drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+                            gene_id + feature_id ~ variable)
+
+# checking out which genes are affected in DTU (expression switches among the
+# isoforms of the gene)
+print(unique(drim.padj[drim.padj$transcript < .05, 'gene_id']))
+
+# plotting the top 10 genes
+library(ggpubr)
+gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
+myplots = list()
+for (g in 1:10) {
+    cat(gene_ids[g], '\n')
+    myplots[[g]] = plotExpression(drim.prop3, gene_ids[g], samples,
+                                  isProportion = TRUE)
+}
+ggarrange(plotlist=myplots, nrow=2, ncol=5)
+```
+
+```
+ [1] "ENSG00000061936" "ENSG00000068831" "ENSG00000070371" "ENSG00000086848"
+ [5] "ENSG00000100462" "ENSG00000103363" "ENSG00000109390" "ENSG00000111077"
+ [9] "ENSG00000119950" "ENSG00000128833" "ENSG00000129933" "ENSG00000146776"
+[13] "ENSG00000146963" "ENSG00000157741" "ENSG00000165476" "ENSG00000180902"
+[17] "ENSG00000182247" "ENSG00000182871" "ENSG00000198933" "ENSG00000214176"
+[21] "ENSG00000221968" "ENSG00000235478" "ENSG00000247572" "ENSG00000248115"
+[25] "ENSG00000263072"
+```
+
+![](images/2021-01-14-07-28-23.png)
+
+
+## DTU Caudate
+
+Repeating ACC DTU code, but changing appropriately:
+
+```
+                        row col
+pcnt_optical_duplicates   1   1
+clusters                  2   1
+pcnt_optical_duplicates   1   2
+RINe                      4   2
+PMI                       5   2
+RINe                      4   4
+RINe                      4   5
+      row col
+batch   1   1
+batch   1   2
+MoD     3   6
+```
+
+```r
+design = model.matrix(~group + PC1 + PC2 + PC4 + PC5 + PC6, data = data.pm)
+```
+
+```
+FALSE  TRUE 
+11158    41 
+
+FALSE  TRUE 
+32965    48 
+```
+
+```
+filt
+FALSE  TRUE 
+13028 19921 
+
+FALSE  TRUE 
+33073    43 
+```
 
 # TODO
  * modularize DTE and DTU as well
