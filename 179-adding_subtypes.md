@@ -69,52 +69,49 @@ bt_slim = bt[, c('gene_id', 'gene_biotype')]
 bt_slim = bt_slim[!duplicated(bt_slim),]
 txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
 # store gene names in geneCounts without version in end of name
-noversion = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
-noversion = merge(noversion, txdf, by='GENEID', sort=F)
-imautosome = which(noversion$TXCHROM != 'X' &
-                   noversion$TXCHROM != 'Y' &
-                   noversion$TXCHROM != 'MT')
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
 count_matrix = count_matrix[imautosome, ]
-noversion = noversion[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
 ```
 
 At this point, no filtering has been done, except for keeping only autosomes.
 And I added all annotations I wanted. Now, it's just a matter of filtering in
-any way we want. 
+any way we want.
 
+```r
+subtype = 'pseudogene'
 
+cat('Starting with', nrow(tx_meta), 'variables\n')
+keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+cat('Keeping', sum(keep_me), subtype, 'variables\n')
+my_count_matrix = count_matrix[keep_me, ]
+my_tx_meta = tx_meta[keep_me, ]
 
-
-
-
-
-
-
-# removing genes with zero or near-zero variance
+# removing variables with zero or near-zero variance
 library(caret)
 pp_order = c('zv', 'nzv')
-pp = preProcess(t(count_matrix), method = pp_order)
-X = predict(pp, t(count_matrix))
-geneCounts = t(X)
-
-# removing genes with low expression
-library(edgeR)
-isexpr <- filterByExpr(geneCounts, group=data$Diagnosis)
-geneCountsExpr = geneCounts[isexpr,]
-genesExpr = noversion[isexpr,]
+pp = preProcess(t(my_count_matrix), method = pp_order)
+X = t(predict(pp, t(my_count_matrix)))
+cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
 
 # checking which PCs are associated with our potential nuiscance variables
 set.seed(42)
-lcpm.pca <- prcomp(t(geneCountsExpr), scale=TRUE)
+mypca <- prcomp(t(X), scale=TRUE)
 # how many PCs to keep... using Kaiser thredhold, close to eigenvalues < 1
 library(nFactors)
-eigs <- lcpm.pca$sdev^2
+eigs <- mypca$sdev^2
 nS = nScree(x=eigs)
-keep_me = 1:nS$Components$nkaiser
-mydata = data.frame(lcpm.pca$x[, keep_me])
+keep_me = seq(1, nS$Components$nkaiser)
+
+mydata = data.frame(mypca$x[, keep_me])
 # create main metadata data frame including metadata and PCs
 data.pm = cbind(data, mydata)
 rownames(data.pm) = data$hbcc_brain_id
+cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
 
 # check which PCs are associated at nominal p<.01
 num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
@@ -143,7 +140,93 @@ for (x in categ_vars) {
         categ_pvals[x, y] = res$p.value
     }
 }
+use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                   which(categ_pvals < .01, arr.ind = T)[, 'col']))
+fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs], collapse = ' + '))
+cat('Found', length(use_pcs), 'PCs p < .01\n')
+cat('Using formula:', fm_str, '\n')
 
-print(which(num_pvals < .01, arr.ind = T))
-print(which(categ_pvals < .01, arr.ind = T))
+# removing variables with low expression
+library(edgeR)
+design=model.matrix(as.formula(fm_str), data=data.pm)
+isexpr <- filterByExpr(X, design=design)
+countsExpr = X[isexpr,]
+metaExpr = data.frame(GENEID = substr(rownames(countsExpr), 1, 15))
+metaExpr = merge(metaExpr, my_tx_meta, by='GENEID', sort=F)
+cat('Keeping', nrow(countsExpr), 'after expression filtering\n')
+
+# preparing DESeqData and running main analysis
+countdata = round(countsExpr)
+colnames(countdata) = rownames(data.pm)
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = countdata,
+                              colData = data.pm,
+                              design = as.formula(fm_str))
+dds <- DESeq(dds)
+res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05)
+cat('FDR q < .05\n')
+print(summary(res))
+gene_ids = rownames(res)[res$padj < .05]
+print(gene_ids)
+
+# plotting each of the significant genes
+library(ggpubr)
+library(ggbeeswarm)
+quartz()
+myplots = list()
+clrs = c("green3", "red")
+for (g in 1:length(gene_ids)) {
+    cat(gene_ids[g], '\n')
+    d <- plotCounts(dds, gene=gene_ids[g], intgroup="Diagnosis",
+                    returnData=TRUE)
+    p = (ggplot(d, aes(x=Diagnosis, y=count, color = Diagnosis,
+                       fill = Diagnosis)) + 
+         scale_y_log10() +
+         geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8,
+                      lwd = 0.5) +
+         stat_summary(fun = mean, geom = "point", color = "black",
+                      shape = 5, size = 3,
+                      position=position_dodge(width = 0.8)) +
+         scale_color_manual(values = clrs) +
+         scale_fill_manual(values = clrs) +
+         geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) +
+         theme_bw() +
+         ggtitle(gene_ids[g]))
+    myplots[[g]] = p
+}
+p = ggarrange(plotlist=myplots)
+annotate_figure(p, sprintf('DGE %s %s FDR q<.05', subtype, myregion))
+
+library(IHW)
+resIHW <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05,
+                  filterFun=ihw)
+cat('IHW q < .05\n')
+print(summary(resIHW))
+gene_ids = rownames(resIHW)[resIHW$padj < .05]
+print(gene_ids)
+quartz()
+myplots = list()
+clrs = c("green3", "red")
+for (g in 1:length(gene_ids)) {
+    cat(gene_ids[g], '\n')
+    d <- plotCounts(dds, gene=gene_ids[g], intgroup="Diagnosis",
+                    returnData=TRUE)
+    p = (ggplot(d, aes(x=Diagnosis, y=count, color = Diagnosis,
+                       fill = Diagnosis)) + 
+         scale_y_log10() +
+         geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8,
+                      lwd = 0.5) +
+         stat_summary(fun = mean, geom = "point", color = "black",
+                      shape = 5, size = 3,
+                      position=position_dodge(width = 0.8)) +
+         scale_color_manual(values = clrs) +
+         scale_fill_manual(values = clrs) +
+         geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) +
+         theme_bw() +
+         ggtitle(gene_ids[g]))
+    myplots[[g]] = p
+}
+p = ggarrange(plotlist=myplots)
+annotate_figure(p, sprintf('DGE %s %s IHW q<.05', subtype, myregion))
 ```
+
