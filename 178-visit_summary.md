@@ -101,6 +101,8 @@ write.csv(res_clean, file=sprintf('%s/last_visit.csv', forms_dir), row.names=F)
 subjects_file = sprintf('%s/manual/all_visits.xlsx', forms_dir)
 df = read.xls(subjects_file)
 date_vars = colnames(df)[grepl(colnames(df), pattern='^Visit')]
+missing_file = '~/tmp/missing.txt'
+cat('Checking if we can find the consent dates...\n')
 for (s in 1:nrow(df)) {
     sdates = df[s, date_vars]
     sdates = sdates[!is.na(sdates)]
@@ -110,7 +112,14 @@ for (s in 1:nrow(df)) {
     for (d in sdates) {
         idx = which(all_res$SID == df[s, 'SID'] & all_res$date == d)
         if (length(idx) == 0) {
-            cat('Cannot find', df[s, 'SID'], 'on', d, '\n')
+            cat('Cannot find', df[s, 'SID'], 'on', d, '\n', file=missing_file,
+                append=T)
+            sdata = all_res[all_res$SID==df[s, 'SID'],]
+            sdata = sdata[!duplicated(sdata),]
+            sdata = sdata[order(as.Date(sdata$date, format='%m/%d/%Y')),]
+            for (i in 1:nrow(sdata)) {
+                cat('\t', paste0(sdata[i, ]), '\n', file=missing_file, append=T)
+            }
         }
     }
 }
@@ -122,8 +131,6 @@ for (s in 1:nrow(df)) {
  * Who has been sequenced
  * is subject in all_visits? is all_visits subj in res?
  * Where is the biospecimen acquired >= 2018
- * Who has been genotyped 
- * Who has been sequenced
 
 
 Who is in the study, when they signed a consent, and what they did in that day, FSIQ, date when obtained (make sure they match date of visit(, match to participant study membership file
