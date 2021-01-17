@@ -25,6 +25,7 @@ res = res[res$DOB != '', ]
 forms = list.files(path = forms_dir, pattern = 'xlsx$')
 forms = forms[!grepl(pattern='subject', forms)]
 forms = forms[!grepl(pattern='_old', forms)]
+forms = forms[!grepl(pattern='special', forms)]
 
 # storing all data for all subjects, for future checks
 all_res = c()
@@ -81,6 +82,18 @@ for (s in 1:nrow(res)) {
 }
 res = cbind(res, vals)
 colnames(res)[ncol(res)] = 'lastIQval'
+
+# create column for whether the subject has been genotyped or sequenced
+cat('Genotyped or sequenced?\n')
+for (md in c('SNP', 'WES')) {
+    tmp = read.xls(sprintf('%s/special_%s.xlsx', forms_dir, md))
+    vals = rep('', length=nrow(res))
+    for (s in 1:nrow(res)) {
+        vals[s] = res$SID[s] %in% tmp$subject.id
+    }
+    res = cbind(res, vals)
+    colnames(res)[ncol(res)] = sprintf('has%sdata', md)
+}
 
 # now that everything is computed, let's clean it up
 
