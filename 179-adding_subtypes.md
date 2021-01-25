@@ -756,18 +756,105 @@ The code above worked well, so I'll change the modularized DTE first and see if
 the result is consistent across the different subtypes. If it is, I'll also
 implement it for DGE, although there the issue wasn't as bad.
 
-
 **ACC Protein coding**
+
+FDR q < .05
+
+out of 42244 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0024%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 0)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000333219.8"
+ENST00000333219.8
+
+(IHW results were identical)
+
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000153487           0.01602941
+                stage-wise adjusted p-value
+ENST00000333219                  0.01672342
+
+![](images/2021-01-25-14-13-45.png)
+![](images/2021-01-25-14-13-17.png)
 
 **ACC lncRNA**
 
+FDR q < .05
+
+out of 21802 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0046%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 1)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+(IHW result was identical)
+
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000240758         0.0009592265
+                stage-wise adjusted p-value
+ENST00000493710                           0
+
+![](images/2021-01-25-14-22-08.png)
+![](images/2021-01-25-14-22-29.png)
+
+
 **ACC pseudogene**
+
+There was a single result for ACC pseudogene, but everything was zero but for 5
+Controls, so I'll ignore that.
 
 **Caudate Protein coding**
 
+FDR q < .05
+
+out of 46990 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.0043%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 1)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000367459.8" "ENST00000523308.5"
+ENST00000367459.8 
+ENST00000523308.5 
+
+(IHW results were identical)
+
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000090104           0.04790720
+ENSG00000105339           0.02553367
+                stage-wise adjusted p-value
+ENST00000367459                  0.01571792
+ENST00000523308                  0.02094343
+
+![](images/2021-01-25-14-09-08.png)
+![](images/2021-01-25-14-09-29.png)
+
 **Caudate lncRNA**
 
+nothing
+
 **Caudate pseudogene**
+
+nothing
 
 ## DTU
 
