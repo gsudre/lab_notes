@@ -926,7 +926,7 @@ And I added all annotations I wanted. Now, it's just a matter of running the
 rest of the analysis:
 
 ```r
-subtype = 'lncRNA'
+subtype = 'protein_coding'
 
 cat('Starting with', nrow(tx_meta), 'variables\n')
 keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
@@ -1018,24 +1018,11 @@ res.t = DRIMSeq::results(d, level = "feature")
 no.na <- function(x) ifelse(is.na(x), 1, x)
 res.g$pvalue <- no.na(res.g$pvalue)
 res.t$pvalue <- no.na(res.t$pvalue)
-print(table(res.g$adj_pvalue < .05))
-print(table(res.t$adj_pvalue < .05))
-```
 
-```
-FALSE  TRUE 
-10599    33 
+cat('Genes surviving FDR q<.05:', sum(res.g$adj_pvalue < .05), '\n')
+cat('Transcripts surviving FDR q<.05:', sum(res.t$adj_pvalue < .05), '\n')
 
-FALSE  TRUE 
-30827    50 
-```
-
-We have some results surviving FDR at both gene and transcript level. Let's do
-some Diagnosis-agnostic screening to try to improve FDR and OFDR:
-
-```r
 # posthoc procedure to improve the false discovery rate (FDR) and overall false discovery rate (OFDR) control. It sets the p-values and adjusted p-values for transcripts with small per-sample proportion SD to 1
-
 smallProportionSD <- function(d, filter = 0.1) {
         # Generate count table
         cts = as.matrix(subset(counts(d), select = -c(gene_id, feature_id)))
@@ -1052,30 +1039,17 @@ smallProportionSD <- function(d, filter = 0.1) {
         # Check if standard deviation of per-sample proportions is < 0.1
         propSD < filter
 }
-
 filt = smallProportionSD(d)
 
 res.t.filt = DRIMSeq::results(d, level = "feature")
 res.t.filt$pvalue[filt] = 1
 res.t.filt$adj_pvalue[filt] = 1
 res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
-print(table(filt))
-print(table(res.t.filt$adj_pvalue < 0.05))
-```
+cat('Transcripts removed due to small SD:', sum(filt), 'out of',
+    length(filt), '\n')
+cat('Transcripts surviving SD filtering and FDR q<.05:',
+    sum(res.t.filt$adj_pvalue < .05), '\n')
 
-```
-filt
-FALSE  TRUE 
-12865 17900 
-
-FALSE  TRUE 
-30896    38 
-```
-
-Keeping 12.8K transcripts for further investigation. We go down to 38
-transcripts, instead of the original 50. Now we go on to the stageR procedure:
-
-```r
 strp <- function(x) substr(x,1,15)
 # Construct a vector of per-gene p-values for the screening stage
 pScreen = res.g$pvalue
@@ -1098,24 +1072,12 @@ drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
 # this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
 drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
                   by.y = c("geneID","txID"))
-print(length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)))
-print(table(drim.padj$transcript < 0.05))
-```
 
-```
-[1] 33
+cat('Screened genes at FDR q<.05:',
+    length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)), '\n')
+cat('Genes passing 5% OFDR:', sum(drim.padj$transcript < 0.05), '\n')
 
-FALSE  TRUE 
-   89    31 
-```
-
-There are 33 screened genes in this dataset, and 31 transcripts pass the
-confirmation stage on a target 5% overall false discovery rate (OFDR).
-
-Let's make a few plots:
-
-```r
-plotExpression <- function(expData = NULL, geneID = NULL, samps = NULL, isProportion = FALSE) {
+plotProportion <- function(expData = NULL, geneID = NULL, samps = NULL, isProportion = FALSE) {
         colnames(expData)[1:2] = c("gid","tid")
         sub = subset(expData, gid == geneID)
         sub = reshape2::melt(sub, id = c("gid", "tid"))
@@ -1185,48 +1147,6 @@ ggarrange(plotlist=myplots, nrow=2, ncol=5)
 [25] "ENSG00000263072"
 ```
 
-![](images/2021-01-14-07-28-23.png)
-
-
-## DTU Caudate
-
-Repeating ACC DTU code, but changing appropriately:
-
-```
-                        row col
-pcnt_optical_duplicates   1   1
-clusters                  2   1
-pcnt_optical_duplicates   1   2
-RINe                      4   2
-PMI                       5   2
-RINe                      4   4
-RINe                      4   5
-      row col
-batch   1   1
-batch   1   2
-MoD     3   6
-```
-
-```r
-design = model.matrix(~group + PC1 + PC2 + PC4 + PC5 + PC6, data = data.pm)
-```
-
-```
-FALSE  TRUE 
-11158    41 
-
-FALSE  TRUE 
-32965    48 
-```
-
-```
-filt
-FALSE  TRUE 
-13028 19921 
-
-FALSE  TRUE 
-33073    43 
-```
 
 # TODO
  * modularize DTE and DTU as well
