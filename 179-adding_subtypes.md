@@ -494,7 +494,7 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype) {
     mydata = data.frame(mypca$x[, keep_me])
     # create main metadata data frame including metadata and PCs
     data.pm = cbind(samples, mydata)
-    rownames(data.pm) = data$hbcc_brain_id
+    rownames(data.pm) = samples$hbcc_brain_id
     cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
 
     # check which PCs are associated at nominal p<.01
@@ -541,10 +541,29 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype) {
     cat('Keeping', nrow(countsExpr), 'after expression filtering\n')
 
     library(DESeq2)
-    dds <- DESeqDataSetFromMatrix(countData = round(countsExpr),
-                                colData = data.pm,
-                                design = as.formula(fm_str))
-    dds <- DESeq(dds)
+    # because DESeq doesn't remove outliers if there are continuous variables
+    # in the formula, we need to do this iteratively
+    nOutliers = Inf
+    myCounts = round(countsExpr)
+    while (nOutliers > 0) {
+        dds <- DESeqDataSetFromMatrix(countData = myCounts,
+                                    colData = data.pm,
+                                    design = as.formula(fm_str))
+        cat('Processing', nrow(dds), 'variables.\n')
+        dds <- DESeq(dds)
+        maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
+        # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+        # p the number of parameters including the intercept and m number of
+        # samples).
+        m <- ncol(dds)
+        # number or parameters (PCs + Diagnosis + intercept)
+        p <- length(use_pcs) + 2
+        co = qf(.99, p, m - p)
+        keep_me = which(maxCooks < co)
+        nOutliers = nrow(myCounts) - length(keep_me)
+        cat('Found', nOutliers, 'outliers.\n')
+        myCounts = round(myCounts)[keep_me, ]
+    }
     res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = 0.05)
     cat('FDR q < .05\n')
     print(summary(res))
@@ -681,6 +700,64 @@ ENST00000646575                1.008415e-02
 ```
 
 I'll wait to contiue with these analysis until I figure out this zero problem.
+
+# 2021-01-25 08:59:31
+
+Let's play a bit with the outlier threshold in DESeq and see if that remediates
+how many results with the zeros we get.
+
+According to the DESeq2 documentation, "Note that with continuous variables in
+the design, outlier detection and replacement is not automatically performed, as
+our current methods involve a robust estimation of within-group variance which
+does not extend easily to continuous covariates.". That's our case, so I'll need
+to do some post-hoc filtering after the initial DESeq2 run. Let's start with our
+candidate genes from the results above.
+
+Or, first, let's see the maximum Cook over all transcripts:
+
+```r
+W <- res$stat
+maxCooks <- apply(assays(dds)[["cooks"]],1,max)
+idx <- !is.na(W)
+plot(rank(W[idx]), maxCooks[idx], xlab="rank of Wald statistic", 
+     ylab="maximum Cook's distance per gene")
+```
+
+![](images/2021-01-25-13-17-54.png)
+
+There's clearly a whole bunch of outliers. Can we keep on removing variables
+until there are no more outliers?
+
+```r
+nOutliers = Inf
+myCounts = round(countsExpr)
+while (nOutliers > 0) {
+    dds <- DESeqDataSetFromMatrix(countData = myCounts,
+                                  colData = data.pm,
+                                  design = as.formula(fm_str))
+    cat('Processing', nrow(dds), 'variables.\n')
+    dds <- DESeq(dds)
+    maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
+    # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+    # p the number of parameters including the intercept and m number of
+    # samples).
+    m <- ncol(dds)
+    # number or parameters (PCs + Diagnosis + intercept)
+    p <- length(use_pcs) + 2
+    co = qf(.99, p, m - p)
+    keep_me = which(maxCooks < co)
+    nOutliers = nrow(myCounts) - length(keep_me)
+    cat('Found', nOutliers, 'outliers.\n')
+    myCounts = round(myCounts)[keep_me, ]
+}
+```
+
+The code above worked well, so I'll change the modularized DTE first and see if
+the result is consistent across the different subtypes. If it is, I'll also
+implement it for DGE, although there the issue wasn't as bad.
+
+
+**ACC Protein coding**
 
 **ACC lncRNA**
 
