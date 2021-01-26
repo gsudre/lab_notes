@@ -1136,4 +1136,5 @@ No genes left after DRIMSeq filtering.
 # TODO
  * Check PRS results
  * Check WG results
+ * Check ACC and Caudate overlap
  * Interpret each gene result
