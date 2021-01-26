@@ -194,6 +194,13 @@ run_DGE = function(count_matrix, tx_meta, myregion, subtype) {
     }
     use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
                     which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+    
     fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
                                                 collapse = ' + '))
     cat('Found', length(use_pcs), 'PCs p < .01\n')
@@ -526,6 +533,12 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype) {
     }
     use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
                     which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
     fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
                                                 collapse = ' + '))
     cat('Found', length(use_pcs), 'PCs p < .01\n')
@@ -926,101 +939,26 @@ And I added all annotations I wanted. Now, it's just a matter of running the
 rest of the analysis:
 
 ```r
-subtype = 'protein_coding'
+plotProportion <- function(expData = NULL, geneID = NULL, samps = NULL) {
+    colnames(expData)[1:2] = c("gid","tid")
+    sub = subset(expData, gid == geneID)
+    sub = reshape2::melt(sub, id = c("gid", "tid"))
+    sub = merge(samps, sub, by.x = "sample_id", by.y = "variable")
 
-cat('Starting with', nrow(tx_meta), 'variables\n')
-keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
-cat('Keeping', sum(keep_me), subtype, 'variables\n')
-my_count_matrix = count_matrix[keep_me, ]
-my_tx_meta = tx_meta[keep_me, ]
+    clrs = c("dodgerblue3", "maroon2",  "forestgreen", "darkorange1", "blueviolet", "firebrick2",
+"deepskyblue", "orchid2", "chartreuse3", "gold", "slateblue1", "tomato" , "blue", "magenta", "green3",
+"yellow", "purple3", "red" ,"darkslategray1", "lightpink1", "lightgreen", "khaki1", "plum3", "salmon")
 
-# removing variables with zero or near-zero variance
-library(caret)
-pp_order = c('zv', 'nzv')
-pp = preProcess(t(my_count_matrix), method = pp_order)
-X = t(predict(pp, t(my_count_matrix)))
-cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+    p = ggplot(sub, aes(tid, value, color = group, fill = group)) +
+    geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8, lwd = 0.5) +
+    stat_summary(fun = mean, geom = "point", color = "black", shape = 5, size = 3, position=position_dodge(width = 0.8)) +
+    scale_color_manual(values = clrs) + scale_fill_manual(values = clrs) +
+    geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) + theme_bw() +
+    ggtitle(geneID) + xlab("Transcripts")
 
-# keep only the remaining transcripts and their corresponding genes
-txdf.sub = my_tx_meta[match(rownames(X), my_tx_meta$transcript_id),]
-counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
-counts = cbind(counts, X)
-
-library(DRIMSeq)
-samples$group = samples$Diagnosis
-samples$sample_id = as.character(samples$submitted_name)
-d0 = dmDSdata(counts = counts, samples = samples)
-
-n = nrow(samples)
-n.small = min(table(samples$group))
-
-d = DRIMSeq::dmFilter(d0,
-                      min_samps_feature_expr = n.small, min_feature_expr = 10,
-                      min_samps_feature_prop = n.small, min_feature_prop = 0.1,
-                      min_samps_gene_expr = n, min_gene_expr = 10)
-
-countData = round(as.matrix(counts(d)[,-c(1:2)]))
-cat('Keeping', nrow(countData), 'after DRIMSeq expression filtering\n')
-
-set.seed(42)
-pca <- prcomp(t(countData), scale=TRUE)
-library(nFactors)
-eigs <- pca$sdev^2
-nS = nScree(x=eigs)
-keep_me = 1:nS$Components$nkaiser
-mydata = data.frame(pca$x[, keep_me])
-data.pm = cbind(samples, mydata)
-rownames(data.pm) = samples$submitted_name
-num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-             'C1', 'C2', 'C3', 'C4', 'C5')
-pc_vars = colnames(mydata)
-num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
-                   dimnames=list(num_vars, pc_vars))
-num_pvals = num_corrs
-for (x in num_vars) {
-    for (y in pc_vars) {
-        res = cor.test(samples[, x], mydata[, y])
-        num_corrs[x, y] = res$estimate
-        num_pvals[x, y] = res$p.value
-    }
+    p = p + ylab("Proportions")
+    p
 }
-categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
-               'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
-categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
-                   dimnames=list(categ_vars, pc_vars))
-categ_pvals = categ_corrs
-for (x in categ_vars) {
-    for (y in pc_vars) {
-        res = kruskal.test(mydata[, y], samples[, x])
-        categ_corrs[x, y] = res$statistic
-        categ_pvals[x, y] = res$p.value
-    }
-}
-use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
-                    which(categ_pvals < .01, arr.ind = T)[, 'col']))
-fm_str = sprintf('~ group + %s', paste0(pc_vars[use_pcs],
-                                            collapse = ' + '))
-cat('Found', length(use_pcs), 'PCs p < .01\n')
-cat('Using formula:', fm_str, '\n')
-
-design = model.matrix(as.formula(fm_str), data = data.pm)
-
-set.seed(42)
-system.time({
-    d <- dmPrecision(d, design = design)
-    d <- dmFit(d, design = design)
-    d <- dmTest(d, coef = "groupCase")     
-})
-res.g = DRIMSeq::results(d)
-res.t = DRIMSeq::results(d, level = "feature")
-
-# make NA pvalues to be 1 so they don't screw up future steps
-no.na <- function(x) ifelse(is.na(x), 1, x)
-res.g$pvalue <- no.na(res.g$pvalue)
-res.t$pvalue <- no.na(res.t$pvalue)
-
-cat('Genes surviving FDR q<.05:', sum(res.g$adj_pvalue < .05), '\n')
-cat('Transcripts surviving FDR q<.05:', sum(res.t$adj_pvalue < .05), '\n')
 
 # posthoc procedure to improve the false discovery rate (FDR) and overall false discovery rate (OFDR) control. It sets the p-values and adjusted p-values for transcripts with small per-sample proportion SD to 1
 smallProportionSD <- function(d, filter = 0.1) {
@@ -1039,123 +977,218 @@ smallProportionSD <- function(d, filter = 0.1) {
         # Check if standard deviation of per-sample proportions is < 0.1
         propSD < filter
 }
-filt = smallProportionSD(d)
 
-res.t.filt = DRIMSeq::results(d, level = "feature")
-res.t.filt$pvalue[filt] = 1
-res.t.filt$adj_pvalue[filt] = 1
-res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
-cat('Transcripts removed due to small SD:', sum(filt), 'out of',
-    length(filt), '\n')
-cat('Transcripts surviving SD filtering and FDR q<.05:',
-    sum(res.t.filt$adj_pvalue < .05), '\n')
+run_DTU = function(count_matrix, tx_meta, myregion, subtype) {
 
-strp <- function(x) substr(x,1,15)
-# Construct a vector of per-gene p-values for the screening stage
-pScreen = res.g$pvalue
-names(pScreen) = strp(res.g$gene_id)
-# Construct a one column matrix of the per-transcript confirmation p-values
-pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
-dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
-# res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
-tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
-                     res.t[,c("feature_id", "gene_id")])
-# remove version from gene name
-for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = count_matrix[keep_me, ]
+    my_tx_meta = tx_meta[keep_me, ]
 
-library(stageR)
-stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
-                     pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
-stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
-drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
-                               onlySignificantGenes = TRUE)
-# this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
-drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
-                  by.y = c("geneID","txID"))
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
 
-cat('Screened genes at FDR q<.05:',
-    length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)), '\n')
-cat('Genes passing 5% OFDR:', sum(drim.padj$transcript < 0.05), '\n')
+    # keep only the remaining transcripts and their corresponding genes
+    txdf.sub = my_tx_meta[match(rownames(X), my_tx_meta$transcript_id),]
+    counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+    counts = cbind(counts, X)
 
-plotProportion <- function(expData = NULL, geneID = NULL, samps = NULL, isProportion = FALSE) {
-        colnames(expData)[1:2] = c("gid","tid")
-        sub = subset(expData, gid == geneID)
-        sub = reshape2::melt(sub, id = c("gid", "tid"))
-        sub = merge(samps, sub, by.x = "sample_id", by.y = "variable")
-        if(!isProportion) {
-                sub$value = log(sub$value)
+    library(DRIMSeq)
+    samples$group = samples$Diagnosis
+    samples$sample_id = as.character(samples$submitted_name)
+    d0 = dmDSdata(counts = counts, samples = samples)
+
+    n = nrow(samples)
+    n.small = min(table(samples$group))
+
+    d = DRIMSeq::dmFilter(d0,
+                        min_samps_feature_expr = n.small, min_feature_expr = 10,
+                        min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                        min_samps_gene_expr = n, min_gene_expr = 10)
+
+    countData = round(as.matrix(counts(d)[,-c(1:2)]))
+    cat('Keeping', nrow(countData), 'after DRIMSeq expression filtering\n')
+
+    set.seed(42)
+    pca <- prcomp(t(countData), scale=TRUE)
+    library(nFactors)
+    eigs <- pca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = 1:nS$Components$nkaiser
+    mydata = data.frame(pca$x[, keep_me])
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$submitted_name
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                    dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(samples[, x], mydata[, y])
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
         }
-
-        clrs = c("dodgerblue3", "maroon2",  "forestgreen", "darkorange1", "blueviolet", "firebrick2",
-"deepskyblue", "orchid2", "chartreuse3", "gold", "slateblue1", "tomato" , "blue", "magenta", "green3",
-"yellow", "purple3", "red" ,"darkslategray1", "lightpink1", "lightgreen", "khaki1", "plum3", "salmon")
-
-        p = ggplot(sub, aes(tid, value, color = group, fill = group)) +
-        geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8, lwd = 0.5) +
-        stat_summary(fun = mean, geom = "point", color = "black", shape = 5, size = 3, position=position_dodge(width = 0.8)) +
-        scale_color_manual(values = clrs) + scale_fill_manual(values = clrs) +
-        geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) + theme_bw() +
-        ggtitle(geneID) + xlab("Transcripts")
-
-        if(!isProportion) {
-                p = p + ylab("log(Expression)")
-        } else {
-                p = p + ylab("Proportions")
+    }
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                    dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(mydata[, y], samples[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
         }
-        p
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                        which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+
+    fm_str = sprintf('~ group + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    design = model.matrix(as.formula(fm_str), data = data.pm)
+
+    set.seed(42)
+    system.time({
+        d <- dmPrecision(d, design = design)
+        d <- dmFit(d, design = design)
+        d <- dmTest(d, coef = "groupCase")     
+    })
+    res.g = DRIMSeq::results(d)
+    res.t = DRIMSeq::results(d, level = "feature")
+
+    # make NA pvalues to be 1 so they don't screw up future steps
+    no.na <- function(x) ifelse(is.na(x), 1, x)
+    res.g$pvalue <- no.na(res.g$pvalue)
+    res.t$pvalue <- no.na(res.t$pvalue)
+
+    cat('Genes surviving FDR q<.05:', sum(res.g$adj_pvalue < .05, na.rm=T), '\n')
+    cat('Transcripts surviving FDR q<.05:',
+        sum(res.t$adj_pvalue < .05, na.rm=T), '\n')
+
+    filt = smallProportionSD(d)
+
+    res.t.filt = DRIMSeq::results(d, level = "feature")
+    res.t.filt$pvalue[filt] = 1
+    res.t.filt$adj_pvalue[filt] = 1
+    res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
+    cat('Transcripts removed due to small SD:', sum(filt, na.rm=T), 'out of',
+        length(filt), '\n')
+    cat('Transcripts surviving SD filtering and FDR q<.05:',
+        sum(res.t.filt$adj_pvalue < .05, na.rm=T), '\n')
+
+    strp <- function(x) substr(x,1,15)
+    # Construct a vector of per-gene p-values for the screening stage
+    pScreen = res.g$pvalue
+    names(pScreen) = strp(res.g$gene_id)
+    # Construct a one column matrix of the per-transcript confirmation p-values
+    pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+    dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+    # res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
+    tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+                        res.t[,c("feature_id", "gene_id")])
+    # remove version from gene name
+    for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+
+    library(stageR)
+    stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                        pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+    stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
+
+    drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+                                onlySignificantGenes = TRUE)
+    # this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
+    drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+                    by.y = c("geneID","txID"))
+
+    cat('Screened genes at FDR q<.05:',
+        length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)), '\n')
+    cat('Transcripts passing 5% OFDR:', sum(drim.padj$transcript < 0.05), '\n')
+
+    cat('stageR q < .05\n')
+    gene_ids = getSignificantGenes(stageRObj)
+    tx_ids = getSignificantTx(stageRObj)
+    if (nrow(tx_ids) > 0) {
+        print(gene_ids)
+        print(tx_ids)
+    }
+    cat('Genes where expression switches among isoforms:',
+        length(unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])), '\n')
+
+    # condensing the counts to be converted to proportions
+    drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+    drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                        drim.prop$feature_id),]
+    # Calculate proportions from counts
+    library(dplyr)
+    library(ggplot2)
+    library(ggbeeswarm)
+    drim.prop2 = drim.prop %>%
+            group_by(gene_id, variable) %>%
+            mutate(total = sum(value)) %>%
+            group_by(variable, add=TRUE) %>%
+            mutate(prop = value/total)
+    drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+                                gene_id + feature_id ~ variable)
+
+    # plotting all good genes
+    library(ggpubr)
+    gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
+    myplots = list()
+    for (g in 1:length(gene_ids)) {
+        cat(gene_ids[g], '\n')
+        myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
+    }
+    ggarrange(plotlist=myplots)
 }
-
-# condensing the counts to be converted to proportions
-drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
-drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
-                      drim.prop$feature_id),]
-# Calculate proportions from counts
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)
-drim.prop2 = drim.prop %>%
-        group_by(gene_id, variable) %>%
-        mutate(total = sum(value)) %>%
-        group_by(variable, add=TRUE) %>%
-        mutate(prop = value/total)
-drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
-                            gene_id + feature_id ~ variable)
-
-# checking out which genes are affected in DTU (expression switches among the
-# isoforms of the gene)
-print(unique(drim.padj[drim.padj$transcript < .05, 'gene_id']))
-
-# plotting the top 10 genes
-library(ggpubr)
-gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
-myplots = list()
-for (g in 1:10) {
-    cat(gene_ids[g], '\n')
-    myplots[[g]] = plotExpression(drim.prop3, gene_ids[g], samples,
-                                  isProportion = TRUE)
-}
-ggarrange(plotlist=myplots, nrow=2, ncol=5)
 ```
 
-```
- [1] "ENSG00000061936" "ENSG00000068831" "ENSG00000070371" "ENSG00000086848"
- [5] "ENSG00000100462" "ENSG00000103363" "ENSG00000109390" "ENSG00000111077"
- [9] "ENSG00000119950" "ENSG00000128833" "ENSG00000129933" "ENSG00000146776"
-[13] "ENSG00000146963" "ENSG00000157741" "ENSG00000165476" "ENSG00000180902"
-[17] "ENSG00000182247" "ENSG00000182871" "ENSG00000198933" "ENSG00000214176"
-[21] "ENSG00000221968" "ENSG00000235478" "ENSG00000247572" "ENSG00000248115"
-[25] "ENSG00000263072"
+Let's first see what's going on on lncRNA and pseudogenes, because this code
+takes a long time and those two subtypes usually don't have anything to them:
+
+```r
+run_DTU(count_matrix, tx_meta, myregion, 'protein_coding')
+# protein_coding, lncRNA, pseudogene
 ```
 
+**ACC Protein coding**
+
+
+**ACC lncRNA**
+
+
+**ACC pseudogene**
+
+No genes left after DRIMSeq filtering.
+
+**Caudate Protein coding**
+
+
+**Caudate lncRNA**
+
+
+**Caudate pseudogene**
+
+No genes left after DRIMSeq filtering.
 
 # TODO
- * modularize DTE and DTU as well
- * heuristic for zero removal?
+ * Finish running modularized DTU
+ * Interpret these genes
  * Kallisto?
  * Salmon?
- * better job at removing outliars? check workflows for different methods...
-   either subjects or within variables? Note that DESeq2 suposedly detects
-   outliers... so maybe we need a higher threshold there? (cooksCutoff) Or maybe
-   use ML approach? For example, how come the Caudate pseudogene results are not
-   considered outliers? Maybe something particular about those samples in their
-   metadata we're not capturing?
