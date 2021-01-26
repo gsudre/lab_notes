@@ -256,9 +256,136 @@ run_DGE = function(count_matrix, tx_meta, myregion, subtype) {
                                                myregion))
         plot_volcano(resIHW, sprintf('DGE %s %s IHW q<.05', subtype, myregion))
     }
-    return(res)
+    return(resIHW)
 }
 ```
+
+```r
+dge_acc_pc = run_DGE(count_matrix, tx_meta, myregion, 'protein_coding')
+# protein_code, lncRNA, pseudogene
+```
+
+I then saved all dge* to ~/data/post_mortem/DGE_01262021.RData.
+
+**ACC Protein coding**
+
+FDR q < .05
+
+out of 15617 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 3)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+IHW q < .05
+
+out of 15617 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 3, 0.019%
+LFC < 0 (down)     : 1, 0.0064%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000002016.17" "ENSG00000103995.14" "ENSG00000124659.6"  "ENSG00000258890.7" 
+ENSG00000002016.17 
+ENSG00000103995.14 
+ENSG00000124659.6 
+ENSG00000258890.7 
+
+![](images/2021-01-26-07-41-21.png)
+![](images/2021-01-26-07-41-32.png)
+
+**ACC lncRNA**
+
+FDR q < .05
+
+out of 6572 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.015%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENSG00000240758.2"
+ENSG00000240758.2 
+IHW q < .05
+
+out of 6572 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.015%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000240758.2"
+ENSG00000240758.2 
+
+![](images/2021-01-26-07-42-53.png)
+![](images/2021-01-26-07-43-09.png)
+
+**ACC pseudogene**
+
+Found 0 outliers.
+FDR q < .05
+
+out of 2636 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.076%
+LFC < 0 (down)     : 1, 0.038%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 3)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENSG00000242294.6" "ENSG00000249176.1" "ENSG00000268100.1"
+ENSG00000242294.6 
+ENSG00000249176.1 
+ENSG00000268100.1 
+Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
+IHW q < .05
+
+out of 2636 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.076%
+LFC < 0 (down)     : 1, 0.038%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000242294.6" "ENSG00000249176.1" "ENSG00000268100.1"
+ENSG00000242294.6 
+ENSG00000249176.1 
+ENSG00000268100.1 
+
+![](images/2021-01-26-09-12-52.png)
+![](images/2021-01-26-09-13-07.png)
+
+**Caudate Protein coding**
+
+Nothing.
+
+**Caudate lncRNA**
+
+Nothing.
+
+**Caudate pseudogene**
+
+Nothing.
 
 And let's implement the same idea for DTE:
 
@@ -485,15 +612,19 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype) {
         print(gene_ids)
         print(tx_ids)
     }
+
+    return(stageRObj)
 }
 ```
 
-With the DTE code is working, we can now run:
+With the DTE code working, we can now run:
 
 ```r
-run_DTE(count_matrix, tx_meta, myregion, 'protein_coding')
+dte_acc_pc = run_DTE(count_matrix, tx_meta, myregion, 'protein_coding')
 # protein_code, lncRNA, pseudogene
 ```
+
+I then saved all dge* to ~/data/post_mortem/DTE_01262021.RData.
 
 Let's collect some results again. These don't take much time anyways.
 
@@ -642,6 +773,365 @@ Nothing.
 **Caudate pseudogene**
 
 Nothing.
+
+# 2021-01-26 07:22:52
+
+The DTU results in note 179 seemed to be a bit conflated by the zero transcripts
+too. I'll try implementing the zero filter there as well, prior to the DRIMSeq
+filter, to see how results change:
+
+```r
+myregion = 'ACC'
+
+load('~/data/isoforms/tximport_rsem_DTU.RData')
+txi = rsem
+# I'll just use the metadata from here
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+# samples has only the metadata now
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+
+# remove samples for the other brain region from the tx counts matrices
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in tximport matrices
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+# cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "TXNAME"), columns=c('GENEID','TXCHROM'),
+               "TXNAME")
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = txdf[match(substr(rownames(txi$counts), 1, 15), txdf$TXNAME),]
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('transcript_id', 'transcript_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+tx_meta = merge(txdf.sub, bt_slim, by.x='TXNAME', by.y='transcript_id')
+tx_meta$transcript_id = rownames(txi$counts)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = txi$counts[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+At this point, no filtering has been done, except for keeping only autosomes.
+And I added all annotations I wanted. Now, it's just a matter of running the
+rest of the analysis:
+
+```r
+plotProportion <- function(expData = NULL, geneID = NULL, samps = NULL) {
+    colnames(expData)[1:2] = c("gid","tid")
+    sub = subset(expData, gid == geneID)
+    sub = reshape2::melt(sub, id = c("gid", "tid"))
+    sub = merge(samps, sub, by.x = "sample_id", by.y = "variable")
+
+    clrs = c("dodgerblue3", "maroon2",  "forestgreen", "darkorange1", "blueviolet", "firebrick2",
+"deepskyblue", "orchid2", "chartreuse3", "gold", "slateblue1", "tomato" , "blue", "magenta", "green3",
+"yellow", "purple3", "red" ,"darkslategray1", "lightpink1", "lightgreen", "khaki1", "plum3", "salmon")
+
+    p = ggplot(sub, aes(tid, value, color = group, fill = group)) +
+    geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8, lwd = 0.5) +
+    stat_summary(fun = mean, geom = "point", color = "black", shape = 5, size = 3, position=position_dodge(width = 0.8)) +
+    scale_color_manual(values = clrs) + scale_fill_manual(values = clrs) +
+    geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) + theme_bw() +
+    ggtitle(geneID) + xlab("Transcripts")
+
+    p = p + ylab("Proportions")
+    p
+}
+
+# posthoc procedure to improve the false discovery rate (FDR) and overall false discovery rate (OFDR) control. It sets the p-values and adjusted p-values for transcripts with small per-sample proportion SD to 1
+smallProportionSD <- function(d, filter = 0.1) {
+        # Generate count table
+        cts = as.matrix(subset(counts(d), select = -c(gene_id, feature_id)))
+        # Summarise count total per gene
+        gene.cts = rowsum(cts, counts(d)$gene_id)
+        # Use total count per gene as count per transcript
+        total.cts = gene.cts[match(counts(d)$gene_id, rownames(gene.cts)),]
+        # Calculate proportion of transcript in gene
+        props = cts/total.cts
+        rownames(props) = rownames(total.cts)
+        
+        # Calculate standard deviation
+        propSD = sqrt(matrixStats::rowVars(props))
+        # Check if standard deviation of per-sample proportions is < 0.1
+        propSD < filter
+}
+
+run_DTU = function(count_matrix, tx_meta, myregion, subtype) {
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = count_matrix[keep_me, ]
+    my_tx_meta = tx_meta[keep_me, ]
+
+    # removing variables where more than half of the subjects have zero counts
+    keep_me = rowSums(my_count_matrix==0) < .25*ncol(my_count_matrix)
+    my_count_matrix = my_count_matrix[keep_me, ]
+    cat('Keeping', nrow(my_count_matrix), 'after zero removal\n')
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # keep only the remaining transcripts and their corresponding genes
+    txdf.sub = my_tx_meta[match(rownames(X), my_tx_meta$transcript_id),]
+    counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+    counts = cbind(counts, X)
+
+    library(DRIMSeq)
+    samples$group = samples$Diagnosis
+    samples$sample_id = as.character(samples$submitted_name)
+    d0 = dmDSdata(counts = counts, samples = samples)
+
+    n = nrow(samples)
+    n.small = min(table(samples$group))
+
+    d = DRIMSeq::dmFilter(d0,
+                        min_samps_feature_expr = n.small, min_feature_expr = 10,
+                        min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                        min_samps_gene_expr = n, min_gene_expr = 10)
+
+    countData = round(as.matrix(counts(d)[,-c(1:2)]))
+    cat('Keeping', nrow(countData), 'after DRIMSeq expression filtering\n')
+
+    set.seed(42)
+    pca <- prcomp(t(countData), scale=TRUE)
+    library(nFactors)
+    eigs <- pca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = 1:nS$Components$nkaiser
+    mydata = data.frame(pca$x[, keep_me])
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$submitted_name
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                    dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(samples[, x], mydata[, y])
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
+        }
+    }
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                    dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(mydata[, y], samples[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
+        }
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                        which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+
+    fm_str = sprintf('~ group + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    design = model.matrix(as.formula(fm_str), data = data.pm)
+
+    set.seed(42)
+    system.time({
+        d <- dmPrecision(d, design = design)
+        d <- dmFit(d, design = design)
+        d <- dmTest(d, coef = "groupCase")     
+    })
+    res.g = DRIMSeq::results(d)
+    res.t = DRIMSeq::results(d, level = "feature")
+
+    # make NA pvalues to be 1 so they don't screw up future steps
+    no.na <- function(x) ifelse(is.na(x), 1, x)
+    res.g$pvalue <- no.na(res.g$pvalue)
+    res.t$pvalue <- no.na(res.t$pvalue)
+
+    cat('Genes surviving FDR q<.05:', sum(res.g$adj_pvalue < .05, na.rm=T), '\n')
+    cat('Transcripts surviving FDR q<.05:',
+        sum(res.t$adj_pvalue < .05, na.rm=T), '\n')
+
+    filt = smallProportionSD(d)
+
+    res.t.filt = DRIMSeq::results(d, level = "feature")
+    res.t.filt$pvalue[filt] = 1
+    res.t.filt$adj_pvalue[filt] = 1
+    res.t.filt$pvalue <- no.na(res.t.filt$pvalue)
+    cat('Transcripts removed due to small SD:', sum(filt, na.rm=T), 'out of',
+        length(filt), '\n')
+    cat('Transcripts surviving SD filtering and FDR q<.05:',
+        sum(res.t.filt$adj_pvalue < .05, na.rm=T), '\n')
+
+    strp <- function(x) substr(x,1,15)
+    # Construct a vector of per-gene p-values for the screening stage
+    pScreen = res.g$pvalue
+    names(pScreen) = strp(res.g$gene_id)
+    # Construct a one column matrix of the per-transcript confirmation p-values
+    pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+    dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+    # res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
+    tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+                        res.t[,c("feature_id", "gene_id")])
+    # remove version from gene name
+    for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+
+    library(stageR)
+    stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                        pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+    stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = 0.05)
+
+    drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+                                onlySignificantGenes = TRUE)
+    # this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
+    drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+                    by.y = c("geneID","txID"))
+
+    cat('Screened genes at FDR q<.05:',
+        length(unique(drim.padj[drim.padj$gene < 0.05,]$gene_id)), '\n')
+    cat('Transcripts passing 5% OFDR:', sum(drim.padj$transcript < 0.05), '\n')
+
+    cat('stageR q < .05\n')
+    gene_ids = getSignificantGenes(stageRObj)
+    tx_ids = getSignificantTx(stageRObj)
+    if (nrow(tx_ids) > 0) {
+        print(gene_ids)
+        print(tx_ids)
+    }
+    cat('Genes where expression switches among isoforms:',
+        length(unique(drim.padj[drim.padj$transcript < .05, 'gene_id'])), '\n')
+
+    # condensing the counts to be converted to proportions
+    drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+    drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+                        drim.prop$feature_id),]
+    # Calculate proportions from counts
+    library(dplyr)
+    library(ggplot2)
+    library(ggbeeswarm)
+    drim.prop2 = drim.prop %>%
+            group_by(gene_id, variable) %>%
+            mutate(total = sum(value)) %>%
+            group_by(variable, add=TRUE) %>%
+            mutate(prop = value/total)
+    drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+                                gene_id + feature_id ~ variable)
+
+    # plotting all good genes
+    library(ggpubr)
+    gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
+    myplots = list()
+    for (g in 1:length(gene_ids)) {
+        cat(gene_ids[g], '\n')
+        myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
+    }
+    ggarrange(plotlist=myplots)
+
+    return(stageRObj)
+}
+```
+
+Let's first see what's going on on lncRNA and pseudogenes, because this code
+takes a long time and those two subtypes usually don't have anything to them:
+
+```r
+dtu_acc_pc = run_DTU(count_matrix, tx_meta, myregion, 'protein_coding')
+# protein_coding, lncRNA, pseudogene
+```
+
+**ACC Protein coding**
+
+
+
+**ACC lncRNA**
+
+Genes surviving FDR q<.05: 4
+Transcripts surviving FDR q<.05: 5
+Transcripts removed due to small SD: 2298 out of 4801
+Transcripts surviving SD filtering and FDR q<.05: 5
+Screened genes at FDR q<.05: 4
+Transcripts passing 5% OFDR: 5
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000214176           0.04198654
+ENSG00000235478           0.04198654
+ENSG00000248115           0.03352590
+ENSG00000263072           0.01665917
+                stage-wise adjusted p-value
+ENST00000580919                0.0030802506
+ENST00000441544                0.0000000000
+ENST00000654656                0.0000000000
+ENST00000504048                0.0021755390
+ENST00000575089                0.0004375115
+Genes where expression switches among isoforms: 4
+Using prop as value column: use value.var to override.
+ENSG00000235478
+ENSG00000263072
+ENSG00000248115
+ENSG00000214176
+
+![](images/2021-01-26-09-24-26.png)
+
+**ACC pseudogene**
+
+No genes left after DRIMSeq filtering.
+
+**Caudate Protein coding**
+
+
+
+**Caudate lncRNA**
+
+Genes surviving FDR q<.05: 0
+Transcripts surviving FDR q<.05: 1
+Transcripts removed due to small SD: 2765 out of 5484
+Transcripts surviving SD filtering and FDR q<.05: 0
+
+**Caudate pseudogene**
+
+No genes left after DRIMSeq filtering.
+
 
 # TODO
  * Check PRS results

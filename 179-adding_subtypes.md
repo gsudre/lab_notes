@@ -1169,9 +1169,56 @@ run_DTU(count_matrix, tx_meta, myregion, 'protein_coding')
 
 **ACC Protein coding**
 
+Screened genes at FDR q<.05: 12
+Transcripts passing 5% OFDR: 8
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000119950         0.0008402307
+ENSG00000007047         0.0282250058
+ENSG00000147548         0.0282250058
+ENSG00000198121         0.0282250058
+ENSG00000198933         0.0092421589
+ENSG00000101146         0.0282250058
+ENSG00000068831         0.0282250058
+ENSG00000090061         0.0092421589
+ENSG00000086848         0.0282250058
+ENSG00000048052         0.0396145202
+ENSG00000070371         0.0282250058
+ENSG00000157741         0.0342235232
+                stage-wise adjusted p-value
+ENST00000651516                0.0003089835
+ENST00000537587                0.0009041122
+ENST00000377489                0.0081464049
+ENST00000555049                0.0014779283
+ENST00000614444                0.0025957870
+ENST00000427926                0.0000000000
+ENST00000621271                0.0000000000
+ENST00000486663                0.0045460310
+Genes where expression switches among isoforms: 7
+
+![](images/2021-01-26-07-18-48.png)
 
 **ACC lncRNA**
 
+Screened genes at FDR q<.05: 5
+Transcripts passing 5% OFDR: 6
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000214176           0.03739371
+ENSG00000235478           0.03739371
+ENSG00000247572           0.02517145
+ENSG00000248115           0.02517145
+ENSG00000263072           0.01775926
+                stage-wise adjusted p-value
+ENST00000580919                0.0024210918
+ENST00000441544                0.0000000000
+ENST00000654656                0.0000000000
+ENST00000669977                0.0003457203
+ENST00000504048                0.0019561158
+ENST00000575089                0.0003741297
+Genes where expression switches among isoforms: 5
+
+![](images/2021-01-26-07-22-17.png)
 
 **ACC pseudogene**
 
@@ -1179,16 +1226,61 @@ No genes left after DRIMSeq filtering.
 
 **Caudate Protein coding**
 
+Screened genes at FDR q<.05: 7
+Transcripts passing 5% OFDR: 5
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000114405         0.0016314386
+ENSG00000117298         0.0016314386
+ENSG00000085276         0.0122402399
+ENSG00000169291         0.0197069510
+ENSG00000139220         0.0087875195
+ENSG00000139174         0.0169816753
+ENSG00000157557         0.0001271722
+                stage-wise adjusted p-value
+ENST00000232519                6.587837e-05
+ENST00000415912                2.139486e-03
+ENST00000264674                7.689859e-04
+ENST00000548670                7.229887e-04
+ENST00000653642                1.919226e-06
+Genes where expression switches among isoforms: 5
+
+![](images/2021-01-26-07-17-52.png)
 
 **Caudate lncRNA**
 
+Screened genes at FDR q<.05: 9
+Transcripts passing 5% OFDR: 9
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000185684          0.020535866
+ENSG00000197056          0.034431319
+ENSG00000197381          0.011894622
+ENSG00000215039          0.005349389
+ENSG00000127526          0.009019100
+ENSG00000126705          0.029709385
+ENSG00000100731          0.007545460
+ENSG00000260528          0.002243657
+ENSG00000264247          0.047947811
+                stage-wise adjusted p-value
+ENST00000373329                0.0029178277
+ENST00000464215                0.0003963364
+ENST00000659623                0.0003536767
+ENST00000600356                0.0236919220
+ENST00000646921                0.0044015314
+ENST00000556272                0.0418592583
+ENST00000566898                0.0173052322
+ENST00000660257                0.0031514595
+ENST00000657978                0.0194257491
+Genes where expression switches among isoforms: 8
+
+![](images/2021-01-26-07-21-10.png)
 
 **Caudate pseudogene**
 
 No genes left after DRIMSeq filtering.
 
 # TODO
- * Finish running modularized DTU
  * Interpret these genes
  * Kallisto?
  * Salmon?
