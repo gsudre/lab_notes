@@ -1082,7 +1082,38 @@ dtu_acc_pc = run_DTU(count_matrix, tx_meta, myregion, 'protein_coding')
 
 **ACC Protein coding**
 
+Genes surviving FDR q<.05: 11
+Transcripts surviving FDR q<.05: 20
+Transcripts removed due to small SD: 8919 out of 16702
+Transcripts surviving SD filtering and FDR q<.05: 14
 
+Screened genes at FDR q<.05: 11
+Transcripts passing 5% OFDR: 7
+stageR q < .05
+
+                FDR adjusted p-value
+ENSG00000119950         0.0008834227
+ENSG00000007047         0.0285152176
+ENSG00000147548         0.0338061505
+ENSG00000198933         0.0086166713
+ENSG00000101146         0.0285152176
+ENSG00000198121         0.0285152176
+ENSG00000090061         0.0086166713
+ENSG00000086848         0.0306666112
+ENSG00000048052         0.0429535541
+ENSG00000070371         0.0285152176
+ENSG00000157741         0.0406697438
+                stage-wise adjusted p-value
+ENST00000651516                0.0003417456
+ENST00000537587                0.0009220920
+ENST00000555049                0.0015501226
+ENST00000614444                0.0024612631
+ENST00000427926                0.0000000000
+ENST00000621271                0.0000000000
+ENST00000486663                0.0053938993
+Genes where expression switches among isoforms: 6
+
+![](images/2021-01-26-15-09-43.png)
 
 **ACC lncRNA**
 
@@ -1119,7 +1150,28 @@ No genes left after DRIMSeq filtering.
 
 **Caudate Protein coding**
 
+Genes surviving FDR q<.05: 6
+Transcripts surviving FDR q<.05: 14
+Transcripts removed due to small SD: 9927 out of 17693
+Transcripts surviving SD filtering and FDR q<.05: 10
+Screened genes at FDR q<.05: 6
+Transcripts passing 5% OFDR: 4
+stageR q < .05
+                FDR adjusted p-value
+ENSG00000114405          0.002570823
+ENSG00000117298          0.002570823
+ENSG00000085276          0.015077130
+ENSG00000169291          0.023705332
+ENSG00000139220          0.010458599
+ENSG00000139174          0.019383505
+                stage-wise adjusted p-value
+ENST00000232519                8.297646e-05
+ENST00000415912                2.302723e-03
+ENST00000264674                8.841987e-04
+ENST00000548670                7.492677e-04
+Genes where expression switches among isoforms: 4
 
+![](images/2021-01-26-15-10-53.png)
 
 **Caudate lncRNA**
 
@@ -1136,5 +1188,5 @@ No genes left after DRIMSeq filtering.
 # TODO
  * Check PRS results
  * Check WG results
- * Check ACC and Caudate overlap
+ * Check ACC and Caudate overlap (maybe overlap of ranked lists?)
  * Interpret each gene result

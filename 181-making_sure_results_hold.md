@@ -92,7 +92,7 @@ for (region in c('caudate', 'acc')) {
                 sprintf('%s_manySets_co0.950', region),
                 sprintf('%s_manySets', region))
         for (db in DBs) {
-            cat(region, db, '\n')
+            cat(res_str, db, '\n')
             db_file = sprintf('~/data/post_mortem/%s.gmt', db)
             project_name = sprintf('WG6_%s_%s_10K', res_str, db)
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
@@ -106,17 +106,20 @@ for (region in c('caudate', 'acc')) {
                                 minNum=3, projectName=project_name,
                                 isOutput=T, isParallel=T,
                                 nThreads=ncpu, perNum=10000, maxNum=800))
-            out_fname = sprintf('%s/WG6_%s_%s_10K.csv', data_dir, res_str, db)
-            write.csv(enrichResult, file=out_fname, row.names=F)
+            if (class(enrichResult) != "try-error") {
+                out_fname = sprintf('%s/WG6_%s_%s_10K.csv', data_dir, res_str, db)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
         }
 
         DBs = c('geneontology_Biological_Process_noRedundant',
                 'geneontology_Cellular_Component_noRedundant',
                 'geneontology_Molecular_Function_noRedundant')
         for (db in DBs) {
-            cat(region, db, '\n')
+            cat(res_str, db, '\n')
             project_name = sprintf('WG6_%s_%s_10K', res_str, db)
-            enrichResult <- WebGestaltR(enrichMethod="GSEA",
+
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",
                                         enrichDatabase=db,
                                         interestGene=tmp2,
@@ -125,10 +128,16 @@ for (region in c('caudate', 'acc')) {
                                         outputDirectory = data_dir,
                                         minNum=5, projectName=project_name,
                                         isOutput=T, isParallel=T,
-                                        nThreads=ncpu, perNum=10000)
-            out_fname = sprintf('%s/WG6_%s_%s_10K.csv', data_dir, res_str, db)
-            write.csv(enrichResult, file=out_fname, row.names=F)
+                                        nThreads=ncpu, perNum=10000))
+            if (class(enrichResult) != "try-error") {
+                out_fname = sprintf('%s/WG6_%s_%s_10K.csv', data_dir, res_str, db)
+                write.csv(enrichResult, file=out_fname, row.names=F)
+            }
         }
     }
 }
 ```
+
+So, it turns out that both our sets and the GO sets only work for the
+protein_coding genes! There are no intersections for the pseudogenes or lncRNA!
+
