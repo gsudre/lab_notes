@@ -1188,5 +1188,6 @@ No genes left after DRIMSeq filtering.
 # TODO
  * Check PRS results
  * Check WG results
+ * Replot leading genes in main pathways
  * Check ACC and Caudate overlap (maybe overlap of ranked lists?)
  * Interpret each gene result
