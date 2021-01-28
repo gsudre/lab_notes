@@ -350,14 +350,14 @@ see metadata(res)$ihwResult on hypothesis weighting
 NULL
 [1] "ENSG00000002016.17" "ENSG00000078401.7"  "ENSG00000090104.12" "ENSG00000103995.14"
 [5] "ENSG00000124659.6"  "ENSG00000177084.16" "ENSG00000196584.3"  "ENSG00000258890.7" 
-ENSG00000002016.17 
-ENSG00000078401.7 
-ENSG00000090104.12 
-ENSG00000103995.14 
-ENSG00000124659.6 
-ENSG00000177084.16 
-ENSG00000196584.3 
-ENSG00000258890.7 
+ENSG00000002016.17 : RAD52, DNA repair
+ENSG00000078401.7 : EDN1, vasoconstrictive peptides
+ENSG00000090104.12 : RGS1, Regulates G protein-coupled receptor signaling cascades
+ENSG00000103995.14 : CEP152, centrosome function (microcephaly)
+ENSG00000124659.6 : TBCC, Tubulin-folding protein
+ENSG00000177084.16 : POLE, DNA polymerase epsilon, involved in DNA repair and chromosomal DNA replication
+ENSG00000196584.3 : XRCC2, chromosome stability and repair DNA damage
+ENSG00000258890.7 : CEP95, centrosome function
 
 ![](images/2021-01-27-18-00-47.png)
 ![](images/2021-01-27-18-01-07.png)
@@ -385,11 +385,11 @@ low counts [2]     : 0, 0%
 NULL
 [1] "ENSG00000227725.3" "ENSG00000233121.1" "ENSG00000242294.6" "ENSG00000250483.1"
 [5] "ENSG00000268100.1"
-ENSG00000227725.3
-ENSG00000233121.1
-ENSG00000242294.6
-ENSG00000250483.1
-ENSG00000268100.1
+ENSG00000227725.3 : GCOM2 (GRINL1B), glutamate receptor
+ENSG00000233121.1 : VN1R20P, Vomeronasal receptor
+ENSG00000242294.6 : STAG3L5P (stromal antigen)
+ENSG00000250483.1 : PPM1AP1, protein phosphatase
+ENSG00000268100.1 : ZNF725P, Zinc finger protein
 Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
 
 ![](images/2021-01-27-18-02-43.png)
@@ -656,25 +656,188 @@ dte_acc = list()
 for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
     dte_acc[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
 }
+
+dte_cau = list() 
+for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
+    dte_cau[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
+}
 ```
 
-I then saved all dge* to ~/data/post_mortem/DTE_*01262021*.RData.
+I then saved all dge* to ~/data/post_mortem/DTE_01272021.RData.
 
 Let's collect some results again. These don't take much time anyways.
 
 **ACC Protein coding**
 
+FDR q < 0.05
+
+out of 31574 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0032%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 3)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000333219.8"
+ENST00000333219.8 
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000153487           0.02104243
+                stage-wise adjusted p-value
+ENST00000333219                 0.009293617
+
+![](images/2021-01-27-22-39-23.png)
+![](images/2021-01-27-22-39-08.png)
+
 **ACC lncRNA**
+
+FDR q < 0.05
+
+out of 16075 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0062%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000493710.1"
+ENST00000493710.1 
+
+(IHW identical)
+
+stageR q < 0.05
+
+                FDR adjusted p-value
+ENSG00000240758          0.003735354
+                stage-wise adjusted p-value
+ENST00000493710                           0
+
+
+![](images/2021-01-27-22-39-59.png)
+![](images/2021-01-27-22-39-45.png)
 
 **ACC pseudogene**
 
+FDR q < 0.05
+
+out of 2359 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 5, 0.21%
+LFC < 0 (down)     : 1, 0.042%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000435239.1" "ENST00000502740.1" "ENST00000509133.1" "ENST00000515049.1"
+[5] "ENST00000529497.2" "ENST00000596753.1"
+ENST00000435239.1 
+ENST00000502740.1 
+ENST00000509133.1 
+ENST00000515049.1 
+ENST00000529497.2 
+ENST00000596753.1 
+
+(IHW identical)
+
+
+stageR q < 0.05
+The returned adjusted p-values are based on a stage-wise testing approach and are only valid for the provided target OFDR level of 5%. If a different target OFDR level is of interest,the entire adjustment should be re-run. 
+
+The returned adjusted p-values are based on a stage-wise testing approach and are only valid for the provided target OFDR level of 5%. If a different target OFDR level is of interest,the entire adjustment should be re-run. 
+
+                FDR adjusted p-value
+ENSG00000226421: SLC25A5P5, Mitochondrial Carrier; Adenine Nucleotide Translocator           0.04687633
+ENSG00000250483: PPM1AP1, Protein Phosphatase           0.01398035
+ENSG00000227725: GCOM2, Glutamate Receptor           0.04687633
+ENSG00000249176: MRTO4, MRNA Turnover 4 Homolog           0.04492382
+ENSG00000254866: DEFB109D, Defensin Beta           0.04687633
+ENSG00000268100: ZNF725P, Zinc Finger Protein           0.01398035
+                stage-wise adjusted p-value
+ENST00000435239                           0
+ENST00000502740                           0
+ENST00000509133                           0
+ENST00000515049                           0
+ENST00000529497                           0
+ENST00000596753                           0
+
+![](images/2021-01-27-22-40-37.png)
+![](images/2021-01-27-22-40-19.png)
+
 **Caudate Protein coding**
 
+FDR q < 0.05
+
+out of 34660 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0029%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 4)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000523308.5"
+ENST00000523308.5 
+
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000105339           0.02195675
+                stage-wise adjusted p-value
+ENST00000523308                  0.02766893
+
+![](images/2021-01-27-23-06-57.png)
+
+![](images/2021-01-27-23-07-42.png)
 
 **Caudate lncRNA**
 
+Nothing.
 
 **Caudate pseudogene**
+
+FDR q < 0.05
+
+out of 2502 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.04%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000563377.5"
+ENST00000563377.5 
+
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000214331          0.004265569
+                stage-wise adjusted p-value
+ENST00000563377                           0
+
+![](images/2021-01-27-23-08-07.png)
+![](images/2021-01-27-23-08-28.png)
 
 Finally, DTU:
 
@@ -981,9 +1144,15 @@ takes a long time and those two subtypes usually don't have anything to them:
 
 ```r
 dtu_acc = list() 
-for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
+for (st in c('lncRNA', 'protein_coding')) {
     dtu_acc[[st]] = run_DTU(count_matrix, tx_meta, myregion, st, .05)
 }
+dtu_acc[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
+dtu_cau = list() 
+for (st in c('lncRNA', 'protein_coding')) {
+    dtu_cau[[st]] = run_DTU(count_matrix, tx_meta, myregion, st, .05)
+}
+dtu_cau[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
 ```
 
 **ACC Protein coding**
