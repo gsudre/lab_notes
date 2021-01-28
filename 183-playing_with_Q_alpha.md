@@ -1133,6 +1133,7 @@ run_DTU = function(count_matrix, tx_meta, myregion, subtype, alpha) {
         cat(gene_ids[g], '\n')
         myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
     }
+    quartz()
     ggarrange(plotlist=myplots)
 
     return(stageRObj)
@@ -1157,21 +1158,123 @@ dtu_cau[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
 
 **ACC Protein coding**
 
+Genes surviving FDR q < 0.05 : 11 
+Transcripts surviving FDR q< 0.05 : 20 
+Transcripts removed due to small SD: 8919 out of 16702 
+Transcripts surviving SD filtering and FDR q< 0.05 : 14 
+Screened genes at FDR q< 0.05 : 11 
+Transcripts passing OFDR: 7 
+stageR q < 0.05 
+                FDR adjusted p-value
+ENSG00000119950         0.0008834228
+ENSG00000007047         0.0285152091
+ENSG00000147548         0.0338061520
+ENSG00000198933         0.0086166713
+ENSG00000101146         0.0285152091
+ENSG00000198121         0.0285152091
+ENSG00000090061         0.0086166713
+ENSG00000086848         0.0306666109
+ENSG00000048052         0.0429535533
+ENSG00000070371         0.0285152091
+ENSG00000157741         0.0406697234
+                stage-wise adjusted p-value
+ENST00000651516                0.0003417415
+ENST00000537587                0.0009220887
+ENST00000555049                0.0015501229
+ENST00000614444                0.0024612635
+ENST00000427926                0.0000000000
+ENST00000621271                0.0000000000
+ENST00000486663                0.0053939390
+Genes where expression switches among isoforms: 6 
+Using prop as value column: use value.var to override.
+ENSG00000070371 : CLTCL1, clathrin heavy chain, polyhedral coat of coated pits and vesicles
+ENSG00000119950 : MXI1, oncogenic transcription factor
+ENSG00000198933 : TBKBP1, antiviral innate immunity
+ENSG00000090061 : CCNK, cyclin-dependent kinases
+ENSG00000086848 : ALG9, lipid-linked oligosaccharide assembly
+ENSG00000157741 : UBN2, ubinuclein,  Autism Spectrum Disorder and Autism
+ENSG00000101146 : RAE1, involved in RNA export
+ENSG00000007047 : MARK4, microtubules, Alzheimer's disease
+ENSG00000198121 : LPAR1, proliferation, platelet aggregation, smooth muscle contraction, inhibition of neuroblastoma cell differentiation, chemotaxis, and tumor cell invasion
+ENSG00000147548 : NSD3, Histone methyltransferase
+ENSG00000048052 : HDAC9, transcriptional regulation, cell cycle progression, and developmental events
+
 **ACC lncRNA**
+
+Screened genes at FDR q< 0.05 : 4
+Transcripts passing OFDR: 5
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000214176           0.04198654
+ENSG00000235478           0.04198654
+ENSG00000248115           0.03352590
+ENSG00000263072           0.01665918
+                stage-wise adjusted p-value
+ENST00000580919                 0.003080259
+ENST00000441544                 0.000000000
+ENST00000654656                 0.000000000
+ENST00000504048                 0.002175539
+ENST00000575089                 0.000437511
+Genes where expression switches among isoforms: 4
+ENSG00000235478
+ENSG00000263072
+ENSG00000248115
+ENSG00000214176
 
 **ACC pseudogene**
 
+No genes survive filtering.
+
 **Caudate Protein coding**
+
+Genes surviving FDR q < 0.05 : 6
+Transcripts surviving FDR q< 0.05 : 14
+Transcripts removed due to small SD: 9927 out of 17693
+Transcripts surviving SD filtering and FDR q< 0.05 : 10
+Screened genes at FDR q< 0.05 : 6
+Transcripts passing OFDR: 4
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000114405          0.002570822
+ENSG00000117298          0.002570822
+ENSG00000085276          0.015077131
+ENSG00000169291          0.023705332
+ENSG00000139220          0.010458600
+ENSG00000139174          0.019383508
+                stage-wise adjusted p-value
+ENST00000232519                8.297622e-05
+ENST00000415912                2.302717e-03
+ENST00000264674                8.841986e-04
+ENST00000548670                7.492676e-04
+Genes where expression switches among isoforms: 4
+Using prop as value column: use value.var to override.
+ENSG00000114405
+ENSG00000139220
+ENSG00000085276
+ENSG00000117298
+ENSG00000139174
+ENSG00000169291
 
 **Caudate lncRNA**
 
+Genes surviving FDR q < 0.05 : 1
+Transcripts surviving FDR q< 0.05 : 7
+Transcripts removed due to small SD: 2765 out of 5484
+Transcripts surviving SD filtering and FDR q< 0.05 : 6
+Screened genes at FDR q< 0.05 : 1
+Transcripts passing OFDR: 1
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000260528          0.001186622
+                stage-wise adjusted p-value
+ENST00000660257                  0.01543238
+Genes where expression switches among isoforms: 1
+ENSG00000260528
+
 **Caudate pseudogene**
+
+No genes survive filtering.
 
 
 
 # TODO
- * Check PRS results
- * Check WG results
- * Replot leading genes in main pathways
- * Check ACC and Caudate overlap (maybe overlap of ranked lists?)
- * Interpret each gene result
