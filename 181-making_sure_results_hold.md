@@ -141,6 +141,81 @@ for (region in c('caudate', 'acc')) {
 So, it turns out that both our sets and the GO sets only work for the
 protein_coding genes! There are no intersections for the pseudogenes or lncRNA!
 
+Since only the protein_coding results work, and I had to re-run some results,
+I'll re-run this:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=3
+
+load('~/data/post_mortem/DGE_01272021.RData')
+
+for (region in c('caudate', 'acc')) {
+    res_str = ifelse(region == 'acc', 'dge_acc[["protein_coding"]]',
+                     'dge_cau[["protein_coding"]]')
+    ranks_str = sprintf('ranks = -log(%s$pvalue) * sign(%s$log2FoldChange)',
+                        res_str, res_str)
+    gid_str = sprintf('geneid=substring(rownames(%s), 1, 15)', res_str)
+    
+    eval(parse(text=ranks_str))
+    eval(parse(text=gid_str))
+
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    DBs = c(sprintf('my_%s_sets', region), # just to get GWAS and TWAS sets
+            sprintf('%s_manySets_co0.990', region),
+            sprintf('%s_manySets_co0.950', region),
+            sprintf('%s_manySets', region))
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        project_name = sprintf('WG7_%s_%s_10K', res_str, db)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            sigMethod="top", topThr=20,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=800))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG7_%s_%s_10K.csv', data_dir, res_str, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+
+    DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('WG7_%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", topThr=20,
+                                    outputDirectory = data_dir,
+                                    minNum=5, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG7_%s_%s_10K.csv', data_dir, res_str, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+}
+```
+
+
 # 2021-01-27 14:57:59
 
 Let's then re-run the same DGE code but now replacing Diagnosis by PRS:
@@ -176,16 +251,15 @@ plot_expression = function(gene_ids, dds, t_str) {
     print(annotate_figure(p, t_str))
 }
 
-plot_volcano = function(res, t_str) {
+plot_volcano = function(res, t_str, pCutoff = 0.05) {
     library(EnhancedVolcano)
     quartz()
-    pCutoff = 0.05
     FCcutoff = 1.0
 
     p = EnhancedVolcano(data.frame(res), lab = rownames(res),
                         x = 'log2FoldChange',
                         y = 'padj', xlab = bquote(~Log[2]~ 'fold change'),
-                        selectLab = rownames(res)[res$padj < .05],
+                        selectLab = rownames(res)[res$padj < pCutoff],
                         ylab = bquote(~-Log[10]~adjusted~italic(P)),
                         ylim = c(0, ceiling(max(-log10(res$padj)))),
                         pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
@@ -281,7 +355,7 @@ data = data.prs
 Now let's implement the function using the iteractive filter:
 
 ```r
-run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs) {
+run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
     keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
@@ -326,7 +400,7 @@ run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs) {
     num_pvals = num_corrs
     for (x in num_vars) {
         for (y in pc_vars) {
-            res = cor.test(data.pm[, x], data.pm[, y])
+            res = cor.test(data.pm[, x], data.pm[, y], method='spearman')
             num_corrs[x, y] = res$estimate
             num_pvals[x, y] = res$p.value
         }
@@ -357,6 +431,11 @@ run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs) {
                                                 collapse = ' + '))
     cat('Found', length(use_pcs), 'PCs p < .01\n')
     cat('Using formula:', fm_str, '\n')
+
+    # scaling PCs to assure convergence
+    for (var in pc_vars[use_pcs]) {
+        data.pm[, var] = scale(data.pm[, var])
+    }
 
     # removing variables with low expression
     library(edgeR)
@@ -394,28 +473,15 @@ run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs) {
         cat('Found', nOutliers, 'outliers.\n')
         myCounts = round(myCounts)[keep_me, ]
     }
-    res <- results(dds, name = prs, alpha = 0.05)
-    cat('FDR q < .05\n')
+    res <- results(dds, name = prs, alpha = alpha)
+    cat(sprintf('FDR q < %.2f\n', alpha))
     print(summary(res))
-    gene_ids = rownames(res)[res$padj < .05]
-    if (length(gene_ids) > 0) {
-        print(gene_ids)
-        plot_expression(gene_ids, dds, sprintf('DGE %s %s FDR q<.05', subtype,
-                                               myregion))
-        plot_volcano(res, sprintf('DGE %s %s FDR q<.05', subtype, myregion))
-    }
 
     library(IHW)
-    resIHW <- results(dds, name = prs, alpha = 0.05, filterFun=ihw)
-    cat('IHW q < .05\n')
+    resIHW <- results(dds, name = prs, alpha = alpha, filterFun=ihw)
+    cat(sprintf('IHW q < %.2f\n', alpha))
     print(summary(resIHW))
-    gene_ids = rownames(resIHW)[resIHW$padj < .05]
-    if (length(gene_ids) > 0) {
-        print(gene_ids)
-        plot_expression(gene_ids, dds, sprintf('DGE %s %s IHW q<.05', subtype,
-                                               myregion))
-        plot_volcano(resIHW, sprintf('DGE %s %s IHW q<.05', subtype, myregion))
-    }
+
     return(resIHW)
 }
 ```
@@ -426,9 +492,12 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                    function(x) sprintf('PRS%f', x))
 all_res = list()
 for (prs in prs_names) {
-    res = run_DGE_PRS(count_matrix, tx_meta, myregion, 'protein_coding', prs)
+    res = run_DGE_PRS(count_matrix, tx_meta, myregion, 'pseudogene', prs, .05)
     all_res[[prs]] = res
 }
 dgePRS_acc_pc = all_res
 # protein_coding, lncRNA, pseudogene
 ```
+
+Let's then compute the PRS and DX overlaps:
+
