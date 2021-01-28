@@ -1186,8 +1186,8 @@ No genes left after DRIMSeq filtering.
 
 
 # TODO
- * Interpret each gene result
- * Add DTU results
  * Check back that article with DTE, DGE, DTU triangle
  * Understand what stageR is doing
  * Understand IHW
+ * how do the callers know difference between pseudogene and isoform?
+ * kallisto for confirmation?

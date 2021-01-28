@@ -1216,10 +1216,12 @@ ENST00000654656                 0.000000000
 ENST00000504048                 0.002175539
 ENST00000575089                 0.000437511
 Genes where expression switches among isoforms: 4
-ENSG00000235478
-ENSG00000263072
-ENSG00000248115
-ENSG00000214176
+ENSG00000235478: LINC01664
+ENSG00000263072: ZNF213-AS1, Metazoan signal recognition particle RNA
+ENSG00000248115: Lnc-RASL11B-2
+ENSG00000214176: PLEKHM1P1
+
+![](images/2021-01-28-10-37-09.png)
 
 **ACC pseudogene**
 
@@ -1248,12 +1250,12 @@ ENST00000264674                8.841986e-04
 ENST00000548670                7.492676e-04
 Genes where expression switches among isoforms: 4
 Using prop as value column: use value.var to override.
-ENSG00000114405
-ENSG00000139220
-ENSG00000085276
-ENSG00000117298
-ENSG00000139174
-ENSG00000169291
+ENSG00000114405: C3orf14, Chromosome 3 Open Reading Frame 14
+ENSG00000139220: PPFIA2, protein tyrosine phosphatases, axon guidance
+ENSG00000085276: MECOM, hematopoiesis, apoptosis, development, and cell differentiation and proliferation
+ENSG00000117298: ECE1, proteolytic processing of endothelin precursors to biologically active peptides
+ENSG00000139174: PRICKLE1, nuclear membrane, progressive myoclonus epilepsy
+ENSG00000169291: SHE, conjuctivitis?
 
 **Caudate lncRNA**
 
@@ -1269,12 +1271,204 @@ ENSG00000260528          0.001186622
                 stage-wise adjusted p-value
 ENST00000660257                  0.01543238
 Genes where expression switches among isoforms: 1
-ENSG00000260528
+ENSG00000260528: FAM157C, 
+
+![](images/2021-01-28-10-53-56.png)
 
 **Caudate pseudogene**
 
 No genes survive filtering.
 
+# 2021-01-28 10:07:47
 
+Let's change the DTE function to return something for WG and possibly PRS
+analysis:
+
+```r
+run_skinny_DTE = function(count_matrix, tx_meta, myregion, subtype) {
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = count_matrix[keep_me, ]
+    my_tx_meta = tx_meta[keep_me, ]
+
+    # removing variables where more than half of the subjects have zero counts
+    keep_me = rowSums(my_count_matrix==0) < .25*ncol(my_count_matrix)
+    my_count_matrix = my_count_matrix[keep_me, ]
+    cat('Keeping', nrow(my_count_matrix), 'after zero removal\n')
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # checking which PCs are associated with our potential nuiscance variables
+    set.seed(42)
+    mypca <- prcomp(t(X), scale=TRUE)
+    # how many PCs to keep... using Kaiser thredhold, close to eigenvalues < 1
+    library(nFactors)
+    eigs <- mypca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = seq(1, nS$Components$nkaiser)
+
+    mydata = data.frame(mypca$x[, keep_me])
+    # create main metadata data frame including metadata and PCs
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$hbcc_brain_id
+    cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
+
+    # check which PCs are associated at nominal p<.01
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                        dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(data.pm[, x], data.pm[, y], method='spearman')
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
+        }
+    }
+
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                            dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(data.pm[, y], data.pm[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
+        }
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                    which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+    fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    # scaling PCs to assure convergence
+    for (var in pc_vars[use_pcs]) {
+        data.pm[, var] = scale(data.pm[, var])
+    }
+
+    # removing variables with low expression
+    library(edgeR)
+    design=model.matrix(as.formula(fm_str), data=data.pm)
+    isexpr <- filterByExpr(X, design=design)
+    countsExpr = X[isexpr,]
+    metaExpr = data.frame(TXNAME = substr(rownames(countsExpr), 1, 15))
+    metaExpr = merge(metaExpr, my_tx_meta, by='TXNAME', sort=F)
+    cat('Keeping', nrow(countsExpr), 'after expression filtering\n')
+
+    library(DESeq2)
+    # because DESeq doesn't remove outliers if there are continuous variables
+    # in the formula, we need to do this iteratively
+    nOutliers = Inf
+    myCounts = round(countsExpr)
+    while (nOutliers > 0) {
+        dds <- DESeqDataSetFromMatrix(countData = myCounts,
+                                    colData = data.pm,
+                                    design = as.formula(fm_str))
+        cat('Processing', nrow(dds), 'variables.\n')
+        dds <- DESeq(dds)
+        maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
+        # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+        # p the number of parameters including the intercept and m number of
+        # samples).
+        m <- ncol(dds)
+        # number or parameters (PCs + Diagnosis + intercept)
+        p <- length(use_pcs) + 2
+        co = qf(.99, p, m - p)
+        keep_me = which(maxCooks < co)
+        nOutliers = nrow(myCounts) - length(keep_me)
+        cat('Found', nOutliers, 'outliers.\n')
+        myCounts = round(myCounts)[keep_me, ]
+    }
+    res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = .05)
+
+    return(res)
+}
+```
+
+```r
+DTEres_acc_pc = run_skinny_DTE(count_matrix, tx_meta, myregion, 'protein_coding')
+```
+
+Then we can run WG this way:
+
+```r
+res = as.data.frame(DTEres_acc_pc)
+res$TXNAME = substr(rownames(res), 1, 15)
+res$rank = -log(res$pvalue) * sign(res$log2FoldChange)
+m = merge(res, tx_meta, by='TXNAME')
+
+library(dplyr)
+library(WebGestaltR)
+data_dir = '~/data/post_mortem/'
+ncpu = 2
+
+ranks = m %>% group_by(GENEID) %>% slice_min(n=1, pvalue, with_ties=F)
+tmp2 = data.frame(geneid=ranks$GENEID, rank=ranks$rank)
+tmp2 = tmp2[order(tmp2$rank, decreasing=T),]
+
+res_str = sprintf('DTE_pc_%s', myregion)
+DBs = c(sprintf('my_%s_sets', myregion))
+for (db in DBs) {
+    cat(res_str, db, '\n')
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    project_name = sprintf('WG8_%s_%s_10K', res_str, db)
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                        organism="hsapiens",
+                        enrichDatabaseFile=db_file,
+                        enrichDatabaseType="genesymbol",
+                        interestGene=tmp2,
+                        outputDirectory = data_dir,
+                        interestGeneType="ensembl_gene_id",
+                        sigMethod="top", topThr=20,
+                        minNum=3, projectName=project_name,
+                        isOutput=T, isParallel=T,
+                        nThreads=ncpu, perNum=10000, maxNum=800))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG8_%s_%s_10K.csv', data_dir, res_str, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(res_str, db, '\n')
+    project_name = sprintf('WG8_%s_%s_10K', res_str, db)
+
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="ensembl_gene_id",
+                                sigMethod="top", topThr=20,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG8_%s_%s_10K.csv', data_dir, res_str, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
 
 # TODO
