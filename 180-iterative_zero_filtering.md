@@ -1184,10 +1184,13 @@ Transcripts surviving SD filtering and FDR q<.05: 0
 
 No genes left after DRIMSeq filtering.
 
-
-# TODO
+# Useful links:
  * Check back that article with DTE, DGE, DTU triangle
+   * https://liorpachter.wordpress.com/2018/02/15/gde²-dge²-dtu²-dte₁²-dte₂²/
+   * 
+# TODO
  * Understand what stageR is doing
  * Understand IHW
  * how do the callers know difference between pseudogene and isoform?
  * kallisto for confirmation?
+ * use sleuth for DTE? (uses uncertainty)
