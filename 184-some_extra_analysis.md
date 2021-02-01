@@ -457,3 +457,10 @@ MDD pval =  0
 AAD pval =  0 
 IBD pval =  0.0015 
 ```
+
+This is the Caudate without AAD:
+
+![](images/2021-02-01-12-01-30.png)
+
+And the Caudate without MDD:
+

@@ -236,13 +236,13 @@ run_DGE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
     cat(sprintf('FDR q < %.2f\n', alpha))
     print(summary(res))
     gene_ids = rownames(res)[which(res$padj < alpha)]
+    plot_volcano(res, sprintf('DGE Diagnosis %s %s FDR q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
     if (length(gene_ids) > 0) {
         print(gene_ids)
         plot_expression(gene_ids, dds,
                         sprintf('DGE Diagnosis %s %s FDR q<%.2f', subtype,
                                 myregion, alpha))
-        plot_volcano(res, sprintf('DGE Diagnosis %s %s FDR q<%.2f', subtype,
-                     myregion, alpha), pCutoff = alpha)
     }
 
     library(IHW)
@@ -251,13 +251,13 @@ run_DGE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
     cat(sprintf('IHW q < %.2f\n', alpha))
     print(summary(resIHW))
     gene_ids = rownames(resIHW)[which(resIHW$padj < alpha)]
+    plot_volcano(resIHW, sprintf('DGE Diagnosis %s %s IHW q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
     if (length(gene_ids) > 0) {
         print(gene_ids)
         plot_expression(gene_ids, dds,
                         sprintf('DGE Diagnosis %s %s IHW q<%.2f', subtype,
                                 myregion, alpha))
-        plot_volcano(resIHW, sprintf('DGE Diagnosis %s %s IHW q<%.2f', subtype,
-                     myregion, alpha), pCutoff = alpha)
     }
     return(resIHW)
 }
