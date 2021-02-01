@@ -132,7 +132,7 @@ do_boot_corrs = function(both_res, log2FC_col, method) {
 }
 
 st = 'protein_coding'
-met = 'pearson'
+met = 'spearman'
 dge = as.data.frame(dge_acc[[st]])
 dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
 both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
@@ -143,6 +143,7 @@ for (d in disorders) {
     corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.beta_log2FC', d), met)
 }
 mylim = max(abs(unlist(corrs)))
+quartz()
 boxplot(corrs, ylim=c(-mylim, mylim), ylab=sprintf('%s correlation', met),
         main=sprintf('ACC %s (n=%d)', st, nrow(both_res)))
 abline(h=0, col='red')
@@ -157,58 +158,67 @@ for (d in disorders) {
 }
 ```
 
-![](images/2021-01-29-15-04-26.png)
+## Spearman ACC
+![](images/2021-02-01-09-47-25.png)
+```
 ASD pval =  0 
-SCZ pval =  0.0043 
+SCZ pval =  0 
 BD pval =  0 
 MDD pval =  0 
-AAD pval =  0 
+AAD pval =  0.0059 
 IBD pval =  0 
-
+```
 ![](images/2021-01-29-14-57-50.png)
+```
 ASD pval =  0.3245 
 SCZ pval =  0.2743 
 BD pval =  0.3955 
 MDD pval =  0.0042 
 AAD pval =  0.1283 
 IBD pval =  0.1122 
-
+```
 ![](images/2021-01-29-15-02-10.png)
+```
 ASD pval =  0.3466 
 SCZ pval =  0.3359 
 BD pval =  0.3401 
 MDD pval =  0.3837 
 AAD pval =  0.2696 
 IBD pval =  0.1304 
+```
 
+## Pearson ACC
 ![](images/2021-01-29-15-19-16.png)
+```
 ASD pval =  0
 SCZ pval =  0
 BD pval =  0
 MDD pval =  0
 AAD pval =  0.1422
 IBD pval =  0
-
+```
 ![](images/2021-01-29-15-18-40.png)
+```
 ASD pval =  0.2317
 SCZ pval =  0.1988
 BD pval =  0.4054
 MDD pval =  0.0062
 AAD pval =  0.013
 IBD pval =  0.1475
-
+```
 ![](images/2021-01-29-15-17-34.png)
+```
 ASD pval =  0.3365
 SCZ pval =  0.4301
 BD pval =  0.4927
 MDD pval =  0.3279
 AAD pval =  0.1995
 IBD pval =  0.0418
-
+```
 
 ```r
 st = 'protein_coding'
-met = 'pearson'
+met = 'spearman'
 dge = as.data.frame(dge_cau[[st]])
 dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
 both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
@@ -233,53 +243,65 @@ for (d in disorders) {
 }
 ```
 
-![](images/2021-01-29-15-05-40.png)
-ASD pval =  0 
-SCZ pval =  0 
-BD pval =  0 
-MDD pval =  0 
-AAD pval =  0.0059 
-IBD pval =  0 
+## Caudate spearman
+![](images/2021-02-01-10-07-17.png)
+```
+ASD pval =  0
+SCZ pval =  0.0043
+BD pval =  0
+MDD pval =  0
+AAD pval =  0
+IBD pval =  0
+```
 
 ![](images/2021-01-29-15-09-12.png)
+```
 ASD pval =  0.1058
 SCZ pval =  0.1713
 BD pval =  0.3574
 MDD pval =  0.2159
 AAD pval =  0.0142
 IBD pval =  0.4637
+```
 
 ![](images/2021-01-29-15-08-50.png)
+```
 ASD pval =  0.1731 
 SCZ pval =  0.4971 
 BD pval =  0.3343 
 MDD pval =  0.335 
 AAD pval =  0.2037 
 IBD pval =  0.3251 
+```
 
+## Caudate pearson
 ![](images/2021-01-29-15-18-14.png)
+```
 ASD pval =  0
 SCZ pval =  5e-04
 BD pval =  7e-04
 MDD pval =  0
 AAD pval =  0
 IBD pval =  0
-
+```
 ![](images/2021-01-29-15-21-16.png)
+```
 ASD pval =  0.3414 
 SCZ pval =  0.1562 
 BD pval =  0.2078 
 MDD pval =  0.0505 
 AAD pval =  0.0018 
 IBD pval =  0.3987 
-
+```
 ![](images/2021-01-29-15-21-47.png)
+```
 ASD pval =  0.3764
 SCZ pval =  0.268
 BD pval =  0.3836
 MDD pval =  0.3929
 AAD pval =  0.3731
 IBD pval =  0.1621
+```
 
 What happens if I switch it to a permutation p-value?
 
@@ -329,7 +351,7 @@ data = data[data$Region==myregion, ]
 library(gdata)
 df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021 (1).xlsx',
               'clinical_summary_sheet') 
-# clean_subjs = df[df$AAD != 'YES', 'original_brain_number']
+# clean_subjs = df[df$AAD == '', 'original_brain_number']
 clean_subjs = df[df$MDD != 'YES', 'original_brain_number']
 data = data[data$original_brain_number %in% clean_subjs, ]
 
@@ -412,6 +434,26 @@ for (d in disorders) {
 }
 ```
 
-This is data without AAD:
+Let's redo Spearman for the 3 datasets. This is data without AAD:
 
-![](images/2021-01-29-17-49-45.png)
+![](images/2021-02-01-10-13-11.png)
+```
+ASD pval =  0
+SCZ pval =  0
+BD pval =  0
+MDD pval =  0
+AAD pval =  0.3216
+IBD pval =  0
+```
+
+And without MDD:
+
+![](images/2021-02-01-10-22-28.png)
+```
+ASD pval =  0 
+SCZ pval =  0 
+BD pval =  0 
+MDD pval =  0 
+AAD pval =  0 
+IBD pval =  0.0015 
+```
