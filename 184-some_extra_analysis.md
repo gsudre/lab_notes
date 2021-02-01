@@ -351,8 +351,8 @@ data = data[data$Region==myregion, ]
 library(gdata)
 df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021 (1).xlsx',
               'clinical_summary_sheet') 
-# clean_subjs = df[df$AAD == '', 'original_brain_number']
-clean_subjs = df[df$MDD != 'YES', 'original_brain_number']
+clean_subjs = df[df$AAD == '', 'original_brain_number']
+# clean_subjs = df[df$MDD != 'YES', 'original_brain_number']
 data = data[data$original_brain_number %in% clean_subjs, ]
 
 library(gdata)
@@ -421,7 +421,7 @@ for (d in disorders) {
 }
 mylim = max(abs(unlist(corrs)))
 boxplot(corrs, ylim=c(-mylim, mylim), ylab=sprintf('%s correlation', met),
-        main=sprintf('ACC %s (n=%d)', st, nrow(both_res)))
+        main=sprintf('%s %s (n=%d)', myregion, st, nrow(both_res)))
 abline(h=0, col='red')
 # calculating p-value
 for (d in disorders) {
@@ -460,7 +460,25 @@ IBD pval =  0.0015
 
 This is the Caudate without AAD:
 
-![](images/2021-02-01-12-01-30.png)
+![](images/2021-02-01-12-19-20.png)
+
+```
+ASD pval =  0 
+SCZ pval =  0 
+BD pval =  0 
+MDD pval =  0.0097 
+AAD pval =  0 
+IBD pval =  0 
+```
 
 And the Caudate without MDD:
 
+![](images/2021-02-01-12-09-14.png)
+```
+ASD pval =  0 
+SCZ pval =  0 
+BD pval =  0 
+MDD pval =  0.2695 
+AAD pval =  0 
+IBD pval =  8e-04 
+```

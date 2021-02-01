@@ -754,10 +754,6 @@ ENST00000596753.1
 
 
 stageR q < 0.05
-The returned adjusted p-values are based on a stage-wise testing approach and are only valid for the provided target OFDR level of 5%. If a different target OFDR level is of interest,the entire adjustment should be re-run. 
-
-The returned adjusted p-values are based on a stage-wise testing approach and are only valid for the provided target OFDR level of 5%. If a different target OFDR level is of interest,the entire adjustment should be re-run. 
-
                 FDR adjusted p-value
 ENSG00000226421: SLC25A5P5, Mitochondrial Carrier; Adenine Nucleotide Translocator           0.04687633
 ENSG00000250483: PPM1AP1, Protein Phosphatase           0.01398035
