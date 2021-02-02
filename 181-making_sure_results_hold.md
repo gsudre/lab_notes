@@ -592,8 +592,6 @@ write.csv(all_res, file=out_fname, row.names=F)
 
 And also ACC and Caudate overlaps:
 
-Let's then compute the PRS and DX overlaps:
-
 ```r
 library(GeneOverlap)
 load('~/data/post_mortem/DGE_01272021.RData')
