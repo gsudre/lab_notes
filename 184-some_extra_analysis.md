@@ -482,3 +482,85 @@ MDD pval =  0.2695
 AAD pval =  0 
 IBD pval =  8e-04 
 ```
+
+# 2021-02-02 11:19:56
+
+Let's see how the TWAS significant genes look in our PM results:
+
+```r
+# bw
+mydir = '~/data/expression_impute/fusion_twas-master/'
+fusion = c()
+for (c in 1:22) {
+    fname = sprintf('%s/ADHD_ACC.%d.dat', mydir, c)
+    tmp = read.delim(fname)
+    fusion = rbind(fusion, tmp[, c('ID', 'TWAS.Z', 'TWAS.P')])
+}
+fusion$TWAS.P = as.numeric(fusion$TWAS.P)
+fusion = fusion[!is.na(fusion$TWAS.P), ]
+fusion$TWAS.Z = as.numeric(fusion$TWAS.Z)
+
+wei = read.delim('~/data/expression_impute/fusion_twas-master/WEIGHTS/Brain_Anterior_cingulate_cortex_BA24.P01.pos')
+cnt = 75
+wei$geneid = substring(wei$WGT, cnt, cnt+14)
+mf = merge(fusion, wei[, c('ID', 'CHR', 'geneid')], by='ID', all.x=T,
+            all.y=F, sort=F)
+mf$adjPval = p.adjust(mf$TWAS.P, method='fdr')
+twas_genes = mf[mf$adjPval < .05, 'geneid']
+
+load('~/data/post_mortem/DGE_01272021.RData')
+dge = as.data.frame(dge_acc[['protein_coding']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+dge_twas = dge[dge$ensembl_gene_id %in% twas_genes, ]
+```
+
+```
+r$> dge_twas                                                                                
+                    baseMean log2FoldChange      lfcSE        stat    pvalue      padj
+ENSG00000088930.8  949.43792   -0.002480057 0.03212861 -0.07719155 0.9384712 1.0000000
+ENSG00000140830.9  251.99311    0.017357434 0.07711609  0.22508187 0.8219156 1.0000000
+ENSG00000186792.17  97.23679   -0.044933370 0.11356677 -0.39565596 0.6923588 0.9500927
+                     weight ensembl_gene_id
+ENSG00000088930.8  1.000000 ENSG00000088930
+ENSG00000140830.9  1.000000 ENSG00000140830
+ENSG00000186792.17 3.108477 ENSG00000186792
+```
+
+That didn't work. What if we use all imputed genes?
+
+```r
+# bw
+mydir = '~/data/expression_impute/fusion_twas-master/'
+fusion = c()
+for (c in 1:22) {
+    fname = sprintf('%s/ADHD_ACC.ALL.%d.dat', mydir, c)
+    tmp = read.delim(fname)
+    fusion = rbind(fusion, tmp[, c('ID', 'TWAS.Z', 'TWAS.P')])
+}
+fusion$TWAS.P = as.numeric(fusion$TWAS.P)
+fusion = fusion[!is.na(fusion$TWAS.P), ]
+fusion$TWAS.Z = as.numeric(fusion$TWAS.Z)
+
+wei = read.delim('~/data/expression_impute/fusion_twas-master/WEIGHTS/Brain_Anterior_cingulate_cortex_BA24.pos')
+cnt = 75
+wei$geneid = substring(wei$WGT, cnt, cnt+14)
+mf = merge(fusion, wei[, c('ID', 'CHR', 'geneid')], by='ID', all.x=T,
+            all.y=F, sort=F)
+mf$adjPval = p.adjust(mf$TWAS.P, method='fdr')
+twas_genes = mf[mf$adjPval < .05, 'geneid']
+
+load('~/data/post_mortem/DGE_01272021.RData')
+dge = as.data.frame(dge_acc[['protein_coding']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+dge_twas = dge[dge$ensembl_gene_id %in% twas_genes, ]
+```
+
+I have 19 hits, and 1 is p < .05. Is that significant? Nevermind... the gene is
+not that interesting: "IFITM2 (Interferon Induced Transmembrane Protein 2) is a
+Protein Coding gene. Diseases associated with IFITM2 include Cycloplegia and
+Influenza. Among its related pathways are Interferon gamma signaling and Innate
+Immune System."
+
+CHECK CAUDATE
+
+MESC
