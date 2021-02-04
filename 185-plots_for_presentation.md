@@ -325,6 +325,26 @@ ggplot(data=df, aes(x=description, y=abs(normalizedEnrichmentScore), fill=Direct
   geom_text(data = stars.df, aes(y = star_pos, fill=NA), label = "***")
 ```
 
+```r
+df = read.csv('~/data/post_mortem/WG7_dge_cau[[\"protein_coding\"]]_geneontology_Biological_Process_noRedundant_10K.csv')
+df$score = abs(df$normalizedEnrichmentScore)
+df = df[order(df$score, decreasing=T)[1:10], c('description', 'score', 'normalizedEnrichmentScore')]
+df$Direction = ifelse(df$normalizedEnrichmentScore > 0, 'up', 'down')
+df$description = as.character(df$description)
+df = df[df$description %in% c("sperm motility",
+                              "microtubule bundle formation",
+                              "gliogenesis"),]  # just to get both colors
+library(ggplot2)
+ggplot(data=df, aes(x=description, y=abs(normalizedEnrichmentScore), fill=Direction)) +
+  geom_bar(stat="identity")+ coord_flip() +
+  theme_minimal() + ylab('Absolute Normalized Enrichment Score') + xlab('') +
+  theme(axis.text.x = element_text(size=16),
+        axis.title.y = element_text(size=16),
+        axis.text.y = element_text(size=12),
+        legend.text = element_text(size=14))
+```
+
+
 ## Caudate and ACC overlaps
 
 ```r

@@ -287,6 +287,7 @@ I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/dat
 
 **ACC Protein coding**
 
+```
 FDR q < 0.05
 
 out of 15619 with nonzero total read count
@@ -313,10 +314,12 @@ see metadata(res)$ihwResult on hypothesis weighting
 NULL
 [1] "ENSG00000002016.17"
 ENSG00000002016.17 
+```
 
 ![](images/2021-01-27-17-46-01.png)
 ![](images/2021-01-27-17-45-06.png)
 
+```
 FDR q < 0.10
 
 out of 15619 with nonzero total read count
@@ -333,10 +336,12 @@ NULL
 [1] "ENSG00000002016.17" "ENSG00000103995.14"
 ENSG00000002016.17 
 ENSG00000103995.14 
+```
 
 ![](images/2021-01-27-18-01-24.png)
 ![](images/2021-01-27-18-01-39.png)
 
+```
 IHW q < 0.10
 
 out of 15619 with nonzero total read count
@@ -358,7 +363,7 @@ ENSG00000124659.6 : TBCC, Tubulin-folding protein
 ENSG00000177084.16 : POLE, DNA polymerase epsilon, involved in DNA repair and chromosomal DNA replication
 ENSG00000196584.3 : XRCC2, chromosome stability and repair DNA damage
 ENSG00000258890.7 : CEP95, centrosome function
-
+```
 ![](images/2021-01-27-18-00-47.png)
 ![](images/2021-01-27-18-01-07.png)
 
@@ -370,6 +375,7 @@ Nothing at q < .05 or q < .1.
 
 Nothing at q < .05.
 
+```
 FDR q < 0.10
 
 out of 2925 with nonzero total read count
@@ -391,7 +397,7 @@ ENSG00000242294.6 : STAG3L5P (stromal antigen)
 ENSG00000250483.1 : PPM1AP1, protein phosphatase
 ENSG00000268100.1 : ZNF725P, Zinc finger protein
 Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
-
+```
 ![](images/2021-01-27-18-02-43.png)
 ![](images/2021-01-27-18-03-00.png)
 
@@ -408,7 +414,7 @@ Nothing for q < .05 or .1.
 
 Nothing for q < .05 or .1.
 
-===
+## DTE
 
 And let's implement the same idea for DTE:
 
@@ -669,6 +675,7 @@ Let's collect some results again. These don't take much time anyways.
 
 **ACC Protein coding**
 
+```
 FDR q < 0.05
 
 out of 31574 with nonzero total read count
@@ -692,11 +699,17 @@ ENSG00000153487           0.02104243
                 stage-wise adjusted p-value
 ENST00000333219                 0.009293617
 
+ENSG00000153487: ING1: tumor suppressor protein that can induce cell growth
+arrest and apoptosis
+```
 ![](images/2021-01-27-22-39-23.png)
 ![](images/2021-01-27-22-39-08.png)
 
+
+
 **ACC lncRNA**
 
+```
 FDR q < 0.05
 
 out of 16075 with nonzero total read count
@@ -722,12 +735,15 @@ ENSG00000240758          0.003735354
                 stage-wise adjusted p-value
 ENST00000493710                           0
 
+ENSG00000240758: Lnc-HILPDA-1
+```
 
 ![](images/2021-01-27-22-39-59.png)
 ![](images/2021-01-27-22-39-45.png)
 
 **ACC pseudogene**
 
+```
 FDR q < 0.05
 
 out of 2359 with nonzero total read count
@@ -768,12 +784,13 @@ ENST00000509133                           0
 ENST00000515049                           0
 ENST00000529497                           0
 ENST00000596753                           0
+```
 
 ![](images/2021-01-27-22-40-37.png)
 ![](images/2021-01-27-22-40-19.png)
 
 **Caudate Protein coding**
-
+```
 FDR q < 0.05
 
 out of 34660 with nonzero total read count
@@ -798,6 +815,8 @@ ENSG00000105339           0.02195675
                 stage-wise adjusted p-value
 ENST00000523308                  0.02766893
 
+ENSG00000105339: DENND3, Guanine nucleotide exchange factor
+```
 ![](images/2021-01-27-23-06-57.png)
 
 ![](images/2021-01-27-23-07-42.png)
@@ -807,7 +826,7 @@ ENST00000523308                  0.02766893
 Nothing.
 
 **Caudate pseudogene**
-
+```
 FDR q < 0.05
 
 out of 2502 with nonzero total read count
@@ -832,8 +851,12 @@ ENSG00000214331          0.004265569
                 stage-wise adjusted p-value
 ENST00000563377                           0
 
+ENSG00000214331: Pyruvate Dehydrogenase Phosphatase Regulatory
+```
 ![](images/2021-01-27-23-08-07.png)
 ![](images/2021-01-27-23-08-28.png)
+
+## DTU
 
 Finally, DTU:
 
@@ -1154,6 +1177,7 @@ dtu_cau[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
 
 **ACC Protein coding**
 
+```
 Genes surviving FDR q < 0.05 : 11 
 Transcripts surviving FDR q< 0.05 : 20 
 Transcripts removed due to small SD: 8919 out of 16702 
@@ -1194,9 +1218,10 @@ ENSG00000007047 : MARK4, microtubules, Alzheimer's disease
 ENSG00000198121 : LPAR1, proliferation, platelet aggregation, smooth muscle contraction, inhibition of neuroblastoma cell differentiation, chemotaxis, and tumor cell invasion
 ENSG00000147548 : NSD3, Histone methyltransferase
 ENSG00000048052 : HDAC9, transcriptional regulation, cell cycle progression, and developmental events
+```
 
 **ACC lncRNA**
-
+```
 Screened genes at FDR q< 0.05 : 4
 Transcripts passing OFDR: 5
 stageR q < 0.05
@@ -1216,7 +1241,7 @@ ENSG00000235478: LINC01664
 ENSG00000263072: ZNF213-AS1, Metazoan signal recognition particle RNA
 ENSG00000248115: Lnc-RASL11B-2
 ENSG00000214176: PLEKHM1P1
-
+```
 ![](images/2021-01-28-10-37-09.png)
 
 **ACC pseudogene**
@@ -1224,7 +1249,7 @@ ENSG00000214176: PLEKHM1P1
 No genes survive filtering.
 
 **Caudate Protein coding**
-
+```
 Genes surviving FDR q < 0.05 : 6
 Transcripts surviving FDR q< 0.05 : 14
 Transcripts removed due to small SD: 9927 out of 17693
@@ -1252,9 +1277,9 @@ ENSG00000085276: MECOM, hematopoiesis, apoptosis, development, and cell differen
 ENSG00000117298: ECE1, proteolytic processing of endothelin precursors to biologically active peptides
 ENSG00000139174: PRICKLE1, nuclear membrane, progressive myoclonus epilepsy
 ENSG00000169291: SHE, conjuctivitis?
-
+```
 **Caudate lncRNA**
-
+```
 Genes surviving FDR q < 0.05 : 1
 Transcripts surviving FDR q< 0.05 : 7
 Transcripts removed due to small SD: 2765 out of 5484
@@ -1268,7 +1293,7 @@ ENSG00000260528          0.001186622
 ENST00000660257                  0.01543238
 Genes where expression switches among isoforms: 1
 ENSG00000260528: FAM157C, 
-
+```
 ![](images/2021-01-28-10-53-56.png)
 
 **Caudate pseudogene**
@@ -1466,5 +1491,186 @@ for (db in DBs) {
     }
 }
 ```
+
+## 2021-02-03 19:16:44
+
+Let's repeat the same thing, but this time for DTU:
+
+```r
+run_skinny_DTU = function(count_matrix, tx_meta, myregion, subtype) {
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = count_matrix[keep_me, ]
+    my_tx_meta = tx_meta[keep_me, ]
+
+    # removing variables where more than half of the subjects have zero counts
+    keep_me = rowSums(my_count_matrix==0) < .25*ncol(my_count_matrix)
+    my_count_matrix = my_count_matrix[keep_me, ]
+    cat('Keeping', nrow(my_count_matrix), 'after zero removal\n')
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # keep only the remaining transcripts and their corresponding genes
+    txdf.sub = my_tx_meta[match(rownames(X), my_tx_meta$transcript_id),]
+    counts = data.frame(gene_id = txdf.sub$GENEID, feature_id = txdf.sub$TXNAME)
+    counts = cbind(counts, X)
+
+    library(DRIMSeq)
+    samples$group = samples$Diagnosis
+    samples$sample_id = as.character(samples$submitted_name)
+    d0 = dmDSdata(counts = counts, samples = samples)
+
+    n = nrow(samples)
+    n.small = min(table(samples$group))
+
+    d = DRIMSeq::dmFilter(d0,
+                        min_samps_feature_expr = n.small, min_feature_expr = 10,
+                        min_samps_feature_prop = n.small, min_feature_prop = 0.1,
+                        min_samps_gene_expr = n, min_gene_expr = 10)
+
+    countData = round(as.matrix(counts(d)[,-c(1:2)]))
+    cat('Keeping', nrow(countData), 'after DRIMSeq expression filtering\n')
+
+    set.seed(42)
+    pca <- prcomp(t(countData), scale=TRUE)
+    library(nFactors)
+    eigs <- pca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = 1:nS$Components$nkaiser
+    mydata = data.frame(pca$x[, keep_me])
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$submitted_name
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                    dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(samples[, x], mydata[, y], method='spearman')
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
+        }
+    }
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                    dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(mydata[, y], samples[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
+        }
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                        which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+
+    fm_str = sprintf('~ group + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    # scaling PCs to assure convergence
+    for (var in pc_vars[use_pcs]) {
+        data.pm[, var] = scale(data.pm[, var])
+    }
+
+    design = model.matrix(as.formula(fm_str), data = data.pm)
+
+    set.seed(42)
+    system.time({
+        d <- dmPrecision(d, design = design)
+        d <- dmFit(d, design = design)
+        d <- dmTest(d, coef = "groupCase")     
+    })
+    res.g = DRIMSeq::results(d)
+
+    return(res.g)
+}
+
+dtu_cau_pc = run_skinny_DTU(count_matrix, tx_meta, myregion, 'protein_coding')
+# ...
+save(dtu_acc_lnc, dtu_acc_pc, dtu_acc_pg, dtu_cau_lnc, dtu_cau_pc, dtu_cau_pg,
+    file='~/data/post_mortem/DTU_skinny_02042021.RData')
+```
+
+# 2021-02-04 07:19:29
+
+Now, let's see how we can run WG for DTU:
+
+```r
+load('~/data/post_mortem/DTU_skinny_02042021.RData')
+library(WebGestaltR)
+data_dir = '~/data/post_mortem/'
+ncpu = 2
+
+myregion='ACC'
+res = dtu_acc_pc
+
+tmp2 = data.frame(geneid=res$gene_id, rank=-log(res$pvalue))
+tmp2 = tmp2[order(tmp2$rank, decreasing=T),]
+
+res_str = sprintf('DTU_pc_%s', myregion)
+DBs = c(sprintf('my_%s_sets', myregion))
+for (db in DBs) {
+    cat(res_str, db, '\n')
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    project_name = sprintf('WG9_%s_%s_10K', res_str, db)
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                        organism="hsapiens",
+                        enrichDatabaseFile=db_file,
+                        enrichDatabaseType="genesymbol",
+                        interestGene=tmp2,
+                        outputDirectory = data_dir,
+                        interestGeneType="ensembl_gene_id",
+                        sigMethod="top", topThr=20,
+                        minNum=3, projectName=project_name,
+                        isOutput=T, isParallel=T,
+                        nThreads=ncpu, perNum=10000, maxNum=800))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG9_%s_%s_10K.csv', data_dir, res_str, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+
+DBs = c('geneontology_Biological_Process_noRedundant',
+        'geneontology_Cellular_Component_noRedundant',
+        'geneontology_Molecular_Function_noRedundant')
+for (db in DBs) {
+    cat(res_str, db, '\n')
+    project_name = sprintf('WG9_%s_%s_10K', res_str, db)
+
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabase=db,
+                                interestGene=tmp2,
+                                interestGeneType="ensembl_gene_id",
+                                sigMethod="top", topThr=20,
+                                outputDirectory = data_dir,
+                                minNum=5, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000))
+    if (class(enrichResult) != "try-error") {
+        out_fname = sprintf('%s/WG9_%s_%s_10K.csv', data_dir, res_str, db)
+        write.csv(enrichResult, file=out_fname, row.names=F)
+    }
+}
+```
+
 
 # TODO
