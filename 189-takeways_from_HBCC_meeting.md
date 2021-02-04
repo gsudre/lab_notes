@@ -1,0 +1,23 @@
+# 2021-02-04 15:18:47
+
+* Mine our data (e.g. DTE/DTU) to generate new hypothesis that can be answered
+  by neuronal populations, using single nucleaus analysis. That can determine
+  which neuronal populations to look at too.
+    * Can do a 24x24 experiment for single nucleus sequencing in the ACC. 
+* Look into talk by Vivradjev (?) about possibilities of single cell nucleus
+* Ajay mentioned some theory to justify sperm motility sets
+* Stephano has some ideas about axonal guidance and the sets we got for Caudate
+* Stefano was wondering whether our depth was enough for DT analysis
+* Ajay wondered why the Caudate volcano is so flat and weird
+* Do we have data for specific reasons and different disorders? Instead of just
+  using the meta analysis?
+  What's driving all that shared correlation?
+* What are those suicides for NVs?
+* Is there an effect in the different batch histories (Stefano)?
+* Why is CHR1 and other similar genes in serotonin set?
+* We should push the methylome + transcriptome analysis/alignment of results
+* Use categories of gene interactions/pathways too (networks). Stuff like IPA,
+  to connect genes to function
+* Can we look at the directionality of the GSEA results to generate hypothesis?
+  For example, what does it mean to have VEGF high? Something about arteries
+  walls and blood in ASD?

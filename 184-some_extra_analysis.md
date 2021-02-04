@@ -561,6 +561,9 @@ Protein Coding gene. Diseases associated with IFITM2 include Cycloplegia and
 Influenza. Among its related pathways are Interferon gamma signaling and Innate
 Immune System."
 
-CHECK CAUDATE
+# 2021-02-04 13:41:22
 
-MESC
+Are the methylation results at all correlated with the DGE results? Nevermind...
+will need to re-run the methylation analysis a bit, and adding ENSIDs to the
+probes instead of hugo so I don't discartd them. Might revisit data cleaning as
+well to be more in line with current practices.

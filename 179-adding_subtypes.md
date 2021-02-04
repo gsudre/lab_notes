@@ -12,6 +12,7 @@ conda install pandas
 ```
 
 ```python
+cd ~/data/post_mortem/gtfparse
 from gtfparse import read_gtf
 fn = '/Users/sudregp/data/post_mortem/Homo_sapiens.GRCh38.97.gtf'
 df = read_gtf(fn)
