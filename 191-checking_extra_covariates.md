@@ -59,12 +59,10 @@ plot_volcano = function(res, t_str, pCutoff = .05, FCcutoff = 1.0) {
                         y = 'pvalue', xlab = bquote(~Log[2]~ 'fold change'),
                         selectLab = rownames(res)[res$padj < pCutoff],
                         ylab = bquote(~-Log[10]~italic(P)),
-                        ylim = c(0, ceiling(max(-log10(res$padj)))),
+                        ylim = c(0, ceiling(max(-log10(res$pvalue)))),
                         pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
-                        labSize = 2.0, title = "t_str",
-                        caption = paste0('log2 FC cutoff: ', FCcutoff,
-                                        '; p-value cutoff: ', pCutoff,
-                                        '\nTotal = ', nrow(res), ' variables'),
+                        labSize = 2.0, title = t_str, subtitle=NULL,
+                        caption = paste0('Total = ', nrow(res), ' variables'),
                         legendPosition = 'bottom', legendLabSize = 10,
                         legendIconSize = 4.0)
     print(p)
@@ -302,7 +300,8 @@ for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
 Code is working. Now it's just a matter of running everything above and
 collecting the results.
 
-<!-- I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_01272021.RData.
+<!-- 
+I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_02052021.RData.
 
 **ACC Protein coding**
 
@@ -335,8 +334,8 @@ NULL
 ENSG00000002016.17 
 ```
 
-![](images/2021-01-27-17-46-01.png)
-![](images/2021-01-27-17-45-06.png)
+![](images/2021-02-05-18-07-27.png)
+![](images/2021-02-05-18-08-02.png)
 
 ```
 FDR q < 0.10
@@ -431,4 +430,7 @@ Nothing for q < .05 or .1.
 
 **Caudate pseudogene**
 
-Nothing for q < .05 or .1. -->
+Nothing for q < .05 or .1. --> -->
+
+# TODO
+ * remove NVs that commited suicide
