@@ -21,3 +21,17 @@
 * Can we look at the directionality of the GSEA results to generate hypothesis?
   For example, what does it mean to have VEGF high? Something about arteries
   walls and blood in ASD?
+* Can we re-run this without the suicide cases? what differences does it make?
+
+## From Philip:
+ * Further bioinformatic analyses on the DGE (protein interactome; IPA; KEGG, https://string-db.org/)
+ * Consider further how to integrate methylomics with the transcriptome findings (if possible- our initial attempts weren’t promising).
+ * Try to obtain gene expression in the ACC/caudate from other psychiatric disorders to correlate with the ADHD findings.
+ * Run mediation analyses to see if the association between polygenic risk for ADHD and the disorder in our cohort is explained (mediated) by gene expression.
+ * Check out what's going on with Caudate volcano plot
+ * we’ll formulate some hypotheses to drive a single nuclei sequencing project.
+   ( from Ajeet) definitely the interaction data obtained from STING goes very
+   well with Cytoscape (https://cytoscape.org/) for the represention of the
+   networks by integrating the expression levels and associated metadata data.
+ 
+Finish those analysis first before talking to other groups
