@@ -437,5 +437,248 @@ Nothing for q < .05 or q < .1.
 
 ![](images/2021-02-08-09-18-49.png)
 
+# 2021-02-08 09:33:15
+
+How do our results change if we remove the NVs that commited suicide?
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# data only contains sample metadata, and count_matrix has actual counts
+
+# cleaning up some variables
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+data$substance_group = factor(data$substance_group)
+data$comorbid_group = factor(data$comorbid_group_update)
+data$evidence_level = factor(data$evidence_level)
+data$brainbank = factor(data$bainbank)
+
+rm_me = data$Diagnosis == 'Control' & data$MoD == 'Suicide'
+data = data[!rm_me, ]
+count_matrix = count_matrix[, !rm_me]
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = count_matrix[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+```r
+dge_acc = list()
+st = 'protein_coding' # ...
+dge_acc[[st]] = run_DGE(count_matrix, data, tx_meta, myregion, st, .05)
+
+dge_cau = list()
+st = 'protein_coding' # ...
+dge_cau[[st]] = run_DGE(count_matrix, data, tx_meta, myregion, st, .05)
+```
+
+I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_noSuicide_02082021.RData.
+
+**ACC Protein coding**
+
+Nothing for q < .05 or q < .1.
+
+**ACC lncRNA**
+
+```
+FDR q < 0.05
+
+out of 6594 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.03%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENSG00000240758.2" "ENSG00000285804.2"
+ENSG00000240758.2 
+ENSG00000285804.2 
+IHW q < 0.05
+
+out of 6594 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 2, 0.03%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000240758.2" "ENSG00000285804.2"
+ENSG00000240758.2 
+ENSG00000285804.2 
+```
+
+![](images/2021-02-08-09-42-25.png)
+![](images/2021-02-08-09-41-46.png)
+
+(same for q<.1)
+
+**ACC pseudogene**
+
+```
+FDR q < 0.05
+
+out of 2913 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 1, 0.034%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENSG00000242294.6"
+ENSG00000242294.6 
+Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
+IHW q < 0.05
+
+out of 2913 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 1, 0.034%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000242294.6"
+ENSG00000242294.6 
+```
+
+![](images/2021-02-08-09-44-00.png)
+![](images/2021-02-08-09-43-47.png)
+
+```
+FDR q < 0.10
+
+out of 2913 with nonzero total read count
+adjusted p-value < 0.1
+LFC > 0 (up)       : 5, 0.17%
+LFC < 0 (down)     : 2, 0.069%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENSG00000227725.3" "ENSG00000233121.1" "ENSG00000242294.6" "ENSG00000249176.1"
+[5] "ENSG00000250483.1" "ENSG00000254866.2" "ENSG00000268100.1"
+ENSG00000227725.3 
+ENSG00000233121.1 
+ENSG00000242294.6 
+ENSG00000249176.1 
+ENSG00000250483.1 
+ENSG00000254866.2 
+ENSG00000268100.1 
+Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
+IHW q < 0.10
+
+out of 2913 with nonzero total read count
+adjusted p-value < 0.1
+LFC > 0 (up)       : 5, 0.17%
+LFC < 0 (down)     : 2, 0.069%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+[1] "ENSG00000227725.3" "ENSG00000233121.1" "ENSG00000242294.6" "ENSG00000249176.1"
+[5] "ENSG00000250483.1" "ENSG00000254866.2" "ENSG00000268100.1"
+ENSG00000227725.3 
+ENSG00000233121.1 
+ENSG00000242294.6 
+ENSG00000249176.1 
+ENSG00000250483.1 
+ENSG00000254866.2 
+ENSG00000268100.1 
+```
+
+![](images/2021-02-08-09-48-37.png)
+![](images/2021-02-08-09-48-23.png)
+
+**Caudate Protein coding**
+
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-10-36-38.png)
+
+**Caudate lncRNA**
+
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-10-37-44.png)
+
+**Caudate pseudogene**
+
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-10-38-28.png)
+
+So, no major alterations in the result pattern. Let's see what's the rank
+correlation between them, as a proxy for potential WG results changes:
+
+```r
+st = 'protein_coding'
+load('~/data/post_mortem/DGE_noSuicide_02082021.RData.RData')
+res = dge_cau[[st]][['res']]
+ranks = data.frame(rank=sign(res$log2FoldChange) * -log(res$pvalue),
+                   gene=rownames(res))
+load('~/data/post_mortem/DGE_02082021.RData.RData')
+res = dge_cau[[st]][['res']]
+rank0 = data.frame(rank=sign(res$log2FoldChange) * -log(res$pvalue),
+                   gene=rownames(res))
+both_res = merge(ranks, rank0, by='gene', all.x=F, all.y=F)
+print(cor.test(both_res$rank.x, both_res$rank.y))
+```
+
+Pearson correlation for ACC protein_coding is .97, and for Caudate is .93. We
+should be fine here, and no need to remove the suicidal ones. Maybe just for robustness.
+
 # TODO
- * remove NVs that commited suicide
