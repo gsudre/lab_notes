@@ -300,7 +300,7 @@ for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
 Code is working. Now it's just a matter of running everything above and
 collecting the results.
 
-I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_02052021.RData.
+I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_02082021.RData.
 
 **ACC Protein coding**
 
@@ -386,7 +386,7 @@ ENSG00000258890.7
 
 **ACC lncRNA**
 
-Nothing at q < .05.
+Nothing at q < .05 or q < .1.
 
 **ACC pseudogene**
 
@@ -415,21 +415,27 @@ ENSG00000250483.1 : PPM1AP1, protein phosphatase
 ENSG00000268100.1 : ZNF725P, Zinc finger protein
 Only 1 bin; IHW reduces to Benjamini Hochberg (uniform weights)
 ```
-![](images/2021-01-27-18-02-43.png)
-![](images/2021-01-27-18-03-00.png)
 
+![](images/2021-02-08-09-07-13.png)
+![](images/2021-02-08-09-06-58.png)
 
 **Caudate Protein coding**
 
-Nothing for q < .05 or .1.
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-09-16-13.png)
 
 **Caudate lncRNA**
 
-Nothing for q < .05 or .1.
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-09-17-50.png)
 
 **Caudate pseudogene**
 
-Nothing for q < .05 or .1. --> -->
+Nothing for q < .05 or q < .1.
+
+![](images/2021-02-08-09-18-49.png)
 
 # TODO
  * remove NVs that commited suicide
