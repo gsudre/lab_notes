@@ -300,7 +300,6 @@ for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
 Code is working. Now it's just a matter of running everything above and
 collecting the results.
 
-<!-- 
 I also ran some as dge_*_q1 just for the pictures, and saved everything to ~/data/post_mortem/DGE_02052021.RData.
 
 **ACC Protein coding**
@@ -333,9 +332,8 @@ NULL
 [1] "ENSG00000002016.17"
 ENSG00000002016.17 
 ```
-
-![](images/2021-02-05-18-07-27.png)
-![](images/2021-02-05-18-08-02.png)
+![](images/2021-02-08-07-41-45.png)
+![](images/2021-02-08-07-41-10.png)
 
 ```
 FDR q < 0.10
@@ -356,8 +354,8 @@ ENSG00000002016.17
 ENSG00000103995.14 
 ```
 
-![](images/2021-01-27-18-01-24.png)
-![](images/2021-01-27-18-01-39.png)
+![](images/2021-02-08-07-48-55.png)
+![](images/2021-02-08-07-48-43.png)
 
 ```
 IHW q < 0.10
@@ -373,21 +371,22 @@ see metadata(res)$ihwResult on hypothesis weighting
 NULL
 [1] "ENSG00000002016.17" "ENSG00000078401.7"  "ENSG00000090104.12" "ENSG00000103995.14"
 [5] "ENSG00000124659.6"  "ENSG00000177084.16" "ENSG00000196584.3"  "ENSG00000258890.7" 
-ENSG00000002016.17 : RAD52, DNA repair
-ENSG00000078401.7 : EDN1, vasoconstrictive peptides
-ENSG00000090104.12 : RGS1, Regulates G protein-coupled receptor signaling cascades
-ENSG00000103995.14 : CEP152, centrosome function (microcephaly)
-ENSG00000124659.6 : TBCC, Tubulin-folding protein
-ENSG00000177084.16 : POLE, DNA polymerase epsilon, involved in DNA repair and chromosomal DNA replication
-ENSG00000196584.3 : XRCC2, chromosome stability and repair DNA damage
-ENSG00000258890.7 : CEP95, centrosome function
+ENSG00000002016.17 
+ENSG00000078401.7 
+ENSG00000090104.12 
+ENSG00000103995.14 
+ENSG00000124659.6 
+ENSG00000177084.16 
+ENSG00000196584.3 
+ENSG00000258890.7 
 ```
-![](images/2021-01-27-18-00-47.png)
-![](images/2021-01-27-18-01-07.png)
+
+![](images/2021-02-08-07-48-25.png)
+![](images/2021-02-08-07-48-11.png)
 
 **ACC lncRNA**
 
-Nothing at q < .05 or q < .1.
+Nothing at q < .05.
 
 **ACC pseudogene**
 
