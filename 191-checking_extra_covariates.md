@@ -686,7 +686,7 @@ should be fine here, and no need to remove the suicidal ones. Maybe just for rob
 Let's repeat the analysis above for DTE:
 
 ```r
-run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
+run_DTE = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
     keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
@@ -722,7 +722,7 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
 
     # check which PCs are associated at nominal p<.01
     num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-                'C1', 'C2', 'C3', 'C4', 'C5')
+                'C1', 'C2', 'C3', 'C4', 'C5', 'pH', 'RIN')
     pc_vars = colnames(mydata)
     num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
                         dimnames=list(num_vars, pc_vars))
@@ -735,7 +735,7 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
         }
     }
 
-    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group', 'brainbank',
                 'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
     categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
                             dimnames=list(categ_vars, pc_vars))
@@ -755,6 +755,7 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
         keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
     }
     use_pcs = use_pcs[keep_me]
+
     fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
                                                 collapse = ' + '))
     cat('Found', length(use_pcs), 'PCs p < .01\n')
@@ -802,13 +803,13 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
     cat(sprintf('FDR q < %.2f\n', alpha))
     print(summary(res))
     tx_ids = rownames(res)[which(res$padj < alpha)]
+    plot_volcano(res, sprintf('DTE Diagnosis %s %s FDR q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
     if (length(tx_ids) > 0) {
         print(tx_ids)
         plot_expression(tx_ids, dds,
                         sprintf('DTE Diagnosis %s %s FDR q<%.2f', subtype,
                                 myregion, alpha))
-        plot_volcano(res, sprintf('DTE Diagnosis %s %s FDR q<%.2f', subtype,
-                     myregion, alpha), pCutoff = alpha)
     }
 
     library(IHW)
@@ -817,13 +818,13 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
     cat(sprintf('IHW q < %.2f\n', alpha))
     print(summary(resIHW))
     tx_ids = rownames(resIHW)[which(resIHW$padj < alpha)]
+    plot_volcano(resIHW, sprintf('DTE Diagnosis %s %s IHW q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
     if (length(tx_ids) > 0) {
         print(tx_ids)
         plot_expression(tx_ids, dds,
                         sprintf('DTE Diagnosis %s %s IHW q<%.2f', subtype,
                                 myregion, alpha))
-        plot_volcano(resIHW, sprintf('DTE Diagnosis %s %s IHW q<%.2f', subtype,
-                     myregion, alpha), pCutoff = alpha)
     }
 
     # stage-wise testing
@@ -851,17 +852,84 @@ run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
         print(tx_ids)
     }
 
-    return(stageRObj)
+    my_res = list(res=res, resIHW=resIHW, dds=dds, fm_str=fm_str,
+                  pcs = rbind(categ_pvals, num_pvals),
+                  stageRObj=stageRObj)
+    return(my_res)
 }
+```
+
+And we load the data and run results as usual:
+
+```r
+myregion = 'ACC'
+
+load('~/data/isoforms/tximport_rsem_DTE.RData')
+txi = rsem
+
+# I'll just use the metadata from here
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+# samples has only the metadata now
+samples = data[, !grepl(colnames(data), pattern='^ENS')]
+
+# remove samples for the other brain region from the tx counts matrices
+keep_me = colnames(txi$counts) %in% samples$submitted_name
+for (i in c('abundance', 'counts', 'length')) {
+    txi[[i]] = txi[[i]][, keep_me]
+}
+# sort samples to match order in tximport matrices
+rownames(samples) = samples$submitted_name
+samples = samples[colnames(txi$counts), ]
+
+# cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[samples$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+samples[samples$POP_CODE=='WH', 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
+samples$Individual = factor(samples$hbcc_brain_id)
+samples[samples$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+samples[samples$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(as.numeric(samples$run_date))
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+samples$brainbank = factor(samples$bainbank)
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "TXNAME"), columns=c('GENEID','TXCHROM'),
+               "TXNAME")
+# keep only the remaining transcripts and their corresponding genes
+txdf.sub = txdf[match(substr(rownames(txi$counts), 1, 15), txdf$TXNAME),]
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('transcript_id', 'transcript_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+tx_meta = merge(txdf.sub, bt_slim, by.x='TXNAME', by.y='transcript_id')
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = txi$counts[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
 ```
 
 With the DTE code working, we can now run:
 
 ```r
 dte_acc = list() 
-for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
-    dte_acc[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
-}
+st = 'protein_coding' # ...
+dte_acc[[st]] = run_DTE(count_matrix, samples, tx_meta, myregion, st, .05)
+
 
 dte_cau = list() 
 for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
@@ -869,7 +937,7 @@ for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
 }
 ```
 
-I then saved all dge* to ~/data/post_mortem/DTE_01272021.RData.
+<!-- I then saved all dge* to ~/data/post_mortem/DTE_01272021.RData. -->
 
 Let's collect some results again. These don't take much time anyways.
 
@@ -902,10 +970,9 @@ ENST00000333219                 0.009293617
 ENSG00000153487: ING1: tumor suppressor protein that can induce cell growth
 arrest and apoptosis
 ```
+
 ![](images/2021-01-27-22-39-23.png)
 ![](images/2021-01-27-22-39-08.png)
-
-
 
 **ACC lncRNA**
 
@@ -1053,7 +1120,7 @@ ENST00000563377                           0
 
 ENSG00000214331: Pyruvate Dehydrogenase Phosphatase Regulatory
 ```
-![](images/2021-01-27-23-08-07.png)
+![](images/2021-01-27-23-08-07.png) -->
 
 
 # TODO
