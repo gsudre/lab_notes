@@ -465,3 +465,77 @@ Finally getting back to this, let's run the other DTI properties for Martine,
 following
 http://enigma.ini.usc.edu/protocols/dti-protocols/enigma-dti-diffusivity-protocol/:
 
+# 2021-02-08 14:55:43
+
+Back to this, let's generate the non-FA values for the same IDs we sent. I'll
+start with the file Martine sent, which shows 207 IDs we sent.
+
+```r
+eids = read.table('~/tmp/enigma/ids207.txt')[,1]
+mrn2e = read.table('/Volumes/Shaw/enigma_dti_share/mrn2enigma.txt', header=1)
+mrn2m = read.table('/Volumes/Shaw/enigma_dti_share/mrn2maskid.txt', header = 1)
+m = merge(mrn2e, mrn2m, by='MRN')
+m2 = merge(m, eids, by.x='ENIGMA_ID', by.y=1, all.x=F)
+write.table(m2$maskid_dti, col.names=F, row.names=F,
+            file='~/tmp/enigma/maskids207.txt')
+```
+
+I'll follow the instructions from here:
+
+http://enigma.ini.usc.edu/protocols/dti-protocols/enigma-dti-diffusivity-protocol/
+
+<!-- ```bash
+FSLDIR=/usr/local/fsl-5.0.7/
+ 
+ENIGMAtemplateDirectory=/enigmaDTI/TBSS/ENIGMA_targets/
+parentDirectory=/enigmaDTI/TBSS/run_tbss/
+dtifit_folder=/enigmaDTI/DTIFIT/
+ 
+mkdir ${parentDirectory}/MD/
+mkdir ${parentDirectory}/AD/
+mkdir ${parentDirectory}/RD/
+ 
+cd $parentDirectory
+ 
+ 
+for subj in subj_1 subj_2 … subj_N
+do
+   cp ${dtifit_folder}/${subj}*_MD.nii.gz ${parentDirectory}/MD/${subj}_MD.nii.gz
+   cp ${dtifit_folder}/${subj}*_L1.nii.gz ${parentDirectory}/AD/${subj}_AD.nii.gz
+   $FSLDIR/bin/fslmaths ${dtifit_folder}/${subj}*_L2.nii.gz –add ${dtifit_folder}/${subj}*_L3.nii.gz \\
+       -div 2 ${parentDirectory}/RD/${subj}_RD.nii.gz
+ 
+ 
+   for DIFF in MD AD RD
+   do
+   mkdir -p ${parentDirectory}/${DIFF}/origdata/
+   mkdir -p ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/
+   mkdir -p ${parentDirectory}/${DIFF}_individ/${subj}/stats/
+ 
+   $FSLDIR/bin/fslmaths ${parentDirectory}/${DIFF}/${subj}_${DIFF}.nii.gz -mas \\
+      ${parentDirectory}/FA/${subj}_FA_FA_mask.nii.gz \\ 
+      ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_${DIFF}
+ 
+   $FSLDIR/bin/immv ${parentDirectory}/${DIFF}/${subj} ${parentDirectory}/${DIFF}/origdata/
+ 
+   $FSLDIR/bin/applywarp -i ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_${DIFF} -o \\ 
+      ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_${DIFF}_to_target -r \\ 
+      $FSLDIR/data/standard/FMRIB58_FA_1mm -w ${parentDirectory}/FA/${subj}_FA_FA_to_target_warp.nii.gz
+ 
+##remember to change ENIGMAtemplateDirectory if you re-masked the template
+ 
+  $FSLDIR/bin/fslmaths ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_${DIFF}_to_target -mas \\
+       ${ENIGMAtemplateDirectory}/ENIGMA_DTI_FA_mask.nii.gz \\
+       ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_masked_${DIFF}.nii.gz	
+ 
+   $FSLDIR/bin/tbss_skeleton -i ${ENIGMAtemplateDirectory}/ENIGMA_DTI_FA.nii.gz -p 0.049 \\
+       ${ENIGMAtemplateDirectory}/ENIGMA_DTI_FA_skeleton_mask_dst.nii.gz $FSLDIR/data/standard/LowerCingulum_1mm.nii.gz \\         
+       ${parentDirectory}/FA_individ/${subj}/FA/${subj}_masked_FA.nii.gz  \\ 
+       ${parentDirectory}/${DIFF}_individ/${subj}/stats/${subj}_masked_${DIFF}skel -a \\ 
+       ${parentDirectory}/${DIFF}_individ/${subj}/${DIFF}/${subj}_masked_${DIFF}.nii.gz -s \\ 
+       ${ENIGMAtemplateDirectory}/ENIGMA_DTI_FA_skeleton_mask.nii.gz
+ 
+ 
+   done
+done
+``` -->

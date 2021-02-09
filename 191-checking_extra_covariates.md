@@ -681,4 +681,379 @@ print(cor.test(both_res$rank.x, both_res$rank.y))
 Pearson correlation for ACC protein_coding is .97, and for Caudate is .93. We
 should be fine here, and no need to remove the suicidal ones. Maybe just for robustness.
 
+# 2021-02-08 20:32:08
+
+Let's repeat the analysis above for DTE:
+
+```r
+run_DTE = function(count_matrix, tx_meta, myregion, subtype, alpha) {
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = count_matrix[keep_me, ]
+    my_tx_meta = tx_meta[keep_me, ]
+
+    # removing variables where more than half of the subjects have zero counts
+    keep_me = rowSums(my_count_matrix==0) < .25*ncol(my_count_matrix)
+    my_count_matrix = my_count_matrix[keep_me, ]
+    cat('Keeping', nrow(my_count_matrix), 'after zero removal\n')
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # checking which PCs are associated with our potential nuiscance variables
+    set.seed(42)
+    mypca <- prcomp(t(X), scale=TRUE)
+    # how many PCs to keep... using Kaiser thredhold, close to eigenvalues < 1
+    library(nFactors)
+    eigs <- mypca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = seq(1, nS$Components$nkaiser)
+
+    mydata = data.frame(mypca$x[, keep_me])
+    # create main metadata data frame including metadata and PCs
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$hbcc_brain_id
+    cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
+
+    # check which PCs are associated at nominal p<.01
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                        dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(data.pm[, x], data.pm[, y], method='spearman')
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
+        }
+    }
+
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                            dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(data.pm[, y], data.pm[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
+        }
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                    which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+    fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    # scaling PCs to assure convergence
+    for (var in pc_vars[use_pcs]) {
+        data.pm[, var] = scale(data.pm[, var])
+    }
+
+    # removing variables with low expression
+    library(edgeR)
+    design=model.matrix(as.formula(fm_str), data=data.pm)
+    isexpr <- filterByExpr(X, design=design)
+    countsExpr = X[isexpr,]
+    metaExpr = data.frame(TXNAME = substr(rownames(countsExpr), 1, 15))
+    metaExpr = merge(metaExpr, my_tx_meta, by='TXNAME', sort=F)
+    cat('Keeping', nrow(countsExpr), 'after expression filtering\n')
+
+    library(DESeq2)
+    # because DESeq doesn't remove outliers if there are continuous variables
+    # in the formula, we need to do this iteratively
+    nOutliers = Inf
+    myCounts = round(countsExpr)
+    while (nOutliers > 0) {
+        dds <- DESeqDataSetFromMatrix(countData = myCounts,
+                                    colData = data.pm,
+                                    design = as.formula(fm_str))
+        cat('Processing', nrow(dds), 'variables.\n')
+        dds <- DESeq(dds)
+        maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
+        # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+        # p the number of parameters including the intercept and m number of
+        # samples).
+        m <- ncol(dds)
+        # number or parameters (PCs + Diagnosis + intercept)
+        p <- length(use_pcs) + 2
+        co = qf(.99, p, m - p)
+        keep_me = which(maxCooks < co)
+        nOutliers = nrow(myCounts) - length(keep_me)
+        cat('Found', nOutliers, 'outliers.\n')
+        myCounts = round(myCounts)[keep_me, ]
+    }
+    res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = alpha)
+    cat(sprintf('FDR q < %.2f\n', alpha))
+    print(summary(res))
+    tx_ids = rownames(res)[which(res$padj < alpha)]
+    if (length(tx_ids) > 0) {
+        print(tx_ids)
+        plot_expression(tx_ids, dds,
+                        sprintf('DTE Diagnosis %s %s FDR q<%.2f', subtype,
+                                myregion, alpha))
+        plot_volcano(res, sprintf('DTE Diagnosis %s %s FDR q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
+    }
+
+    library(IHW)
+    resIHW <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = alpha,
+                    filterFun=ihw)
+    cat(sprintf('IHW q < %.2f\n', alpha))
+    print(summary(resIHW))
+    tx_ids = rownames(resIHW)[which(resIHW$padj < alpha)]
+    if (length(tx_ids) > 0) {
+        print(tx_ids)
+        plot_expression(tx_ids, dds,
+                        sprintf('DTE Diagnosis %s %s IHW q<%.2f', subtype,
+                                myregion, alpha))
+        plot_volcano(resIHW, sprintf('DTE Diagnosis %s %s IHW q<%.2f', subtype,
+                     myregion, alpha), pCutoff = alpha)
+    }
+
+    # stage-wise testing
+    library(stageR)
+    library(dplyr)
+    pConfirmation <- matrix(res$pvalue, ncol=1)
+    dimnames(pConfirmation) <- list(substr(rownames(res), 1, 15),
+                                    c("transcript"))
+    # select one qval per gene (min over transcripts)
+    junk = as.data.frame(res)
+    junk$TXNAME = substr(rownames(junk), 1, 15)
+    m = merge(junk, metaExpr, by='TXNAME')
+    qvals = m %>% group_by(GENEID) %>% slice_min(n=1, padj, with_ties=F)
+    pScreen = qvals$padj
+    names(pScreen) = qvals$GENEID
+
+    stageRObj = stageRTx(pScreen=pScreen, pConfirmation=pConfirmation,
+                        pScreenAdjusted=TRUE, tx2gene=metaExpr[, 1:2])
+    stageRObj = stageWiseAdjustment(stageRObj, method="dte", alpha=alpha)
+    cat(sprintf('stageR q < %.2f\n', alpha))
+    gene_ids = getSignificantGenes(stageRObj)
+    tx_ids = getSignificantTx(stageRObj)
+    if (nrow(tx_ids) > 0) {
+        print(gene_ids)
+        print(tx_ids)
+    }
+
+    return(stageRObj)
+}
+```
+
+With the DTE code working, we can now run:
+
+```r
+dte_acc = list() 
+for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
+    dte_acc[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
+}
+
+dte_cau = list() 
+for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
+    dte_cau[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
+}
+```
+
+I then saved all dge* to ~/data/post_mortem/DTE_01272021.RData.
+
+Let's collect some results again. These don't take much time anyways.
+
+**ACC Protein coding**
+
+```
+FDR q < 0.05
+
+out of 31574 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0032%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 3)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000333219.8"
+ENST00000333219.8 
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000153487           0.02104243
+                stage-wise adjusted p-value
+ENST00000333219                 0.009293617
+
+ENSG00000153487: ING1: tumor suppressor protein that can induce cell growth
+arrest and apoptosis
+```
+![](images/2021-01-27-22-39-23.png)
+![](images/2021-01-27-22-39-08.png)
+
+
+
+**ACC lncRNA**
+
+```
+FDR q < 0.05
+
+out of 16075 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0062%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000493710.1"
+ENST00000493710.1 
+
+(IHW identical)
+
+stageR q < 0.05
+
+                FDR adjusted p-value
+ENSG00000240758          0.003735354
+                stage-wise adjusted p-value
+ENST00000493710                           0
+
+ENSG00000240758: Lnc-HILPDA-1
+```
+
+![](images/2021-01-27-22-39-59.png)
+![](images/2021-01-27-22-39-45.png)
+
+**ACC pseudogene**
+
+```
+FDR q < 0.05
+
+out of 2359 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 5, 0.21%
+LFC < 0 (down)     : 1, 0.042%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000435239.1" "ENST00000502740.1" "ENST00000509133.1" "ENST00000515049.1"
+[5] "ENST00000529497.2" "ENST00000596753.1"
+ENST00000435239.1 
+ENST00000502740.1 
+ENST00000509133.1 
+ENST00000515049.1 
+ENST00000529497.2 
+ENST00000596753.1 
+
+(IHW identical)
+
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000226421: SLC25A5P5, Mitochondrial Carrier; Adenine Nucleotide Translocator           0.04687633
+ENSG00000250483: PPM1AP1, Protein Phosphatase           0.01398035
+ENSG00000227725: GCOM2, Glutamate Receptor           0.04687633
+ENSG00000249176: MRTO4, MRNA Turnover 4 Homolog           0.04492382
+ENSG00000254866: DEFB109D, Defensin Beta           0.04687633
+ENSG00000268100: ZNF725P, Zinc Finger Protein           0.01398035
+                stage-wise adjusted p-value
+ENST00000435239                           0
+ENST00000502740                           0
+ENST00000509133                           0
+ENST00000515049                           0
+ENST00000529497                           0
+ENST00000596753                           0
+```
+
+![](images/2021-01-27-22-40-37.png)
+![](images/2021-01-27-22-40-19.png)
+
+**Caudate Protein coding**
+```
+FDR q < 0.05
+
+out of 34660 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0029%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 4)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000523308.5"
+ENST00000523308.5 
+
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000105339           0.02195675
+                stage-wise adjusted p-value
+ENST00000523308                  0.02766893
+
+ENSG00000105339: DENND3, Guanine nucleotide exchange factor
+```
+![](images/2021-01-27-23-06-57.png)
+
+![](images/2021-01-27-23-07-42.png)
+
+**Caudate lncRNA**
+
+Nothing.
+
+**Caudate pseudogene**
+```
+FDR q < 0.05
+
+out of 2502 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.04%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 2)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+[1] "ENST00000563377.5"
+ENST00000563377.5 
+
+(IHW identical)
+
+stageR q < 0.05
+                FDR adjusted p-value
+ENSG00000214331          0.004265569
+                stage-wise adjusted p-value
+ENST00000563377                           0
+
+ENSG00000214331: Pyruvate Dehydrogenase Phosphatase Regulatory
+```
+![](images/2021-01-27-23-08-07.png)
+
+
 # TODO
