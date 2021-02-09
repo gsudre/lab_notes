@@ -930,14 +930,12 @@ dte_acc = list()
 st = 'protein_coding' # ...
 dte_acc[[st]] = run_DTE(count_matrix, samples, tx_meta, myregion, st, .05)
 
-
 dte_cau = list() 
-for (st in c('pseudogene', 'lncRNA', 'protein_coding')) {
-    dte_cau[[st]] = run_DTE(count_matrix, tx_meta, myregion, st, .05)
-}
+st = 'protein_coding' # ...
+dte_cau[[st]] = run_DTE(count_matrix, samples, tx_meta, myregion, st, .05)
 ```
 
-<!-- I then saved all dge* to ~/data/post_mortem/DTE_01272021.RData. -->
+I then saved all dge* to ~/data/post_mortem/DTE_02082021.RData.
 
 Let's collect some results again. These don't take much time anyways.
 
@@ -971,8 +969,8 @@ ENSG00000153487: ING1: tumor suppressor protein that can induce cell growth
 arrest and apoptosis
 ```
 
-![](images/2021-01-27-22-39-23.png)
-![](images/2021-01-27-22-39-08.png)
+![](images/2021-02-08-20-53-22.png)
+![](images/2021-02-08-20-53-04.png)
 
 **ACC lncRNA**
 
@@ -1005,8 +1003,8 @@ ENST00000493710                           0
 ENSG00000240758: Lnc-HILPDA-1
 ```
 
-![](images/2021-01-27-22-39-59.png)
-![](images/2021-01-27-22-39-45.png)
+![](images/2021-02-08-21-08-15.png)
+![](images/2021-02-08-21-07-58.png)
 
 **ACC pseudogene**
 
@@ -1053,16 +1051,17 @@ ENST00000529497                           0
 ENST00000596753                           0
 ```
 
-![](images/2021-01-27-22-40-37.png)
-![](images/2021-01-27-22-40-19.png)
+![](images/2021-02-08-21-10-37.png)
+![](images/2021-02-08-21-10-14.png)
 
 **Caudate Protein coding**
+
 ```
 FDR q < 0.05
 
-out of 34660 with nonzero total read count
+out of 35603 with nonzero total read count
 adjusted p-value < 0.05
-LFC > 0 (up)       : 1, 0.0029%
+LFC > 0 (up)       : 1, 0.0028%
 LFC < 0 (down)     : 0, 0%
 outliers [1]       : 0, 0%
 low counts [2]     : 0, 0%
@@ -1078,19 +1077,21 @@ ENST00000523308.5
 
 stageR q < 0.05
                 FDR adjusted p-value
-ENSG00000105339           0.02195675
+ENSG00000105339            0.0103279
                 stage-wise adjusted p-value
-ENST00000523308                  0.02766893
+ENST00000523308                  0.00852734
 
 ENSG00000105339: DENND3, Guanine nucleotide exchange factor
 ```
-![](images/2021-01-27-23-06-57.png)
 
-![](images/2021-01-27-23-07-42.png)
+![](images/2021-02-08-21-21-02.png)
+![](images/2021-02-08-21-20-44.png)
 
 **Caudate lncRNA**
 
-Nothing.
+Nothing at q < .05.
+
+![](images/2021-02-08-21-25-01.png)
 
 **Caudate pseudogene**
 ```
@@ -1120,7 +1121,9 @@ ENST00000563377                           0
 
 ENSG00000214331: Pyruvate Dehydrogenase Phosphatase Regulatory
 ```
-![](images/2021-01-27-23-08-07.png) -->
+
+![](images/2021-02-08-21-26-40.png)
+![](images/2021-02-08-21-26-20.png)
 
 
 # TODO
