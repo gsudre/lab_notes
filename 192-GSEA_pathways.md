@@ -144,11 +144,48 @@ for (region in c('acc', 'cau')) {
 }
 ```
 
+Not sure if lncRNA or pseudogenes would work here... let's see:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=2
+
+load('~/data/post_mortem/DGE_02082021.RData')
+
+for (region in c('acc', 'cau')) {
+    res_str = sprintf('res = dge_%s[["pseudogene"]][["res"]]',
+                    region)
+    eval(parse(text=res_str))
+    ranks = -log(res$pvalue) * sign(res$log2FoldChange)
+    geneid = substring(rownames(res), 1, 15)
+
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
+        cat(region, db, '\n')
+        project_name = sprintf('WGP1_pg_%s_%s_10K', region, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=sprintf('pathway_%s', db),
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", minNum=3,
+                                    outputDirectory = data_dir,
+                                    projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, topThr=20, perNum=10000))
+    }
+}
+```
+
+Everything failed for lncRNA and pseudogene, so now go there.
 
 
 # TODO
- * anything on lncRNA and pseudogenes?
- * DTE
  * DTU
  * network analysis?
 

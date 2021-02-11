@@ -1357,7 +1357,7 @@ run_DTU = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
         myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
     }
     quartz()
-    ggarrange(plotlist=myplots)
+    print(ggarrange(plotlist=myplots))
 
     my_res = list(res.g=res.g, res.t=res.t, res.t.filt = res.t.filt,
                   dds=d, fm_str=fm_str, drim.padj = drim.padj,
@@ -1445,15 +1445,14 @@ st = 'lncRNA' #...
 dtu_acc[[st]] = run_DTU(count_matrix, samples, tx_meta, myregion, st, .05)
 
 
-dtu_acc[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
 dtu_cau = list() 
-for (st in c('lncRNA', 'protein_coding')) {
-    dtu_cau[[st]] = run_DTU(count_matrix, tx_meta, myregion, st, .05)
-}
-dtu_cau[['pseudogene']] = NULL  # DRIMSeq kills the loop with the error
+st = 'lncRNA' # ...
+dtu_cau[[st]] = run_DTU(count_matrix, samples, tx_meta, myregion, st, .05)
 ```
 
-<!-- **ACC Protein coding**
+Saved it to ~/data/post_mortem/DTU_02112021.RData.
+
+**ACC Protein coding**
 
 ```
 Genes surviving FDR q < 0.05 : 11 
@@ -1520,6 +1519,7 @@ ENSG00000263072: ZNF213-AS1, Metazoan signal recognition particle RNA
 ENSG00000248115: Lnc-RASL11B-2
 ENSG00000214176: PLEKHM1P1
 ```
+
 ![](images/2021-01-28-10-37-09.png)
 
 **ACC pseudogene**
