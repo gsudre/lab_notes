@@ -72,7 +72,11 @@ plot_volcano = function(res, t_str, pCutoff = .05, FCcutoff = 1.0) {
 ```r
 run_DGE = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
-    keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+    }
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
     my_count_matrix = count_matrix[keep_me, ]
     my_tx_meta = tx_meta[keep_me, ]
@@ -688,7 +692,11 @@ Let's repeat the analysis above for DTE:
 ```r
 run_DTE = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
-    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    }
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
     my_count_matrix = count_matrix[keep_me, ]
     my_tx_meta = tx_meta[keep_me, ]
@@ -1171,7 +1179,11 @@ smallProportionSD <- function(d, filter = 0.1) {
 
 run_DTU = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
-    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    }
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
     my_count_matrix = count_matrix[keep_me, ]
     my_tx_meta = tx_meta[keep_me, ]
@@ -1576,7 +1588,33 @@ ENSG00000260528: FAM157C,
 
 **Caudate pseudogene**
 
-No genes survive filtering. -->
+No genes survive filtering.
+
+# 2021-02-16 11:57:18
+
+I was a bit curious whether FDR would do better if I kep all subtypes, and just
+split them for interpretation purposes. I changed the functions above, so let's
+see:
+
+## DTE, ACC
+
+```r
+dge_acc = run_DGE(count_matrix, data, tx_meta, myregion, NA, .05)
+```
+
+![](images/2021-02-16-12-01-10.png)
+
+IHW q < 0.05
+
+out of 25943 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+Nope...
 
 
 # TODO
