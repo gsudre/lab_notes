@@ -163,7 +163,7 @@ load('~/data/methylation_post_mortem/raw_ACC_02162021.RData')
 detP <- detectionP(rgSet)
 qcReport(rgSet, sampNames=targets$ID, sampGroups=targets$Sample_Group,
          pdf="~/data/methylation_post_mortem/ACC_qcReport.pdf")
-keep <- colMeans(detP) < 0.01
+keep <- colMeans(detP) < 0.05
 rgSet <- rgSet[,keep]
 targets <- targets[keep,]
 detP <- detP[,keep]
@@ -223,6 +223,99 @@ Current Data Set contains 0 NA in [Beta] Matrix.
 ```
 
 I think all these steps are also part of the pipeline I've been following. I should probably go ahead and attach the appropriate grouping though, and other metadata, before I generate plots and normalize, in case the normalization depends on sample group. 
+
+```r
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+data_dir = '~/data/methylation_post_mortem/Shaw_2019_MethEPIC01/'
+targets1 <- read.metharray.sheet(data_dir,
+                                 pattern="Shaw_2019_MethEPIC01_ss.csv")
+data_dir = '~/data/methylation_post_mortem/Shaw_2019_MethEPIC02/'
+targets2 <- read.metharray.sheet(data_dir,
+                                 pattern="Shaw_2019_MethEPIC02_ss.csv")
+data_dir = '~/data/methylation_post_mortem/Shaw_2019_MethEPIC03/'
+targets3 <- read.metharray.sheet(data_dir,
+                                 pattern="Shaw_2019_MethEPIC03_ss.csv")
+# Alex has already checked the QC samples, so let's just separate the ones
+# we need 
+targets = rbind(targets1, targets2, targets3)
+targets = targets[grepl(x=targets$Sample_Name, pattern='ACC$'), ]
+
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+targets$original_brain_number = as.numeric(gsub(x=targets$Sample_Name,
+                                           pattern='_ACC', replacement=''))
+samples = merge(targets, more, by='original_brain_number', all.x=T, all.y=F,
+                sort=F)
+
+# cleaning up some metadata
+samples$Individual = factor(samples$hbcc_brain_id)
+samples$MoD = factor(samples$Manner.of.Death)
+samples$batch = factor(samples$Sample_Group)
+samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
+samples$substance_group = factor(samples$substance_group)
+samples$comorbid_group = factor(samples$comorbid_group_update)
+samples$evidence_level = factor(samples$evidence_level)
+
+# need extended for beadcount function
+rgSet <- read.metharray.exp(targets=samples, extended=T)
+sampleNames(rgSet) <- samples$original_brain_number
+
+save(rgSet, samples,
+     file='~/data/methylation_post_mortem/raw_ACC_02172021.RData')
+
+detP <- detectionP(rgSet)
+keep <- colMeans(detP) < 0.05
+rgSet <- rgSet[,keep]
+samples <- samples[keep,]
+detP <- detP[,keep]
+
+# I also know from looking at the data using champ that one sample is bad
+keep = pData(rgSet)$Sample_Name != "1908_ACC"
+rgSet <- rgSet[,keep]
+samples <- samples[keep,]
+detP <- detP[,keep]
+
+qcReport(rgSet, sampNames=samples$original_brain_number,
+         sampGroups=samples$Diagnosis,
+         pdf="~/data/methylation_post_mortem/ACC_qcReport_02172021.pdf")
+
+mSetSq <- preprocessFunnorm(rgSet) 
+```
+
+
+
+```r
+plotMDS(getM(mSetSq), top=1000, gene.selection="common", 
+        col=pal[factor(targets$Sample_Group)])
+legend("top", legend=levels(factor(targets$Sample_Group)), text.col=pal,
+       bg="white", cex=0.7)
+
+# ensure probes are in the same order in the mSetSq and detP objects
+detP <- detP[match(featureNames(mSetSq),rownames(detP)),] 
+
+# remove any probes that have failed in one or more samples
+keep <- rowSums(detP < 0.01) == ncol(mSetSq) 
+
+mSetSqFlt <- mSetSq[keep,]
+mSetSqFlt
+
+# if your data includes males and females, remove probes on the sex chromosomes
+keep <- !(featureNames(mSetSqFlt) %in% ann450k$Name[ann450k$chr %in% 
+                                                        c("chrX","chrY")])
+table(keep)
+mSetSqFlt <- mSetSqFlt[keep,]
+
+# remove probes with SNPs at CpG site
+mSetSqFlt <- dropLociWithSnps(mSetSqFlt)
+
+# exclude cross reactive probes 
+xReactiveProbes <- read.csv(file=paste(dataDirectory,
+                                       "48639-non-specific-probes-Illumina450k.csv",
+                                       sep="/"), stringsAsFactors=FALSE)
+keep <- !(featureNames(mSetSqFlt) %in% xReactiveProbes$TargetID)
+mSetSqFlt <- mSetSqFlt[keep,] 
 
 # TODO
  * look into chAMP package? BMIQ normalization?
