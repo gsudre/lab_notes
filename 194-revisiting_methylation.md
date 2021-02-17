@@ -225,6 +225,8 @@ Current Data Set contains 0 NA in [Beta] Matrix.
 I think all these steps are also part of the pipeline I've been following. I should probably go ahead and attach the appropriate grouping though, and other metadata, before I generate plots and normalize, in case the normalization depends on sample group. 
 
 ```r
+myregion = 'ACC'
+
 library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
 ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
 data_dir = '~/data/methylation_post_mortem/Shaw_2019_MethEPIC01/'
@@ -239,28 +241,46 @@ targets3 <- read.metharray.sheet(data_dir,
 # Alex has already checked the QC samples, so let's just separate the ones
 # we need 
 targets = rbind(targets1, targets2, targets3)
-targets = targets[grepl(x=targets$Sample_Name, pattern='ACC$'), ]
+targets = targets[grepl(x=targets$Sample_Name,
+                  pattern=sprintf('%s$', myregion)), ]
 
+meta = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+meta = meta[meta$Region==myregion, ]
+meta = meta[, !grepl(colnames(meta), pattern='^ENS')]
 library(gdata)
 more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
 more = more[!duplicated(more$hbcc_brain_id),]
-targets$original_brain_number = as.numeric(gsub(x=targets$Sample_Name,
-                                           pattern='_ACC', replacement=''))
-samples = merge(targets, more, by='original_brain_number', all.x=T, all.y=F,
+meta = merge(meta, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+targets$hbcc_brain_id = as.numeric(gsub(x=targets$Sample_Name,
+                                        pattern=sprintf('_%s', myregion),
+                                        replacement=''))
+samples = merge(targets, meta, by='hbcc_brain_id', all.x=T, all.y=F,
                 sort=F)
 
 # cleaning up some metadata
+samples$POP_CODE = as.character(samples$POP_CODE)
+samples[which(samples$POP_CODE=='WNH'), 'POP_CODE'] = 'W'
+samples[which(samples$POP_CODE=='WH'), 'POP_CODE'] = 'W'
+samples$POP_CODE = factor(samples$POP_CODE)
 samples$Individual = factor(samples$hbcc_brain_id)
+samples[which(samples$Manner.of.Death=='Suicide (probable)'),
+        'Manner.of.Death'] = 'Suicide'
+samples[which(samples$Manner.of.Death=='unknown'),
+        'Manner.of.Death'] = 'natural'
 samples$MoD = factor(samples$Manner.of.Death)
 samples$batch = factor(samples$Sample_Group)
 samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
 samples$substance_group = factor(samples$substance_group)
 samples$comorbid_group = factor(samples$comorbid_group_update)
 samples$evidence_level = factor(samples$evidence_level)
+samples$brain_bank = factor(samples$bainbank)
 
 # need extended for beadcount function
 rgSet <- read.metharray.exp(targets=samples, extended=T)
-sampleNames(rgSet) <- samples$original_brain_number
+sampleNames(rgSet) <- samples$hbcc_brain_id
 
 save(rgSet, samples,
      file='~/data/methylation_post_mortem/raw_ACC_02172021.RData')
@@ -284,41 +304,228 @@ qcReport(rgSet, sampNames=samples$original_brain_number,
 mSetSq <- preprocessFunnorm(rgSet) 
 ```
 
-
+Now we start the removal of different probes:
 
 ```r
-plotMDS(getM(mSetSq), top=1000, gene.selection="common", 
-        col=pal[factor(targets$Sample_Group)])
-legend("top", legend=levels(factor(targets$Sample_Group)), text.col=pal,
-       bg="white", cex=0.7)
-
 # ensure probes are in the same order in the mSetSq and detP objects
 detP <- detP[match(featureNames(mSetSq),rownames(detP)),] 
 
 # remove any probes that have failed in one or more samples
 keep <- rowSums(detP < 0.01) == ncol(mSetSq) 
-
 mSetSqFlt <- mSetSq[keep,]
-mSetSqFlt
 
-# if your data includes males and females, remove probes on the sex chromosomes
+# remove probes on the sex chromosomes
 keep <- !(featureNames(mSetSqFlt) %in% ann450k$Name[ann450k$chr %in% 
                                                         c("chrX","chrY")])
-table(keep)
 mSetSqFlt <- mSetSqFlt[keep,]
 
 # remove probes with SNPs at CpG site
 mSetSqFlt <- dropLociWithSnps(mSetSqFlt)
 
-# exclude cross reactive probes 
+# exclude cross reactive probes
+dataDirectory = '~/data/methylation_post_mortem/'
 xReactiveProbes <- read.csv(file=paste(dataDirectory,
                                        "48639-non-specific-probes-Illumina450k.csv",
                                        sep="/"), stringsAsFactors=FALSE)
 keep <- !(featureNames(mSetSqFlt) %in% xReactiveProbes$TargetID)
 mSetSqFlt <- mSetSqFlt[keep,] 
+```
+
+Now we can just use Champ to see what other probes it'd drop:
+
+```r
+library(wateRmelon)
+library(ChAMP)
+bc = beadcount(rgSet)
+betas = getBeta(rgSet)
+detP_champ <- detectionP(rgSet)
+colnames(betas) = pData(rgSet)$Sample_Name
+colnames(bc) = colnames(betas)
+rownames(bc) = rownames(betas)
+colnames(detP_champ) = colnames(betas)
+rownames(detP_champ) = rownames(betas)
+myLoad = champ.filter(beta=betas,
+                      pd=pData(rgSet),
+                      detP=detP_champ, beadcount=bc)
+keep_me = rownames(mSetSqFlt) %in% rownames(myLoad$beta)
+mSetSqFlt = mSetSqFlt[keep_me,]
+keep_me = rownames(betas) %in% rownames(myLoad$beta)
+rgSet = rgSet[keep_me,]
+```
+
+Now we can proceed with the rest of the analysis. First, let's make a few
+confirmation plots:
+
+```r
+library(RColorBrewer)
+# visualise what the data looks like before and after normalisation
+par(mfrow=c(1,2))
+densityPlot(rgSet, sampGroups=samples$Diagnosis, main="Raw", legend=FALSE)
+legend("top", legend = levels(samples$Diagnosis),
+        text.col=brewer.pal(8,"Dark2"))
+densityPlot(getBeta(mSetSqFlt), sampGroups=samples$Diagnosis,
+            main="Normalized", legend=FALSE)
+legend("top", legend = levels(samples$Diagnosis), 
+       text.col=brewer.pal(8,"Dark2"))
+```
+
+![](images/2021-02-17-13-06-49.png)
+
+And a couple MDs plots:
+
+```r
+# MDS plots to look at largest sources of variation
+par(mfrow=c(1,2))
+pal <- brewer.pal(8,"Dark2")
+plotMDS(getM(mSetSqFlt), top=1000, gene.selection="common", 
+        col=pal[samples$Diagnosis], cex=0.8)
+legend("right", legend=levels(samples$Diagnosis), text.col=pal,
+       cex=0.65, bg="white")
+
+plotMDS(getM(mSetSqFlt), top=1000, gene.selection="common", 
+        col=pal[samples$batch])
+legend("right", legend=levels(samples$batch), text.col=pal,
+       cex=0.7, bg="white")
+```
+
+![](images/2021-02-17-13-07-26.png)
+
+There isn't much of a separation in MDS, which is expected.
+
+And stated in the workflow:
+
+```
+M-values have nicer statistical properties and are thus better for use in statistical analysis of methylation data whilst beta values are easy to interpret and are thus better for displaying data.
+```
+
+```r
+# removing the one subject without ADHD DX (they actually had Anx from Stefano's
+# DX file, but best not to include them especially as methylation is mostly 
+# to align with RNAseq, which doesn't include that subject)
+keep_me = samples$hbcc_brain_id != 2851
+mSetSqFlt = mSetSqFlt[, keep_me]
+rgSet = rgSet[, keep_me]
+samples = samples[keep_me, ]
+
+# calculate M-values for statistical analysis
+mVals <- getM(mSetSqFlt)
+# and b values for display and interpretation
+bVals <- getBeta(mSetSqFlt)
+
+par(mfrow=c(1,2))
+densityPlot(bVals, sampGroups=samples$Diagnosis, main="Beta values", 
+            legend=FALSE, xlab="Beta values")
+legend("top", legend = levels(samples$Diagnosis), 
+       text.col=brewer.pal(8,"Dark2"))
+densityPlot(mVals, sampGroups=samples$Diagnosis, main="M-values", 
+            legend=FALSE, xlab="M values")
+legend("topleft", legend = levels(samples$Diagnosis), 
+       text.col=brewer.pal(8,"Dark2"))
+```
+
+![](images/2021-02-17-14-48-42.png)
+
+Let's figure out the PCs for the analysis then:
+
+```r
+# removing variables with zero or near-zero variance
+library(caret)
+pp_order = c('zv', 'nzv')
+pp = preProcess(t(mVals), method = pp_order)
+X = t(predict(pp, t(mVals)))
+cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+# remove the 2 probes with infinity
+bad_probes = rownames(which(abs(mVals)==Inf, arr.ind = T))
+X = X[!(rownames(X) %in% bad_probes), ]
+
+# checking which PCs are associated with our potential nuiscance variables
+set.seed(42)
+mypca <- prcomp(t(X), scale=TRUE)
+# how many PCs to keep... using Kaiser thredhold, close to eigenvalues < 1
+library(nFactors)
+eigs <- mypca$sdev^2
+nS = nScree(x=eigs)
+keep_me = seq(1, nS$Components$nkaiser)
+
+mydata = data.frame(mypca$x[, keep_me])
+# create main metadata data frame including metadata and PCs
+data.pm = cbind(samples, mydata)
+rownames(data.pm) = samples$hbcc_brain_id
+cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
+
+# check which PCs are associated at nominal p<.01
+num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+                'C1', 'C2', 'C3', 'C4', 'C5', 'pH', 'RIN')
+pc_vars = colnames(mydata)
+num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                dimnames=list(num_vars, pc_vars))
+num_pvals = num_corrs
+for (x in num_vars) {
+    for (y in pc_vars) {
+        res = cor.test(samples[, x], mydata[, y], method='spearman')
+        num_corrs[x, y] = res$estimate
+        num_pvals[x, y] = res$p.value
+    }
+}
+categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group', 'brain_bank',
+            'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                dimnames=list(categ_vars, pc_vars))
+categ_pvals = categ_corrs
+for (x in categ_vars) {
+    for (y in pc_vars) {
+        res = kruskal.test(mydata[, y], samples[, x])
+        categ_corrs[x, y] = res$statistic
+        categ_pvals[x, y] = res$p.value
+    }
+}
+use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                which(categ_pvals < .01, arr.ind = T)[, 'col']))
+# only use the ones not related to Diagnosis
+keep_me = c()
+for (pc in use_pcs) {
+    keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+}
+use_pcs = use_pcs[keep_me]
+fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
+                                            collapse = ' + '))
+cat('Found', length(use_pcs), 'PCs p < .01\n')
+cat('Using formula:', fm_str, '\n')
+
+# scaling PCs to assure convergence
+for (var in pc_vars[use_pcs]) {
+    data.pm[, var] = scale(data.pm[, var])
+}
+
+design = model.matrix(as.formula(fm_str), data.pm)
+fit <- lmFit(X, design)
+fit2 <- eBayes( fit )
+summary(decideTests(fit2))
+```
+
+```
+       (Intercept) DiagnosisCase    PC2    PC4    PC5    PC6    PC7    PC9    PC1
+Down        174953             0  57379  37406  26835  18587   4730    929  97340
+NotSig        4940        372531 260460 308190 335884 341667 359866 368619 147222
+Up          192638             0  54692  26935   9812  12277   7935   2983 127969
+```
+
+As usual, nothing significant.
+
+```r
+# get the table of results for the first contrast (naive - rTreg)
+ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
+                      c(1:4,12:19,24:ncol(ann450k))]
+DMPs <- topTable(fit2, num=Inf, coef='DiagnosisCase', genelist=ann450kSub)
+```
 
 # TODO
- * look into chAMP package? BMIQ normalization?
+ * try DMR analysis
+ * use the tests in champ
+ * GSEA
+ * differential variability analysis
+ * cell type composition analysis
 
 
 
