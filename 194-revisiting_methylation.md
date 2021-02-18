@@ -455,8 +455,7 @@ rownames(data.pm) = samples$hbcc_brain_id
 cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
 
 # check which PCs are associated at nominal p<.01
-num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-                'C1', 'C2', 'C3', 'C4', 'C5', 'pH', 'RIN')
+num_vars = c('Age', 'PMI', 'C1', 'C2', 'C3', 'C4', 'C5', 'pH')
 pc_vars = colnames(mydata)
 num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
                 dimnames=list(num_vars, pc_vars))
@@ -505,10 +504,10 @@ summary(decideTests(fit2))
 ```
 
 ```
-       (Intercept) DiagnosisCase    PC2    PC4    PC5    PC6    PC7    PC9    PC1
-Down        174953             0  57379  37406  26835  18587   4730    929  97340
-NotSig        4940        372531 260460 308190 335884 341667 359866 368619 147222
-Up          192638             0  54692  26935   9812  12277   7935   2983 127969
+       (Intercept) DiagnosisCase    PC2    PC6    PC7    PC1    PC5
+Down        174805             0  55024  14401   2988  95268  19660
+NotSig        5226        372531 266676 348532 364149 151340 346165
+Up          192500             0  50831   9598   5394 125923   6706
 ```
 
 As usual, nothing significant.
@@ -520,12 +519,152 @@ ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
 DMPs <- topTable(fit2, num=Inf, coef='DiagnosisCase', genelist=ann450kSub)
 ```
 
+## DMR
+
+Let's see if anything comes out of the DMR analysis:
+
+```r
+myp = .005
+myAnnotation <- cpg.annotate(object = X, datatype = "array", what = "M", 
+                             analysis.type = "differential", design = design, 
+                             contrasts = FALSE,
+                             coef = "DiagnosisCase", arraytype = "450K",
+                             pcutoff=myp)
+DMRs <- dmrcate(myAnnotation, lambda=1000, C=2, pcutoff=myp)
+results.ranges <- extractRanges(DMRs)
+```
+
+It requires some significant probes. Since we don't have it (after FDR), I had
+to use a nominal pvalue cutoff. We got 26 different ranges, so now it's a matter
+of exploring them. There's code in the same workflow on how to visualize them.
+
+I need to check the other 2 methods they mentioned, in case they give better
+results, or do not rely on FDR probes.
+
+## Differential variability analysis
+
+```r
+library(missMethyl)
+fitvar <- varFit(X, design = design, coef = c(1,2))
+summary(decideTests(fitvar))
+```
+
+```
+       (Intercept) DiagnosisCase    PC2    PC6    PC7    PC1    PC5
+Down             0             3      3   7481    709      6    127
+NotSig         431        372526 372064 364854 370041 372502 372055
+Up          372100             2    464    196   1781     23    349
+```
+
+That actually gives me 5 different hits... interesting.
+
+```r
+topDV <- topVar(fitvar, coef=2)
+head(topDV, 6)
+```
+
+```
+r$> head(topDV, 6)                                                                        
+           SampleVar LogVarRatio DiffLevene         t      P.Value Adj.P.Value
+cg26858423 0.9262042   0.9903271  0.6374935  5.856225 5.292082e-08  0.01553467
+cg24537724 0.1836765  -1.6102527 -0.3527540 -5.683845 1.153880e-07  0.01553467
+cg04459504 0.1593624   2.2792019  0.3413854  5.614015 1.630218e-07  0.01553467
+cg07921777 0.6550620  -1.8047819 -0.6029856 -5.651322 1.726287e-07  0.01553467
+cg15201545 1.3809214  -1.8904371 -0.7459090 -5.562552 2.085017e-07  0.01553467
+cg20811856 0.9319978   1.0229771  0.6242335  4.966199 3.476637e-06  0.21585920
+```
+
+I did top 6 just to check the adjusted p-value. The β values for the top 4
+differentially variable CpGs can be seen below.
+
+```r
+cpgsDV <- rownames(topDV)
+par(mfrow=c(2,3))
+for(i in 1:5){
+    stripchart(bVals[rownames(bVals)==cpgsDV[i],] ~ design[,2],
+               method="jitter", group.names=levels(samples$Diagnosis),
+               pch=16, cex=1.5, col=c(4,2), ylab="Beta values",
+               vertical=TRUE, cex.axis=1.5, cex.lab=1.5)
+    title(cpgsDV[i],cex.main=1.5)
+}
+```
+
+![](images/2021-02-17-19-47-04.png)
+
+I can also do some region analysis here (DVMR):
+
+```r
+myAnnotation <- cpg.annotate(object = X, datatype = "array", what = "M", 
+                             analysis.type = "diffVar", design = design, 
+                             contrasts = FALSE,
+                             varFitcoef = c(1, 2), arraytype = "450K",
+                             topVarcoef = 'DiagnosisCase')
+DMRs <- dmrcate(myAnnotation, lambda=1000, C=2)
+results.ranges <- extractRanges(DMRs)
+```
+
+```
+r$> results.ranges                                                                        
+GRanges object with 1 range and 8 metadata columns:
+      seqnames            ranges strand |   no.cpgs min_smoothed_fdr  Stouffer     HMFDR
+         <Rle>         <IRanges>  <Rle> | <integer>        <numeric> <numeric> <numeric>
+  [1]     chr6 30923327-30923750      * |        11      3.22627e-10         1  0.908295
+         Fisher   maxdiff  meandiff overlapping.genes
+      <numeric> <numeric> <numeric>            <list>
+  [1]         1         0         0              <NA>
+  -------
+  seqinfo: 1 sequence from an unspecified genome; no seqlengths
+```
+
+Not much happening there, though.
+
+<!-- ## bumphunter
+
+```r
+require(doParallel)
+registerDoParallel(cores = 2)
+# Find bumps
+bumps <- bumphunter(X, design=design, chr=dat$chr, pos=dat$pos,
+cluster=dat$cluster, coef=2, cutoff= 0.28, nullMethod="bootstrap", smooth=TRUE, B=250, verbose=TRUE,
+smoothFunction=loessByCluster)
+``` -->
+
+## champ
+
+Let's go back and check if CHaMP gives any different results:
+
+```r
+champ.SVD(beta = bVals, pd=pData(mSetSqFlt),
+          resultsDir='~/tmp/CHAMP_SVDimages/', Rplot=F)
+```
+
+Not sure what the deal is here... how does it correct for associated
+components??? Worst software ever.
+
+## GSEA
+
+Let's try some GSEA through
+https://bioconductor.org/packages/devel/bioc/vignettes/methylGSA/inst/doc/methylGSA-vignette.html
+
+```r
+library(methylGSA)
+ranks = DMPs[, 'P.Value']
+names(ranks) = rownames(DMPs)
+res1 = methylglm(cpg.pval = ranks, minsize = 200, 
+                 maxsize = 500, GS.type = "GO")
+```
+
 # TODO
- * try DMR analysis
- * use the tests in champ
- * GSEA
- * differential variability analysis
- * cell type composition analysis
+ * try DMR analysis with bumphunter
+ * GSEA: https://bioconductor.org/packages/devel/bioc/vignettes/methylGSA/inst/doc/methylGSA-vignette.html
+    * add parallelization
+    * switch between GO, KEGG, Reactome
+    * play with min and max set size
+    * play with rank type
+    * play with methylGSA function
+ * where are the var fit genes?
+ * use goregion() to do gene ontology on the DMRs?
+ * varfit for RNAseq? like https://www.bioconductor.org/packages/release/bioc/vignettes/missMethyl/inst/doc/missMethyl.html#rna-seq-expression-data
 
 
 
