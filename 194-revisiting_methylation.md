@@ -730,7 +730,7 @@ for (d in unique(gmt$description)) {
 ranks = DMPs[, 'P.Value']
 names(ranks) = rownames(DMPs)
 for (g in c('all', 'body', 'promoter1', 'promoter2')) {
-    cat(gs, g, '\n')
+    cat(g, '\n')
     res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
                 maxsize = 500, GS.list = sets, parallel=F)
     fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_glm_myset.csv',
@@ -749,7 +749,7 @@ for (g in c('all', 'body', 'promoter1', 'promoter2')) {
 ranks = topDV[, 'P.Value']
 names(ranks) = rownames(topDV)
 for (g in c('all', 'body', 'promoter1', 'promoter2')) {
-    cat(gs, g, '\n')
+    cat(g, '\n')
     res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
                 maxsize = 500, GS.list = sets, parallel=F)
     fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_glm_myset.csv',
