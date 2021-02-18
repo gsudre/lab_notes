@@ -633,17 +633,6 @@ GRanges object with 1 range and 8 metadata columns:
 
 Not much happening there, though.
 
-<!-- ## bumphunter
-
-```r
-require(doParallel)
-registerDoParallel(cores = 2)
-# Find bumps
-bumps <- bumphunter(X, design=design, chr=dat$chr, pos=dat$pos,
-cluster=dat$cluster, coef=2, cutoff= 0.28, nullMethod="bootstrap", smooth=TRUE, B=250, verbose=TRUE,
-smoothFunction=loessByCluster)
-``` -->
-
 ## champ
 
 Let's go back and check if CHaMP gives any different results:
@@ -776,24 +765,423 @@ DMP only worked nominally, and only using RRA. Looking at all
 probes (p = 0.045954046), driven by body (p=0.02997003) and promoter1
 (p=0.046953047).
 
-# Caudate
+For GO sets, we had a whole bunch of results. The all sets for DMP RRA have
+interesting stuff, like symmetric, GABA-ergic, inhibitory synapse. 
+
+Let's see what we get if we run the same GO sets as we did for DGE and DTE:
 
 ```r
+library(WebGestaltR)
+
+DBs = c('Biological_Process', 'Cellular_Component', 'Molecular_Function')
+for (db in DBs) {
+    db_file = sprintf('~/data/post_mortem/hsapiens_geneontology_%s_noRedundant_entrezgene.gmt', db)
+    gmt = readGmt(db_file) # already in gene symbols
+    sets = list()
+    for (d in unique(gmt$description)) {
+        genes = gmt[gmt$description==d, 'gene']
+        sets[[d]] = genes
+    }
+
+    ranks = DMPs[, 'P.Value']
+    names(ranks) = rownames(DMPs)
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, parallel=F,
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_glm_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, method='GSEA',
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_RRA_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+
+for (db in DBs) {
+    db_file = sprintf('~/data/post_mortem/hsapiens_geneontology_%s_noRedundant_entrezgene.gmt', db)
+    gmt = readGmt(db_file) # already in gene symbols
+    sets = list()
+    for (d in unique(gmt$description)) {
+        genes = gmt[gmt$description==d, 'gene']
+        sets[[d]] = genes
+    }
+
+    ranks = topDV[, 'P.Value']
+    names(ranks) = rownames(topDV)
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, parallel=F,
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_glm_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, method='GSEA',
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_RRA_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
 ```
 
+In biological processes, I get 2 non-related sets with q < .05 for DMP all glm,
+and that was it.
+
+In cellular components, I get DMP_all_RRA: euchromatin, and DMP_promoter2_RRA I
+get transcription repressor complex, exon-exon junction complex, and
+transcription regulator complex. This is interesting as it relates to the
+changes we're seeing in the transcriptome? I also get significant results for
+all_topVar_glm: proton-transporting two-sector ATPase complex. For
+all_topVar_RRA I get mRNA cleavage factor complex, and promoter2_topVar_glm: proton-transporting two-sector ATPase
+complex and endoplasmic reticulum quality control compartment.
+
+Finally, in molecular function I get several hits:
+ * promoter2_topVar_glm: G protein-coupled amine receptor activity, catecholamine binding
+ * promoter2_DMP_RRA: transcription corepressor activity
+ * promoter1_DMP_glm: lipid transporter activity
+ * body_DMP_glm: transmembrane receptor protein kinase activity, ligand-activated transcription factor activity
+ * all_topVar_glm: G protein-coupled amine receptor activity, catecholamine binding
+ * all_DMP_glm: transmembrane receptor protein kinase activity
+ * all_DMP_RRA: steroid hormone receptor activity, ligand-activated
+   transcription factor activity, SNAP receptor activity, repressing transcription factor binding
+
+Do we get anything in KEGG pathways? promoter1_topVar_glm has lipoic acid metabolism,
+body_topVar_RRA has tight junction, and all_DMP_RRA has SNARE interactions in
+vesicular transport (q = .0507), but it does make a parallel to the all_DMP_RRA
+finding in molecular function ontology.
+
+Finally, anything in proteomics? Lots!
+ * promoter2_topVar_glm:
+```
+Homo sapiens: RUNX1 regulates estrogen receptor mediated transcription
+Homo sapiens: Synthesis of wybutosine at G37 of tRNA(Phe)
+Homo sapiens: RUNX1 regulates expression of components of tight junctions
+Homo sapiens: Digestion of dietary lipid
+Homo sapiens: Adrenoceptors
+Homo sapiens: Insulin receptor recycling
+Homo sapiens: RUNX1 and FOXP3 control the development of regulatory T lymphocytes (Tregs)
+Homo sapiens: RUNX2 regulates genes involved in differentiation of myeloid cells
+Homo sapiens: Release of apoptotic factors from the mitochondria
+Homo sapiens: Synthesis of GDP-mannose
+Homo sapiens: RUNX1 regulates transcription of genes involved in differentiation of keratinocytes
+Homo sapiens: Amine ligand-binding receptors
+Homo sapiens: Regulation of RUNX1 Expression and Activity
+Homo sapiens: RUNX1 regulates transcription of genes involved in WNT signaling
+Homo sapiens: Transferrin endocytosis and recycling
+Homo sapiens: Sensing of DNA Double Strand Breaks
+Homo sapiens: NGF processing
+Homo sapiens: Expression and Processing of Neurotrophins
+Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+Homo sapiens: Defective CYP11A1 causes Adrenal insufficiency, congenital, with 46,XY sex reversal (AICSR)
+Homo sapiens: RUNX2 regulates chondrocyte maturation
+```
+ * promoter2_DPM_glm: 
+```
+Homo sapiens: Uptake and function of diphtheria toxin
+Homo sapiens: MECP2 regulates transcription of neuronal ligands
+Homo sapiens: LDL remodeling
+Homo sapiens: MECP2 regulates transcription factors
+```
+ * promoter1_topVar_glm:
+```
+Homo sapiens: RUNX1 regulates estrogen receptor mediated transcription
+Homo sapiens: RUNX1 regulates expression of components of tight junctions
+Homo sapiens: Sensing of DNA Double Strand Breaks
+Homo sapiens: RUNX1 regulates transcription of genes involved in differentiation of keratinocytes
+Homo sapiens: RUNX2 regulates chondrocyte maturation
+Homo sapiens: Defective CYP11A1 causes Adrenal insufficiency, congenital, with 46,XY sex reversal (AICSR)
+Homo sapiens: RUNX1 regulates transcription of genes involved in WNT signaling
+Homo sapiens: RUNX3 Regulates Immune Response and Cell Migration
+Homo sapiens: Cohesin Loading onto Chromatin
+Homo sapiens: Lysine catabolism
+Homo sapiens: RUNX1 and FOXP3 control the development of regulatory T lymphocytes (Tregs)
+Homo sapiens: RUNX2 regulates genes involved in differentiation of myeloid cells
+Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+Homo sapiens: PTK6 Regulates Cell Cycle
+Homo sapiens: Regulation of HSF1-mediated heat shock response
+```
+ * promoter1_topVar_RRA:
+```
+Homo sapiens: RUNX2 regulates genes involved in differentiation of myeloid cells
+Homo sapiens: Activation of gene expression by SREBF (SREBP)
+Homo sapiens: RUNX1 regulates transcription of genes involved in differentiation of myeloid cells
+```
+ * promoter1_DMP_glm:
+```
+Homo sapiens: LDL remodeling
+Homo sapiens: Metabolism of vitamin K
+Homo sapiens: Plasma lipoprotein remodeling
+Homo sapiens: Scavenging of heme from plasma
+Homo sapiens: Plasma lipoprotein assembly, remodeling, and clearance
+```
+ * body_DMP_glm:
+```
+Homo sapiens: Pyrimidine biosynthesis
+Homo sapiens: WNT ligand biogenesis and trafficking
+Homo sapiens: Ubiquinol biosynthesis
+Homo sapiens: Fibronectin matrix formation
+Homo sapiens: Nuclear Receptor transcription pathway
+```
+ * all_topVar_glm:
+```
+Homo sapiens: RUNX2 regulates genes involved in differentiation of myeloid cells
+Homo sapiens: RUNX2 regulates chondrocyte maturation
+Homo sapiens: RUNX1 regulates expression of components of tight junctions
+Homo sapiens: Synthesis of wybutosine at G37 of tRNA(Phe)
+Homo sapiens: RUNX1 regulates estrogen receptor mediated transcription
+Homo sapiens: NGF processing
+Homo sapiens: Expression and Processing of Neurotrophins
+Homo sapiens: Release of apoptotic factors from the mitochondria
+Homo sapiens: RUNX3 regulates p14-ARF
+Homo sapiens: Synthesis of GDP-mannose
+Homo sapiens: RUNX1 regulates transcription of genes involved in differentiation of myeloid cells
+Homo sapiens: RUNX1 regulates transcription of genes involved in WNT signaling
+Homo sapiens: RUNX1 and FOXP3 control the development of regulatory T lymphocytes (Tregs)
+Homo sapiens: Amine ligand-binding receptors
+Homo sapiens: Regulation of RUNX1 Expression and Activity
+Homo sapiens: Insulin receptor recycling
+Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+Homo sapiens: Adrenoceptors
+```
+ * all_topVar_RRA:
+```
+Homo sapiens: RUNX1 regulates expression of components of tight junctions
+Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+Homo sapiens: RUNX2 regulates chondrocyte maturation
+Homo sapiens: ERK/MAPK targets
+Homo sapiens: EPH-ephrin mediated repulsion of cells
+Homo sapiens: RUNX3 regulates p14-ARF
+```
+ * all_DMP_RRA:
+```
+Homo sapiens: Nuclear Receptor transcription pathway
+Homo sapiens: Interferon Signaling
+```
+
+So, there's a lot there. Can we make up a story?
+
+# Single probe annotation
+
+Can we do the single probe analysis the same way we did for DTE, after
+subtyping?
+
+```r
+run_methyl = function(mVals, samples, subtype, ann450kSub) {
+    cat('Starting with', nrow(mVals), 'variables\n')
+    if (subtype == 'all') {
+        keep_me = rep(TRUE, nrow(mVals))
+    } else {
+      keep_me = grepl(ann450kSub$Relation_to_Island,
+                      pattern=sprintf('%s$', subtype))
+    }
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    mVals = mVals[keep_me, ]
+    ann450kSub = ann450kSub[keep_me, ]
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(mVals), method = pp_order)
+    X = t(predict(pp, t(mVals)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # remove the 2 probes with infinity
+    bad_probes = rownames(which(abs(mVals)==Inf, arr.ind = T))
+    X = X[!(rownames(X) %in% bad_probes), ]
+
+    # checking which PCs are associated with our potential nuiscance variables
+    set.seed(42)
+    mypca <- prcomp(t(X), scale=TRUE)
+    # how many PCs to keep... using Kaiser thredhold, close to eigenvalues < 1
+    library(nFactors)
+    eigs <- mypca$sdev^2
+    nS = nScree(x=eigs)
+    keep_me = seq(1, nS$Components$nkaiser)
+
+    mydata = data.frame(mypca$x[, keep_me])
+    # create main metadata data frame including metadata and PCs
+    data.pm = cbind(samples, mydata)
+    rownames(data.pm) = samples$hbcc_brain_id
+    cat('Using', nS$Components$nkaiser, 'PCs from possible', ncol(X), '\n')
+
+    # check which PCs are associated at nominal p<.01
+    num_vars = c('Age', 'PMI', 'C1', 'C2', 'C3', 'C4', 'C5', 'pH')
+    pc_vars = colnames(mydata)
+    num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
+                    dimnames=list(num_vars, pc_vars))
+    num_pvals = num_corrs
+    for (x in num_vars) {
+        for (y in pc_vars) {
+            res = cor.test(samples[, x], mydata[, y], method='spearman')
+            num_corrs[x, y] = res$estimate
+            num_pvals[x, y] = res$p.value
+        }
+    }
+    categ_vars = c('batch', 'Diagnosis', 'MoD', 'substance_group', 'brain_bank',
+                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
+                    dimnames=list(categ_vars, pc_vars))
+    categ_pvals = categ_corrs
+    for (x in categ_vars) {
+        for (y in pc_vars) {
+            res = kruskal.test(mydata[, y], samples[, x])
+            categ_corrs[x, y] = res$statistic
+            categ_pvals[x, y] = res$p.value
+        }
+    }
+    use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
+                    which(categ_pvals < .01, arr.ind = T)[, 'col']))
+    # only use the ones not related to Diagnosis
+    keep_me = c()
+    for (pc in use_pcs) {
+        keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
+    }
+    use_pcs = use_pcs[keep_me]
+    fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
+                                                collapse = ' + '))
+    cat('Found', length(use_pcs), 'PCs p < .01\n')
+    cat('Using formula:', fm_str, '\n')
+
+    # scaling PCs to assure convergence
+    for (var in pc_vars[use_pcs]) {
+        data.pm[, var] = scale(data.pm[, var])
+    }
+
+    library(limma)
+    design = model.matrix(as.formula(fm_str), data.pm)
+    fit <- lmFit(X, design)
+    fit2 <- eBayes( fit )
+
+    DMPs <- topTable(fit2, num=Inf, coef='DiagnosisCase', genelist=ann450kSub)
+    library(missMethyl)
+    fitvar <- varFit(X, design = design, coef = c(1,2))
+    topDV <- topVar(fitvar, coef=2, number=nrow(X))
+    m = merge(topDV, ann450kSub, by=0, sort=F)
+
+    res = list(DMPs = DMPs, topDV=m, fm_str=fm_str, design=design,
+               pcs = rbind(categ_pvals, num_pvals))
+    return(res)
+}
+```
+
+Now it's just a matter of reloading the data and running the individual
+analysis:
+
+```r
+library(minfi)
+load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
+mVals <- getM(mSetSqFlt)
+
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+# get the table of results for the first contrast (naive - rTreg)
+ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
+                      c(1:4,12:19,24:ncol(ann450k))]
+
+res_acc = list()
+for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea')) {
+    res_acc[[st]] = run_methyl(mVals, samples, st, ann450kSub)
+}
+save(res_acc, file='~/data/methylation_post_mortem/res_ACC_02182021.RData')
+```
+
+Splitting into subtypes made no difference in getting significant results for
+DMPs. For DVs, we still have 5 probes at q < .05, and they're 3 island, one Sea,
+and one Shore. After splitting, I get 4 island probes, and 1 sea probe. So, not
+terribly useful gains.
+
+
+## bumphunter
+
+Following the worflow from here, which uses minfi and bumphunter:
+
+https://www.bioconductor.org/help/course-materials/2015/BioC2015/methylation450k.html#bumphunter-to-find-differentially-methylated-regions-dmrs
+
+I did change it to use M because the other workflow did everything on M, not B.
+
+```r
+# remove probes with infinity
+mVals <- getM(mSetSqFlt)
+bad_probes = rownames(which(abs(mVals)==Inf, arr.ind = T))
+mSetSqFlt = mSetSqFlt[!(rownames(mVals) %in% bad_probes), ]
+
+require(doParallel)
+registerDoParallel(cores = 2)
+# checking number of bumps it finds to adjust cutoff
+bumps <- bumphunter(mSetSqFlt, design=design, type='M', coef=2, cutoff= 0.2,
+                    nullMethod="bootstrap", B=0, smooth=TRUE, verbose=TRUE)
+bumps <- bumphunter(mSetSqFlt, design=design, type='M', coef=2, cutoff= 0.2,
+                    nullMethod="bootstrap", smooth=TRUE, B=1000, verbose=TRUE)
+```
+
+What if I don't smooth it? 
+
+```r
+# remove probes with infinity
+mVals <- getM(mSetSqFlt)
+bad_probes = rownames(which(abs(mVals)==Inf, arr.ind = T))
+mSetSqFlt = mSetSqFlt[!(rownames(mVals) %in% bad_probes), ]
+
+require(doParallel)
+registerDoParallel(cores = 2)
+# checking number of bumps it finds to adjust cutoff
+bumps <- bumphunter(mSetSqFlt, design=res$design, type='M', coef=2, cutoff= 0.2,
+                    nullMethod="bootstrap", B=0, smooth=FALSE, verbose=TRUE)
+bumps <- bumphunter(mSetSqFlt, design=res$design, type='M', coef=2, cutoff= 0.2,
+                    nullMethod="bootstrap", smooth=FALSE, B=1000, verbose=TRUE)
+```
+
+## blockFinder
+
+It's also worth trying the blockFinder function in minfi just to see if there is
+anything interesting in openSea:
+
+```r
+# remove probes with infinity
+mVals <- getM(mSetSqFlt)
+bad_probes = rownames(which(abs(mVals)==Inf, arr.ind = T))
+mSetSqFlt = mSetSqFlt[!(rownames(mVals) %in% bad_probes), ]
+
+require(doParallel)
+registerDoParallel(cores = 2)
+# checking number of bumps it finds to adjust cutoff
+blocks <- blockFinder(mSetSqFlt, design=res_acc[['all']]$design, type='M', coef=2, cutoff= 0.2,
+                    nullMethod="bootstrap", B=0, smooth=TRUE, verbose=TRUE)
+```
+
+blockFinder needed the cluster parameter, but it wasn't very straight-forward
+how to use clusterMaker in thebumphunter package to select only opensea probes.
+So, I'll ignore this for now... we have lots of results already.
+
 # TODO
- * try DMR analysis with bumphunter
- * GSEA: https://bioconductor.org/packages/devel/bioc/vignettes/methylGSA/inst/doc/methylGSA-vignette.html
-    * play with methylGSA functions
-    * try DMVs as well
- * where are the var fit genes?
+ * try DMR analysis with bumphunter: smooth coefficients?
  * use goregion() to do gene ontology on the DMRs?
  * varfit for RNAseq? like
    https://www.bioconductor.org/packages/release/bioc/vignettes/missMethyl/inst/doc/missMethyl.html#rna-seq-expression-data:
-   asked Yun-Ching first
- * subtype the analysis to increase FDR hits for DMPs and DMVs?
- * subtype analysis for GSEA?
+   Yun-Ching said to not put that much attention in it. Maybe if that's the only
+   thing we have?
+ * IHW? <- try this!
+ * CAMT? https://github.com/jchen1981/CAMT  <- try this!
+ * adaFDR? https://github.com/fxia22/RadaFDR
+ * adaptMT? https://cran.r-project.org/web/packages/adaptMT/index.html <- try this!
  * Caudate
 
 
-
+# Useful links
+ * https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02001-7
+ * https://www.nature.com/articles/s41467-019-11247-0
+ * https://arxiv.org/abs/1909.04811
+ * https://simons.berkeley.edu/sites/default/files/docs/10324/slidessimons.pdf
