@@ -767,6 +767,15 @@ for (g in c('all', 'body', 'promoter1', 'promoter2')) {
 
 ```
 
+We get a very significant results for GWAS using topVar and glm. It's there for
+all (p<.001), and it's driven by promoter1 (p = 0.000715346) and promoter2 (p =
+0.006440221). The topVar result is also there when using RRA but only for the
+all set (p = 0.005316876).
+
+DMP only worked nominally, and only using RRA. Looking at all
+probes (p = 0.045954046), driven by body (p=0.02997003) and promoter1
+(p=0.046953047).
+
 # Caudate
 
 ```r
@@ -779,8 +788,9 @@ for (g in c('all', 'body', 'promoter1', 'promoter2')) {
     * try DMVs as well
  * where are the var fit genes?
  * use goregion() to do gene ontology on the DMRs?
- * use our own lists for GSEA
- * varfit for RNAseq? like https://www.bioconductor.org/packages/release/bioc/vignettes/missMethyl/inst/doc/missMethyl.html#rna-seq-expression-data
+ * varfit for RNAseq? like
+   https://www.bioconductor.org/packages/release/bioc/vignettes/missMethyl/inst/doc/missMethyl.html#rna-seq-expression-data:
+   asked Yun-Ching first
  * subtype the analysis to increase FDR hits for DMPs and DMVs?
  * subtype analysis for GSEA?
  * Caudate
