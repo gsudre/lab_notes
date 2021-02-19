@@ -1144,6 +1144,30 @@ bumps <- bumphunter(mSetSqFlt, design=res$design, type='M', coef=2, cutoff= 0.2,
                     nullMethod="bootstrap", smooth=FALSE, B=1000, verbose=TRUE)
 ```
 
+This takes forever, so it's worth consider running it in BW next time! The
+smoothed version in particular hasn't finished even after a whole night of
+computation.
+
+```
+r$> head(bumps$table)                                                                                                        
+       chr    start      end      value     area cluster indexStart indexEnd  L clusterL      p.value  fwer  p.valueArea
+3709  chr1  2120985  2121724 -0.7447861 4.468716     568       1560     1565  6        6 3.337377e-05 0.275 0.0001564455
+6013 chr17   154410   155045 -0.7653644 3.826822   67261     304976   304980  5        5 3.834636e-05 0.305 0.0002406928
+2717  chr5 74908125 74908170  0.8630352 2.589106  127995     106924   106926  3        6 6.072304e-05 0.416 0.0007661623
+1491 chr17 33759512 33760419  0.4384178 4.384178   70403     312791   312800 10       11 6.206182e-05 0.483 0.0001641913
+7188 chr20 62200285 62200854 -0.6609544 3.304772  102700     361834   361838  5        6 8.682917e-05 0.548 0.0003682590
+8381  chr6 32554481 32554481 -1.4731473 1.473147  136936     130250   130250  1        1 9.600935e-05 0.568 0.0036378363
+     fwerArea
+3709    0.794
+6013    0.899
+2717    0.994
+1491    0.809
+7188    0.958
+8381    1.000
+```
+
+Nothing there for the non-smoothed.
+
 ## blockFinder
 
 It's also worth trying the blockFinder function in minfi just to see if there is
@@ -1166,15 +1190,15 @@ blockFinder needed the cluster parameter, but it wasn't very straight-forward
 how to use clusterMaker in thebumphunter package to select only opensea probes.
 So, I'll ignore this for now... we have lots of results already.
 
+
+
+
 # TODO
  * try DMR analysis with bumphunter: smooth coefficients?
- * use goregion() to do gene ontology on the DMRs?
- * varfit for RNAseq? like
-   https://www.bioconductor.org/packages/release/bioc/vignettes/missMethyl/inst/doc/missMethyl.html#rna-seq-expression-data:
-   Yun-Ching said to not put that much attention in it. Maybe if that's the only
-   thing we have?
  * IHW? <- try this!
- * CAMT? https://github.com/jchen1981/CAMT  <- try this!
+ * CAMT? https://github.com/jchen1981/CAMT  <- try this! It also has a cool
+   function test possible covariates. But that one paper (below) kinda hinted
+   that it should be either the meanB or sdB/M. Wroth checking them out!
  * adaFDR? https://github.com/fxia22/RadaFDR
  * adaptMT? https://cran.r-project.org/web/packages/adaptMT/index.html <- try this!
  * Caudate
