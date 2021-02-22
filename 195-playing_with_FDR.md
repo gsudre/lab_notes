@@ -144,4 +144,93 @@ alpha = 0.31: FDPhat 0.3077, Number of Rej. 13
 
 Not there yet, but let's try combining the covariates.
 
+```r
+load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
+load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
+vals <- getM(mSetSqFlt)
+#vals <- getBeta(mSetSqFlt)
 
+bad_probes = rownames(which(abs(vals)==Inf, arr.ind = T))
+mSetSqFlt = mSetSqFlt[!(rownames(vals) %in% bad_probes), ]
+vals = vals[!(rownames(vals) %in% bad_probes), ]
+pvals = res_acc[['all']]$DMPs[, 'P.Value']
+names(pvals) = rownames(res_acc[['all']]$DMPs)
+
+mus = rowMeans(vals)
+sds = apply(vals, 1, sd)
+
+# sorting so the variables correspond to each other
+mus2 = mus[match(names(pvals), names(mus))]
+sds2 = sds[match(names(pvals), names(sds))]
+
+library("mgcv")
+set.seed(42)
+x <- data.frame(x1 = mus2, x2=sds2)
+formula <- "s(x1, x2)"
+res_gam <- adapt_gam(x = x, pvals = pvals, pi_formulas = formula,
+                     mu_formulas = formula)
+```
+
+And if we want to use both means or both sds, we do:
+
+```r
+load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
+load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
+library(minfi)
+bvals <- getM(mSetSqFlt)
+mvals <- getBeta(mSetSqFlt)
+
+bad_probes = rownames(which(abs(bvals)==Inf, arr.ind = T))
+mSetSqFlt = mSetSqFlt[!(rownames(bvals) %in% bad_probes), ]
+bvals = bvals[!(rownames(bvals) %in% bad_probes), ]
+mvals = mvals[!(rownames(mvals) %in% bad_probes), ]
+pvals = res_acc[['all']]$DMPs[, 'P.Value']
+names(pvals) = rownames(res_acc[['all']]$DMPs)
+
+m = rowMeans(mvals)
+b = rowMeans(bvals)
+
+# m = apply(mvals, 1, sd)
+# b = apply(bvals, 1, sd)
+
+# sorting so the variables correspond to each other
+m2 = m[match(names(pvals), names(m))]
+b2 = b[match(names(pvals), names(b))]
+
+library("mgcv")
+library("adaptMT")
+library("splines")
+set.seed(42)
+x <- data.frame(x1 = m2, x2=b2)
+formula <- "s(x1, x2)"
+res_gam <- adapt_gam(x = x, pvals = pvals, pi_formulas = formula,
+                     mu_formulas = formula)
+```
+
+And we can try a version with all 4 variables:
+
+```r
+mm = rowMeans(mvals)
+mb = rowMeans(bvals)
+sm = apply(mvals, 1, sd)
+sb = apply(bvals, 1, sd)
+
+# sorting so the variables correspond to each other
+mm2 = mm[match(names(pvals), names(mm))]
+mb2 = mb[match(names(pvals), names(mb))]
+sm2 = sm[match(names(pvals), names(sm))]
+sb2 = sb[match(names(pvals), names(sb))]
+
+library("mgcv")
+set.seed(42)
+x <- data.frame(x1 = mm2, x2=mb2, x3 = sm2, x4=sb2)
+formula <- "s(x1, x2, x3, x4)"
+res_gam <- adapt_gam(x = x, pvals = pvals, pi_formulas = formula,
+                     mu_formulas = formula)
+```
+
+Finally, let's see what we can get with glmnet:
+
+```r
+res <- adapt_glmnet(as.matrix(x), pvals)
+```

@@ -1166,7 +1166,25 @@ r$> head(bumps$table)
 8381    1.000
 ```
 
-Nothing there for the non-smoothed.
+Nothing there for the non-smoothed. Not much for the smoothed results either:
+
+```
+r$> head(bumps$table)                                                                           
+      chr     start       end      value      area cluster indexStart indexEnd  L clusterL
+583  chr3  56590734  56590734 -0.8260103 0.8260103  110761      71413    71413  1        8
+105 chr17  33759512  33760419  0.4406281 4.4062812   70403     312791   312800 10       11
+128 chr19  57741988  57742444  0.4566193 4.1095741   85843     352738   352746  9        9
+17   chr1 205818956 205819609  0.4990234 3.4931635   13901      30955    30961  7        9
+203  chr6  31148332  31148666  0.2277432 3.1884051  136577     127239   127252 14       14
+667  chr6  30923306  30923865 -0.2714442 3.5287751  136525     126969   126981 13       17
+         p.value  fwer p.valueArea fwerArea
+583 0.0006279161 0.340 0.093637336    1.000
+105 0.0007954484 0.446 0.002946985    0.867
+128 0.0012927685 0.635 0.003588092    0.905
+17  0.0016792800 0.684 0.005756777    0.975
+203 0.0018520888 0.760 0.007370100    0.989
+667 0.0019483869 0.788 0.005606394    0.972
+```
 
 ## blockFinder
 
@@ -1190,11 +1208,7 @@ blockFinder needed the cluster parameter, but it wasn't very straight-forward
 how to use clusterMaker in thebumphunter package to select only opensea probes.
 So, I'll ignore this for now... we have lots of results already.
 
-
-
-
 # TODO
- * try DMR analysis with bumphunter: smooth coefficients?
  * IHW? <- try this!
  * CAMT? https://github.com/jchen1981/CAMT  <- try this! It also has a cool
    function test possible covariates. But that one paper (below) kinda hinted
