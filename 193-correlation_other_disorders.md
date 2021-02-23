@@ -224,3 +224,60 @@ for (d in disorders) {
 ```
 
 ![](images/2021-02-11-12-09-03.png)
+
+# 2021-02-23 13:53:42
+
+Philip sent a couple papers with ASD data I should try:
+
+https://www.nature.com/articles/nature20612#Sec13
+
+https://www.nature.com/articles/tp201787#Sec14
+
+They're both frontal cortex or DLPFC, but it's still worth trying.
+
+```r
+load('~/data/post_mortem/DGE_02082021.RData')
+
+st = 'protein_coding'
+met = 'spearman'
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+
+library(gdata)
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Wright')
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=T, all.y=F)
+colnames(both_res)[11] = 'log2FC.ASD_Wright'
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Neelroop')
+both_res = merge(both_res, meta, by.x='ensembl_gene_id', by.y='ENSEMBL.ID',
+                 all.x=T, all.y=F)
+colnames(both_res)[17] = 'log2FC.ASD_Neelroop'
+
+corrs = list()
+disorders = c('Wright', 'Neelroop')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('log2FC.ASD_%s', d), met)
+}
+mylim = max(abs(unlist(corrs)))
+quartz()
+boxplot(corrs, ylim=c(-mylim, mylim), ylab=sprintf('%s correlation', met),
+        main=sprintf('ACC %s (n=%d)', st, nrow(both_res)))
+abline(h=0, col='red')
+# calculating p-value
+for (d in disorders) {
+    if (median(corrs[[d]]) > 0) {
+        pval = sum(corrs[[d]] <= 0) / 10000
+    } else {
+        pval = sum(corrs[[d]] >= 0) / 10000
+    }
+    cat(d, 'pval = ', pval, '\n')
+}
+```
+
+Wright pval =  0 
+Neelroop pval =  0 
+
+![](images/2021-02-23-14-11-01.png)
+
+Both highly significant. The Neelroop paper has more subjects, it's in Nature,
+and has frontal and temporal cortex in it. 
