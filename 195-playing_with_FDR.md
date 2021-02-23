@@ -147,8 +147,11 @@ Not there yet, but let's try combining the covariates.
 ```r
 load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
 load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
+library(minfi)
+library("adaptMT")
+library("splines")
 vals <- getM(mSetSqFlt)
-#vals <- getBeta(mSetSqFlt)
+# vals <- getBeta(mSetSqFlt)
 
 bad_probes = rownames(which(abs(vals)==Inf, arr.ind = T))
 mSetSqFlt = mSetSqFlt[!(rownames(vals) %in% bad_probes), ]
@@ -167,8 +170,9 @@ library("mgcv")
 set.seed(42)
 x <- data.frame(x1 = mus2, x2=sds2)
 formula <- "s(x1, x2)"
+alphas = c(.1, .05)
 res_gam <- adapt_gam(x = x, pvals = pvals, pi_formulas = formula,
-                     mu_formulas = formula)
+                     mu_formulas = formula, alphas = alphas)
 ```
 
 And if we want to use both means or both sds, we do:
@@ -177,6 +181,8 @@ And if we want to use both means or both sds, we do:
 load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
 load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
 library(minfi)
+library("adaptMT")
+library("splines")
 bvals <- getM(mSetSqFlt)
 mvals <- getBeta(mSetSqFlt)
 
@@ -190,8 +196,8 @@ names(pvals) = rownames(res_acc[['all']]$DMPs)
 m = rowMeans(mvals)
 b = rowMeans(bvals)
 
-# m = apply(mvals, 1, sd)
-# b = apply(bvals, 1, sd)
+m = apply(mvals, 1, sd)
+b = apply(bvals, 1, sd)
 
 # sorting so the variables correspond to each other
 m2 = m[match(names(pvals), names(m))]
@@ -203,8 +209,9 @@ library("splines")
 set.seed(42)
 x <- data.frame(x1 = m2, x2=b2)
 formula <- "s(x1, x2)"
+alphas = c(.1, .05)
 res_gam <- adapt_gam(x = x, pvals = pvals, pi_formulas = formula,
-                     mu_formulas = formula)
+                     mu_formulas = formula, alphas=alphas)
 ```
 
 And we can try a version with all 4 variables:

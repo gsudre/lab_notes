@@ -170,3 +170,99 @@ for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea')) {
 }
 save(all_res, prs_names, file='~/data/methylation_post_mortem/res_Caudate_PRS_02222021.RData')
 ```
+
+# 2021-02-23 07:11:20
+
+Let's compute the PRS and DX overlaps:
+
+```r
+library(GeneOverlap)
+load('~/data/methylation_post_mortem/res_ACC_PRS_02222021.RData')
+load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
+dx_res = res_acc
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+prs_res = all_res
+all_res = c()
+for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea')) {
+    res.dx = as.data.frame(dx_res[[st]]$DMPs)
+    for (p in prs_names) {
+        cat(st, p, '\n')
+        res_str = sprintf('res.prs = prs_res[["%s"]][["%s"]]$DMPs', st, p)
+        eval(parse(text=res_str))
+        res.prs = as.data.frame(res.prs)
+
+        both_res = merge(res.dx, res.prs, by=0,
+                         all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
+        for (t in c(.05, .01, .005, .001)) {
+            prs_genes = both_res[both_res$P.Value.prs < t & both_res$t.prs > 0,
+                                 'Row.names']
+            dx_genes = both_res[both_res$P.Value.dx < t & both_res$t.dx > 0,
+                                'Row.names']
+            go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                     genome.size=nrow(both_res))
+            go.obj <- testGeneOverlap(go.obj)
+            inter = intersect(prs_genes, dx_genes)
+            pval1 = getPval(go.obj)
+            allUp = union(both_res[both_res$t.prs > 0, 'Row.names'],
+                          both_res[both_res$t.dx > 0, 'Row.names'])
+            go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+            go.obj <- testGeneOverlap(go.obj)
+            pval2 = getPval(go.obj)
+            this_res = c(st, p, t, 'up', length(prs_genes),
+                         length(dx_genes), length(inter), pval1, pval2)
+            all_res = rbind(all_res, this_res)
+        }
+        for (t in c(.05, .01, .005, .001)) {
+            prs_genes = both_res[both_res$P.Value.prs < t & both_res$t.prs < 0,
+                                 'Row.names']
+            dx_genes = both_res[both_res$P.Value.dx < t & both_res$t.dx < 0,
+                                'Row.names']
+            go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                     genome.size=nrow(both_res))
+            go.obj <- testGeneOverlap(go.obj)
+            inter = intersect(prs_genes, dx_genes)
+            pval1 = getPval(go.obj)
+            allDown = union(both_res[both_res$t.prs < 0, 'Row.names'],
+                            both_res[both_res$t.dx < 0, 'Row.names'])
+            go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+            go.obj <- testGeneOverlap(go.obj)
+            pval2 = getPval(go.obj)
+            this_res = c(st, p, t, 'down', length(prs_genes),
+                         length(dx_genes), length(inter), pval1, pval2)
+            all_res = rbind(all_res, this_res)
+        }
+        for (t in c(.05, .01, .005, .001)) {
+            prs_genes = both_res[both_res$P.Value.prs < t, 'Row.names']
+            dx_genes = both_res[both_res$P.Value.dx < t, 'Row.names']
+            go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                     genome.size=nrow(both_res))
+            go.obj <- testGeneOverlap(go.obj)
+            inter = intersect(prs_genes, dx_genes)
+            pval1 = getPval(go.obj)
+            pval2 = NA
+            this_res = c(st, p, t, 'abs', length(prs_genes),
+                         length(dx_genes), length(inter), pval1, pval2)
+            all_res = rbind(all_res, this_res)
+        }
+    }
+}
+colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
+                      'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
+                      'pvalDirOnly')
+out_fname = '~/data/methylation_post_mortem/res_ACC_upDown_prs_overlap_02232021.csv'
+write.csv(all_res, file=out_fname, row.names=F)
+```
+
+And did the same thing for Caudate.
+
+Looking at the results, there seems to be a significant overlap only for the
+most strict values of PRS (PRS0.000050), and it's distributed across the
+different types of probes. It's also somewhat distributed between up and down
+regulated probes. But the effect is more pronounced for other PRS thresholds
+when we split it between up and down probes.
+
+We see a similar pattern for the Caudate. The results for the Caudate seem to be
+a bit stronger though.
