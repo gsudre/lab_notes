@@ -234,3 +234,5 @@ Finally, let's see what we can get with glmnet:
 ```r
 res <- adapt_glmnet(as.matrix(x), pvals)
 ```
+
+alpha = 0.17: FDPhat 0.1667, Number of Rej. 6

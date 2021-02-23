@@ -325,3 +325,309 @@ for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea')) {
 }
 save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_02222021.RData')
 ```
+
+Like the ACC analysis, let's run GSEA:
+
+```r
+library(methylGSA)
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+load('~/data/methylation_post_mortem/res_Caudate_02222021.RData')
+myregion='Caudate'
+
+ranks = res_cau[['all']]$DMPs[, 'P.Value']
+names(ranks) = rownames(res_cau[['all']]$DMPs)
+for (gs in c('GO', 'KEGG', 'Reactome')) {
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(gs, g, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.type = gs, parallel=F)
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_glm_%s.csv',
+                        myregion, g, gs)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+
+for (gs in c('GO', 'KEGG', 'Reactome')) {
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(gs, g, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.type = gs, method='GSEA')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_RRA_%s.csv',
+                        myregion, g, gs)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+
+ranks = res_cau[['all']]$topDV[, 'P.Value']
+names(ranks) = res_cau[['all']]$topDV$Row.names
+for (gs in c('GO', 'KEGG', 'Reactome')) {
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(gs, g, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.type = gs, parallel=F)
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_glm_%s.csv',
+                        myregion, g, gs)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+for (gs in c('GO', 'KEGG', 'Reactome')) {
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(gs, g, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.type = gs, method='GSEA')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_RRA_%s.csv',
+                        myregion, g, gs)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+```
+
+Let's try our own sets for GSEA too:
+
+```r
+library(WebGestaltR)
+db_file = sprintf('~/data/post_mortem/my_%s_sets.gmt', myregion)
+gmt = readGmt(db_file) # already in gene symbols
+sets = list()
+for (d in unique(gmt$description)) {
+    genes = gmt[gmt$description==d, 'gene']
+    sets[[d]] = genes
+}
+
+ranks = res_cau[['all']]$DMPs[, 'P.Value']
+names(ranks) = rownames(res_cau[['all']]$DMPs)
+for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+    cat(g, '\n')
+    res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                maxsize = 500, GS.list = sets, parallel=F)
+    fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_glm_myset.csv',
+                    myregion, g)
+    write.csv(res, row.names=F, file=fname)
+}
+for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+    cat(g, '\n')
+    res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                maxsize = 500, GS.list = sets, method='GSEA')
+    fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_RRA_myset.csv',
+                    myregion, g)
+    write.csv(res, row.names=F, file=fname)
+}
+
+ranks = res_cau[['all']]$topDV[, 'P.Value']
+names(ranks) = res_cau[['all']]$topDV$Row.names
+for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+    cat(g, '\n')
+    res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                maxsize = 500, GS.list = sets, parallel=F)
+    fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_glm_myset.csv',
+                    myregion, g)
+    write.csv(res, row.names=F, file=fname)
+}
+for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+    cat(g, '\n')
+    res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                maxsize = 500, GS.list = sets, method='GSEA')
+    fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_RRA_myset.csv',
+                    myregion, g)
+    write.csv(res, row.names=F, file=fname)
+}
+```
+
+Let's see what we get if we run the same GO sets as we did for DGE and DTE:
+
+```r
+library(WebGestaltR)
+
+DBs = c('Biological_Process', 'Cellular_Component', 'Molecular_Function')
+for (db in DBs) {
+    db_file = sprintf('~/data/post_mortem/hsapiens_geneontology_%s_noRedundant_entrezgene.gmt', db)
+    gmt = readGmt(db_file) # already in gene symbols
+    sets = list()
+    for (d in unique(gmt$description)) {
+        genes = gmt[gmt$description==d, 'gene']
+        sets[[d]] = genes
+    }
+
+    ranks = res_cau[['all']]$DMPs[, 'P.Value']
+    names(ranks) = rownames(res_cau[['all']]$DMPs)
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, parallel=F,
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_glm_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, method='GSEA',
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_DMP_RRA_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+
+for (db in DBs) {
+    db_file = sprintf('~/data/post_mortem/hsapiens_geneontology_%s_noRedundant_entrezgene.gmt', db)
+    gmt = readGmt(db_file) # already in gene symbols
+    sets = list()
+    for (d in unique(gmt$description)) {
+        genes = gmt[gmt$description==d, 'gene']
+        sets[[d]] = genes
+    }
+
+    ranks = res_cau[['all']]$topDV[, 'P.Value']
+    names(ranks) = res_cau[['all']]$topDV$Row.names
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, parallel=F,
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_glm_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+    for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+        cat(g, db, '\n')
+        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+                    maxsize = 500, GS.list = sets, method='GSEA',
+                    GS.idtype='ENTREZID')
+        fname = sprintf('~/data/methylation_post_mortem/%s_%s_topVar_RRA_%s.csv',
+                        myregion, g, db)
+        write.csv(res, row.names=F, file=fname)
+    }
+}
+```
+
+Let's see if there is anything interesting here. Starting with our own sets:
+
+ * GWAS at 0.038961039 for promoter1_DMP_RRA and 0.016987381 for
+   promoter1_DMP_glm, somewhat confirmatory. Both nominal though.
+ * Not much interesting stuff happening though. adult dev at .009 for
+   all_topVar_glm, carried by body at .016 all nominally, somewhat unlikely to
+   survive correction without TWAS and GWAS. The body result is confirmed by
+   topVar_RRA at 0.002016416 nominally, which could potentially survive. It's
+   topVar though...
+
+Biological Functions: (q < .05)
+ * only hits at all_DMP_RRA: cell-cell adhesion mediated by cadherin.
+   promoter2_DMP_RRA also had a couple hits, but not an intersection:
+   columnar/cuboidal epithelial cell differentiation, and response to estradiol.
+
+Cellular Components: (q<.05)
+ * all_DMP_RRA: non-motile cilium
+ * everything else was for topVar: all_topVar_RRA got axon, body_topVar_RRA got
+   cell-substrate junction and receptor complex, while its glm counterpart got
+   myelin sheath. It's interesting, but topVar and a single hit for FDR q < .05.
+
+Molecular Processes: (q < .05)
+ * all_DMP_glm got oxidoreductase activity, acting on single donors with incorporation of molecular oxygen
+ * all_topVar_RRA got bHLH transcription factor binding
+ * nothing that interesting...
+
+KEGG: (q < .05)
+ * all_DMP_RRA got Prostate cancer
+ * body_DMP_RRA got Notch signaling pathway
+ * body_topVar_glm got Leukocyte transendothelial migration and Fat digestion and absorption
+ * again, nothing great
+
+Reactome: (q < .05)
+ * multiple hits here... let's see
+ * all_DMP_glm:
+Acyl chain remodelling of PI
+Homo sapiens: Keratinization
+Homo sapiens: Classical Kir channels
+Homo sapiens: Acyl chain remodelling of PS
+Homo sapiens: Formation of the cornified envelope
+ * all_DMP_RRA:
+Homo sapiens: Signaling by Type 1 Insulin-like Growth Factor 1 Receptor (IGF1R)
+Homo sapiens: FRS-mediated FGFR4 signaling
+Homo sapiens: Myogenesis
+Homo sapiens: Parasite infection
+Homo sapiens: Leishmania phagocytosis
+Homo sapiens: FCGR3A-mediated phagocytosis
+Homo sapiens: IGF1R signaling cascade
+Homo sapiens: PI-3K cascade:FGFR3
+Homo sapiens: Formation of Senescence-Associated Heterochromatin Foci (SAHF)
+Homo sapiens: FRS-mediated FGFR3 signaling
+Homo sapiens: PI-3K cascade:FGFR4
+Homo sapiens: Pre-NOTCH Processing in Golgi
+Homo sapiens: Adherens junctions interactions
+Homo sapiens: SHC-mediated cascade:FGFR3
+Homo sapiens: FGFR4 ligand binding and activation
+Homo sapiens: IRS-related events triggered by IGF1R
+Homo sapiens: Integration of provirus
+Homo sapiens: SHC-mediated cascade:FGFR4
+ * body_DMP_glm: Homo sapiens: Keratinization
+ * body_DMP_RRA:
+Homo sapiens: FRS-mediated FGFR4 signaling
+Homo sapiens: Downstream signaling of activated FGFR3
+Homo sapiens: Downstream signaling of activated FGFR4
+Homo sapiens: Signaling by FGFR3 in disease
+Homo sapiens: Signaling by FGFR3 point mutants in cancer
+Homo sapiens: PI-3K cascade:FGFR4
+Homo sapiens: FRS-mediated FGFR3 signaling
+Homo sapiens: Uptake and function of anthrax toxins
+Homo sapiens: Regulation of RUNX1 Expression and Activity
+Homo sapiens: SHC-mediated cascade:FGFR4
+Homo sapiens: Reduction of cytosolic Ca++ levels
+Homo sapiens: PI-3K cascade:FGFR3
+Homo sapiens: Signaling by FGFR3
+Homo sapiens: FRS-mediated FGFR2 signaling
+Homo sapiens: Netrin-1 signaling
+Homo sapiens: Signaling by FGFR4
+Homo sapiens: Phospholipase C-mediated cascade; FGFR4
+Homo sapiens: Downstream signaling of activated FGFR2
+ * promoter2_DMP_glm:
+Homo sapiens: Classical Kir channels
+Homo sapiens: Hydrolysis of LPC
+Homo sapiens: Acyl chain remodelling of PI
+ * all_topVar_glm:
+Homo sapiens: GLI proteins bind promoters of Hh responsive genes to promote transcription
+Homo sapiens: RUNX1 regulates transcription of genes involved in BCR signaling
+ * body_topVar_glm: Homo sapiens: Proton-coupled monocarboxylate transport
+ * body_topVar_RRA:
+Homo sapiens: HDMs demethylate histones
+Homo sapiens: Interleukin-23 signaling
+Homo sapiens: Lysosomal oligosaccharide catabolism
+Homo sapiens: Presynaptic depolarization and calcium channel opening
+ * promoter1_topVar_glm: Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+ * promoter2_topVar_glm: Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
+
+FGF3 is fibroblast growth factor receptor 3. These proteins play a role in
+several important cellular processes, including regulation of cell growth and
+division (proliferation), determination of cell type, formation of blood vessels
+(angiogenesis), wound healing, and embryo development.
+(https://medlineplus.gov/genetics/gene/fgfr3/#conditions). FGFR4 does something
+similar. 
+
+# Maybe overall story?
+
+I think we can take the DMP_RRA results and make a story out of it. For example,
+in ACC we get GWAS in all (p = 0.045954046), driven by body (p=0.02997003) and promoter1
+(p=0.046953047). In cellular ocmponents, DMP_all_RRA: euchromatin, and DMP_promoter2_RRA I
+get transcription repressor complex, exon-exon junction complex, and
+transcription regulator complex. This is interesting as it relates to the
+changes we're seeing in the transcriptome? Then, for molecular, we get
+promoter2_DMP_RRA: transcription corepressor activity. And all_DMP_RRA: steroid hormone receptor activity, ligand-activated
+transcription factor activity, SNAP receptor activity, repressing transcription
+factor binding. Still in ACC, for KEGG all_DMP_RRA has SNARE interactions in
+vesicular transport (q = .0507), but it does make a parallel to the all_DMP_RRA
+finding in molecular function ontology. Not much in the reactome though. Only 
+Homo sapiens: Nuclear Receptor transcription pathway and Homo sapiens:
+Interferon Signaling for all_DMP_RRA.
+
+Turning to the Caudate, there is GWAS at 0.038961039 for promoter1_DMP_RRA.
+Cellular componets gets all_DMP_RRA: non-motile cilium. And the Reactome has all
+that stuff about FGFR3 and 4.
+
+There isn't anything in a single probe resolution, and my on-going efforts to
+boost the FDr aren't doing anything. The per-region analysis also didn't come up
+with anything.
+
+If we go for topVar we get more stuff, and possible a different/stronger story.
+If anything, we have a few single probe hits, and possibly even for the whole
+region. GSEA results are very different too. But maybe we don't need to rely on that.
