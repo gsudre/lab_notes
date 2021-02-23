@@ -7,7 +7,7 @@ https://github.com/douglasyao/mesc/wiki/Estimating-overall-expression-scores
 First, let's make the expression matrix. Maybe I can just re-read Derek's
 original file, remove the outliers, and add whatever info is still remaining.
 
-The one caveta here is that our RNAseq is in GRCh38, and everything else (plink
+The one caveat here is that our RNAseq is in GRCh38, and everything else (plink
 files, reference 1KG files, and GWAS) is in hg19. It might be easier to just
 liftOver the RNAseq to hg19, and do everything there:
 
@@ -44,8 +44,9 @@ data = data[, !grepl(colnames(data), pattern='^ENS')]
 library(GenomicFeatures)
 txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
 txdf <- select(txdb, keys(txdb, "GENEID"),
-               columns=c('GENEID','TXCHROM','EXONSTART'),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
                "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
 # store gene names in geneCounts without version in end of name
 tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
 tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
@@ -56,6 +57,36 @@ count_matrix = count_matrix[imautosome, ]
 tx_meta = tx_meta[imautosome, ]
 ```
 
+# 2021-02-23 17:17:16
+
+Let's go back to this analysis. I'll try to liftOver the genes, so I'll need to
+get the gene coordinates. They can be start location or midpoints.
+
+```r
+tx_meta$bed = sapply(1:nrow(tx_meta),
+                     function(x) sprintf('chr%s:%d-%d', tx_meta[x, 'TXCHROM'],
+                                         tx_meta[x, 'TXSTART'],
+                                         tx_meta[x, 'TXEND']))
+write.table(tx_meta$bed, file='~/tmp/tx_meta_hg38.txt', row.names=F, quote=F,
+            col.names=F)
+```
+
+Then I used the liftOver website to convert to hg19. There were a few errors, so
+I'll remove those first, and then add in the converted coordinates.
+
+```r
+errs = read.table('~/tmp/hglft_genome_29a45_586cc0.err.txt')
+rm_me = tx_meta$bed %in% errs[,1]
+tx_meta_clean = tx_meta[!rm_me, ]
+cout_matrix_clean = count_matrix[!rm_me,]
+new_pos = read.table('~/Downloads/hglft_genome_29a45_586cc0.bed')
+new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
+tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
+nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
+tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+```
+
 # TODO
  * might need to lift over PLINK files to GRCh38 because gene counts are there: https://github.com/sritchie73/liftOverPlink
  * add covariates, especially batch
+ * use only clean genes?
