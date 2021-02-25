@@ -143,8 +143,93 @@ then the actual MESC running. At least the first one only has to be run once.
 When we run Caudate, and any other variations of MESc (e.g. using covariates),
 we can just use the same chromosome files.
 
+# 2021-02-25 07:15:21
+
+I'll start the Caudate run as well.
+
+```r
+myregion = 'Caudate'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# data only contains sample metadata, and count_matrix has actual counts
+
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
+               "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = count_matrix[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+
+tx_meta$bed = sapply(1:nrow(tx_meta),
+                     function(x) sprintf('chr%s:%d-%d', tx_meta[x, 'TXCHROM'],
+                                         tx_meta[x, 'TXSTART'],
+                                         tx_meta[x, 'TXEND']))
+
+errs = read.table('~/tmp/hglft_genome_29a45_586cc0.err.txt')
+rm_me = tx_meta$bed %in% errs[,1]
+tx_meta_clean = tx_meta[!rm_me, ]
+count_matrix_clean = count_matrix[!rm_me,]
+colnames(count_matrix_clean) = data$hbcc_brain_id
+new_pos = read.table('~/Downloads/hglft_genome_29a45_586cc0.bed')
+new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
+tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
+nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
+tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+out_df = cbind(tx_meta_clean[, c(1, 6, 7)], count_matrix_clean)
+colnames(out_df)[1] = 'GENE'
+write.table(out_df, quote=F, row.names=F, sep='\t', file='~/tmp/caudate_mesc.txt')
+```
+
+```bash
+#bw
+module load plink
+module load python/2.7
+chr=2;
+
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+if [[ ! -e ${mydir}/ch${chr}_1KG ]]; then
+    plink --vcf /fdb/1000genomes/release/20130502/ALL.chr${chr}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+        --make-bed --out ${mydir}/ch${chr}_1KG;
+fi;
+./run_mesc.py --compute-expscore-indiv \
+    --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+    --expression-matrix ~/data/tmp/caudate_mesc.txt \
+    --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+    --geno-bfile $mydir/ch${chr}_1KG --chr ${chr} --out ${mydir}/exp_score_Caudate
+```
+
+Let's continue the MESC analysis. I used munge_stats.py back in note 168. 
+
+```bash
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+./run_mesc.py \
+    --h2med ~/data/expression_impute/fusion_twas-master/adhd_eur_jun2017.sumstats.gz \
+    --exp-chr ${mydir}/exp_score_ACC --out out_MESC_ACC
+```
+
+OK, so this is working. Now, we need to understand the interpretation a bit
+better. Also, run the other variants I had in the TODO.
 
 # TODO
- * might need to lift over PLINK files to GRCh38 because gene counts are there: https://github.com/sritchie73/liftOverPlink
  * add covariates, especially batch
  * use only clean genes?
+ * try all ADHD gwas, not just eur
