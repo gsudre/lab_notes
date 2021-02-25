@@ -78,13 +78,71 @@ I'll remove those first, and then add in the converted coordinates.
 errs = read.table('~/tmp/hglft_genome_29a45_586cc0.err.txt')
 rm_me = tx_meta$bed %in% errs[,1]
 tx_meta_clean = tx_meta[!rm_me, ]
-cout_matrix_clean = count_matrix[!rm_me,]
+count_matrix_clean = count_matrix[!rm_me,]
+colnames(count_matrix_clean) = data$hbcc_brain_id
 new_pos = read.table('~/Downloads/hglft_genome_29a45_586cc0.bed')
 new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
 tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
 nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
 tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+out_df = cbind(tx_meta_clean[, c(1, 6, 7)], count_matrix_clean)
+colnames(out_df)[1] = 'GENE'
+write.table(out_df, quote=F, row.names=F, sep='\t', file='~/tmp/acc_mesc.txt')
 ```
+
+We also need to make sure our PLINK files have the same sample names as what we
+have in our gene file. It's simpler to just rename the PLINK file
+
+```bash
+# bw
+cd ~/data/post_mortem/genotyping/1KG;
+awk '{ print $1 }' PM_1KG_genop05MAFbtp01rsbtp9_renamed.fam | cut -d"_" \
+    -f 2 | sed "s/BR//g" > new_ids.txt;
+awk '{ print $1, $2 }' PM_1KG_genop05MAFbtp01rsbtp9_renamed.fam > junk.txt;
+paste junk.txt new_ids.txt new_ids.txt > update_ids.txt;
+module load plink;
+plink --bfile PM_1KG_genop05MAFbtp01rsbtp9_renamed \
+    --update-ids update_ids.txt \
+    --make-bed --out PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc
+plink --vcf /fdb/1000genomes/release/20130502/ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+    --make-bed --out ch1_1KG;
+mydir=~/data/post_mortem/genotyping/1KG;
+cd /data/NCR_SBRB/software/mesc
+./run_mesc.py --compute-expscore-indiv \
+    --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+    --expression-matrix ~/data/tmp/acc_mesc.txt \
+    --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+    --geno-bfile $mydir/ch1_1KG --chr 1 --out exp_score_ACC
+```
+
+This is working, but it takes forever because it does each gene individually,
+for each chromosome. We have at least 5K in chr1, so we can definitely
+parallelize this.
+
+```bash
+#bw
+module load plink
+module load python/2.7
+chr=2;
+
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+if [[ ! -e ${mydir}/ch${chr}_1KG ]]; then
+    plink --vcf /fdb/1000genomes/release/20130502/ALL.chr${chr}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+        --make-bed --out ${mydir}/ch${chr}_1KG;
+fi;
+./run_mesc.py --compute-expscore-indiv \
+    --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+    --expression-matrix ~/data/tmp/acc_mesc.txt \
+    --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+    --geno-bfile $mydir/ch${chr}_1KG --chr ${chr} --out ${mydir}/exp_score_ACC
+```
+
+Both processes take a long time: creating the PLINK file for the chromosome, and
+then the actual MESC running. At least the first one only has to be run once.
+When we run Caudate, and any other variations of MESc (e.g. using covariates),
+we can just use the same chromosome files.
+
 
 # TODO
  * might need to lift over PLINK files to GRCh38 because gene counts are there: https://github.com/sritchie73/liftOverPlink
