@@ -229,6 +229,134 @@ mydir=~/data/post_mortem/genotyping/1KG;
 OK, so this is working. Now, we need to understand the interpretation a bit
 better. Also, run the other variants I had in the TODO.
 
+First, let's see what happens if I use the covariates and only the clean genes.
+I used the code from note 191:
+
+```r
+res = run_DGE(count_matrix, data, tx_meta, myregion, NA, .05)
+covars = data.frame(FID=rownames(res$design), IID=rownames(res$design))
+covars = cbind(covars, res$design[, 3:ncol(res$design)])
+write.table(covars, quote=F, row.names=F, sep='\t',
+            file='~/tmp/acc_covars_mesc.txt')
+
+clean_count = counts(res$dds)
+
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
+               "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
+tx_meta = data.frame(GENEID = substr(rownames(clean_count), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+clean_count = clean_count[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+tx_meta$bed = sapply(1:nrow(tx_meta),
+                     function(x) sprintf('chr%s:%d-%d', tx_meta[x, 'TXCHROM'],
+                                         tx_meta[x, 'TXSTART'],
+                                         tx_meta[x, 'TXEND']))
+write.table(tx_meta$bed, file='~/tmp/tx_meta_accClean_hg38.txt',
+            row.names=F, quote=F, col.names=F)
+
+errs = read.table('~/tmp/hglft_genome_1e4cb_8004c0.err.txt')
+rm_me = tx_meta$bed %in% errs[,1]
+tx_meta_clean = tx_meta[!rm_me, ]
+count_matrix_clean = clean_count[!rm_me,]
+colnames(count_matrix_clean) = data$hbcc_brain_id
+new_pos = read.table('~/tmp/hglft_genome_1e4cb_8004c0.bed')
+new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
+tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
+nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
+tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+out_df = cbind(tx_meta_clean[, c(1, 6, 7)], count_matrix_clean)
+colnames(out_df)[1] = 'GENE'
+write.table(out_df, quote=F, row.names=F, sep='\t', file='~/tmp/accClean_mesc.txt')
+```
+
+Now we run the new file and the covars:
+
+```bash
+#bw
+module load plink
+module load python/2.7
+chr=1;
+
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+if [[ ! -e ${mydir}/ch${chr}_1KG ]]; then
+    plink --vcf /fdb/1000genomes/release/20130502/ALL.chr${chr}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+        --make-bed --out ${mydir}/ch${chr}_1KG;
+fi;
+./run_mesc.py --compute-expscore-indiv \
+    --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+    --expression-matrix ~/data/tmp/accClean_mesc.txt \
+    --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+    --covariates ~/data/tmp/acc_covars_mesc.txt \
+    --geno-bfile $mydir/ch${chr}_1KG --chr ${chr} --out ${mydir}/exp_score_cleanACC
+```
+
+And we do the same thing, but now for the Caudate:
+
+```r
+res = run_DGE(count_matrix, data, tx_meta, myregion, NA, .05)
+covars = data.frame(FID=rownames(res$design), IID=rownames(res$design))
+covars = cbind(covars, res$design[, 3:ncol(res$design)])
+write.table(covars, quote=F, row.names=F, sep='\t',
+            file='~/tmp/caudate_covars_mesc.txt')
+
+clean_count = counts(res$dds)
+
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
+               "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
+tx_meta = data.frame(GENEID = substr(rownames(clean_count), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+clean_count = clean_count[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+tx_meta$bed = sapply(1:nrow(tx_meta),
+                     function(x) sprintf('chr%s:%d-%d', tx_meta[x, 'TXCHROM'],
+                                         tx_meta[x, 'TXSTART'],
+                                         tx_meta[x, 'TXEND']))
+write.table(tx_meta$bed, file='~/tmp/tx_meta_caudateClean_hg38.txt',
+            row.names=F, quote=F, col.names=F)
+
+errs = read.table('~/tmp/hglft_genome_26baf_8035f0.err.txt')
+rm_me = tx_meta$bed %in% errs[,1]
+tx_meta_clean = tx_meta[!rm_me, ]
+count_matrix_clean = clean_count[!rm_me,]
+colnames(count_matrix_clean) = data$hbcc_brain_id
+new_pos = read.table('~/tmp/hglft_genome_26baf_8035f0.bed')
+new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
+tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
+nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
+tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+out_df = cbind(tx_meta_clean[, c(1, 6, 7)], count_matrix_clean)
+colnames(out_df)[1] = 'GENE'
+write.table(out_df, quote=F, row.names=F, sep='\t',
+            file='~/tmp/caudateClean_mesc.txt')
+```
+
+```bash
+#bw
+./run_mesc.py --compute-expscore-indiv \
+    --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+    --expression-matrix ~/data/tmp/caudateClean_mesc.txt \
+    --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+    --covariates ~/data/tmp/caudate_covars_mesc.txt \
+    --geno-bfile $mydir/ch${chr}_1KG --chr ${chr} \
+    --out ${mydir}/exp_score_cleanCaudate
+```
+
+
 # TODO
  * add covariates, especially batch
  * use only clean genes?

@@ -219,7 +219,7 @@ run_DGE = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
     }
 
     my_res = list(res=res, resIHW=resIHW, dds=dds, fm_str=fm_str,
-                  pcs = rbind(categ_pvals, num_pvals))
+                  pcs = rbind(categ_pvals, num_pvals), design=design)
     return(my_res)
 }
 ```
