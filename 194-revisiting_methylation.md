@@ -1208,18 +1208,64 @@ blockFinder needed the cluster parameter, but it wasn't very straight-forward
 how to use clusterMaker in thebumphunter package to select only opensea probes.
 So, I'll ignore this for now... we have lots of results already.
 
-# TODO
- * IHW? <- try this!
- * CAMT? https://github.com/jchen1981/CAMT  <- try this! It also has a cool
-   function test possible covariates. But that one paper (below) kinda hinted
-   that it should be either the meanB or sdB/M. Wroth checking them out!
- * adaFDR? https://github.com/fxia22/RadaFDR
- * adaptMT? https://cran.r-project.org/web/packages/adaptMT/index.html <- try this!
- * Caudate
+# 2021-02-26 13:56:18
 
+Let's to the probe splitting a bit differently.
+
+```r
+library(minfi)
+load('~/data/methylation_post_mortem/filt_ACC_02182021.RData')
+mVals <- getM(mSetSqFlt)
+
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+# get the table of results for the first contrast (naive - rTreg)
+ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
+                      c(1:4,12:19,24:ncol(ann450k))]
+
+load('~/data/methylation_post_mortem/res_ACC_02182021.RData')
+idx = ann450kSub$Enhancer == "TRUE"
+res_acc[['enhancer']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="Body") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon"))
+res_acc[['body']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200"))
+res_acc[['promoter1']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
+res_acc[['promoter2']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+save(res_acc, file='~/data/methylation_post_mortem/res_ACC_02262021.RData')
+```
+
+I did get one hit for promoter2:
+
+```
+r$> head(res_acc[['promoter2']]$DMPs, 1)                                               
+            chr      pos strand       Name Probe_rs Probe_maf CpG_rs CpG_maf SBE_rs
+cg13995516 chr6 21597055      - cg05281544     <NA>        NA   <NA>      NA   <NA>
+           SBE_maf           Islands_Name Relation_to_Island UCSC_RefGene_Name
+cg13995516      NA chr6:21596731-21597091             Island         SOX4;SOX4
+           UCSC_RefGene_Accession UCSC_RefGene_Group Phantom DMR Enhancer
+cg13995516    NM_003107;NM_003107      3'UTR;1stExon                     
+                    HMM_Island Regulatory_Feature_Name Regulatory_Feature_Group DHS
+cg13995516 6:21704544-21705109     6:21596313-21597580      Promoter_Associated    
+                logFC   AveExpr        t      P.Value  adj.P.Val       B
+cg13995516 -0.5422709 -1.795711 -6.26197 9.857962e-08 0.01560289 4.88676
+```
+
+But could be just an outlier though. SOX4: This intronless gene encodes a member of the SOX (SRY-related HMG-box) family of transcription factors involved in the regulation of embryonic development and in the determination of the cell fate.
+
+Those extra definitions are based on the methylGSA package: https://bioconductor.org/packages/release/bioc/manuals/methylGSA/man/methylGSA.pdf
 
 # Useful links
  * https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02001-7
  * https://www.nature.com/articles/s41467-019-11247-0
  * https://arxiv.org/abs/1909.04811
  * https://simons.berkeley.edu/sites/default/files/docs/10324/slidessimons.pdf
+
+ * https://support.illumina.com/content/dam/illumina-support/documents/downloads/productfiles/methylationepic/infinium-methylationepic-manifest-column-headings.pdf
+ * https://en.wikipedia.org/wiki/Regulatory_sequence
+ * https://douglasyao.github.io/2020/09/16/intuition-behind-mediated-expression-score-regression.html

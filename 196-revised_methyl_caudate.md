@@ -630,4 +630,39 @@ with anything.
 
 If we go for topVar we get more stuff, and possible a different/stronger story.
 If anything, we have a few single probe hits, and possibly even for the whole
-region. GSEA results are very different too. But maybe we don't need to rely on that.
+region. GSEA results are very different too. But maybe we don't need to rely on
+that.
+
+# 2021-02-26 14:50:10
+
+Let's do the same subdivisions we just did for ACC, but now for Caudate:
+
+```r
+library(minfi)
+load('~/data/methylation_post_mortem/filt_Caudate_02222021.RData')
+mVals <- getM(mSetSqFlt)
+
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+# get the table of results for the first contrast (naive - rTreg)
+ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
+                      c(1:4,12:19,24:ncol(ann450k))]
+
+load('~/data/methylation_post_mortem/res_Caudate_02222021.RData')
+idx = ann450kSub$Enhancer == "TRUE"
+res_cau[['enhancer']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="Body") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon"))
+res_cau[['body']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200"))
+res_cau[['promoter1']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
+       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
+res_cau[['promoter2']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
+save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_02262021.RData')
+```
+
+Still, nothing of significance.

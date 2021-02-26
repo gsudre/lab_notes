@@ -356,6 +356,122 @@ write.table(out_df, quote=F, row.names=F, sep='\t',
     --out ${mydir}/exp_score_cleanCaudate
 ```
 
+# 2021-02-26 07:22:04
+
+Let's run the all adhd GWAS as well, so that we can have a better idea of how
+the population affects the results. I do have to create the sumstats file first.
+I actually need to recreate the EUR as well, because I used the wrong N based on
+the README. Not that it'd make that much difference, but if we're redoing it,
+might as well do it right:
+
+```bash
+cd ~/data/expression_impute/fusion_twas-master/
+cd ldsc-master
+module load python/2.7
+./munge_sumstats.py --sumstats ~/pgc2017/adhd_jun2017 --N 55374 \
+    --N-cas 20183 --N-con 35191 --signed-sumstats OR,1 \
+    --out ../adhd_jun2017
+./munge_sumstats.py --sumstats ~/pgc2017/adhd_eur_jun2017 --N 53293 \
+    --N-cas 19099 --N-con 34194 --signed-sumstats OR,1 \
+    --out ../adhd_eur_jun2017
+
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+sumstats_dir=~/data/expression_impute/fusion_twas-master
+for r in ACC Caudate cleanACC cleanCaudate; do
+    for p in '' '_eur'; do
+        ./run_mesc.py \
+            --h2med ${sumstats_dir}/adhd${p}_jun2017.sumstats.gz \
+            --exp-chr ${mydir}/exp_score_${r} \
+            --out out_MESC${p}_${r};
+    done;
+done
+```
+
+Here are some numbers from the munging process:
+
+```
+# all
+Metadata:
+Mean chi^2 = 1.236
+Lambda GC = 1.211
+Max chi^2 = 44.079
+185 Genome-wide significant SNPs (some may have been removed by filtering).
+
+#eur
+Metadata:
+Mean chi^2 = 1.277
+Lambda GC = 1.23
+Max chi^2 = 50.708
+292 Genome-wide significant SNPs (some may have been removed by filtering).
+```
+
+Results weren't great. 
+
+![](images/2021-02-26-09-32-58.png)
+
+The left is eur_cleanACC and right is clean_ACC. Those were the only two results
+that had h2med > 0. The results per category weren't very telling either.
+
+## Gene sets
+
+Let's try focusing on a few gene sets. We'll add our own gene sets, and then the
+ones that are significant in the GSEA analysis:
+
+```r
+library(WebGestaltR)
+db_file = '~/data/post_mortem/my_acc_sets.gmt'
+gmt = readGmt(db_file) # already in gene symbols
+for (d in unique(gmt$geneSet)) {
+    genes = gmt[gmt$geneSet==d, 'gene']
+    a = paste0(c(d, genes), collapse="\t")
+    cat(a, '\n', file="~/data/mesc/acc_sets.txt", append=TRUE)
+}
+```
+
+
+```r
+library(WebGestaltR)
+db = 'geneontology_Biological_Process_noRedundant'
+gs = loadGeneSet(enrichDatabase=db)
+gmt = gs$geneSet
+a = idMapping(inputGene=gmt$gene, sourceIdType='entrezgene',
+              targetIdType='ensembl_gene_id')
+gmt2 = merge(gmt, a$mapped[, c('userId', 'ensembl_gene_id')], by.x = 'gene',
+             by.y='userId', all.x=F, all.y=F, sort=F)
+for (d in unique(gmt2$geneSet)[1:5]) {
+    genes = gmt2[gmt2$geneSet==d, 'ensembl_gene_id']
+    a = paste0(c(d, genes), collapse="\t")
+    cat(a, '\n', file="~/data/mesc/goBP_acc_sets.txt", append=TRUE)
+}
+```
+
+```bash
+#bw
+module load plink
+module load python/2.7
+chr=1;
+
+cd /data/NCR_SBRB/software/mesc;
+mydir=~/data/post_mortem/genotyping/1KG;
+for c in {1..22}; do 
+    echo $c >> chrom.txt;
+done
+cat chrom.txt | parallel -j 22 --max-args=1 \
+    ./run_mesc.py --compute-expscore-indiv \
+        --plink-path /usr/local/apps/plink/1.9.0-beta4.4/plink \
+        --expression-matrix ~/data/tmp/accClean_mesc.txt \
+        --exp-bfile $mydir/PM_1KG_genop05MAFbtp01rsbtp9_renamed_hbcc \
+        --covariates ~/data/tmp/acc_covars_mesc.txt \
+        --geno-bfile $mydir/ch{}_1KG --chr {} \
+        --out ${mydir}/exp_score_cleanACC_test \
+        --est-lasso-only
+
+./gene_set_analysis.py \
+    --input-prefix ${mydir}/exp_score_cleanACC_test \
+    --gene-sets ~/data/tmp/goBP_acc_sets.txt \
+    --bfile $mydir/ch${chr}_1KG --chr ${chr} \
+    --out $mydir/goBP_acc_sets_cleanACC
 
 # TODO
  * try all ADHD gwas, not just eur
