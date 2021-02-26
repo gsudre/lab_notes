@@ -358,6 +358,6 @@ write.table(out_df, quote=F, row.names=F, sep='\t',
 
 
 # TODO
- * add covariates, especially batch
- * use only clean genes?
  * try all ADHD gwas, not just eur
+ * interpret the results
+ * use different gene sets
