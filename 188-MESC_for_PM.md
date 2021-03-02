@@ -472,8 +472,18 @@ cat chrom.txt | parallel -j 22 --max-args=1 \
     --gene-sets ~/data/tmp/goBP_acc_sets.txt \
     --bfile $mydir/ch${chr}_1KG --chr ${chr} \
     --out $mydir/goBP_acc_sets_cleanACC
+```
+
+Not much seem interesting...
 
 # TODO
  * try all ADHD gwas, not just eur
  * interpret the results
  * use different gene sets
+ * use non-imputed data?
+
+# USeful links
+ * potentially good papers? https://www.nature.com/articles/s41467-018-04558-1
+ * https://www.nature.com/articles/s41467-018-03371-0
+ * https://www.nature.com/articles/ng.3538
+ * https://www.um.edu.mt/__data/assets/pdf_file/0005/289427/eQTL_intro.pdf

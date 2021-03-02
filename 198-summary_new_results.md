@@ -4,7 +4,7 @@ This note summarizes the most recent results I got after running the following
 analyses:
 
  * added new datasets for correlation to other disorders
- * re-run methylation analysis
+ * re-ran methylation analysis
  * ran mediation through MESC
 
 ## Correlation
@@ -29,7 +29,7 @@ And Paul dug out data for these three Caudate papers:
 
 ![](images/2021-02-11-11-59-26.png)
 
-ASD was not part of those paper above, so we tried to find papers for ACC and
+ASD was not part of the papers above, so we tried to find papers for ACC and
 Caudate RNAseq in that population. There were no exact hits, but we found a
 couple for frontal cortex and DLPFC. Nothing for Caudate/Striatum/Basal ganglia
 though. 
@@ -42,25 +42,25 @@ though.
 Both highly significant. The Neelroop paper has more subjects, it's in Nature,
 and has frontal and temporal cortex in it. 
 
-All papers mentioned above have the main text in PDF under papers_correlation.
+All papers mentioned above have the main text in PDF under papers_correlation folder.
 
 ## Methylation
 
-I re-ran the methylation analysis following a combination of the the current
+I re-ran the methylation analysis following a combination of the current
 pipeline Yun-Ching suggested, and the nuisance PC framework we used for the
 DGE/DTE work. I ran them independently for ACC and Caudate, like the DGE/DTE/DTU
 analyses. There are results for the following analyses:
  
- * Differentially methylated probes (DMPs): probe-level analysis looking for
+ * **Differentially methylated probes (DMPs):** probe-level analysis looking for
    mean difference between Cases and Controls.
- * Differentially variable probes (topVar): also a probe-level analysis, but
+ * **Differentially variable probes (topVar):** also a probe-level analysis, but
    instead of looking for a mean difference between Cases and controls, it
    checks wheter one group has higher variance than the other.
- * Differentially methylated regions (DMRs): similar analysis as DMPs, but looks
+ * **Differentially methylated regions (DMRs):** similar analysis as DMPs, but looks
   at summary regions instead of single probes.
- * GSEA: usual gene set analysis we run, using our own developmental + GWAs
+ * **GSEA:** usual gene set analysis we run, using our own developmental + GWAS
    sets, and then the gene ontology, KEGG pathways, and protein reactome.
- * PRS overlap: run the exact same DMP analysis as above, but using the
+ * **PRS overlap:** run the exact same DMP analysis as above, but using the
    different PRS profiles as the independent variable (plus nuisancePCs),
    instead of the Diagnosis. Then, check for overlap with Diagnosis results.
 
@@ -100,8 +100,8 @@ Here we did get 6 5 probes significant at FDR q < .05.
 
 ![](images/2021-02-17-19-47-04.png)
 
-But running an analysis similar to DMR, but this time using the top variant
-probes as seeds, didn't pan out to anything.
+I then ran an analysis similar to DMR, but this time using the top variant
+probes as seeds, and it didn't pan out to anything.
 
 I contacted Yun-Ching to see how common this variance analysis is. Here's what
 he said:
@@ -116,7 +116,8 @@ I would not put much attention on it unless we believe the disease is very heter
 So, I didn't think it was worth exploring further. It didn't seem to have a very
 strong basis to stand on, especially as the pattern between Controls and Cases
 in the 5 significant probes is not clear (i.e. Cases more variable in some
-probes, Controls in others.)
+probes, Controls in others.) If we decide to pursue it, we'd at least need to
+run something similar for DGE/DTE.
 
 ### GSEA
 
@@ -129,7 +130,7 @@ ACC_all_DMP_glm_Biological_Process. The naming structure includes:
    there are 2 different methods to adjust for that: glm and RRA)
  * gene sets
 
-I went through all those files, and here's are the main themes I found:
+I went through all those files, and here are the main themes I found:
 
  * as expected, the story is very different for DMP and topVar results. I
    focused mostly on DMP, given the rationaly above. But topVar results can be
@@ -138,7 +139,7 @@ I went through all those files, and here's are the main themes I found:
    significant. The GWAS set is nominally significant in ACC, but only when using RRA.
    Looking at all probes (p = 0.045954046), driven by body (p=0.02997003) and
    promoter1 (p=0.046953047) probes.
- * the cellular component sets for ACC show euchromatin for DMP_all_RRA, and  ranscription repressor complex, exon-exon junction complex, and
+ * the cellular component sets for ACC show euchromatin for DMP_all_RRA, and  transcription repressor complex, exon-exon junction complex, and
    transcription regulator complex for DMP_promoter2_RRA. This could be
    interesting as it might be related to the changes we're seeing in the
    transcriptome?
@@ -160,5 +161,52 @@ similar.
 
 ### PRS
 
+I then ran the same analysis as it was done for DMPs, but replaced the DX
+independent variable by different PRS profiles. Like before, I calculated the
+overlap between absolute value, up, and down probes. The results are in the
+PRS_overlap folder. 
+
+Looking at the ACC results, there seems to be a significant overlap only for the
+most strict values of PRS (PRS0.000050), and it's distributed across the
+different types of probes. It's also somewhat distributed between up and down
+regulated probes. But the effect is more pronounced for other PRS thresholds
+when we split it between up and down probes.
+
+We see a similar pattern for the Caudate. The results for the Caudate seem to be
+a bit stronger though.
 
 ## MESC
+
+Back to gene expression, the other analysis I ran was whether gene expression
+mediates the effects of SNPs in the DX phenotype. It uses MESC
+(https://github.com/douglasyao/mesc). It does that through heritability: it
+calculates the phenotype heritability (h2), and then splits that into mediated
+(h2med) and not mediated (h2nonmed) by gene expression.
+
+To calculate those values, it uses:
+ * our PM gene expression data (same data we used for DGE)
+ * the genotype data for our PM samples
+ * genotype data for samples that are ancestry-matched to the given GWAS of
+   interest (they recommend using 1K Genomes data)
+ * the PGC 2017 GWAS data.
+  
+Our genotype data were actually imputed to 1KG, so it makes sense to use that anyways.
+
+I ran MESC for ACC and Caudate, using the WNH and ALL GWAS, but the results were
+inconclusive. They are all in the mediation folder, and they are simple tables that
+can be opened in Excel. The .all. files have all 3 h2 metrics, and you'll notice
+that h2med is hardly ever above 0. Our "best" result is
+out_MESC_eur_cleanACC.all.h2med.csv, which shows a tiny h2med, but it's 2% of
+the total heritability. The original MESC paper estimated that, on average, only
+11% of trait heritability was due to gene expression (in the GTEx cohort), so
+we're not terribly off. Still, the overall result seem unsatisfactory.
+
+MESC also estimates those metrics for different gene groups. By default it
+splits the genes into quintiles by their heritability, so that's the .categ.
+files you'll see in the folder. I didn't find them too informative though.
+
+I'm working on running our own gene sets, like our developmental set and the
+significant GO sets. Maybe something interesting will come out of that, but the
+software is breaking, so I need to figure out why. I'll also try to run our
+genotype pre-imputation, in case the imputation process is doing anything funky
+(I doubt it, but worth a try).
