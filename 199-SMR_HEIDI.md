@@ -260,8 +260,122 @@ genomes? The file SMRS takes as input doesn't take in positions, simply the rsid
 name. I'm waiting on further information about MAF, so I might need to wait ot
 run this anyways. Or, I can see if it runs without MAF?
 
+# 2021-03-04 07:33:48
+
+This took the whole night and still nothing. Let me try to do it per chromosome
+then.
+
+```bash
+cd /scratch/sudregp
+module load SMR
+smr --bfile ~/data/post_mortem/genotyping/1KG/ch1_1KG --make-bld --r --ld-wind 4000 --chr 1 --out chr1
+```
+
+Again, this is taking forever to save the file. And it's taking almost 100Gb of
+memory with a single chromossome... 
+
+Maybe I could just subset the entire analysis by the GWAS SNPs? The GWAS has 8M
+SNPs. Just chr1 in the ALL set has 6.5M, and the reduced version of the entire
+dataset has 47M. So, maybe I could extract the SNPs I want from GWAS in each chr
+from the ALL set, and then merge them all together. Then, I can use the bfile
+directly in SMR...
+
+```bash
+cd /scratch/sudregp
+awk '{ print $2 }' ~/pgc2017/adhd_eur_jun2017 | tail -n +2 > keep_snps.txt;
+for c in {1..22}; do
+    plink --bfile ~/data/post_mortem/genotyping/1KG/ch${c}_1KG \
+        --extract keep_snps.txt --make-bed --out ch${c}_1KG_gwasOnly;
+done
+for c in {1..22}; do
+    plink --bfile ch${c}_1KG_gwasOnly --list-duplicate-vars;
+    plink --bfile ch${c}_1KG_gwasOnly --exclude plink.dupvar --make-bed \
+        -out ch${c}_1KG_gwasOnly_noDups;
+done
+rm -f merge_list.txt;
+for i in {2..22}; do
+    echo "ch${i}_1KG_gwasOnly_noDups.bed ch${i}_1KG_gwasOnly_noDups.bim ch${i}_1KG_gwasOnly_noDups.fam" >> merge_list.txt;
+done
+plink --bfile ch1_1KG_gwasOnly_noDups --merge-list merge_list.txt \
+    --make-bed --out all_1KG_gwasOnly_noDups
+
+```
+
+This is not working, because many times the same variant have two different
+positions. So, we need to keep only the good ones in the VCF after filtering by
+chromosome and position in the VCF. Just a simple update-name won't work because
+PLINK won't know which one to update. So, we'll need to recreate the .bed using
+chr:pos instead of rsid.
+
+```bash
+awk '{ print $1":"$3":"$4":"$5 }' ~/pgc2017/adhd_eur_jun2017 | tail -n +2  > keep_ids_chrpos.txt;
+cat keep_ids_chrpos.txt | sort -u -k 1,1 | uniq > unique_keep_ids_chrpos.txt;
+# this takes a long time, so best to parallelize it
+module load bcftools
+for c in {1..22}; do
+    echo "bcftools annotate -Ob -x 'ID' -I +'%CHROM:%POS:%REF:%ALT' /fdb/1000genomes/release/20130502/ALL.chr${c}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz > chr${c}_ren.bcf && bcftools index chr${c}_ren.bcf && plink --bcf chr${c}_ren.bcf --allow-extra-chr --extract unique_keep_ids_chrpos.txt --make-bed --out chr${c}_byPos;" >> my_cmds.txt
+done
+cat my_cmds.txt | parallel -j 22 --max-args=1 {};
+
+rm -f merge_list.txt;
+for c in {2..22}; do
+    echo "chr${c}_byPos.bed chr${c}_byPos.bim chr${c}_byPos.fam" >> merge_list.txt;
+done
+plink --bfile chr${c}_byPos --merge-list merge_list.txt \
+    --make-bed --out all_1KG_byPos
+```
+
+This might work, and it might even be a better way to go about it in the future
+because it's less variable than simply the rsids. For now, let's try a
+reconversion keeping only the bilallelic ones:
+
+```bash
+for i in {4..22}; do echo $i >> junk.txt; done
+cat junk.txt | parallel -j 18 plink --vcf /fdb/1000genomes/release/20130502/ALL.chr{}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz \
+        --make-bed --biallelic-only strict list --extract keep_snps.txt \
+        --out ch{}_1KG_biAllelicOnly_gwasOnly;
+
+for c in {1..22}; do
+    plink --bfile ch${c}_1KG_biAllelicOnly_gwasOnly --list-duplicate-vars;
+    # wiping out any remaining IDs... might be removing too much here
+    tail -n +2 plink.dupvar | awk '{ print $4 }' > rm_ids.txt;
+    tail -n +2 plink.dupvar | awk '{ print $5 }' >> rm_ids.txt;
+    plink --bfile ch${c}_1KG_biAllelicOnly_gwasOnly --write-snplist --out all_snps;
+    cat all_snps.snplist | sort | uniq -d >> rm_ids.txt;
+    plink --bfile ch${c}_1KG_biAllelicOnly_gwasOnly --exclude rm_ids.txt \
+        --make-bed -out ch${c}_1KG_biAllelicOnly_gwasOnly_noDups;
+done
+rm -f merge_list.txt;
+for i in {2..22}; do
+    echo "ch${i}_1KG_biAllelicOnly_gwasOnly_noDups.bed ch${i}_1KG_biAllelicOnly_gwasOnly_noDups.bim ch${i}_1KG_biAllelicOnly_gwasOnly_noDups.fam" >> merge_list.txt;
+done
+plink --bfile ch1_1KG_biAllelicOnly_gwasOnly_noDups --merge-list merge_list.txt \
+    --make-bed --out all_1KG_biAllelicOnly_gwasOnly_noDups
+```
+
+At this stage I have all_1KG_biAllelicOnly_gwasOnly_noDups and all_1KG_byPos as
+two possible candidates to run SMRS on. They are already filtered to GWAS SNPs
+and I can just calculate LD on the fly. I'll still need to change back to rsids
+in the second file because of the way the eQTL was run. But I could also try
+lifting those position and re-renaming the eQTL file? We'll see. Let's start
+with the first file, which might be less of a headache:
 
 
+
+
+
+
+
+
+
+
+
+plink --bfile lastQCb37 --write-snplist --out all_snps
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist
+plink --bfile lastQCb37 --exclude duplicated_snps.snplist --make-bed --out lastQCb37_noduplicates
+# flip and remove all bad ids
+plink --bfile lastQCb37_noduplicates --flip flip_snps.txt \
+    --exclude missing_snps.txt --make-bed --out lastQCb37_noduplicates_flipped
 
 
 
