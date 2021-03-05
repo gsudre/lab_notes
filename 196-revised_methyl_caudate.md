@@ -666,3 +666,38 @@ save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_02262021.RData')
 ```
 
 Still, nothing of significance.
+
+# 2021-03-05 10:10:18
+
+Let's add some annotations to the GO sets results:
+
+```r
+library(WebGestaltR)
+mydir = '~/data/methylation_post_mortem/'
+DBs = c('Biological_Process', 'Cellular_Component', 'Molecular_Function')
+for (db in DBs) {
+    enrich_db = sprintf('geneontology_%s_noRedundant', db)
+    a = loadGeneSet(enrichDatabase = enrich_db)
+    for (r in c('ACC', 'Caudate')) {
+        for (v in c('DMP', 'topVar')) {
+            for (g in c('all', 'body', 'promoter1', 'promoter2')) {
+                for (y in c('glm', 'RRA')) {
+                    fname = sprintf('%s_%s_%s_%s_%s', r, g, v, y, db)
+                    cat(fname, '\n')
+                    df = read.csv(paste0(mydir, fname, '.csv'))
+                    df$GO = sapply(df$ID,
+                                   function(x) { a = strsplit(x, '/')[[1]];
+                                                 a[length(a)] })
+                    df2 = merge(df, a$geneSetDes, sort=F, by.x='GO',
+                                by.y='geneSet')
+                    first_cols = c('description', 'padj')
+                    others = setdiff(colnames(df2), first_cols)
+                    df2 = df2[, c(first_cols, others)]
+                    write.csv(df2, row.names=F,
+                              file=paste0(mydir, fname, '_annot.csv'))
+                }
+            }
+        }
+    }
+}
+```

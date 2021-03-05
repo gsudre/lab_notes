@@ -596,11 +596,23 @@ about:
 cd /scratch/sudregp/
 # this takes a long time, so best to parallelize it
 module load bcftools
+rm -f my_cmds.txt;
 for c in {1..22}; do
-    echo "bcftools annotate -Ob -x 'ID' -I +'%CHROM:%POS' /fdb/1000genomes/release/20130502/ALL.chr${c}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz > chr${c}_chrPos.bcf && bcftools index chr${c}_chrPos.bcf && plink --bcf chr${c}_chrPos.bcf --allow-extra-chr --extract gwas_renamed_snps.txt.txt --make-bed --out chr${c}_chrPos;" >> my_cmds.txt
+    echo "bcftools annotate -Ob -x 'ID' -I +'%CHROM:%POS' /fdb/1000genomes/release/20130502/ALL.chr${c}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz > chr${c}_chrPos.bcf && bcftools index chr${c}_chrPos.bcf && plink --bcf chr${c}_chrPos.bcf --allow-extra-chr --extract gwas_renamed_snps.txt --make-bed --out chr${c}_chrPos;" >> my_cmds.txt
 done
 cat my_cmds.txt | parallel -j 22 --max-args=1 {};
 
+# removing duplicate SNPs
+for c in {1..22}; do
+    plink --bfile chr${c}_chrPos --list-duplicate-vars;
+    # wiping out any remaining IDs... might be removing too much here
+    tail -n +2 plink.dupvar | awk '{ print $4 }' > rm_ids.txt;
+    tail -n +2 plink.dupvar | awk '{ print $5 }' >> rm_ids.txt;
+    plink --bfile chr${c}_chrPos --write-snplist --out all_snps;
+    cat all_snps.snplist | sort | uniq -d >> rm_ids.txt;
+    plink --bfile chr${c}_chrPos --exclude rm_ids.txt --make-bed \
+        -out chr${c}_chrPos_noDups;
+done
 
 
 
@@ -619,7 +631,27 @@ plink --bfile chr${c}_chrPos --merge-list merge_list.txt \
     --make-bed --out all_1KG_chrPos
 ```
 
-Time to correct the esi and epi files:
+It turns out that creating the BESD from the imputed data is taking too long.
+Actually, it's getting killed even in the bigger machine... I'll have to go back
+to the non-imputed data.
+
+## Back to the non-imputed data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```r
 library(GenomicFeatures)
@@ -637,18 +669,6 @@ epi2$orient = '+'
 write.table(epi2, row.names=F, col.names=F, quote=F,
             file='~/data/tmp/mybesd.epi.new')
 ```
-
-Looking at the esi file, the rsids have _Allele in their names. When googling
-for those rsids, the allele seems to be the alt allele... not always.
-
-This is getting very confusing, and I think it's because of the whole Ilumina
-standard. Let's then do this using the imputed data. It'll take a bit longer,
-but we can do it for one and then script it out. I'll need to use the liftOver
-expression as well, but for now let's just make sure all script work all the way
-to the end, just using the first 100 transcripts. FYI, 100 transcripts is taking
-about 33Gb of memory with the imputed genotype, and finished in 375sec.
-
-I think I figured it out.
 
 ```bash
 cd /scratch/sudregp
@@ -677,7 +697,8 @@ smr --bfile /scratch/sudregp/all_1KG_biAllelicOnly_gwasOnly_noDups \
     --gwas-summary mygwas.ma --beqtl-summary mybesd --out mysmr --thread-num 10
 ```
 
-
+# TODO
+ * run on the non-imputed PM data
 
 
 
