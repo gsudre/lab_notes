@@ -358,12 +358,336 @@ two possible candidates to run SMRS on. They are already filtered to GWAS SNPs
 and I can just calculate LD on the fly. I'll still need to change back to rsids
 in the second file because of the way the eQTL was run. But I could also try
 lifting those position and re-renaming the eQTL file? We'll see. Let's start
-with the first file, which might be less of a headache:
+with the first file, which might be less of a headache. The biAllelic version
+has more than twice as many snps as byPos though.
+
+Let's see how this runs, and we can double check all inputs later:
+
+```bash
+module load SMR
+echo "SNP    A1  A2  freq    b   se  p   n" > mygwas.ma;
+tail -n +2 ~/pgc2017/adhd_eur_jun2017 | \
+    awk ' { print $2, $4, $5, "NA", $6, $7, $8, 53293 } ' >> mygwas.ma;
+smr --bfile /scratch/sudregp/all_1KG_biAllelicOnly_gwasOnly_noDups \
+    --gwas-summary mygwas.ma --beqtl-summary mybesd --out mysmr --thread-num 10
+```
+
+Great. This ran all the way to the end. So, we finally have a pipeline. Now,
+it's just making sure all is are dotted. I can also try using the allel
+frequency from 1KG, under the assumption I won't get it from PGC.
+
+```bash
+cd /scratch/sudregp/
+plink --bfile all_1KG_biAllelicOnly_gwasOnly_noDups --freq
+```
+
+```r
+library(data.table)
+dread = fread('~/pgc2017/adhd_eur_jun2017', header = T, sep = '\t')
+gwas = as.data.frame(dread)
+dread = fread('/scratch/sudregp/plink.frq', header = T, sep = ' ')
+freqs = as.data.frame(dread)
+m = merge(gwas, freqs, by='SNP')
+m2 = m[, c('SNP', 'A1.x', 'A2.x', 'MAF', 'OR', 'SE', 'P')]
+m2$n = 53293
+colnames(m2) = c('SNP', 'A1', 'A2', 'freq', 'b', 'se', 'p', 'n')
+write.table(m2, row.names=F, quote=F, file='~/data/tmp/mygwas.ma')
+```
+
+That actually broke because of the allele frequency discrepancy in the datasets.
+Maybe we won't do it that way then.
+
+OK, so let's redo the entire analysis.
+
+## A new beginning...
+
+Let's focus only in the GWAS SNPs. For that, let's make sure that, when we
+recode them, everything still looks good:
+
+```bash
+cd /scratch/sudregp/
+gwas=~/pgc2017/adhd_eur_jun2017
+tail -n +2 $gwas | awk '{ print $1":"$3 }' > gwas_renamed_snps.txt;
+# I won't specify the alleles because the GWAS file doesn't mean minor or major
+# only reference
+
+# keep only the GWAS SNPs in the imputed PM data using the converted and 
+# filtered data prior to renaming using the HRC file
+plink_file=~/data/post_mortem/genotyping/1KG/PM_1KG_genop05MAFbtp01rsbtp9
+awk '{ print $1 ":" $4 }' ${plink_file}.bim > new_name.txt;
+awk '{ print $2 }' ${plink_file}.bim > old_name.txt;
+paste old_name.txt new_name.txt > update_snps.txt
+plink --bfile $plink_file --update-name update_snps.txt --make-bed --out tmp
+plink --bfile tmp -extract gwas_renamed_snps.txt --make-bed \
+    --out PM_1KG_gwasOnly
+plink --bfile PM_1KG_gwasOnly --list-duplicate-vars;
+# wiping out any remaining IDs... might be removing too much here
+tail -n +2 plink.dupvar | awk '{ print $4 }' > rm_ids.txt;
+tail -n +2 plink.dupvar | awk '{ print $5 }' >> rm_ids.txt;
+plink --bfile PM_1KG_gwasOnly --write-snplist --out all_snps;
+cat all_snps.snplist | sort | uniq -d >> rm_ids.txt;
+plink --bfile PM_1KG_gwasOnly --exclude rm_ids.txt --make-bed \
+    -out PM_1KG_gwasOnly_noDups;
+plink --bfile PM_1KG_gwasOnly_noDups --export A --out genotyped_out
+```
+
+Now we need to run the EQTL, but only for the transcripts that remained when
+lifted over to hg19:
+
+```r
+library(data.table)
+dread = fread('/scratch/sudregp/genotyped_out.raw',
+              header = T, sep = ' ')
+d = as.data.frame(dread)
+d = d[, c(2, 7:ncol(d))]
+d2 = t(d)
+colnames(d2) = d2[1, ]
+d2 = d2[2:nrow(d2), ]
+a = sapply(colnames(d2), function(x) { br = strsplit(x, '_')[[1]][2];
+                                       as.numeric(gsub(br, pattern='BR',
+                                                      replacement=''))})
+colnames(d2) = a
+d3 = matrix(as.numeric(d2), nrow=nrow(d2), ncol=ncol(d2))
+rownames(d3) = rownames(d2)
+colnames(d3) = colnames(d2)
+saveRDS(d3, file='/scratch/sudregp/genotype_raw.rds')
+```
+
+Now that the genotype data is a bit cleaner, let's match it to the rest of the
+data we'll need:
+
+```r
+# SNPs
+d = readRDS('/scratch/sudregp/genotype_raw.rds')
+
+# this file has results for all gene subtypes
+load('~/data/post_mortem/DGE_03022021.RData')
+res = dge_acc[['all']]
+covars = t(res$design[, 3:ncol(res$design)])
+library(DESeq2)
+clean_count = counts(res$dds)
+colnames(clean_count) = colnames(covars)
+
+# making sure all subjects are present
+d = d[, colnames(d) %in% colnames(covars)]
+covars = covars[, colnames(covars) %in% colnames(d)]
+clean_count = clean_count[, colnames(clean_count) %in% colnames(d)]
+
+# trimming to only lifted transcripts
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
+               "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
+tx_meta = data.frame(GENEID = substr(rownames(clean_count), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+tx_meta$bed = sapply(1:nrow(tx_meta),
+                     function(x) sprintf('chr%s:%d-%d', tx_meta[x, 'TXCHROM'],
+                                         tx_meta[x, 'TXSTART'],
+                                         tx_meta[x, 'TXEND']))
+write.table(tx_meta$bed, file='/scratch/sudregp/accCleanAllBED_hg38.txt',
+            row.names=F, quote=F, col.names=F)
+
+# liftOver at https://genome.ucsc.edu/cgi-bin/hgLiftOver
+errs = read.table('/scratch/sudregp/hglft_genome_67f17_1670a0.err.txt')
+rm_me = tx_meta$bed %in% errs[,1]
+tx_meta_clean = tx_meta[!rm_me, ]
+count_matrix_clean = clean_count[!rm_me,]
+new_pos = read.table('/scratch/sudregp/hglft_genome_67f17_1670a0.bed')
+new_pos = gsub(x=new_pos[, 1], pattern='chr', replacement='')
+tx_meta_clean$CHR = sapply(new_pos, function(x) strsplit(x, ':')[[1]][1])
+nochr = sapply(new_pos, function(x) strsplit(x, ':')[[1]][2])
+tx_meta_clean$GENE_COORD = sapply(nochr, function(x) strsplit(x, '-')[[1]][1])
+write.table(tx_meta_clean, row.names=F, quote=F,
+            file='/scratch/sudregp/lifted_transcripts_accAllClean.txt')
+save(count_matrix_clean, tx_meta_clean, d, covars,
+     file='/scratch/sudregp/accAllClean_forMatrixEQTL.rData')
+```
+
+Let's code it now so that we can parallelize the eQTL computations, because they
+take quite a while.
+
+```r
+library("MatrixEQTL")
+load('/scratch/sudregp/accAllClean_forMatrixEQTL.rData')
+
+snps = MatrixEQTL::SlicedData(d)
+cvrt = MatrixEQTL::SlicedData(covars)
+
+# computing eQTLs
+useModel = modelLINEAR;
+errorCovariance = numeric();
+pvOutputThreshold = 1e-2;
+
+# couldn't house everything in memory
+args <- commandArgs(trailingOnly = TRUE)
+from = as.numeric(args[1])
+to = as.numeric(args[2])
+# from = 1
+# to = 250
+
+mymax = min(to, nrow(count_matrix_clean))
+gene = MatrixEQTL::SlicedData(count_matrix_clean[from:mymax,])
+output_file_name = sprintf('/scratch/sudregp/matrixeqtl_%05dto%05d.txt',
+                            from, mymax);
+cat(output_file_name, '\n')
+me = Matrix_eQTL_engine(snps = snps,
+                        gene = gene,
+                        cvrt = cvrt,
+                        output_file_name = output_file_name,
+                        pvOutputThreshold = pvOutputThreshold,
+                        useModel = useModel, 
+                        errorCovariance = errorCovariance, 
+                        verbose = TRUE,
+                        pvalue.hist = TRUE,
+                        min.pv.by.genesnp = TRUE,
+                        noFDRsaveMemory = TRUE);
+```
+
+I wrote that as /scratch/sudregp/tmp.R, and then it's just a matter of swarming
+it:
+
+```bash
+cd /scratch/sudregp/tmp.R
+rm swarm.eqtl
+cnt=1;
+step=250;
+while [ $cnt -lt 25818 ]; do
+    let to=$cnt+$step-1;
+    echo "Rscript --vanilla ./tmp.R $cnt $to" >> swarm.eqtl;
+    let cnt=$cnt+$step;
+done
+swarm -t 1 -g 60 -f swarm.eqtl --job-name eqtl --time 30:00 \
+        --logdir trash -m R --gres=lscratch:10 --partition quick,norm;
+```
+
+Now we combine all files and construct the initial BESD:
+
+```bash
+#bw
+module load SMR
+cd /scratch/sudregp/
+head -n +1 matrixeqtl_00001to00250.txt > mateQTL.txt;
+for f in `/bin/ls matrixeqtl_*to*txt`; do
+    echo $f;
+    tail -n +2 $f >> mateQTL.txt;
+done
+smr --eqtl-summary mateQTL.txt --matrix-eqtl-format --make-besd --out mybesd
+```
+
+While this is running, I'll go ahead and correct the GWAS file:
+
+```bash
+module load SMR
+cd /scratch/sudregp/
+echo "SNP    A1  A2  freq    b   se  p   n" > mygwas.ma;
+tail -n +2 ~/pgc2017/adhd_eur_jun2017 | \
+    awk ' { print $1":"$3, $4, $5, "NA", $6, $7, $8, 53293 } ' >> mygwas.ma;
+```
+
+Note that I'm still waiting on the right MAFs from PGC, but this should do it
+for now.
+
+Also in parallel we can construct a PLINK binary file with only the SNPS we care
+about:
+
+```bash
+cd /scratch/sudregp/
+# this takes a long time, so best to parallelize it
+module load bcftools
+for c in {1..22}; do
+    echo "bcftools annotate -Ob -x 'ID' -I +'%CHROM:%POS' /fdb/1000genomes/release/20130502/ALL.chr${c}.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz > chr${c}_chrPos.bcf && bcftools index chr${c}_chrPos.bcf && plink --bcf chr${c}_chrPos.bcf --allow-extra-chr --extract gwas_renamed_snps.txt.txt --make-bed --out chr${c}_chrPos;" >> my_cmds.txt
+done
+cat my_cmds.txt | parallel -j 22 --max-args=1 {};
 
 
 
 
 
+
+
+
+
+
+
+rm -f merge_list.txt;
+for c in {2..22}; do
+    echo "chr${c}_chrPos.bed chr${c}_chrPos.bim chr${c}_chrPos.fam" >> merge_list.txt;
+done
+plink --bfile chr${c}_chrPos --merge-list merge_list.txt \
+    --make-bed --out all_1KG_chrPos
+```
+
+Time to correct the esi and epi files:
+
+```r
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"),
+               columns=c('GENEID','TXCHROM', 'TXSTART', 'TXEND'),
+               "GENEID")
+txdf = txdf[!duplicated(txdf$GENEID),] 
+
+epi = read.table('~/data/tmp/mybesd.epi', header=0)
+epi$GENEID = substr(epi$V2, 1, 15)
+tx_meta = merge(epi, txdf, by='GENEID', sort=F)
+epi2 = tx_meta[, c('TXCHROM', 'V2', 'V3', 'TXSTART', 'GENEID')]
+epi2$orient = '+'
+write.table(epi2, row.names=F, col.names=F, quote=F,
+            file='~/data/tmp/mybesd.epi.new')
+```
+
+Looking at the esi file, the rsids have _Allele in their names. When googling
+for those rsids, the allele seems to be the alt allele... not always.
+
+This is getting very confusing, and I think it's because of the whole Ilumina
+standard. Let's then do this using the imputed data. It'll take a bit longer,
+but we can do it for one and then script it out. I'll need to use the liftOver
+expression as well, but for now let's just make sure all script work all the way
+to the end, just using the first 100 transcripts. FYI, 100 transcripts is taking
+about 33Gb of memory with the imputed genotype, and finished in 375sec.
+
+I think I figured it out.
+
+```bash
+cd /scratch/sudregp
+module load plink
+plink \
+    --file ~/data/post_mortem/genotyping/Strandscript-master/test/flipped_PM_test
+    --make-bed --out tmp
+```
+
+Now my .bim has the correct format. Let's go back to the original plan:
+
+```bash
+cd ~/data/tmp
+cp /scratch/sudregp/tmp.bim mybesd.esi.new
+cp mybesd.esi mybesd.esi.old
+cp mybesd.esi.new mybesd.esi
+cp mybesd.epi mybesd.epi.old
+cp mybesd.epi.new mybesd.epi
+```
+
+
+And run the whole thing:
+
+```bash
+smr --bfile /scratch/sudregp/all_1KG_biAllelicOnly_gwasOnly_noDups \
+    --gwas-summary mygwas.ma --beqtl-summary mybesd --out mysmr --thread-num 10
+```
+
+
+
+
+
+
+
+
+
+
+plink --bfile ~/data/post_mortem/genotyping/1KG/PM_1KG_genop05MAFbtp01rsbtp9_ren \
+    -extract kee_ids.txt --make-bed --out PM_1KG_gwasOnly2
 
 
 
