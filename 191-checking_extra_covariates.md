@@ -1616,5 +1616,59 @@ see metadata(res)$ihwResult on hypothesis weighting
 
 Nope...
 
+# 2021-03-05 17:07:04
+
+Let's extract our genewise results into a table, adding gene names:
+
+```r
+load('~/data/post_mortem/DGE_03022021.RData')
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+mydir = '~/data/post_mortem/final_results/'
+for (st in c('protein_coding', 'lncRNA', 'pseudogene', 'all')) {
+    # res = dge_acc[[st]]
+    # fname = sprintf('%s/DGE_ACC_%s.csv', mydir, st)
+    res = dge_cau[[st]]
+    fname = sprintf('%s/DGE_Caudate_%s.csv', mydir, st)
+
+    df = res$res
+    df$GENEID = substr(rownames(df), 1, 15)
+    df2 = merge(as.data.frame(df), mart, sort=F,
+                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+    df2 = df2[order(df2$pvalue), ]
+    write.csv(df2, row.names=F, file=fname)
+}
+
+load('~/data/post_mortem/DTE_02082021.RData') 
+for (st in c('protein_coding', 'lncRNA', 'pseudogene')) {
+    # res = dte_acc[[st]]
+    # fname = sprintf('%s/DTE_ACC_%s.csv', mydir, st)
+    res = dte_cau[[st]]
+    fname = sprintf('%s/DTE_Caudate_%s.csv', mydir, st)
+
+    df = res$res
+    df$TXNAME = substr(rownames(df), 1, 15)
+    tx2gene = stageR::getTx2gene(res$stageRObj)
+    df2 = merge(as.data.frame(df), tx2gene, sort=F,
+                by.x='TXNAME', all.x=T, all.y=F)
+    df2 = merge(df2, mart, sort=F,
+                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+    df2 = df2[order(df2$pvalue), ]
+    write.csv(df2, row.names=F, file=fname)
+}
+
+load('~/data/post_mortem/DTU_02112021.RData')
+for (st in c('protein_coding', 'lncRNA')) {
+    # res = dtu_acc[[st]]
+    # fname = sprintf('%s/DTU_ACC_%s.csv', mydir, st)
+    res = dtu_cau[[st]]
+    fname = sprintf('%s/DTU_Caudate_%s.csv', mydir, st)
+
+    df = res$res.t
+    df2 = merge(df, mart, sort=F,
+                by.x='gene_id', by.y='ensembl_gene_id', all.x=T, all.y=F)
+    df2 = df2[order(df2$pvalue), ]
+    write.csv(df2, row.names=F, file=fname)
+}
+```
 
 # TODO

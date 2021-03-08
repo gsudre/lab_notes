@@ -4,9 +4,14 @@ I'l repeat a similar analysis we ran for DTE and PRS, but this will take
 muuuuuch longer because that's how the DTU analysis goes.
 
 ```r
-run_DTU_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
+run_DTU_PRS = function(count_matrix, tx_meta, data, subtype, prs, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
-    keep_me = grepl(tx_meta$transcript_biotype, pattern=sprintf('%s$', subtype))
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$transcript_biotype,
+                        pattern=sprintf('%s$', subtype))
+    }
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
     my_count_matrix = count_matrix[keep_me, ]
     my_tx_meta = tx_meta[keep_me, ]
@@ -63,7 +68,7 @@ run_DTU_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
 
     # check which PCs are associated at nominal p<.01
     num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-                'C1', 'C2', 'C3', 'C4', 'C5', prs)
+                'C1', 'C2', 'C3', 'C4', 'C5', prs, 'pH', 'RIN')
     pc_vars = colnames(mydata)
     num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
                        dimnames=list(num_vars, pc_vars))
@@ -76,7 +81,7 @@ run_DTU_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
         }
     }
 
-    categ_vars = c('batch', 'MoD', 'substance_group',
+    categ_vars = c('batch', 'MoD', 'substance_group', 'brainbank',
                 'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
     categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
                          dimnames=list(categ_vars, pc_vars))
@@ -164,6 +169,7 @@ samples$Diagnosis = factor(samples$Diagnosis, levels=c('Control', 'Case'))
 samples$substance_group = factor(samples$substance_group)
 samples$comorbid_group = factor(samples$comorbid_group_update)
 samples$evidence_level = factor(samples$evidence_level)
+samples$brainbank = factor(samples$bainbank)
 
 # removing everything but autosomes
 library(GenomicFeatures)
@@ -200,9 +206,9 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                    function(x) sprintf('PRS%f', x))
 m[, prs_names] = NA
 keep_me = m$hbcc_brain_id %in% wnh_brains
-m[keep_me, prs_names] = m[keep_me, 64:75]
-m[!keep_me, prs_names] = m[!keep_me, 52:63]
-data.prs = m[, c(1:50, 76:87)]
+m[keep_me, prs_names] = m[keep_me, 65:76]
+m[!keep_me, prs_names] = m[!keep_me, 53:64]
+data.prs = m[, c(1:51, 77:88)]
 count_matrix = count_matrix[, samples$hbcc_brain_id %in% data.prs$hbcc_brain_id]
 data = data.prs
 ```
@@ -214,31 +220,63 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
                    function(x) sprintf('PRS%f', x))
 all_res = list()
-for (prs in prs_names) {
-    res = run_DTU_PRS(count_matrix, tx_meta, myregion, 'protein_coding', prs, .05)
-    all_res[[prs]] = res
+for (st in c('lncRNA', 'protein_coding')) {
+    all_res[[st]] = list()
+    for (prs in prs_names) {
+        res = run_DTU_PRS(count_matrix, tx_meta, myregion, st, prs, .05)
+        all_res[[st]][[prs]] = res
+    }
 }
-dtuPRS_acc_pc = all_res
-# protein_coding, lncRNA, pseudogene
+dtuPRS_acc = all_res
 
 all_res = list()
-for (prs in prs_names) {
-    res = run_DTU_PRS(count_matrix, tx_meta, myregion, 'protein_coding', prs, .05)
-    all_res[[prs]] = res
+for (st in c('lncRNA', 'protein_coding')) {
+    all_res[[st]] = list()
+    for (prs in prs_names) {
+        res = run_DTU_PRS(count_matrix, tx_meta, myregion, st, prs, .05)
+        all_res[[st]][[prs]] = res
+    }
 }
-dtuPRS_cau_pc = all_res
+dtuPRS_cau = all_res
 
 save(dtuPRS_acc_lnc, dtuPRS_acc_pc, dtuPRS_acc_pg,
      dtuPRS_cau_lnc, dtuPRS_cau_pc, dtuPRS_cau_pg,
      file='~/data/post_mortem/DTU_PRS_02032021.RData')
 ```
 
+We just decided to go without splitting by subtypes... since this takes forever
+to run, let's just run all:
+
+```r
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+dtuPRS_acc = list()
+for (prs in prs_names) {
+    dtuPRS_acc[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05)
+}
+
+dtuPRS_cau = list()
+for (prs in prs_names) {
+    dtuPRS_cau[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05)
+}
+
+save(dtuPRS_acc, dtuPRS_cau, file='~/data/post_mortem/DTU_PRS_03082021.RData')
+```
+
+
+
+
+
+
+
+
 Let's then compute the PRS and DX overlaps:
 
 ```r
 library(GeneOverlap)
-load('~/data/post_mortem/DTE_PRS_02032021.RData')
-load('~/data/post_mortem/DTE_skinny_02032021.RData')
+load('~/data/post_mortem/DTU_PRS_02032021.RData')
+load('~/data/post_mortem/DTU_02032021.RData')
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),

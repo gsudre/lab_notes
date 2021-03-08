@@ -309,6 +309,7 @@ data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
 data$substance_group = factor(data$substance_group)
 data$comorbid_group = factor(data$comorbid_group_update)
 data$evidence_level = factor(data$evidence_level)
+data$brainbank = factor(data$bainbank)
 
 # removing everything but autosomes
 library(GenomicFeatures)
@@ -345,9 +346,9 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                    function(x) sprintf('PRS%f', x))
 m[, prs_names] = NA
 keep_me = m$hbcc_brain_id %in% wnh_brains
-m[keep_me, prs_names] = m[keep_me, 64:75]
-m[!keep_me, prs_names] = m[!keep_me, 52:63]
-data.prs = m[, c(1:50, 76:87)]
+m[keep_me, prs_names] = m[keep_me, 65:76]
+m[!keep_me, prs_names] = m[!keep_me, 53:64]
+data.prs = m[, c(1:51, 77:88)]
 count_matrix = count_matrix[, data$hbcc_brain_id %in% data.prs$hbcc_brain_id]
 data = data.prs
 ```
@@ -355,9 +356,13 @@ data = data.prs
 Now let's implement the function using the iteractive filter:
 
 ```r
-run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
+run_DGE_PRS = function(count_matrix, tx_meta, data, subtype, prs, alpha) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
-    keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+    }
     cat('Keeping', sum(keep_me), subtype, 'variables\n')
     my_count_matrix = count_matrix[keep_me, ]
     my_tx_meta = tx_meta[keep_me, ]
@@ -393,7 +398,7 @@ run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
 
     # check which PCs are associated at nominal p<.01
     num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-                'C1', 'C2', 'C3', 'C4', 'C5', prs)
+                'C1', 'C2', 'C3', 'C4', 'C5', 'pH', 'RIN', prs)
     pc_vars = colnames(mydata)
     num_corrs = matrix(nrow=length(num_vars), ncol=length(pc_vars),
                        dimnames=list(num_vars, pc_vars))
@@ -406,8 +411,8 @@ run_DGE_PRS = function(count_matrix, tx_meta, myregion, subtype, prs, alpha) {
         }
     }
 
-    categ_vars = c('batch', 'MoD', 'substance_group',
-                'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
+    categ_vars = c('batch', 'MoD', 'substance_group', 'brainbank',
+                   'comorbid_group', 'POP_CODE', 'Sex', 'evidence_level')
     categ_corrs = matrix(nrow=length(categ_vars), ncol=length(pc_vars),
                          dimnames=list(categ_vars, pc_vars))
     categ_pvals = categ_corrs
