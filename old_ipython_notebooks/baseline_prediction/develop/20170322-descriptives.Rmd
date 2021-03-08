@@ -1,0 +1,431 @@
+---
+title: "Data descriptives"
+output: html_notebook
+---
+
+Philip asked for the usual descriptives for each dataset. Let's do it for the usual targets, and then export them all to a nice table.
+
+# DTI
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+```
+
+
+```{r}
+nvVSadhd_test = function(X, merged, dtype) {
+  y = as.character(merged$DX_BASELINE)
+  y[y != 'NV'] = 'ADHD'
+  y = factor(y, levels=c('NV', 'ADHD'))
+  modality <- apply(X, 2, function(dat) {dtype})
+  
+  # tstat <- apply(X, 2, function(dat) {
+  #   +     summary(lm(dat ~ y + merged$age + merged$SEX))$coefficients[2, 3]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(lm(dat ~ y + merged$age + merged$SEX))$coefficients[2, 4]})
+  
+  # tstat <- apply(X, 2, function(dat) {
+  #   +     summary(lm(dat ~ y))$coefficients[2, 3]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(lm(dat ~ y))$coefficients[2, 4]})
+  
+  tstat <- apply(X, 2, function(dat) {
+    +     summary(lm(dat ~ y + merged$SEX))$coefficients[2, 3]})
+  pvals <- apply(X, 2, function(dat) {
+    +     summary(lm(dat ~ y + merged$SEX))$coefficients[2, 4]})
+  
+  res = cbind(modality, tstat, pvals)
+  colnames(res) = c('dtype', 'nvVSadhd_tstat', 'nvVSadhd_pval')
+  return(res)
+}
+
+nvVSadhd_lowVSadhd_high_test = function(X, merged) {
+  y = as.character(merged$DX_BASELINE)
+  y[y != 'NV'] = 'ADHD'
+  # myc = kmeans(merged[y != 'NV',]$GAS, 2)
+  # thresh = as.numeric(myc$centers[1] + diff(myc$centers)/2)
+  # print(sprintf('Cutoff: %.2f', thresh))
+  thresh = 68
+  y[y == 'ADHD' & merged$GAS > thresh] = 'ADHD_high'
+  y[y == 'ADHD'] = 'ADHD_low'
+  y = factor(y, levels=c('NV', 'ADHD_low', 'ADHD_high'))
+  
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~  + merged$age + merged$SEX + y)))[[1]][4][[3, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ merged$age + merged$SEX + y)))[[1]][5][[3, 1]]})
+  
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][4][[1, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][5][[1, 1]]})
+  
+  fstat <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][4][[2, 1]]})
+  pvals <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][5][[2, 1]]})
+  
+  res = cbind(fstat, pvals)
+  colnames(res) = c('nvVSadhdlowVSadhdhigh_Fstat', 'nvVSadhdlowVSadhdhigh_pval')
+  return(res)
+}
+
+outcome_test = function(X, merged) {
+  y = merged$inatt3_named
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ merged$age + merged$SEX + y)))[[1]][4][[3, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ merged$age + merged$SEX + y)))[[1]][5][[3, 1]]})
+
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][4][[1, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][5][[1, 1]]})
+  
+  fstat <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][4][[2, 1]]})
+  pvals <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][5][[2, 1]]})
+  
+  res_inatt = cbind(fstat, pvals)
+  colnames(res_inatt) = c('outcomeInatt3Grp_Fstat', 'outcomeInatt3Grp_pval')
+  
+  y = merged$HI3_named
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ merged$age + merged$SEX + y)))[[1]][4][[3, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ merged$age + merged$SEX + y)))[[1]][5][[3, 1]]})
+  
+  # fstat <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][4][[1, 1]]})
+  # pvals <- apply(X, 2, function(dat) {
+  #   +     summary(aov(lm(dat ~ y)))[[1]][5][[1, 1]]})
+  
+  fstat <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][4][[2, 1]]})
+  pvals <- apply(X, 2, function(dat) {
+    +     summary(aov(lm(dat ~ merged$SEX + y)))[[1]][5][[2, 1]]})
+  
+  res_hi = cbind(fstat, pvals)
+  colnames(res_hi) = c('outcomeHI3Grp_Fstat', 'outcomeHI3Grp_pval')
+  return(cbind(res_inatt, res_hi))
+}
+
+symptom_test = function(X, merged, thresh) {
+  keep_me = merged$SX_inatt >= thresh & merged$SX_HI >= thresh
+  X = X[keep_me, ]
+  
+  y = merged[keep_me,]$SX_inatt
+  tstat <- apply(X, 2, function(dat) {
+    +      summary(lm(dat ~ y + merged[keep_me,]$age + merged[keep_me,]$SEX))$coefficients[2, 3]})
+  pvals <- apply(X, 2, function(dat) {
+    +      summary(lm(dat ~ y + merged[keep_me,]$age + merged[keep_me,]$SEX))$coefficients[2, 4]})
+  res_inatt = cbind(tstat, pvals)
+  colnames(res_inatt) = c(sprintf('inattBE%d_tstat', thresh),
+                          sprintf('inattBE%d_pval', thresh))
+   
+  y = merged[keep_me,]$SX_HI
+  tstat <- apply(X, 2, function(dat) {
+    +      summary(lm(dat ~ y + merged[keep_me,]$age + merged[keep_me,]$SEX))$coefficients[2, 3]})
+  pvals <- apply(X, 2, function(dat) {
+    +      summary(lm(dat ~ y + merged[keep_me,]$age + merged[keep_me,]$SEX))$coefficients[2, 4]})
+  res_hi = cbind(tstat, pvals)
+  colnames(res_hi) = c(sprintf('hiBE%d_tstat', thresh),
+                          sprintf('hiBE%d_pval', thresh))
+  
+  return(cbind(res_inatt, res_hi))
+}
+```
+
+Now that all functions are written, it's just a matter of combining their results:
+
+```{r}
+dti_descriptive = cbind(nvVSadhd_test(X, merged, 'DTI'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged),
+                        symptom_test(X, merged, 0),
+                        symptom_test(X, merged, 1),
+                        symptom_test(X, merged, 2))
+write.csv(dti_descriptive, file='~/tmp/oi.csv')
+```
+
+#PRS
+```{r}
+prs_data = read.csv('~/data/prs/PRS2017_noInversion_all.csv')
+merged = merge(gf, prs_data, by='MRN')
+phen_vars = which(grepl("^PROFILES", colnames(merged)))
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+prs_descriptive = cbind(nvVSadhd_test(X, merged, 'PRS'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged),
+                        symptom_test(X, merged, 0),
+                        symptom_test(X, merged, 1),
+                        symptom_test(X, merged, 2))
+```
+
+# Demographics
+This is still part of the clinical spreadsheet, so let's just do it without any extra import:
+
+```{r}
+# GAS doesn't make much sense, but I needed some other numerical variable to go with age so the functions would work
+phen_vars = c(which(grepl("^age", colnames(gf))),
+              which(grepl("^GAS", colnames(gf))))
+X = gf[, phen_vars]
+demo_descriptive = cbind(nvVSadhd_test(X, gf, 'demo'),
+                        nvVSadhd_lowVSadhd_high_test(X, gf),
+                        outcome_test(X, gf),
+                        symptom_test(X, gf, 0),
+                        symptom_test(X, gf, 1),
+                        symptom_test(X, gf, 2))
+```
+
+# Geospatial
+```{r}
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+merged = merge(gf, geo_data, by='MRN')
+# some variables are being read as numeric...
+merged$Home_Price = as.numeric(merged$Home_Price)
+merged$Fam_Income = as.numeric(merged$Fam_Income)
+merged$Crime_Rate = as.numeric(merged$Crime_Rate)
+phen_vars = c('SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              'poverty_education', 'social_environment', 'physical_health_environment', 
+              'physical_envronment')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+geo_descriptive = cbind(nvVSadhd_test(X, merged, 'geo'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged),
+                        symptom_test(X, merged, 0),
+                        symptom_test(X, merged, 1),
+                        symptom_test(X, merged, 2))
+```
+
+# Neuropsych
+```{r}
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+merged = merge(mwj, mbeery, by='MRN')
+merged = merge(merged, miq, by='MRN')
+merged = merge(merged, mwisc, by='MRN')
+merged = merge(merged, mcpt, by='MRN')
+
+phen_vars = c('FSIQ',
+              # CPT
+              'N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change',
+              # WISC
+              'Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB',
+              # WJ
+              'Raw.Score..VM', 'Raw.Score..DS', 'PS',
+              # Beery
+              'Standard.score'
+              )
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+neuropsych_descriptive = cbind(nvVSadhd_test(X, merged, 'npsych'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged),
+                        symptom_test(X, merged, 0),
+                        symptom_test(X, merged, 1),
+                        symptom_test(X, merged, 2))
+
+```
+# Structural
+```{r}
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+my_ids = intersect(gf$MRN, struct_data$MRN)
+merged = mergeOnClosestDate(gf, struct_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+X = merged[, 33:302]
+struct_descriptive = cbind(nvVSadhd_test(X, merged, 'struct'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged),
+                        symptom_test(X, merged, 0),
+                        symptom_test(X, merged, 1),
+                        symptom_test(X, merged, 2))
+```
+
+Finally, we just merge everything and spit out the file:
+
+```{r}
+res = rbind(dti_descriptive, demo_descriptive, geo_descriptive, neuropsych_descriptive,
+            struct_descriptive)
+write.csv(res, file='~/data/baseline_prediction/stripped/descriptives_age_sex.csv')
+```
+
+# Correlation with movement
+
+Philip suggested we should check whether the DTI variables correlate with the movement variables. Let's see:
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+pvals.trans <- apply(X, 2, function(dat) {
+  +      summary(lm(dat ~  merged$norm.trans))$coefficients[2, 4]})
+pvals.rot <- apply(X, 2, function(dat) {
+  +      summary(lm(dat ~  merged$norm.rot))$coefficients[2, 4]})
+sum(pvals.trans < .05)
+sum(pvals.rot < .05)
+```
+
+Well, 4 and 3 is not so bad, out of 44. Which ones?
+
+```{r}
+colnames(X)[pvals.trans < .05]
+colnames(X)[pvals.rot < .05]
+```
+
+# Descriptives on deltas
+
+Let's see which deltas (slopes) are correlated with the different targets. Let's do an uncorrected one, and then one correcting for sex, as age won't matter here.
+
+```{r}
+y_target = 'DX_BASELINE'
+
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+           tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 |
+           tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+
+phen_vars = c(which(grepl("^FA_", colnames(tract_data))),
+              which(grepl("^AD_", colnames(tract_data))),
+              which(grepl("^RD_", colnames(tract_data))),
+              which(grepl("^MO_", colnames(tract_data)))
+)
+Xraw = tract_data[, phen_vars]
+my_ids = unique(gf$MRN)
+
+# MAKE SURE nrow(tract_data) == nrow(Xraw)!!!!
+
+get_delta = function (d) {
+  # if we have too many NAs, return NA
+  if (sum(is.na(d)) >= (length(d)-1)) {
+    return(NA)
+  }
+  else {
+    lm(d ~ tract_data[idx, ]$age_at_scan)$coefficients[2]
+  }
+}
+
+X = c()
+y_idx = c()
+target_col = which(colnames(gf)==y_target)
+for (s in my_ids) {
+  idx = tract_data$MRN==s
+  # proceed if we have more than one observation in the data
+  if (sum(idx) >= 2) {
+    slopes = sapply(Xraw[idx, ], get_delta)
+    names(slopes) = colnames(Xraw)
+    X = rbind(X, slopes)
+    idxy = gf$MRN==s
+    y_idx = c(y_idx, which(idxy)[1])
+  }
+}
+merged = gf[y_idx, ]
+```
+
+```{r}
+dti_delta_descriptive = cbind(nvVSadhd_test(X, merged, 'DTI'),
+                        nvVSadhd_lowVSadhd_high_test(X, merged),
+                        outcome_test(X, merged))
+```
+
+Same thing for structural:
+
+```{r}
+
+```

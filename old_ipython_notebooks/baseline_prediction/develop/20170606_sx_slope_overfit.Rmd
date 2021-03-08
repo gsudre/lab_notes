@@ -1,0 +1,193 @@
+---
+title: "Overfitting SX slope"
+output: html_notebook
+---
+
+Can we find anything in the symptom slopes if we overfit the data?
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+
+library(caret)
+
+get_SX_slope = function (df, ids) {
+  inatt = c()
+  hi = c()
+  mrns = c()
+  for (s in ids) {
+    idx = df$MRN==s
+    # proceed if we have more than one observation in the data
+    if (sum(idx) >= 2) {
+      inatt = c(inatt, lm(SX_inatt ~ age, data=df[idx,])$coefficients[[2]])
+      hi = c(hi, lm(SX_HI ~ age, data=df[idx,])$coefficients[[2]])
+      mrns = c(mrns, s)
+    }
+  }
+  res = cbind(inatt, hi)
+  colnames(res) = c('inatt', 'hi')
+  rownames(res) = mrns
+  return(res)
+}
+```
+
+Note that for now I'm running caretEnsemble just to make it easier to run several methods at the same time. I might use an actual ensemble in the future, but not now.
+
+```{r}
+mysx = 'hi'
+adhdOnly = T
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+# DENFIS is quite verbose, with a progress bar
+methods = c("avNNet", "bagEarth", "bagEarthGCV", 
+"bayesglm", "blackboost", "brnn", "BstLm" , 
+"bstTree", "cforest", "ctree", "ctree2", "cubist", "DENFIS", 
+"dnn", "earth", "elm", "enet",   "evtree", 
+"gaussprLinear", "gaussprPoly", "gaussprRadial", 
+"gcvEarth","glm", "glmboost", "glmnet", "icr", "kernelpls", 
+"kknn", "knn",  "krlsRadial", "lars" , "lasso", 
+"leapBackward", "leapForward", "leapSeq", "lm", 
+"neuralnet", 
+"pcaNNet", "pcr", "penalized", "pls", "plsRglm", "ppr", 
+"qrf" , "rf", "rfRules",
+"ridge", "rpart", "rpart2", "rqlasso", 
+"rqnc", "RRF", "RRFglobal",  "rvmRadial", 
+"SBC", "simpls", "spls", 
+"svmLinear", "svmLinear2", "svmPoly", "svmRadial", "svmRadialCost", 
+"treebag", "widekernelpls", "WM", "xgbLinear", 
+"xgbTree")
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+
+if (adhdOnly) {
+  idx = which(gf_base$DX_BASELINE!='NV')
+  ids = gf_base[idx,]$MRN
+} else {
+  idx = 1:nrow(gf_base)
+  ids = gf_base$MRN
+}
+slopes = get_SX_slope(gf, ids)
+y = slopes[idx, mysx]
+
+X = geospatial[idx, ]
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+pp = preProcess(X, method=c('medianImpute', 'center', 'scale'))
+X = predict(pp, X)
+
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boot632",
+    number=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+```
+
+First we try this to make sure all necessary packages are installed:
+
+```{r}
+library(caret)
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+mysx = 'hi'
+adhdOnly = T
+methods = c('xgbLinear', 'lm', "xgbTree")
+
+ntimes = 2
+myseed = 1234
+tuneLength = 2
+
+if (adhdOnly) {
+  idx = which(gf_base$DX_BASELINE!='NV')
+  ids = gf_base[idx,]$MRN
+} else {
+  idx = 1:nrow(gf_base)
+  ids = gf_base$MRN
+}
+slopes = get_SX_slope(gf, ids)
+y = slopes[idx, mysx]
+
+X = prs[idx, ]
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+pp = preProcess(X, method=c('medianImpute', 'center', 'scale'))
+X = predict(pp, X)
+
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (length(grep('xgb', m)) == 1) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boot632",
+    number=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+
+```
+
+Now I'll transform the code above into a function so I can run it for every individual dataset.
+
+
+# HI
+## all
+## adhd only
+
+# inatt
+## all
+## adhd only

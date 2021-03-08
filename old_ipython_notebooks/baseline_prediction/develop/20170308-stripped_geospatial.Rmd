@@ -1,0 +1,92 @@
+---
+title: "Geospatial analysis using stripped files"
+output: html_notebook
+---
+
+There isn't much cleaning to do for geospatial. Assuming the data is good, we don't even need to merge on closest date, since it has no dates. It's a regular merge:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+
+gf = gf[gf$BASELINE=='BASELINE', ]
+merged = merge(gf, geo_data, by='MRN')
+# some variables are being read as numeric...
+merged$Home_Price = as.numeric(merged$Home_Price)
+merged$Fam_Income = as.numeric(merged$Fam_Income)
+merged$Crime_Rate = as.numeric(merged$Crime_Rate)
+```
+
+Let's try to do this without the PCA variables.
+
+```{r}
+library(caret)
+seed = 107
+phen_vars = c('SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+Let's do some ML:
+
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_geoRaw_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, run_models=c('rndForest', 'lr', 'rsvm', 'xgb'))
+
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+Then we try it with only the PCA variables and SES:
+
+```{r}
+phen_vars = c('SES', 'poverty_education', 'social_environment', 'physical_health_environment', 
+              'physical_envronment')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+But Philip hasn't run the PCA for the subjects we added, so let's remove them:
+
+```{r}
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_geoPCA_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# runInCluster(root_fname, train_test_ratio=.8, cpuDiff=1, run_models=c('lr', 'rsvm'))
+
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```

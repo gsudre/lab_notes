@@ -1,0 +1,345 @@
+---
+title: "CARET"
+output: html_notebook
+---
+
+Let's try to run some ML stuff in R using CARET. Instructions from http://topepo.github.io/caret/
+
+* clean data
+* need to do NV vs ADHD baseline first!
+* better split the labels (e.g. some type of regression?)
+
+```{r}
+library(caret)
+library(doParallel)
+# for replication purposes
+set.seed(107)
+
+
+eval_model = function(fit, data, labels) {
+  preds = predict(fit, newdata=data)
+  probs = predict(fit, newdata=data, type="prob")
+  ts = data.frame(obs=labels, pred=preds, probs)
+  res = multiClassSummary(ts, lev=levels(ts$obs))
+  return(res)
+}
+
+
+ncv = 3
+nrepeatcv = 2
+nsplits = 2
+train_test_ratio = .85
+root_fname = '~/tmp/runs'
+# saving output
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+ncores = detectCores(all.tests = FALSE, logical = TRUE)
+njobs = ncores - 3
+run_models = c('rndForest','lr') #c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+gf_fname = '~/data/baseline_prediction/gf_updated_01312017b.csv'
+data_fname = '~/data/baseline_prediction/dti_tortoiseExported_meanTSA_02012017.csv'
+gf = read.csv(gf_fname)
+group_var = 'inatt3_named' # HI3_named	HI4_named	HI5_named	inatt3_named
+all_data = read.csv(data_fname)
+mrn_gf = unique(gf[, c('ID', group_var)])
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+data = get_baseline_scans(all_data)
+ldata = merge(mrn_gf, data, by.x='ID', by.y='MRN')
+
+inTrain = createDataPartition(y = ldata$inatt3_named,
+                              times= nsplits,
+                              p=train_test_ratio)
+# need to do later with other folds... for now we just do the first one
+phen_vars = which(grepl("FA_", colnames(ldata)))
+metric = "Mean_ROC"
+default_preproc = c("center", "scale")
+
+# setting up parallelization
+registerDoParallel(ncores,cores=ncores)
+getDoParWorkers()
+
+# spitting out informative stuff
+gf_fname
+data_fname
+group_var
+metric
+default_preproc
+
+rndForestAll = c()
+lrAll = c()
+lsvmAll = c()
+rsvmAll = c()
+xgbAll = c()
+gbmAll = c()
+save_list = c()
+for (m in run_models) {
+  save_list = c(save_list, sprintf('%sFit', m))
+}
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = multiClassSummary,
+                        search='grid')
+
+# for each train/test split
+for (i in 1:length(inTrain)) {
+  cat(sprintf('\nWorking on split %d of %d', i, length(inTrain)))
+  Xtrain = ldata[ inTrain[[i]], phen_vars]
+  ytrain = ldata[ inTrain[[i]],]$inatt3_named
+  Xtest  = ldata[-inTrain[[i]], phen_vars]
+  ytest = ldata[-inTrain[[i]],]$inatt3_named
+  
+  if ('rndForest' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning random forests\n')
+    rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(Xtrain))))
+    rndForestFit <- train(Xtrain, ytrain,
+                          method = "rf",
+                          trControl = ctrl_cv,
+                          tuneGrid=rndForestGrid,
+                          metric = metric,
+                          preProc = default_preproc)
+    rndForestRes = eval_model(rndForestFit, Xtest, ytest)
+    rndForestAll = rbind(rndForestAll, rndForestRes)
+    print(proc.time() - ptm)
+  }
+  
+  if ('lr' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning logistic regression\n')
+    lrGrid <- expand.grid(.nIter=seq(1,50,5))
+    lrFit <- train(Xtrain, ytrain,
+                   method = "LogitBoost",
+                   trControl = ctrl_cv,
+                   tuneGrid=lrGrid,
+                   metric = metric,
+                   preProc = default_preproc)
+    lrRes = eval_model(lrFit, Xtest, ytest)
+    lrAll = rbind(lrAll, lrRes)
+    print(proc.time() - ptm)
+  }
+  
+  if ('lsvm' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning Linear SVM\n')
+    lsvmGrid <- expand.grid(.C=c(.01, .1, 1, 10, 100, 10^3, 10^4))
+    lsvmFit <- train(Xtrain, ytrain,
+                     method = "svmLinear",
+                     trControl = ctrl_cv,
+                     tuneGrid=lsvmGrid,
+                     metric = metric,
+                     preProc = default_preproc)
+    lsvmRes = eval_model(lsvmFit, Xtest, ytest)
+    lsvmAll = rbind(lsvmAll, lsvmRes)
+    print(proc.time() - ptm)
+  }
+  
+  if ('rsvm' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning RBF SVM\n')
+    rsvmGrid <- expand.grid(.C=seq(1e-2, 1e+4, length.out=7),
+                            .sigma=seq(1e-5, 1e+1, length.out=7))
+    rsvmFit <- train(Xtrain, ytrain,
+                     method = "svmRadial",
+                     trControl = ctrl_cv,
+                     tuneGrid=rsvmGrid,
+                     metric = metric,
+                     preProc = default_preproc)
+    rsvmRes = eval_model(rsvmFit, Xtest, ytest)
+    rsvmAll = rbind(rsvmAll, rsvmRes)
+    print(proc.time() - ptm)
+  }
+  
+  if ('xgb' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning XGBoost\n')
+    xgbGrid <- expand.grid(.nrounds = 1000,
+                           .eta = c(.0001, .001, 0.01, 0.05, 0.1),
+                           .max_depth = c(2,4,6,8,10,14),
+                           .gamma = 1,
+                           .colsample_bytree=.8,
+                           .min_child_weight=1)
+    xgbFit <- train(Xtrain, ytrain,
+                    method = "xgbTree",
+                    trControl = ctrl_cv,
+                    tuneGrid=xgbGrid,
+                    metric = metric,
+                    preProc = default_preproc)
+    xgbRes = eval_model(xgbFit, Xtest, ytest)
+    xgbAll = rbind(xgbAll, xgbRes)
+    print(proc.time() - ptm)
+  }
+  
+  if ('gbm' %in% run_models) {
+    ptm <- proc.time()
+    cat('\nRunning GBM\n')
+    gbmGrid <-  expand.grid(.interaction.depth = c(1:sqrt(ncol(Xtrain))),
+                            .n.trees = seq(1,501,10),
+                            .shrinkage = seq(.0005, .05,.0005),
+                            .n.minobsinnode = 10) #c(5, 10, 15, 20))
+    gbmFit <- train(Xtrain, ytrain,
+                    method = "gbm",
+                    verbose=F,
+                    trControl = ctrl_cv,
+                    tuneGrid=gbmGrid,
+                    metric = metric,
+                    preProc = default_preproc)
+    gbmRes = eval_model(gbmFit, Xtest, ytest)
+    gbmAll = rbind(gbmAll, gbmRes)
+    print(proc.time() - ptm)
+  }
+  
+  # saving fit models
+  fname = sprintf('%s_split%02d.RData', root_fname, i)
+  save(list=save_list, file=fname)
+}
+stopImplicitCluster()
+
+```
+Let's plot different metrics on the test data:
+
+```{r}
+compile_metrics = function(res, col, hdr) {
+  b = vector()
+  for (d in res) {
+    b = cbind(b, d[,col])
+  }
+  colnames(b) = hdr
+  return(b)
+}
+mylist = list(rndForestAll, lrAll, lsvmAll, rsvmAll, xgbAll, gbmAll)
+hdr = c('RndForest', 'LogReg', 'LinearSVM', 'RBFSVM', 'XGBOOST', 'GradBoost')
+par(mfrow=c(2, 3))
+boxplot(compile_metrics(mylist, 1, hdr), ylab='logLoss', las=2)
+boxplot(compile_metrics(mylist, 2, hdr), ylab='AUC', las=2)
+boxplot(compile_metrics(mylist, 3, hdr), ylab='Accuracy', las=2)
+boxplot(compile_metrics(mylist, 4, hdr), ylab='Kappa', las=2)
+boxplot(compile_metrics(mylist, 5, hdr), ylab='Sensitivity', las=2)
+boxplot(compile_metrics(mylist, 6, hdr), ylab='Specificity', las=2)
+```
+
+
+
+``` {r}
+set.seed(123)
+# I won't use OOB here because otherwise I can't compare it to other models, as it would have different number of samples!
+# ctrl_oob <- trainControl(method = "oob",
+#                          classProbs = TRUE,
+#                          summaryFunction = multiClassSummary)
+ctrl_cv <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 2,
+                           classProbs = TRUE,
+                           summaryFunction = multiClassSummary)
+
+rndForestFit <- train(Xtrain, ytrain,
+                      method = "rf",
+                      trControl = ctrl_cv,
+                      metric = "Kappa",
+                      preProc = c("center", "scale"))
+
+lrFit <- train(Xtrain, ytrain,
+                  method = "LogitBoost",
+                  trControl = ctrl_cv,
+                  metric = "Mean_ROC",
+                  preProc = c("center", "scale"))
+
+lsvmFit <- train(Xtrain, ytrain,
+                  method = "svmLinear",
+                  trControl = ctrl_cv,
+                  # metric = "Mean_ROC",
+                  preProc = c("center", "scale"))
+
+rsvmFit <- train(Xtrain, ytrain,
+                  method = "svmRadial",
+                  trControl = ctrl_cv,
+                  # metric = "Mean_ROC",
+                  preProc = c("center", "scale"))
+
+xgbFit <- train(Xtrain, ytrain,
+                  method = "xgbTree",
+                  trControl = ctrl_cv,
+                  # metric = "Mean_ROC",
+                  preProc = c("center", "scale"))
+
+gbmFit <- train(Xtrain, ytrain,
+                  method = "gbm",
+                 verbose=F,
+                  trControl = ctrl_cv,
+                  # metric = "Mean_ROC",
+                  preProc = c("center", "scale"))
+
+# # has L1 for classification
+# ldaFit <- train(Xtrain, ytrain,
+#                   method = "PenalizedLDA",
+#                   trControl = ctrl_cv,
+#                   # metric = "Mean_ROC",
+#                   preProc = c("center", "scale"))
+# 
+# # has L1 for classification
+# smdaFit <- train(Xtrain, ytrain,
+#                   method = "smda",
+#                   trControl = ctrl_cv,
+#                   # metric = "Mean_ROC",
+#                   preProc = c("center", "scale"))
+```
+Let's compare our models based on how they perform in the test data:
+```{r}
+
+rndForestRes = eval_model(rndForestFit, Xtest, ytest)
+lrRes = eval_model(lrFit, Xtest, ytest)
+lsvmRes = eval_model(lsvmFit, Xtest, ytest)
+rsvmRes = eval_model(rsvmFit, Xtest, ytest)
+xgbRes = eval_model(xgbFit, Xtest, ytest)
+gbmRes = eval_model(gbmFit, Xtest, ytest)
+
+```
+Evaluating the models
+```{r}
+rndForestClasses <- predict(rndForestFit, newdata = Xtest)
+confusionMatrix(data = rndForestClasses, ytest)
+lrClasses <- predict(rndForestFit, newdata = Xtest)
+confusionMatrix(data = lrClasses, ytest)
+
+# library(pROC)
+# lrProbs <- predict(rndForestFit, newdata = Xtest, type="prob")
+# lrROC = roc(predictor=lrProbs$PS, response=ytest, levels=rev(levels(ytest)))
+```
+We can try a different model:
+```{r}
+rdaGrid = data.frame(gamma = (0:4)/4, lambda = 3/4)
+set.seed(123)
+rdaFit <- train(Class ~ .,
+                 data = training,
+                 method = "rda",
+                 tuneGrid = rdaGrid,
+                 trControl = ctrl,
+                 metric = "ROC")
+rdaFit
+```
+
+Results
+
+```{r}
+rdaClasses <- predict(rdaFit, newdata = testing)
+confusionMatrix(rdaClasses, testing$Class)
+ts = data.frame(obs=ytest, pred=rndForestClasses, predict(rndForestFit, newdata = Xtest, type="prob"))
+
+```
+Comparing resampling results:
+```{r}
+resamps <- resamples(list(pls = plsFit, rda = rdaFit))
+summary(resamps)
+```
+
+More
+
+```{r}
+summary(diff(resamps))
+xyplot(resamps, what = "BlandAltman")
+```
+
+

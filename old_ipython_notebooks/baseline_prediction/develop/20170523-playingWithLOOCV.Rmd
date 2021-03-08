@@ -1,0 +1,749 @@
+---
+title: "Playing with LOOCV"
+output: html_notebook
+---
+
+I want to spend a bit more time with LOOCV because it will be the best way to implement the voting scheme per modality. If we end up tossing everything together then it doesn't matter. But if we do that, if will be interesting to have some unsupervised step to combine the modalities. For example, any of the methods listed here:
+
+https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-15-162
+
+might be interesting. 
+
+Of course, the other option would be to just throw all data into a classifier that takes NaNs (e.g. ada family). That would also not restrict us to LOOCV.
+
+So, let's create different 315 x features matrices (actually, 290, after restricting for age <= 12), just using residuals as usual. Then, we can merge them together if we are going to just throw everything in, or keep them separate for the voting scheme or unsupervised learning.
+
+```{r}
+get_needed_residuals = function(y, fm_str, cutoff, df) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm != 'y ~ ') {
+    idx = !is.na(y)
+    opt_fit = lm(as.formula(fm))
+    y[idx] = opt_fit$residuals
+  }
+  return(y)
+}
+
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+my_ids = unique(gf_base$MRN)
+```
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+X = merged[, phen_vars]
+X[which(rm_me), ] = NA
+library(parallel)
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+dti_tracts = as.data.frame(X_resid)
+```
+
+```{r}
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+merged = mergeOnClosestDate(gf_base, struct_data, my_ids)
+X = merged[, 32:301]
+rm_me = abs(merged$dateX.minus.dateY.months) > 12  | merged$age_at_scan > 12
+X[which(rm_me), ] = NA
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+struct_rois = as.data.frame(X_resid)
+```
+
+```{r}
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+mbeery = mergeOnClosestDate(gf_base, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+mbeery[which(rm_me),] = NA
+X = mbeery$Standard.score
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+mcpt = mergeOnClosestDate(gf_base, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+mcpt[which(rm_me),] = NA
+phen_vars = c('N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change')
+keep_me = sapply(phen_vars, function(d) which(colnames(mcpt) == d))
+X = cbind(X, mcpt[, keep_me])
+colnames(X)[1] = 'BeeryVM.StdScore'
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+miq = mergeOnClosestDate(gf_base, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+miq[which(rm_me),] = NA
+X = cbind(X, miq$FSIQ)
+colnames(X)[ncol(X)] = 'FSIQ'
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+mwisc = mergeOnClosestDate(gf_base, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+mwisc[which(rm_me),] = NA
+phen_vars = c('Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB')
+keep_me = sapply(phen_vars, function(d) which(colnames(mwisc) == d))
+X = cbind(X, mwisc[, keep_me])
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+mwj = mergeOnClosestDate(gf_base, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+mwj[which(rm_me),] = NA
+phen_vars = c('Raw.Score..VM', 'Raw.Score..DS', 'PS')
+keep_me = sapply(phen_vars, function(d) which(colnames(mwj) == d))
+X = cbind(X, mwj[, keep_me])
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, gf_base)
+stopCluster(cl)
+neuropsych = as.data.frame(X_resid)
+```
+
+# Geospatial
+```{r}
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+merged = merge(gf_base, geo_data, by='MRN')
+# some variables are not being read as numeric...
+merged$Home_Price = as.numeric(merged$Home_Price)
+merged$Fam_Income = as.numeric(merged$Fam_Income)
+merged$Crime_Rate = as.numeric(merged$Crime_Rate)
+phen_vars = c('SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              'poverty_education', 'social_environment', 'physical_health_environment', 
+              'physical_envronment')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+geospatial = as.data.frame(X_resid)
+```
+
+```{r}
+prs_data = read.csv('~/data/baseline_prediction/stripped/PRS.csv')
+# we don't need the extra BASELINE column
+prs_data = prs_data[, -3]
+merged = merge(gf_base, prs_data, by='MRN', all.x = T)
+X = merged[, 29:ncol(merged)]
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+prs = as.data.frame(X_resid)
+```
+
+OK, now everything is residulized into 290 x feat matrices. Time to play.
+
+```{r}
+ntimes = 50
+model = 'svmRadial'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+dsets = c('prs', 'geospatial', 'neuropsych', 'struct_rois', 'dti_tracts')
+vote_nvVSadhd = function(X, s, uni=T, pca=T, do_rfe=F) {
+  y = gf_base$DX_BASELINE
+  y[y!='NV'] = 'ADHD'
+  y = factor(y, levels=c('ADHD', 'NV'))
+  
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  # remove training examples that are all NaN. Note that this will never happen for testing!
+  rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+  Xtrain = Xtrain[!rm_me,]
+  ytrain = ytrain[!rm_me]
+  
+  # keep only good univariate variables
+  if (uni > 0) {
+    pvals = sapply(Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+    good_vars = which(pvals <= uni)
+    if (length(good_vars) > 1) {
+      Xtrain = Xtrain[, good_vars]
+      keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+      Xtest = Xtest[, keep_me]
+    } else {
+      return(data.frame(ADHD = NA, NV = NA))
+    }
+  }
+  
+  if (pca) {
+    pp <- preProcess(Xtrain, method = c('pca'), thresh=.9)
+    Xtrain<- predict(pp, Xtrain)
+    Xtest <- predict(pp, Xtest)
+  }
+  
+  if (do_rfe) {
+    set.seed(myseed)
+
+    ctrl <- rfeControl(functions = treebagFuncs,
+                       method = "boot",
+                       repeats = 5,
+                       verbose = FALSE
+                       )
+    subsets = floor(seq(from=1, to=ncol(Xtrain)/2, length.out=min(10, ncol(Xtrain)/2)))
+    mymod <- rfe(Xtrain, ytrain,
+                     sizes = subsets,
+                     rfeControl = ctrl)
+  } else{
+    set.seed(myseed)
+    fullCtrl <- trainControl(method = "boot",
+                             number = ntimes,
+                             savePredictions="final",
+                             classProbs=TRUE,
+                             summaryFunction=twoClassSummary,
+                             allowParallel=T)
+    set.seed(myseed)
+    mymod = train(Xtrain, ytrain,
+                  tuneLength=tuneLength,
+                  trControl=fullCtrl,
+                  metric='ROC',
+                  method=model,
+                  preProcess = c('medianImpute'))
+  }
+  return(predict(mymod, newdata=Xtest, type='prob')) 
+}
+
+nsubjs = nrow(gf_base)
+preds = matrix(nrow=nsubjs, ncol=length(dsets))
+colnames(preds) = dsets
+rownames(preds) = gf_base$MRN
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+
+# get a vote for each dset if the participant has data in the domain
+for (s in 1:2){#nsubjs) {
+  print(sprintf('LOOCV %d / %d', s, nsubjs))
+  for (dset in dsets) {
+    eval(parse(text=sprintf('nfeats = ncol(%s)', dset)))
+    eval(parse(text=sprintf('na_feats = sum(is.na(%s[s, ]))', dset)))
+    if (na_feats < nfeats) {
+      eval(parse(text=sprintf('X = %s', dset)))
+      if (dset %in% c('brain_fa', 'brain_ad', 'brain_rd',
+                      'brain_thickness', 'brain_volume', 'brain_area',
+                      'struct_rois')) {
+        uni = .05
+        pca = T
+        do_rfe = F
+      } else {
+        uni = 0
+        pca = F
+        do_rfe = F
+      }
+      preds[s, dset] = vote_nvVSadhd(X, s, uni=uni, pca=pca, do_rfe=do_rfe)['ADHD'][[1]]
+    }
+  }
+}
+```
+
+We should also save them:
+
+```{r}
+save(preds, file='~/data/tmp/vote_nvVSadhd_kernelpls_uni_boot200.RData')
+```
+
+Then we need a voting scheme. 
+
+```{r}
+y = gf_base$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+bin = preds
+bin[preds > .5] = 1
+bin[preds < .5] = 2
+num = colSums(bin==as.numeric(y), na.rm=T)
+den = colSums(!is.na(bin))
+print(num / den)
+mean_vote = rowMeans(preds, na.rm=T)
+mean_vote[mean_vote > .5] = 1
+mean_vote[mean_vote < .5] = 2
+print(mean(mean_vote==as.numeric(y), na.rm=T))
+```
+
+ADD 3 GROUP CLASSIFICATION
+ADD SYMPTOM SLOPE WITHIN ADHD PREDICTION
+ADD BASELINE SX PREDICTION
+ADD VOXEL VARIABLES
+IMPROVE EACH INDIVIDUAL VOTER BY TRYING DIFFERENT PRS AND BRAIN VOXEL?
+MAYBE VOTE ACROSS CLASSIFIERS?
+DO ANOTHER CV TO WEIGHT THE DIFFERENT MODALITIES? OR WEIGHT BASED ON TRAINING? SAME ACROSS CLASSIFIERS?
+FOR THE 3 CLASSES, HOW ABOUT CLASSIFY 2, THEN THE SUBCLASS?
+ISSUE: HAVING A HARD TIME REPLICATING THE 50 NTIMES RESULTS, EVEN SCORING ONLY THE NON-VOXEL STUFF. I'M RUNNING NOW WITH 200 NTIMES AND NO VOXELWISE TO SEE WHAT I GET
+
+I want to try a series of models that do some sort of feature selection themselves (whether it's stepwise through a wrapper or implicit), timing them, and checking whether they deal with multiple classes. We can run them for 3 different subjects to get an average + sd for time running.
+
+```{r}
+ntimes = 50
+model = 'logreg'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+dsets = c('prs', 'geospatial', 'neuropsych', 'struct_rois', 'dti_tracts')
+
+vote_hiOutcome = function(X, s, uni=T, pca=T, do_rfe=F) {
+  y = gf_base$HI3_named
+  y = factor(y)
+  
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  # remove training examples that are all NaN. Note that this will never happen for testing!
+  rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+  Xtrain = Xtrain[!rm_me,]
+  ytrain = ytrain[!rm_me]
+  
+  if (pca) {
+    pp <- preProcess(Xtrain, method = c('pca'), thresh=.9)
+    Xtrain<- predict(pp, Xtrain)
+    Xtest <- predict(pp, Xtest)
+  }
+  
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           number = ntimes,
+                           savePredictions="final",
+                           classProbs=TRUE,
+                           summaryFunction=multiClassSummary,
+                           allowParallel=T)
+  set.seed(myseed)
+  mymod = train(Xtrain, ytrain,
+                tuneLength=tuneLength,
+                trControl=fullCtrl,
+                metric='Mean_ROC',
+                method=model,
+                preProcess = c('medianImpute'))
+  return(predict(mymod, newdata=Xtest)) 
+}
+
+nsubjs = nrow(gf_base)
+preds = matrix(nrow=nsubjs, ncol=length(dsets))
+colnames(preds) = dsets
+rownames(preds) = gf_base$MRN
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+
+# get a vote for each dset if the participant has data in the domain
+for (s in 1:2){#nsubjs) {
+  print(sprintf('LOOCV %d / %d', s, nsubjs))
+  for (dset in dsets) {
+    eval(parse(text=sprintf('nfeats = ncol(%s)', dset)))
+    eval(parse(text=sprintf('na_feats = sum(is.na(%s[s, ]))', dset)))
+    if (na_feats < nfeats) {
+      eval(parse(text=sprintf('X = %s', dset)))
+      if (dset %in% c('brain_fa', 'brain_ad', 'brain_rd',
+                      'brain_thickness', 'brain_volume', 'brain_area',
+                      'struct_rois')) {
+        pca = T
+      } else {
+        pca = F
+      }
+      preds[s, dset] = vote_hiOutcome(X, s, pca=pca)[[1]]
+    }
+  }
+}
+```
+
+Now we load the brain variables into the same structure of 290 rows as the other variables:
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+X[which(rm_me), ] = NA
+library(parallel)
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+brain_ad = as.data.frame(X_resid)
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/fa_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, fa_data)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+X[which(rm_me), ] = NA
+library(parallel)
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+brain_fa = as.data.frame(X_resid)
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/rd_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, rd_data)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+X[which(rm_me), ] = NA
+library(parallel)
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+brain_rd = as.data.frame(X_resid)
+```
+
+That was for DTI, now we do the same for structural:
+
+```{r}
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_area.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_area[,2:ncol(lh_area)],
+              rh_area[,2:ncol(rh_area)])
+rm(lh_area)
+rm(rh_area)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+rm(vdata)
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+X[which(rm_me), ] = NA
+library(parallel)
+cl <- makeCluster(4)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+brain_area = as.data.frame(X_resid)
+```
+
+THIS IS TAKING TOO LONG, EVEN IN THE CLUSTER, AND ONLY AREA! MIGHT NEED TO PCA IT RIGHT AWAY TO ONLY A FEW THOUSAND COMPONENTS. DTI HAS 12K TOTAL VOXELS... MAYBE WE CAN DO THIS FASTER? CHECK HOW WE LOAD VOLUME, AND SEE IF IT'S TAKING THAT LONG AS WELL.
+
+Maybe it's a better idea to separate the 3 class problem into 2 stages, such that we first classify normals vs adhd, then among the 2 adhd classes. Let's try that:
+
+```{r}
+ntimes = 50
+model = 'svmLinear'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+dsets = c('prs', 'geospatial', 'neuropsych', 'struct_rois', 'dti_tracts')
+
+vote_hiOutcomeStepwise = function(X, s, uni=T, pca=T, do_rfe=F) {
+  if (model %in% c('ranger')) {
+    allowParallel = FALSE
+  } else {
+    allowParallel = TRUE
+  }
+  y = as.character(merged$HI3_named)
+  y[y!='never_affected'] = 'affected'
+  y = factor(y, levels=c('never_affected', 'affected'))
+  
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  # remove training examples that are all NaN. Note that this will never happen for testing!
+  rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+  Xtrain = Xtrain[!rm_me,]
+  ytrain = ytrain[!rm_me]
+  
+  if (pca) {
+    pp <- preProcess(Xtrain, method = c('pca'), thresh=.9)
+    Xtrain<- predict(pp, Xtrain)
+    Xtest <- predict(pp, Xtest)
+  }
+  
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           number = ntimes,
+                           savePredictions="final",
+                           classProbs=TRUE,
+                           summaryFunction=twoClassSummary,
+                           allowParallel=allowParallel)
+  set.seed(myseed)
+  mymod = train(Xtrain, ytrain,
+                tuneLength=tuneLength,
+                trControl=fullCtrl,
+                metric='ROC',
+                method=model,
+                preProcess = c('medianImpute'))
+    
+  pred = predict(mymod, newdata=Xtest)
+  print(pred)
+  if (pred == 'never_affected') {
+    return(as.character(pred))
+  } else {
+    y = as.character(merged$HI3_named)
+    Xtrain <- X[ -s, ]
+    ytrain <- y[ -s ]
+    
+    keep_me = ytrain!='never_affected'
+    ytrain = ytrain[keep_me]
+    ytrain = factor(ytrain, levels=c('rapid_improvers', 'severe'))
+    Xtrain = Xtrain[keep_me,]
+    # Xtest is the same as before
+    
+    # remove training examples that are all NaN. Note that this will never happen for testing!
+    rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+    Xtrain = Xtrain[!rm_me,]
+    ytrain = ytrain[!rm_me]
+    
+    if (pca) {
+      pp <- preProcess(Xtrain, method = c('pca'), thresh=.9)
+      Xtrain<- predict(pp, Xtrain)
+      Xtest <- predict(pp, Xtest)
+    }
+    
+    set.seed(myseed)
+    fullCtrl <- trainControl(method = "boot",
+                             number = ntimes,
+                             savePredictions="final",
+                             classProbs=TRUE,
+                             summaryFunction=twoClassSummary,
+                             allowParallel=allowParallel)
+    set.seed(myseed)
+    mymod = train(Xtrain, ytrain,
+                  tuneLength=tuneLength,
+                  trControl=fullCtrl,
+                  metric='ROC',
+                  method=model,
+                  preProcess = c('medianImpute'))
+    
+    pred = predict(mymod, newdata=Xtest)
+    return(as.character(pred))
+  }
+}
+
+nsubjs = nrow(gf_base)
+preds = matrix(nrow=nsubjs, ncol=length(dsets))
+colnames(preds) = dsets
+rownames(preds) = merged$MRN
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+
+# get a vote for each dset if the participant has data in the domain
+for (s in 1:2){#nsubjs) {
+  print(sprintf('LOOCV %d / %d', s, nsubjs))
+  for (dset in dsets) {
+    eval(parse(text=sprintf('nfeats = ncol(%s)', dset)))
+    eval(parse(text=sprintf('na_feats = sum(is.na(%s[s, ]))', dset)))
+    if (na_feats < nfeats) {
+      eval(parse(text=sprintf('X = %s', dset)))
+      if (dset %in% c('brain_fa', 'brain_ad', 'brain_rd',
+                      'brain_thickness', 'brain_volume', 'brain_area',
+                      'struct_rois')) {
+        pca = T
+      } else {
+        pca = F
+      }
+      preds[s, dset] = vote_hiOutcomeStepwise(X, s, pca=pca)[[1]]
+    }
+  }
+}
+```
+
+Let's try something that uses the entire feature set and the Ada family:
+
+```{r}
+ntimes = 50
+model = 'AdaBag'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+dsets = c('prs', 'geospatial', 'neuropsych', 'struct_rois', 'dti_tracts')
+vote_nvVSadhdNA = function(X, s) {
+  y = merged$DX_BASELINE
+  y[y!='NV'] = 'ADHD'
+  y = factor(y, levels=c('ADHD', 'NV'))
+  
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  # remove training examples that are all NaN. Note that this will never happen for testing!
+  rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+  Xtrain = Xtrain[!rm_me,]
+  ytrain = ytrain[!rm_me]
+  
+  pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+  Xtrain = predict(pp, Xtrain)
+  Xtest = predict(pp, Xtest)
+  nzv = nearZeroVar(Xtrain)
+  if (length(nzv) > 0) {
+    Xtrain = Xtrain[, -nzv]
+  }
+  correlations = cor(Xtrain, use='na.or.complete')
+  
+  highCorr = findCorrelation(correlations, cutoff=.75)
+  print(length(highCorr))
+  if (length(highCorr) > 0) {
+    Xtrain = Xtrain[, -highCorr]
+    Xtest = Xtest[, -highCorr]
+  }
+  print(dim(Xtrain))
+  
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           number = ntimes,
+                           savePredictions="final",
+                           classProbs=TRUE,
+                           summaryFunction=twoClassSummary,
+                           allowParallel=T)
+  set.seed(myseed)
+  mymod = train(Xtrain, ytrain,
+                tuneLength=tuneLength,
+                trControl=fullCtrl,
+                metric='ROC',
+                method=model)
+  return(predict(mymod, newdata=Xtest, type='prob')) 
+}
+
+nsubjs = nrow(merged)
+preds = matrix(nrow=nsubjs, ncol=length(dsets)+1)
+colnames(preds) = c(dsets, 'all')
+rownames(preds) = merged$MRN
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+
+# get a vote for each dset if the participant has data in the domain
+for (s in 1:2){#nsubjs) {
+  print(sprintf('LOOCV %d / %d', s, nsubjs))
+  Xall = c()
+  for (dset in dsets) {
+    eval(parse(text=sprintf('nfeats = ncol(%s)', dset)))
+    eval(parse(text=sprintf('na_feats = sum(is.na(%s[s, ]))', dset)))
+    if (na_feats < nfeats) {
+      print(sprintf('evaluating %s', dset))
+      eval(parse(text=sprintf('X = %s', dset)))
+      preds[s, dset] = vote_nvVSadhdNA(X, s)['ADHD'][[1]]
+      Xall = cbind(Xall, X)
+    }
+    print('evaluating all')
+    preds[s, 'all'] = vote_nvVSadhdNA(Xall, s)['ADHD'][[1]]
+  }
+}
+```
+Now we'll try to predict rate of symtom change:
+
+```{r}
+get_SX_slope = function (df, ids) {
+  inatt = c()
+  hi = c()
+  mrns = c()
+  for (s in ids) {
+    idx = df$MRN==s
+    # proceed if we have more than one observation in the data
+    if (sum(idx) >= 2) {
+      inatt = c(inatt, lm(SX_inatt ~ age, data=df[idx,])$coefficients[[2]])
+      hi = c(hi, lm(SX_HI ~ age, data=df[idx,])$coefficients[[2]])
+      mrns = c(mrns, s)
+    }
+  }
+  res = cbind(inatt, hi)
+  colnames(res) = c('inatt', 'hi')
+  rownames(res) = mrns
+  return(res)
+}
+
+ntimes = 50
+model = 'enet'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+dsets = c('prs', 'geospatial', 'neuropsych', 'struct_rois', 'dti_tracts')
+
+vote_slopeSX = function(X, y, s) {
+  if (model %in% c('ranger')) {
+    allowParallel = FALSE
+  } else {
+    allowParallel = TRUE
+  }
+  
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  # remove training examples that are all NaN. Note that this will never happen for testing!
+  rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+  Xtrain = Xtrain[!rm_me,]
+  ytrain = ytrain[!rm_me]
+  
+   
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           number = ntimes,
+                           savePredictions="final",
+                           summaryFunction=defaultSummary,
+                           allowParallel=allowParallel)
+  set.seed(myseed)
+  mymod = train(Xtrain, ytrain,
+                tuneLength=tuneLength,
+                trControl=fullCtrl,
+                method=model,
+                preProcess = c('medianImpute'))
+    
+  pred = predict(mymod, newdata=Xtest)
+  return(pred)
+}
+
+nsubjs = nrow(gf_base)
+preds = matrix(nrow=nsubjs, ncol=length(dsets))
+colnames(preds) = dsets
+rownames(preds) = merged$MRN
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+slopes = get_SX_slope(gf, merged$MRN)
+means = colMeans(slopes)
+print('NIR inatt:')
+RMSE(means['inatt'], slopes[, 'inatt'])
+print('NIR hi:')
+RMSE(means['hi'], slopes[, 'hi'])
+
+# get a vote for each dset if the participant has data in the domain
+for (s in 1:2){#nsubjs) {
+  print(sprintf('LOOCV %d / %d', s, nsubjs))
+  for (dset in dsets) {
+    eval(parse(text=sprintf('nfeats = ncol(%s)', dset)))
+    eval(parse(text=sprintf('na_feats = sum(is.na(%s[s, ]))', dset)))
+    if (na_feats < nfeats) {
+      print(sprintf('evaluating %s', dset))
+      eval(parse(text=sprintf('X = %s', dset)))
+      preds[s, dset] = vote_slopeSX(X, slopes[,'hi'], s)
+    }
+  }
+}
+
+
+```

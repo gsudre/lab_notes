@@ -1,0 +1,39 @@
+---
+title: "GAS and DX"
+output: html_notebook
+---
+
+Let's combine GAS and DX to form a new classification target:
+
+```{r}
+# for replication purposes
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+gf_fname = '~/data/baseline_prediction/structural_match_02092017.csv'
+data_fname = '~/data/baseline_prediction/structural_long_02092017.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX2'
+data = read.csv(data_fname)
+maskid_gf = unique(gf[, c('MASKID', group_var)])
+
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+
+# adding in GAS
+gas_fname = '~/data/baseline_prediction/gf_updated_02152017_3.csv'
+gas = read.csv(gas_fname)
+gas_gf = unique(gas[gas$BASELINE=='BASELINE', c('ID', 'GAS')])
+ldata2 = merge(ldata, gas_gf, by.x='MRN', by.y='ID', all.x=F, all.y=F)
+```
+
+Let's make some plots to figure out some obvious splits:
+
+```{r}
+summary(ldata2[ldata2$DX2=='NV', ]$GAS)
+t.test(ldata2[ldata2$DX2=='NV', ]$GAS, ldata2[ldata2$DX2=='ADHD', ]$GAS)
+ggplot(ldata2) + geom_point(aes(1:nrow(ldata2), GAS, color=ldata2$DX2))
+```

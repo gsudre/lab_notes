@@ -1,0 +1,421 @@
+---
+title: "Testing dataset versions"
+output: html_notebook
+---
+
+The goal here is to check with version of PRS to use. Also, I'll check whether using Ryan's DTI preprocessing works better than ours. We'll try all versions of the data, using 3 different classifiers, and a few classification tasks:
+
+* baseline DX prediction
+* HI outcome prediction
+
+# PRS
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+my_ids = gf_base$MRN
+
+dsets = c()
+for (cl1 in c('original', 'filtered')) {
+  for (cl2 in c('noCleaning', 'clump_default', 'clump_500_p25',
+                'prune_default', 'prune_200_5_p2')) {
+    dsets = c(dsets, sprintf('PRS_%s_%s', cl1, cl2))
+  }
+}
+
+for (d in dsets) {
+  prs_data = read.csv(sprintf('~/data/baseline_prediction/stripped/%s.csv', d))
+  # remove people with more than one genotype
+  prs_data = prs_data[!duplicated(prs_data$MRN), ]
+  merged = merge(gf_base, prs_data, by='MRN', sort=F, all.x=T)
+  # somehow all.x=T is canceling sort=F, so we need to resort things here
+  X = c()
+  mycols = c(which(grepl("^SEX", colnames(merged))), which(grepl("age", colnames(merged))),
+             which(grepl("^PROFILES", colnames(merged))))
+  for (s in gf_base$MRN) {
+    X = rbind(X, merged[merged$MRN==s, mycols])
+  }
+  if (sum(gf_base$age != X$age) != 0) {
+    print('ERROR merging!')
+  }
+  eval(parse(text=sprintf('%s = as.data.frame(X)', d)))
+}
+```
+
+## baseline DX
+```{r}
+methods = c('rf', 'svmRadial', 'kernelpls')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+for (dtype in dsets) {
+  print(dtype)
+  y = gf_base$DX_BASELINE
+  y[y!='NV'] = 'ADHD'
+  y = factor(y, levels=c('ADHD', 'NV'))
+  
+  eval(parse(text=sprintf('X = %s', dtype)))
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  set.seed(myseed)
+  index=createResample(y, ntimes)
+  
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    my_control <- trainControl(
+      method="boot632",
+      number=ntimes,
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary
+    )
+    print(sprintf('===== TRYING %s =====', m))
+    set.seed(myseed)
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+
+It doesn't look like there's a clear winner here, but if I had to choose I'd go with PRS_original_clump_default, just because 2 of the classifiers hit a 60% median, both above chance with the minimum of their distribution. But they're all pretty much the same... not a lot there.
+
+## HI outcome
+
+```{r}
+adhd_idx = gf_base$DX_BASELINE!='NV'
+out_group = c()
+for (s in gf_base[adhd_idx,]$MRN) {
+  idx = which(gf$MRN==s)
+  subj_sx = gf[idx, c('SX_inatt', 'SX_HI')]
+  last_age = sort(gf[idx,]$age, index.return=T, decreasing=T)
+  last_sx = subj_sx[last_age$ix[1], ]
+  if (last_age$x[1] > 18) {
+    # adult
+    if (last_sx$SX_inatt > 4 || last_sx$SX_HI > 4) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  } else {
+    # child
+    if (last_sx$SX_inatt > 5 || last_sx$SX_HI > 5) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  }
+}
+out_group = factor(out_group, levels=c('remission', 'persistent'))
+```
+
+Now we do some simple prediction using the entire data:
+
+```{r}
+methods = c('rf', 'svmRadial', 'kernelpls')
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+  
+for (dtype in dsets) {
+  print(dtype)
+  y = out_group
+  
+  eval(parse(text=sprintf('X = %s[adhd_idx, ]', dtype)))
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  set.seed(myseed)
+  index=createResample(y, ntimes)
+
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    my_control <- trainControl(
+      method="boot632",
+      number=ntimes,
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary
+    )
+    print(sprintf('===== TRYING %s =====', m))
+    set.seed(myseed)
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+
+Again, it doesn't look like there's a clear winner here. If I had to choose I'd go with, either one of clumping_default because of the .64 ROC using kernelpls, even though the rest is crap. There isn't much difference between filtered and original, so let's go with original here again. 
+
+Sounds good. I went ahead and changed load_raw_data.R.
+
+# DTI
+
+Now the comparison is between our tract data and Ryan's. 
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+my_ids = gf_base$MRN
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+           tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged))),
+              which(grepl("^age$", colnames(merged))),
+              which(grepl("^SEX", colnames(merged)))
+)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+X = merged[, phen_vars]
+X[which(rm_me), ] = NA
+dti_tracts = as.data.frame(X)
+if (sum(gf_base$MRN != merged$MRN) != 0) {
+  print('ERROR merging!')
+}
+
+# For Ryan's data, first merge QC with data, merge it with our data so we can get MRNs, and finally
+# remove the bad ones according to his heuristics
+ryan_data = read.csv('~/data/baseline_prediction/stripped/ryan_dti.csv')
+ryan_qa = read.csv('~/data/baseline_prediction/stripped/ryan_dti_qa.csv')
+ryan = merge(ryan_qa, ryan_data, by='ID')
+keep_me = ryan$sse_rating < 3 | ryan$reg_rating < 2
+ryan = ryan[keep_me, ]
+ryan_mrn = merge(tract_data, ryan, by.x='maskid', by.y='ID')
+merged = mergeOnClosestDate(gf_base, ryan_mrn, my_ids)
+phen_vars = c(which(grepl("_FA$", colnames(merged))),
+              which(grepl("_AD$", colnames(merged))),
+              which(grepl("_RD$", colnames(merged))),
+              which(grepl("^age$", colnames(merged))),
+              which(grepl("^SEX", colnames(merged)))
+)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+X = merged[, phen_vars]
+X[which(rm_me), ] = NA
+ryan_tracts = as.data.frame(X)
+if (sum(gf_base$MRN != merged$MRN) != 0) {
+  print('ERROR merging!')
+}
+```
+
+## DX baseline
+```{r}
+dsets = c('dti_tracts', 'ryan_tracts')
+methods = c('rf', 'svmRadial', 'kernelpls')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+for (dtype in dsets) {
+  print(dtype)
+  y = gf_base$DX_BASELINE
+  y[y!='NV'] = 'ADHD'
+  y = factor(y, levels=c('ADHD', 'NV'))
+  
+  eval(parse(text=sprintf('X = %s', dtype)))
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  set.seed(myseed)
+  index=createResample(y, ntimes)
+  
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    my_control <- trainControl(
+      method="boot632",
+      number=ntimes,
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary
+    )
+    print(sprintf('===== TRYING %s =====', m))
+    set.seed(myseed)
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+Neither result is very impressive, but Ryan's DTI has a slightly better median across classifiers.
+
+## HI outcome
+```{r}
+methods = c('rf', 'svmRadial', 'kernelpls')
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+  
+for (dtype in dsets) {
+  print(dtype)
+  y = out_group
+  
+  eval(parse(text=sprintf('X = %s[adhd_idx, ]', dtype)))
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  set.seed(myseed)
+  index=createResample(y, ntimes)
+
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    my_control <- trainControl(
+      method="boot632",
+      number=ntimes,
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary
+    )
+    print(sprintf('===== TRYING %s =====', m))
+    set.seed(myseed)
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+
+
+
+
+
+Our data does slightly better in HI prediction though... though one. I'll likely just keep ours in this case, as it's easier to report, get voxel data, etc.

@@ -1,0 +1,273 @@
+---
+title: "Analysis of structural data"
+output: html_notebook
+---
+
+Now we do some classification using DX and structural data. First, some data cleaning:
+
+```{r}
+# for replication purposes
+set.seed(107)
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+gf_fname = '~/data/baseline_prediction/structural_match_02092017.csv'
+data_fname = '~/data/baseline_prediction/structural_long_02092017.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX2'
+data = read.csv(data_fname)
+maskid_gf = unique(gf[, c('MASKID', group_var)])
+
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+```
+
+As usual, let's start by throwing everything in there, and then start doing it by domains:
+
+#All data
+
+```{r}
+phen_vars = c(which(grepl("_thickness$", colnames(ldata))),
+              which(grepl("_volume$", colnames(ldata))),
+              which(grepl("_area$", colnames(ldata))),
+              which(grepl("^Left.", colnames(ldata))),
+              which(grepl("^Right.", colnames(ldata)))
+              )
+# remove WM variables
+idx = phen_vars < 261 | phen_vars > 266 
+phen_vars = phen_vars[idx]
+ldata = ldata[, phen_vars]
+
+```
+
+```{r}
+root_fname = '~/data/baseline_prediction/results/structAll_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#All data, PCA
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+
+This is interesting: if we go based on EV, we'd get the first 50. But based on elbow, it's only 3!
+
+```{r}
+ldata = ldata.pca$x[, 1:3]
+root_fname = '~/data/baseline_prediction/results/structAll_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:50]
+root_fname = '~/data/baseline_prediction/results/structAll_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical thickness
+
+```{r}
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+phen_vars = which(grepl("_thickness$", colnames(ldata)))
+# remove WM variables
+idx = phen_vars < 261 | phen_vars > 266 
+phen_vars = phen_vars[idx]
+ldata = ldata[, phen_vars]
+
+root_fname = '~/data/baseline_prediction/results/structThickness_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical thickness, PCA
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Same as before, EV1 gives us 14, but the elbow is only 2. 
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/data/baseline_prediction/results/structThickness_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:14]
+root_fname = '~/data/baseline_prediction/results/structThickness_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical area
+
+```{r}
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+phen_vars = which(grepl("_area$", colnames(ldata)))
+# remove WM variables
+idx = phen_vars < 261 | phen_vars > 266 
+phen_vars = phen_vars[idx]
+ldata = ldata[, phen_vars]
+
+root_fname = '~/data/baseline_prediction/results/structArea_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical area, PCA
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Same as before, EV1 gives us 14, but the elbow is only 2. 
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/data/baseline_prediction/results/structArea_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:14]
+root_fname = '~/data/baseline_prediction/results/structArea_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical Volume
+
+```{r}
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+phen_vars = which(grepl("_volume$", colnames(ldata)))
+# remove WM variables
+idx = phen_vars < 261 | phen_vars > 266 
+phen_vars = phen_vars[idx]
+ldata = ldata[, phen_vars]
+
+root_fname = '~/data/baseline_prediction/results/structVolume_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+#Cortical Volume, PCA
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Same as before, EV1 gives us 16, but the elbow is only 2. 
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/data/baseline_prediction/results/structVolume_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:16]
+root_fname = '~/data/baseline_prediction/results/structVolume_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+
+
+
+

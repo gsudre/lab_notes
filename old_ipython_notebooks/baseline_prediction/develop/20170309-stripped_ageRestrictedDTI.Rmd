@@ -1,0 +1,233 @@
+---
+title: "Age restricted DTI analysis using stripped files"
+output: html_notebook
+---
+
+Let's first plot the DTI results we're comparing to, before we do the age restriction analysis:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_NVvsADHD_big'
+do_metrics_plots(root_fname)
+```
+
+Now we can run a series of age restrictions to the data, and see if it gets better or worse:
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+```{r}
+hist(merged$age_at_scan, breaks=40)
+```
+
+Just based on the histogram, let's start cutting off anyone above 13, then we go down to assess a few more theory-inspired cutoffs:
+
+```{r}
+# rm_me = (merged$age_at_scan > 13) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE13_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# #runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+# 
+do_metrics_plots(root_fname)
+```
+
+```{r}
+# rm_me = (merged$age_at_scan > 12) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE12_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# #runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+# 
+do_metrics_plots(root_fname)
+```
+
+```{r}
+# rm_me = (merged$age_at_scan > 11) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE11_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+
+do_metrics_plots(root_fname)
+```
+
+```{r}
+# rm_me = (merged$age_at_scan > 10) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE10_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+
+do_metrics_plots(root_fname)
+```
+
+```{r}
+# rm_me = (merged$age_at_scan > 9) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE9_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# 
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+do_metrics_plots(root_fname)
+```
+
+```{r}
+# rm_me = (merged$age_at_scan > 8) | (rowSums(is.na(X)) > 0)
+# ldata = X[!rm_me, ]
+# groups = y[!rm_me]
+root_fname = '~/data/baseline_prediction/results/stripped_allDTISE8_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=0, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+
+do_metrics_plots(root_fname)
+```
+
+The results are a bit concerning. It looks like we need all that data, in particular the data from the older kids, in order to make a baseline prediction. Not sure how clinically informative that is. Should we try to really fit our models within the < 8 y.o range, and then expand it?
+
+The trick is that I only have 76 scans < 8, but 120 < 9. That's a more manageable number that we could work with in better fitting classifiers.
+
+Another way of getting more scans would be to possibly derive the visual thresholds from histograms in the age subgroups. Maybe that would savage  some of the data?
+
+# Deeper exploring of < 9 y.o. scans
+
+What does the histogram look like?
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+tract_data = tract_data[tract_data$age_at_scan <= 9, ]
+par(mfrow=c(2, 3))
+nbreaks = 40
+hist(tract_data$fa_avg, breaks=nbreaks)
+hist(tract_data$ad_avg, breaks=nbreaks)
+hist(tract_data$rd_avg, breaks=nbreaks)
+hist(tract_data$norm.trans, breaks=nbreaks)
+hist(tract_data$norm.rot, breaks=nbreaks)
+hist(tract_data$goodSlices, breaks=nbreaks)
+```
+
+It turns out that it doesn't make that much difference in the cut-offs, at least visually.
+
+```{r}
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+```
+``` {r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+OK, so we arrived at the same number as before. Do we have any NAs?
+
+```{r}
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+sum(rowSums(is.na(X)) > 0)
+```
+
+Nope. Now, let's do a more in-depth study of this data using Random Forests:
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+inTraining <- createDataPartition(y, p = .75, list = FALSE)
+training <- cbind(X[ inTraining,], y[inTraining])
+testing  <- cbind(X[-inTraining,], y[-inTraining])
+colnames(training)[ncol(X) + 1] = 'Class'
+colnames(testing)[ncol(X) + 1] = 'Class'
+```
+
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "oob",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+set.seed(seed)
+rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(X))))
+myFit <- train(Class ~ ., data = training, 
+                 method = "rf", 
+                 trControl = fitControl,
+               tuneGrid=rndForestGrid,
+               # search='grid',
+               # tuneLength=10,
+               preProcess = c('nzv', 'pca'),
+              verbose=F)
+myFit
+```
+
+It doesn't look like we're going to improve much here... let's see how well we do with xgb though:
+
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+set.seed(seed)
+myFit <- train(Class ~ ., data = training, 
+                 method = "xgbTree", 
+                 trControl = fitControl,
+               # tuneGrid=rndForestGrid,
+               search='grid',
+               tuneLength=10,
+               preProcess = c('nzv', 'pca'),
+              verbose=F)
+myFit
+```
+
+Also not great... 

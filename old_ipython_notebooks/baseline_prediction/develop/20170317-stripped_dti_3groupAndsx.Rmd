@@ -1,0 +1,308 @@
+---
+title: "DTI for 3 group and SX baseline"
+output: html_notebook
+---
+
+Let's first plot the DTI results we're comparing to, before we do the age restriction analysis:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_NVvsADHD_big'
+do_metrics_plots(root_fname)
+```
+
+Now let's see if separating it into 3 groups makes any difference:
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+The distribution looks like this:
+```{r}
+library(ggplot2)
+ggplot(merged) + geom_point(aes(1:nrow(merged), GAS, color=merged$DX_BASELINE))
+```
+Wendy has already looked over those outliers, so let's just go ahead and split them based on GAS:
+
+```{r}
+myc = kmeans(merged[merged$DX_BASELINE != 'NV',]$GAS, 2)
+print(sprintf('Cutoff: %.2f', myc$centers[1] + diff(myc$centers)/2))
+```
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = as.character(merged$DX_BASELINE)
+y[y != 'NV'] = 'ADHD'
+y[y == 'ADHD' & merged$GAS > 68.91] = 'ADHD_high'
+y[y == 'ADHD'] = 'ADHD_low'
+y = factor(y, levels=c('NV', 'ADHD_low', 'ADHD_high'))
+# remove subjects with NA
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+Let's do some ML now:
+
+```{r}
+# ldata = X
+# groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_3group'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# runInCluster(root_fname, train_test_ratio=.7, cpuDiff=1, nsplits=5, nrepeatcv=5, run_models=c('rndForest', 'rsvm'))
+
+do_metrics_plots(root_fname)
+```
+
+The issue here is that we would have to look at AUC, because accuracy is shot by having almost 50% NVs. Let's take a look at regression:
+
+```{r}
+seed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$SX_inatt
+# remove subjects with NA
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+```{r}
+myseed = 107
+cpuDiff = 1
+tuneLength = 10
+default_preproc = c("center", 'scale')
+library(caret)
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+fullCtrl <- trainControl(method = "repeatedcv",
+                         repeats = 5,
+                         index = index,
+                         search='grid',
+                         selectionFunction = selFunc)
+
+set.seed(myseed)
+rfFull <- train(Xtrain, ytrain,
+                method = "rf",
+                tuneLength = tuneLength,
+                ntree = 1000,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+rfFull
+
+set.seed(myseed)
+blaFull <- train(Xtrain, ytrain,
+                method = "blassoAveraged",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+blaFull
+
+set.seed(myseed)
+enetFull <- train(Xtrain, ytrain,
+                method = "enet",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+enetFull
+
+set.seed(myseed)
+penFull <- train(Xtrain, ytrain,
+                method = "penalized",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+penFull
+
+set.seed(myseed)
+briFull <- train(Xtrain, ytrain,
+                method = "bridge",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+briFull
+
+set.seed(myseed)
+svmLFull <- train(Xtrain, ytrain,
+                method = "svmLinear2",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+svmLFull
+
+set.seed(myseed)
+svmRFull <- train(Xtrain, ytrain,
+                method = "svmRadial",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+svmRFull
+
+set.seed(myseed)
+xgbFull <- train(Xtrain, ytrain,
+                method = "xgbTree",
+                tuneLength = tuneLength,
+                trControl = fullCtrl,
+                preProcess = default_preproc)
+xgbFull
+
+resamps <- resamples(list(rndForest = rfFull,
+                          bayLasso = blaFull,
+                          elasticN = enetFull,
+                          penalize = penFull,
+                          bayRidge = briFull,
+                          svmLinear = svmLFull,
+                          svmRadial = svmRFull,
+                          XGB = xgbFull))
+
+bwplot(resamps)  # dotplot(resamps) shoes 95% CI
+difValues <- diff(resamps)
+summary(difValues)
+bwplot(difValues)
+
+# evaluate test set using postResample(predict(rfFull, Xtest), obs = ytest)
+
+```
+
+Now we try out some RFE:
+
+```{r}
+varSeq = 1:ncol(X)
+ctrl <- rfeControl(method = "repeatedcv", repeats = 5,
+                   saveDetails = TRUE,
+                   index = index,
+                   returnResamp = "final")
+
+ctrl$functions <- rfFuncs
+set.seed(myseed)
+rfRFE <- rfe(Xtrain, ytrain,
+             sizes = varSeq,
+             rfeControl = ctrl)
+rfRFE
+
+cvCtrl <- trainControl(method = "cv",
+                       verboseIter = FALSE,
+                       allowParallel = FALSE)
+ctrl$functions <- caretFuncs
+
+rndForest = rfFull,
+                          bayLasso = blaFull,
+                          elasticN = enetFull,
+                          penalize = penFull,
+                          bayRidge = briFull,
+                          svmLinear = svmLFull,
+                          svmRadial = svmRFull,
+
+set.seed(myseed)
+blaRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "blassoAveraged",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+blaRFE
+
+set.seed(myseed)
+enetRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "enet",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+enetRFE
+
+set.seed(myseed)
+penRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "penalyzed",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+penRFE
+
+set.seed(myseed)
+briRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "bridge",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+briRFE
+
+set.seed(myseed)
+svmLRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "svmLinear2",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+svmLRFE
+
+set.seed(myseed)
+svmRRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "svmRadial",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+svmRRFE
+
+set.seed(myseed)
+xgbRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "xgbTree",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+xgbRFE
+
+```
+
+None of this new stuff is working.

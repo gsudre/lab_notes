@@ -1,0 +1,81 @@
+---
+title: "Testing amount of data used in resting paper"
+output: html_notebook
+---
+
+# fMRI
+
+We start with fMRI because it's a bit easier to digest.
+
+```{r}
+fmri = read.csv('~/data/fmri/gf.csv')
+# make sure all subjects are the same between gf and used subjects
+fsubjs = as.vector(read.table('~/data/fmri/joel_all_147.txt')[[1]])
+fmri_clean <- fmri[fmri$maskid %in% fsubjs, ]
+sec = fmri_clean$trs_used * 2.5
+summary(sec)
+summary(lm(sec ~ fmri_clean$inatt))
+summary(lm(sec ~ fmri_clean$hi))
+summary(lm(sec ~ fmri_clean$total))
+summary(aov(lm(sec ~ fmri_clean$group)))
+#also, using only ADHDs
+useme = fmri$group=='remission' | fmri$group=='persistent'
+summary(lm(sec[useme] ~ fmri_clean[useme,]$inatt))
+summary(lm(sec[useme] ~ fmri_clean[useme,]$hi))
+summary(lm(sec[useme] ~ fmri_clean[useme,]$total))
+```
+
+Also worth checking again whether the amount of movement varies with the variables above:
+
+```{r}
+summary(lm(fmri_clean$mvmt ~ fmri_clean$inatt))
+summary(lm(fmri_clean$mvmt ~ fmri_clean$hi))
+summary(lm(fmri_clean$mvmt ~ fmri_clean$total))
+summary(aov(lm(fmri_clean$mvmt ~ fmri_clean$group)))
+```
+
+# MEG
+
+Let's do the exact same thing for MEG:
+
+```{r}
+meg = read.csv('~/data/meg/gf.csv')
+# make sure all subjects are the same between gf and used subjects
+msubjs = as.vector(read.table('~/data/meg/usable_subjects_5segs13p654_SAM.txt')[[1]])
+meg_clean <- meg[meg$maskid %in% msubjs, ]
+sec = meg_clean$good_chunks * 13.65
+summary(sec)
+summary(lm(sec ~ meg_clean$inatt))
+summary(lm(sec ~ meg_clean$hi))
+summary(lm(sec ~ meg_clean$total))
+summary(aov(lm(sec ~ meg_clean$group)))
+#also, using only ADHDs
+useme = meg$group=='remission' | meg$group=='persistent'
+summary(lm(sec[useme] ~ meg_clean[useme,]$inatt))
+summary(lm(sec[useme] ~ meg_clean[useme,]$hi))
+summary(lm(sec[useme] ~ meg_clean[useme,]$total))
+```
+
+I just found this other variable in the MEG data. Not sure what the difference is... gotta look in the logs. But let's test it anyways.
+
+```{r}
+sec = meg_clean$good_secs
+summary(sec)
+summary(lm(sec ~ meg_clean$inatt))
+summary(lm(sec ~ meg_clean$hi))
+summary(lm(sec ~ meg_clean$total))
+summary(aov(lm(sec ~ meg_clean$group)))
+```
+
+Still in the clear.
+
+Let's do something similar for movement analysis in MEG. Here, movement is defined as the delta between head position in the end and beginning of recording. Note that we have already cut off anyone with delta > .5 cm.
+
+```{r}
+summary(lm(meg_clean$delta_movement ~ meg_clean$inatt))
+summary(lm(meg_clean$delta_movement ~ meg_clean$hi))
+summary(lm(meg_clean$delta_movement ~ meg_clean$total))
+summary(aov(lm(meg_clean$delta_movement ~ meg_clean$group)))
+```
+
+All good.

@@ -1,0 +1,175 @@
+---
+title: "Deep into MRI"
+output: html_notebook
+---
+
+I want to really tailor a given classifier to the MRI data, and try several different feature selection methods. Mostly because other people have shown that the classification is indeed possible, so we can try to at least replicate those ideas.
+
+Let's stick to a single classifier, and really tailor the parameter grid search to the data. We should also play with the different ways to do feature selection.
+
+```{r}
+# for replication purposes
+set.seed(107)
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+gf_fname = '~/data/baseline_prediction/structural_match_02092017.csv'
+data_fname = '~/data/baseline_prediction/structural_long_02092017.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX2'
+data = read.csv(data_fname)
+maskid_gf = unique(gf[, c('MASKID', group_var)])
+
+ldata = merge(maskid_gf, data, by.x='MASKID', by.y='lh.aparc.thickness', all.y = F)
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata = ldata[idx,]
+```
+
+As usual, let's start by throwing everything in there, and then start doing it by domains:
+
+#All data
+
+```{r}
+phen_vars = c(which(grepl("_thickness$", colnames(ldata))),
+              which(grepl("_volume$", colnames(ldata))),
+              which(grepl("_area$", colnames(ldata))),
+              which(grepl("^Left.", colnames(ldata))),
+              which(grepl("^Right.", colnames(ldata)))
+              )
+# remove WM variables
+idx = phen_vars < 261 | phen_vars > 266 
+phen_vars = phen_vars[idx]
+ldata = ldata[, phen_vars]
+
+```
+
+Let's start with some baseline result to improve upon. I'll go with random forests for now because it runs quite fast, and the number of parameters to optimize is not too high.
+
+```{r}
+# Create model with default paramters
+x = ldata
+y = groups
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+metric <- "Accuracy"
+set.seed(seed)
+mtry <- sqrt(ncol(x))
+tunegrid <- expand.grid(.mtry=mtry)
+rf_default <- train(y~., data=x, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control,
+                    preProcess = c('center', 'scale'))
+print(rf_default)
+```
+
+Random search on mtry:
+
+```{r}
+# Random Search
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+set.seed(seed)
+mtry <- sqrt(ncol(x))
+rf_random <- train(y~., data=x, method="rf", metric=metric, tuneLength=15, trControl=control)
+print(rf_random)
+plot(rf_random)
+```
+
+Grid search on mtry:
+
+```{r}
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+set.seed(seed)
+tunegrid <- expand.grid(.mtry=c(1:15))
+rf_gridsearch <- train(y~., data=x, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_gridsearch)
+plot(rf_gridsearch)
+```
+
+Or we can use the random forest own tuning function:
+
+```{r}
+# Algorithm Tune (tuneRF)
+set.seed(seed)
+bestmtry <- tuneRF(x, y, stepFactor=1.5, improve=1e-5, ntreeTry=1000)
+print(bestmtry)
+```
+
+Or we can try a few different values to see what's the best value of mtry given different ntrees... But let's play with other methods of feature selection first:
+
+REMEMBER THAT WE'LL NEED TO DO THIS IN TRAINING DATA ONLY!
+
+So, for example:
+
+```{r}
+ctrl = trainControl(method="repeatedcv", number=10, repeats=5, selectionFunction = "tolerance")
+in_train = createDataPartition(groups, p=.75, list=FALSE)
+trf = train(x, y, method="rf", metric="Kappa", trControl=ctrl, subset = in_train)
+print(trf)
+```
+
+But of course, we'd define a finer grid up there. We could even compare it to an xgbTree model:
+
+```{r}
+xgb = train(x, y, method="xgbTree", metric="Kappa", trControl=ctrl, subset = in_train)
+resampls = resamples(list(RF = trf,
+                          XGB = xgb))
+
+difValues = diff(resampls)
+summary(difValues)
+```
+
+And make a few plots:
+
+```{r}
+xyplot(resampls)
+dotplot(resampls)
+densityplot(resampls)
+bwplot(resampls)
+```
+
+But let's stop playing around, and try some other types of features selection.
+
+Univariate selection
+
+RFE
+
+```{r}
+subsets <- c(1:5, 10, 15, 20, 25)
+rfe_ctl <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 5,
+                   verbose = FALSE)
+
+rf_RFE <- rfe(x, y, sizes = subsets, rfeControl = rfe_ctl)
+rf_RFE
+```
+
+Genetic
+
+```{r}
+ga_ctrl <- gafsControl(functions = rfGA,
+                       method = "repeatedcv",
+                       repeats = 5)
+set.seed(10)
+rf_ga <- gafs(x = x, y = y,
+              iters = 100,
+              gafsControl = ga_ctrl)
+rf_ga
+```
+
+Annealing
+
+```{r}
+sa_ctrl <- safsControl(functions = rfSA,
+                       method = "repeatedcv",
+                       repeats = 5,
+                       improve = 50)
+
+set.seed(10)
+rf_sa <- safs(x = x, y = y,
+              iters = 100,
+              safsControl = sa_ctrl)
+rf_sa
+```
+Of course, it could be that those other papers were using adult data, so maybe if we factor out age (and sex)?
+

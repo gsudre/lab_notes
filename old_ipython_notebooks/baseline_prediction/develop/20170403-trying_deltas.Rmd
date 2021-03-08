@@ -1,0 +1,104 @@
+---
+title: "Playing with code to extract and run deltas"
+output: html_notebook
+---
+
+Let's start with the DTI data and see how it performs when calculating delta. It would be nice if we can predict outcome category, hardline outcome, last symptoms, or even delta in symptoms? 
+
+```{r}
+y_target = 'inatt3_named'
+
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+           tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 |
+           tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+
+phen_vars = c(which(grepl("^FA_", colnames(tract_data))),
+              which(grepl("^AD_", colnames(tract_data))),
+              which(grepl("^RD_", colnames(tract_data))),
+              which(grepl("^MO_", colnames(tract_data)))
+)
+Xraw = tract_data[, phen_vars]
+my_ids = unique(gf$MRN)
+
+# MAKE SURE nrow(tract_data) == nrow(Xraw)!!!!
+
+get_delta = function (d) {
+  # if we have too many NAs, return NA
+  if (sum(is.na(d)) >= (length(d)-1)) {
+    return(NA)
+  }
+  else {
+    lm(d ~ tract_data[idx, ]$age_at_scan)$coefficients[2]
+  }
+}
+
+X = c()
+y = c()
+target_col = which(colnames(gf)==y_target)
+for (s in my_ids) {
+  idx = tract_data$MRN==s
+  # proceed if we have more than one observation in the data
+  if (sum(idx) >= 2) {
+    slopes = sapply(Xraw[idx, ], get_delta)
+    names(slopes) = colnames(Xraw)
+    X = rbind(X, slopes)
+    idxy = gf$MRN==s
+    y = c(y, unique(as.character(gf[idxy, target_col])))
+  }
+}
+y = factor(y)
+
+```
+
+This seems to work for DTI. Let's transfer it to the scripts.
+
+Now we go for other ones that are also somewhat straight forward, like struct and geo.
+
+```{r}
+y_target = 'inatt3_named'
+
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+my_ids = unique(gf$MRN)
+Xraw = struct_data[, 7:276]
+
+# MAKE SURE nrow(tract_data) == nrow(Xraw)!!!!
+
+get_delta = function (d) {
+  # if we have too many NAs, return NA
+  if (sum(is.na(d)) >= (length(d)-1)) {
+    return(NA)
+  }
+  else {
+    lm(d ~ struct_data[idx, ]$age_at_scan)$coefficients[2]
+  }
+}
+
+X = c()
+y = c()
+target_col = which(colnames(gf)==y_target)
+for (s in my_ids) {
+  idx = struct_data$MRN==s
+  # proceed if we have more than one observation in the data
+  if (sum(idx) >= 2) {
+    slopes = sapply(Xraw[idx, ], get_delta)
+    names(slopes) = colnames(Xraw)
+    X = rbind(X, slopes)
+    idxy = gf$MRN==s
+    y = c(y, unique(as.character(gf[idxy, target_col])))
+  }
+}
+y = factor(y)
+
+```

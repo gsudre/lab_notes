@@ -1,0 +1,96 @@
+---
+title: "Analysis of resting data"
+output: html_notebook
+---
+
+Now we do some classification using rsFMRI. First, some data cleaning:
+
+```{r}
+# for replication purposes
+set.seed(107)
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+data_dir = '~/data/baseline_prediction/fmri/rois_spheres/'
+data_fname = 'spheres_corr.RData'
+gf_fname = '~/data/baseline_prediction/fmri/good_scans_01312017.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX'
+gf = get_baseline_scans(gf)
+eval(parse(text=sprintf('groups = gf$\"%s\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+gf = gf[idx,]
+```
+
+Let's see if there are any outliers in the number of TRs left:
+
+```{r}
+histogram(gf$trs_left, breaks=40)
+plot(ecdf(gf$trs_left))
+```
+Given that the total of a run is 123, we have a few subjects with data combined for more than one run. Also, each TR is 2.5s, so we should probably establish how many minutes we want to use as a threshold. There isn't a clear cut-off in the cumulative plot either...
+
+```{r}
+min_minutes = 0
+idx = gf$trs_left > (min_minutes * 60 / 2.5)
+groups = factor(groups[idx])
+gf = gf[idx,]
+```
+
+Now we read in the data for the subjects left over:
+
+```{r}
+load(sprintf("%s/%s", data_dir, data_fname))
+keep_me = c()
+for (m in gf$Mask.ID) {
+  keep_me = c(keep_me, which(maskids == m))
+}
+ldata = data[keep_me,]
+```
+
+As usual, let's start by throwing everything in there, even though we'll have a buttload of features:
+
+```{r}
+# leaving this just for examples, but we actually run it in the cluster and collect it later
+ncv = 5
+nrepeatcv = 2
+nsplits = 5
+train_test_ratio = .85
+root_fname = '~/tmp/rsfmri_NVvsADHD_all'
+# saving output
+library(caret)
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+ncpus <- detectBatchCPUs()
+njobs = ncpus - 2
+
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') #c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+metric = "ROC"
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+
+```
+Let's plot different metrics on the test data.
+
+#All data
+
+```{r}
+root_dir = '~/data/baseline_prediction/results/'
+root_fname = 'struct_NVvsADHD_all'
+source('~/ncr_notebooks/baseline_prediction/src/collect_results.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```

@@ -1,0 +1,90 @@
+---
+title: "Testing symptom slopes"
+output: html_notebook
+---
+
+As the outcome grous are not doing too well, let's see how well we can predict symptom slopes. We start trying it with everybody, and then restricit it only to ADHD cases. This might be easier, and also somewhat clinically meaningful as we'd only be collecting data on people we know to have ADHD, and asking how likely they're to change symptoms in the future.
+
+```{r}
+get_SX_slope = function (df, ids) {
+  inatt = c()
+  hi = c()
+  mrns = c()
+  for (s in ids) {
+    idx = df$MRN==s
+    # proceed if we have more than one observation in the data
+    if (sum(idx) >= 2) {
+      inatt = c(inatt, lm(SX_inatt ~ age, data=df[idx,])$coefficients[[2]])
+      hi = c(hi, lm(SX_HI ~ age, data=df[idx,])$coefficients[[2]])
+      mrns = c(mrns, s)
+    }
+  }
+  res = cbind(inatt, hi)
+  colnames(res) = c('inatt', 'hi')
+  rownames(res) = mrns
+  return(res)
+}
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+```
+
+```{r}
+ntimes = 50
+model = 'enet'
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+mysx = 'inatt'
+
+library(caret)
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+slopes = get_SX_slope(gf, merged$MRN)
+
+X = cbind(prs, geospatial, neuropsych, struct_rois, dti_tracts)
+y = slopes[, mysx]
+
+Xtrain <- X
+ytrain <- y 
+Xtest  <- X
+ytest  <- y
+
+# remove training examples that are all NaN. Note that this will never happen for testing!
+rm_me = rowSums(is.na(Xtrain)) == ncol(Xtrain)
+Xtrain = Xtrain[!rm_me,]
+ytrain = ytrain[!rm_me]
+
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         number = ntimes,
+                         savePredictions="final",
+                         summaryFunction=defaultSummary)
+set.seed(myseed)
+mymod1 = train(Xtrain, ytrain,
+              tuneLength=tuneLength,
+              trControl=fullCtrl,
+              method='enet',
+              preProcess = c('medianImpute'))
+
+mymod2 = train(Xtrain, ytrain,
+              tuneLength=tuneLength,
+              trControl=fullCtrl,
+              method='rf',
+              preProcess = c('medianImpute'))
+
+means = colMeans(slopes)
+print(sprintf('NIR %s:', mysx))
+RMSE(means[mysx], slopes[, mysx])
+
+pred1 = predict(mymod1, newdata=Xtest)
+RMSE(pred1, slopes[, mysx])
+pred2 = predict(mymod2, newdata=Xtest)
+RMSE(pred2, slopes[, mysx])
+
+```
+
+
+
+

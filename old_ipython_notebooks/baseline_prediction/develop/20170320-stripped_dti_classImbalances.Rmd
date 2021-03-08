@@ -1,0 +1,270 @@
+---
+title: "DTI class imbalances"
+output: html_notebook
+---
+
+Let's see if anything gets better if we address some of the class imbalances.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_NVvsADHD_big'
+do_metrics_plots(root_fname)
+```
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+The GAS distribution looks like this:
+```{r}
+library(ggplot2)
+ggplot(merged) + geom_point(aes(1:nrow(merged), GAS, color=merged$DX_BASELINE))
+```
+Wendy has already looked over those outliers, so let's just go ahead and split them based on GAS:
+
+```{r}
+myc = kmeans(merged[merged$DX_BASELINE != 'NV',]$GAS, 2)
+print(sprintf('Cutoff: %.2f', myc$centers[1] + diff(myc$centers)/2))
+```
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = as.character(merged$DX_BASELINE)
+y[y != 'NV'] = 'ADHD'
+y[y == 'ADHD' & merged$GAS > 68.91] = 'ADHD_high'
+y[y == 'ADHD'] = 'ADHD_low'
+y = factor(y, levels=c('NV', 'ADHD_low', 'ADHD_high'))
+# remove subjects with NA
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+Let's do some ML now:
+
+```{r}
+set.seed(seed)
+splitIndex <- createDataPartition(y, p = .50,
+                                  list = FALSE,
+                                  times = 1)
+Xtrain <- X[ splitIndex,]
+Xtest <- X[-splitIndex,]
+ytrain <- y[ splitIndex]
+ytest <- y[-splitIndex]
+ 
+prop.table(table(ytrain))
+```
+```{r}
+ctrl <- trainControl(method = "cv", number = 5)
+tbmodel <- train(Xtrain, ytrain, method = "treebag",
+                 trControl = ctrl)
+
+predictors <- colnames(Xtrain)
+pred <- predict(tbmodel, Xtest)
+```
+```{r}
+library(pROC)
+auc <- multiclass.roc(as.numeric(ytest), as.numeric(pred))
+print(auc)
+```
+Just a quick check of whether a tree bag model might perform better in the binary classification, even though there is no class imbalance here:
+```{r}
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = as.character(merged$DX_BASELINE)
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels=c('NV', 'ADHD'))
+
+set.seed(seed)
+splitIndex <- createDataPartition(y, p = .80,
+                                  list = FALSE,
+                                  times = 1)
+Xtrain <- X[ splitIndex,]
+Xtest <- X[-splitIndex,]
+ytrain <- y[ splitIndex]
+ytest <- y[-splitIndex]
+ 
+prop.table(table(ytrain))
+ctrl <- trainControl(method = "cv", number = 5)
+tbmodel <- train(Xtrain, ytrain, method = "treebag",
+                 trControl = ctrl)
+
+predictors <- colnames(Xtrain)
+pred <- predict(tbmodel, Xtest)
+```
+
+```{r}
+auc <- roc(as.numeric(ytest), as.numeric(pred))
+print(auc)
+```
+
+Not really... quite poor actually. The issue with symptom counts is also how badly distributed it is when we include NVs:
+
+```{r}
+par(mfrow=c(1, 3))
+plot(merged$SX_inatt)
+plot(merged$SX_HI)
+plot(jitter(merged$SX_inatt, 3) ~ jitter(merged$SX_HI, 3), pch = 15)
+table(merged$SX_inatt)
+table(merged$SX_HI)
+```
+
+Could I predict a squeakky clean person against the others? Maybe we could use that as some sort of baseline detection, and go for symptoms that way. Maybe even incorporate GAS in that classification? Let's see if this classification does better in plotting GAS:
+
+```{r}
+merged$clean = merged$SX_inatt == 0
+ggplot(merged) + geom_point(aes(1:nrow(merged), GAS, color=merged$clean)) + ggtitle('inatt')
+```
+```{r}
+merged$clean = merged$SX_HI == 0
+ggplot(merged) + geom_point(aes(1:nrow(merged), GAS, color=merged$clean)) + ggtitle('HI')
+```
+
+```{r}
+merged$clean = merged$SX_inatt == 0 & merged$SX_HI == 0
+ggplot(merged) + geom_point(aes(1:nrow(merged), GAS, color=merged$clean)) + ggtitle('total')
+```
+Not sure how much GAS would help... of course, not all NVs are clean. LEt's try to play with this without GAS first, and see what we get.
+```{r}
+myseed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = as.character(merged$DX_BASELINE)
+y[merged$SX_inatt <= 0 & merged$SX_HI <= 0] = 'clean'
+y[y != 'clean'] = 'dirty'
+y = factor(y, levels=c('clean', 'dirty'))
+
+# remove subjects with NA
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+
+cpuDiff = 1
+tuneLength = 10
+default_preproc = c("center", 'scale')
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'oneSE'  # maybe try oneSE and tolerance as well?
+
+# set.seed(myseed)
+# rfFull <- train(Xtrain, ytrain,
+#                 method = "rf",
+#                 metric='ROC',
+#                 # tuneLength = tuneLength,
+#                 # ntree = 1000,
+#                 trControl = fullCtrl,
+#                 preProcess = default_preproc,
+#                 tuneGrid=expand.grid(.mtry=c(1:sqrt(ncol(Xtrain)))))
+    set.seed(myseed)
+
+
+  fullCtrl <- trainControl(method = "repeatedcv",
+                         repeats = 5,
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+  rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(Xtrain))))
+      rfFull <- train(Xtrain, ytrain,
+                            method = "rf",
+                            trControl = fullCtrl,
+                            tuneGrid=rndForestGrid,
+                            metric = 'ROC',
+                            preProcess = default_preproc)
+  
+rfFull
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+varSeq = 1:ncol(X)
+ctrl <- rfeControl(method = "repeatedcv", repeats = 5,
+                   saveDetails = TRUE,
+                   index = index,
+                   returnResamp = "final")
+
+ctrl$functions <- rfFuncs
+set.seed(myseed)
+rfRFE <- rfe(Xtrain, ytrain,
+             sizes = varSeq,
+             rfeControl = ctrl)
+rfRFE
+
+cvCtrl <- trainControl(method = "cv",
+                       verboseIter = FALSE,
+                       allowParallel = FALSE)
+ctrl$functions <- caretFuncs
+
+set.seed(myseed)
+svmRRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "svmRadial",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+svmRRFE
+
+set.seed(myseed)
+xgbRFE <- rfe(Xtrain, ytrain,
+              sizes = varSeq,
+              rfeControl = ctrl,
+              method = "xgbTree",
+              tuneLength = tuneLength,
+              preProc = default_preproc,
+              trControl = cvCtrl)
+xgbRFE
+```
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/TMP'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+runInCluster(root_fname, train_test_ratio=.7, cpuDiff=1, nsplits=1, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+
+do_metrics_plots(root_fname)
+```
+
+
+

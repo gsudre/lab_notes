@@ -1,0 +1,461 @@
+---
+title: "LOOCV"
+output: html_notebook
+---
+
+I'm struggloing a bit on how to report the results. In a clinical setting, it would make sense to do a LOOCV, but not necessarily to train the model. Also, a single subject should take away much from finding the initial parameters. So, we could potentially just use the entire dataset to decide on algorithms and pre-processing, and then do a repeated 10fold after LOOCV for each subject. 
+
+We'd have to save each model, or just the prediction probabilities, but then it should be easy enough to create the test metrics for the entire dataset.
+
+Let's see what we can get by doing that. Using AD voxelwise as usual.
+
+```{r}
+myseed=1234
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+get_needed_residuals = function(y, fm_str, cutoff, merged) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm == 'y ~ ') {
+    return(y)
+  } else {
+    opt_fit = lm(as.formula(fm))
+    return(opt_fit$residuals)
+  }
+}
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+y = merged$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+library(parallel)
+cl <- makeCluster(6)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ merged$age_at_scan + I(merged$age_at_scan^2) + merged$SEX', .1, merged[keep_me, ])
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+
+library(parallel)
+cl <- makeCluster(6)
+pvals = parSapply(cl, X_resid, function(d, y) t.test(d ~ y)$p.value, y)
+stopCluster(cl)
+X_resid = X_resid[, which(pvals <= .05)]
+print(dim(X_resid))
+
+pp <- preProcess(X_resid, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtX<- predict(pp, X_resid)
+print(dim(filtX))
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 10, times = 10)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary)
+
+require(doMC)
+registerDoMC(cores=6)
+library(caretEnsemble)
+full_model_list <- caretList(
+  filtX, y,
+  tuneLength=10,
+  trControl=fullCtrl,
+  metric='ROC',
+  methodList=c('rf', 'kernelpls', 'svmRadial', 'knn', 'rpart', 'bagEarthGCV', 'LogitBoost', 'lda', 'nb')
+  )
+
+greedy_ensemble <- caretEnsemble(
+  full_model_list,
+  metric='ROC',
+  trControl=trainControl(
+    number=2,
+    summaryFunction=twoClassSummary,
+    classProbs=TRUE
+    ))
+# ROC stats
+summary(greedy_ensemble)
+```
+
+Using the entire data, it's clear that PLS is doing the best:
+
+```{r}
+resamps = resamples(full_model_list)
+bwplot(resamps, layout = c(3, 1))
+difValues <- diff(resamps)
+dotplot(difValues)
+mcor = modelCor(resamps)
+library(corrplot)
+corrplot(mcor, order = "hclust", method='color', cl.lim=c(min(mcor), max(mcor)))
+```
+
+Now, say we do a LOOCV. How well do we predict the left out subject? It also makes sense to use the top 3 models that aren't too correlated, just so we can have some sort of voting scheme in case the probabilities are too close to call.
+
+```{r}
+myseed=1234
+njobs=6
+tuneLength=10
+preds = c()
+for (s in 1:1) {#length(y)) {
+  print(sprintf('LO %d / %d', s, length(y)))
+  Xtrain <- X_resid[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X_resid[s, ]
+  
+  library(parallel)
+  cl <- makeCluster(njobs)
+  pvals = parSapply(cl, Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+  stopCluster(cl)
+  Xtrain = Xtrain[, which(pvals <= .05)]
+  keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+  Xtest = Xtest[, keep_me]
+  
+  pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+  filtXtrain<- predict(pp, Xtrain)
+  filtXtest <- predict(pp, Xtest)
+  
+  set.seed(myseed)
+  index <- createMultiFolds(ytrain, k = 10, times = 10)
+  
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           index = index,
+                           savePredictions="final",
+                           classProbs=TRUE,
+                           summaryFunction=twoClassSummary)
+  
+  require(doMC)
+  registerDoMC(cores=njobs)
+  library(caretEnsemble)
+  model_list <- caretList(
+    filtXtrain, ytrain,
+    tuneLength=tuneLength,
+    trControl=fullCtrl,
+    metric='ROC',
+    methodList=c('kernelpls', 'bagEarthGCV', 'knn')
+  )
+  preds = lapply(model_list, predict, newdata=filtXtest, type='prob')
+  print(do.call(rbind, preds))
+}
+```
+
+But this is taking too long. So, lets farm it in a subject level.
+
+```{r}
+preds = c()
+preds2 = c()
+a = read.table('~/tmp/all_3_varp6.txt')
+start=1
+while (start < length(y)*3) {
+  adhd_prob = prod(a[start:(start+2),2], na.rm=T)
+  nv_prob = prod(a[start:(start+2),3], na.rm=T)
+  adhd_cnt = 0
+  if (!is.na(sum(a[start, 2:3])) && (a[start, 2] > a[start, 3])) {
+    adhd_cnt = adhd_cnt + 1
+  }
+  if (!is.na(sum(a[start+1, 2:3])) && (a[start+1, 2] > a[start+1, 3])) {
+    adhd_cnt = adhd_cnt + 1
+  }
+  if (!is.na(sum(a[start+2, 2:3])) && (a[start+2, 2] > a[start+2, 3])) {
+    adhd_cnt = adhd_cnt + 1
+  }
+  if (adhd_cnt >= 2) {
+    preds2 = c(preds2, 'ADHD')
+  } else {
+    preds2 = c(preds2, 'NV')
+  }
+  start = start + 3
+  if (adhd_prob > nv_prob) {
+    preds = c(preds, 'ADHD')
+  } else {
+    preds = c(preds, 'NV')
+  }
+}
+preds = factor(preds, levels=levels(y))
+preds2 = factor(preds2, levels=levels(y))
+```
+
+# Other resampling methods
+Let me play with other resampling methods first, using the entire dataset. Ideally we can reduce the variance a bit, even though we're already quite good with kernelpls. The other idea is to go for maximizing accuracy, as that seems to be a tough thing to sell.
+
+```{r}
+myseed=1234
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+get_needed_residuals = function(y, fm_str, cutoff, merged) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm == 'y ~ ') {
+    return(y)
+  } else {
+    opt_fit = lm(as.formula(fm))
+    return(opt_fit$residuals)
+  }
+}
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+y = merged$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+library(parallel)
+cl <- makeCluster(6)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ merged$age_at_scan + I(merged$age_at_scan^2) + merged$SEX', .1, merged[keep_me, ])
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+
+library(parallel)
+cl <- makeCluster(6)
+pvals = parSapply(cl, X_resid, function(d, y) t.test(d ~ y)$p.value, y)
+stopCluster(cl)
+X_resid = X_resid[, which(pvals <= .05)]
+print(dim(X_resid))
+
+pp <- preProcess(X_resid, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtX<- predict(pp, X_resid)
+print(dim(filtX))
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 10, times = 10)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE)
+
+require(doMC)
+registerDoMC(cores=6)
+library(caretEnsemble)
+full_model_list <- caretList(
+  filtX, y,
+  tuneLength=10,
+  trControl=fullCtrl,
+  metric='Accuracy',
+  methodList=c('rf', 'kernelpls', 'svmRadial', 'knn', 'rpart', 'bagEarthGCV', 'LogitBoost', 'lda', 'nb')
+  )
+
+greedy_ensemble <- caretEnsemble(
+  full_model_list,
+  metric='Accuracy',
+  trControl=trainControl(
+    number=2,
+    classProbs=TRUE
+    ))
+# ROC stats
+summary(greedy_ensemble)
+```
+
+Using the entire data, PLS still does the best:
+
+```{r}
+resamps = resamples(full_model_list)
+bwplot(resamps, layout = c(3, 1))
+difValues <- diff(resamps)
+dotplot(difValues)
+mcor = modelCor(resamps)
+library(corrplot)
+corrplot(mcor, order = "hclust", method='color', cl.lim=c(min(mcor), max(mcor)))
+```
+
+To quickly evaluate the swarmed loocv results:
+
+```{r}
+preds = c()
+a = read.table('~/tmp/svmRadial_5pcs.txt')
+start=1
+while (start <= length(y)) {
+  adhd_prob = a[start,2]
+  nv_prob = a[start,3]
+  if (is.na(adhd_prob) || is.na(nv_prob)) {
+    preds = c(preds, 'err')
+  } else if (adhd_prob > nv_prob) {
+    preds = c(preds, 'ADHD')
+  } else {
+    preds = c(preds, 'NV')
+  }
+  start = start+1
+}
+preds = factor(preds, levels=levels(y))
+sum(preds==y)/length(y)
+```
+
+We are still overfitting with LOOCV... that's because we only do CV in the training data to select the hyperparameters, but the full model is still fit in the entire dataset (n-1). Even with only 5PCs I'm still overfitting. Tough... will need to play with seed distribution.
+
+But why wouldn't the results for each fold be worse then?
+
+```{r}
+myseed=1234
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+get_needed_residuals = function(y, fm_str, cutoff, merged) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm == 'y ~ ') {
+    return(y)
+  } else {
+    opt_fit = lm(as.formula(fm))
+    return(opt_fit$residuals)
+  }
+}
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+y = merged$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+X = cbind(merged[keep_me, c('age_at_scan', 'SEX')], X)
+# library(parallel)
+# cl <- makeCluster(6)
+# X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ merged$age_at_scan + I(merged$age_at_scan^2) + merged$SEX', .1, merged[keep_me, ])
+# stopCluster(cl)
+# X_resid = as.data.frame(X_resid)
+```
+
+```{r}
+njobs=6
+preds = c()
+for (s in 1:198) {
+  Xtrain <- X[ -s, ]
+  ytrain <- y[ -s ]
+  Xtest  <- X[s, ]
+  
+  pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale'))
+  filtXtrain <- predict(pp, Xtrain)
+  filtXtest <- predict(pp, Xtest)
+  
+  library(parallel)
+  cl <- makeCluster(njobs)
+  pvals = parSapply(cl, filtXtrain, function(d, ytrain) kruskal.test(d ~ ytrain)$p.value, ytrain)
+  stopCluster(cl)
+  filtXtrain = filtXtrain[, which(pvals <= .05)]
+  keep_me = sapply(colnames(filtXtrain), function(d) which(colnames(filtXtest) == d))
+  filtXtest = filtXtest[, keep_me]
+  
+  pp <- preProcess(filtXtrain, method = c('pca'))
+  filtXtrain <- predict(pp, filtXtrain)
+  filtXtest <- predict(pp, filtXtest)
+  
+  tuneLength=10
+  set.seed(myseed)
+  index <- createResample(ytrain, times=200)
+  
+  require(doMC)
+  registerDoMC(cores=6)
+  set.seed(myseed)
+  fullCtrl <- trainControl(method = "boot",
+                           number=200,
+                           # repeats=10,
+                           index = index,
+                           savePredictions="all",
+                           classProbs=TRUE,
+                           returnResamp = 'all',
+                           indexFinal=createResample(ytrain, times=1)[[1]])
+  
+  require(doMC)
+  registerDoMC(cores=njobs)
+  set.seed(myseed)
+  mymod = train(filtXtrain, ytrain,
+                tuneLength=10,
+                trControl=fullCtrl,
+                metric='Accuracy',
+                method='kernelpls')
+  
+  # print(mymod)
+  print(sprintf('LO %d / %d (%s)', s, length(y), y[s]))
+  preds = c(preds, predict(mymod, newdata=filtXtest))
+  print(preds)
+}
+```
+
+
+```{r}
+fitControl <- trainControl(method = "none", classProbs = TRUE)
+set.seed(myseed)
+nomodel <- train(Xtrain[index[[1]],], ytrain[index[[1]]], 
+                 method = "kernelpls", 
+                 trControl = fitControl, 
+                 verbose = FALSE, 
+                 tuneGrid = data.frame(ncomp = 3),
+                 metric = "Accuracy")
+nomodel
+```

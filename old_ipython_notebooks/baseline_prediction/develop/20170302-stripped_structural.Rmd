@@ -1,0 +1,458 @@
+---
+title: "Structural analysis using stripped files"
+output: html_notebook
+---
+
+First, some data cleaning even before we match scans to clinical assessments:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+# remove data columns from mean_data to avoid duplicates
+
+par(mfrow=c(2, 2))
+nbreaks = 40
+hist(struct_data$CortexVol, breaks=nbreaks)
+hist(struct_data$TotalGrayVol, breaks=nbreaks)
+hist(struct_data$SurfaceHoles, breaks=nbreaks)
+```
+
+Even though we have a few outliers, it's not clear whether these metrics would be good to filter the data. Let's do it based on the good ol' QC values:
+
+```{r}
+rm_me = (struct_data$mprage_score > 2)
+print(sprintf('Reducing from %d to %d scans', nrow(struct_data), nrow(struct_data)-sum(rm_me)))
+struct_data = struct_data[!rm_me, ]
+```
+
+Now we work under the assumption that all leftover scans are good, so we match them to the baseline clinical of each participant:
+
+``` {r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, struct_data$MRN)
+merged = mergeOnClosestDate(gf, struct_data, my_ids)
+```
+
+Finally, let's remove anyone with difference between clinical and scan that's too big:
+
+```{r}
+hist(merged$dateX.minus.dateY.months, breaks=nbreaks)
+```
+
+There is clearly a big spread. Let's err in the side of caution and cap it to 1 year before or after:
+
+```{r}
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+Ready for some ML. Let's get all features first, and try some NV vs ADHD classification, clumping in the ADHD_NOS folks. We also do some quick random forest auto tuning just to appreciate all different variables:
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+X = merged[, 33:302]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+```{r}
+ctrl = trainControl(method="repeatedcv", number=10, repeats=5, selectionFunction = "tolerance")
+in_train = createDataPartition(y, p=.8, list=FALSE)
+set.seed(seed)
+bestmtry <- tuneRF(X, y, stepFactor=1.5, improve=1e-5, ntreeTry=2000, subset=in_train)
+print(bestmtry)
+```
+
+Still nothing to write home about... let's do our old algorithms to see if we can get anything else out of it.
+
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_allStructural_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, run_models=c('rndForest', 'lr', 'rsvm', 'xgb'))
+
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+As expected, the initial results are not that great. But we could potentially run more splits within domain just to see what's going on, using two faster algorithms:
+
+```{r}
+phen_vars = which(grepl("_thickness$", colnames(X)))
+ldata = X[, phen_vars]
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structThickness_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+phen_vars = which(grepl("_area$", colnames(X)))
+ldata = X[, phen_vars]
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structArea_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+phen_vars = which(grepl("_volume$", colnames(X)))
+ldata = X[, phen_vars]
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structThickness_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+phen_vars = c(which(grepl("_volume$", colnames(X))),
+              which(grepl("_thickness$", colnames(X))),
+              which(grepl("_area$", colnames(X))))
+ldata = X[, phen_vars]
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAllCortical_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+# Let's look into the subdivision Philip made:
+
+```{r}
+regional = read.csv('~/data/baseline_prediction/REGIONAL_ANALYSES_FREESURFER.csv')
+sublobar_regions = unique(regional$subloar)
+# for each region, add or average the columns corresponding to the ROIs
+area_data = c()
+hdr = c()
+volume_data = c()
+thickness_data = c()
+aparc_data = c()
+aparc_hdr = c()
+for (s in sublobar_regions) {
+  if (s != "") {
+    idx = which(regional$subloar == s)
+    area = 0
+    volume = 0
+    thickness = 0
+    aparc = 0
+    for (i in idx) {
+      cnt = 0
+      roi_name = sub('_thickness', '', regional[i, 1])
+      if (length(grep('rh_|lh_', roi_name)) > 0) {
+        var_name = quote(sprintf('%s_area', roi_name))
+        area = area + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_volume', roi_name))
+        volume = volume + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_thickness', roi_name))
+        thickness = thickness + X[, eval(var_name)]
+        cnt = cnt + 1
+      }
+      else {
+        var_name = quote(roi_name)
+        aparc = aparc + X[, eval(var_name)]
+      }
+    }
+    if (sum(area) > 0) {
+      hdr = c(hdr, s)
+      area_data = cbind(area_data, area)
+      volume_data = cbind(volume_data, volume)
+      thickness_data = cbind(thickness_data, thickness / cnt)
+    }
+    else {
+      aparc_hdr = c(aparc_hdr, s)
+      aparc_data = cbind(aparc_data, aparc)
+    }
+  }
+}
+colnames(area_data) = hdr
+colnames(volume_data) = hdr
+colnames(thickness_data) = hdr
+colnames(aparc_data) = aparc_hdr
+```
+
+And we do the same thing for lobar:
+
+```{r}
+regional = read.csv('~/data/baseline_prediction/REGIONAL_ANALYSES_FREESURFER.csv')
+lobar_regions = unique(regional$lobar)
+# for each region, add or average the columns corresponding to the ROIs
+areaLobar_data = c()
+hdr = c()
+volumeLobar_data = c()
+thicknessLobar_data = c()
+aparcLobar_data = c()
+aparc_hdr = c()
+for (s in lobar_regions) {
+  if (s != "") {
+    idx = which(regional$lobar == s)
+    area = 0
+    volume = 0
+    thickness = 0
+    aparc = 0
+    for (i in idx) {
+      cnt = 0
+      roi_name = sub('_thickness', '', regional[i, 1])
+      if (length(grep('rh_|lh_', roi_name)) > 0) {
+        var_name = quote(sprintf('%s_area', roi_name))
+        area = area + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_volume', roi_name))
+        volume = volume + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_thickness', roi_name))
+        thickness = thickness + X[, eval(var_name)]
+        cnt = cnt + 1
+      }
+      else {
+        var_name = quote(roi_name)
+        aparc = aparc + X[, eval(var_name)]
+      }
+    }
+    if (sum(area) > 0) {
+      hdr = c(hdr, s)
+      areaLobar_data = cbind(areaLobar_data, area)
+      volumeLobar_data = cbind(volumeLobar_data, volume)
+      thicknessLobar_data = cbind(thicknessLobar_data, thickness / cnt)
+    }
+    else {
+      aparc_hdr = c(aparc_hdr, s)
+      aparcLobar_data = cbind(aparcLobar_data, aparc)
+    }
+  }
+}
+colnames(areaLobar_data) = hdr
+colnames(volumeLobar_data) = hdr
+colnames(thicknessLobar_data) = hdr
+colnames(aparcLobar_data) = aparc_hdr
+```
+
+And finally, we do it for the theory driven cases:
+
+```{r}
+regional = read.csv('~/data/baseline_prediction/REGIONAL_ANALYSES_FREESURFER.csv')
+theory_regions = unique(regional$ROI_theory_driven)
+# for each region, add or average the columns corresponding to the ROIs
+areaTheory_data = c()
+hdr = c()
+volumeTheory_data = c()
+thicknessTheory_data = c()
+aparcTheory_data = c()
+aparc_hdr = c()
+for (s in theory_regions) {
+  if (s != "") {
+    idx = which(regional$ROI_theory_driven == s)
+    area = 0
+    volume = 0
+    thickness = 0
+    aparc = 0
+    for (i in idx) {
+      cnt = 0
+      roi_name = sub('_thickness', '', regional[i, 1])
+      if (length(grep('rh_|lh_', roi_name)) > 0) {
+        var_name = quote(sprintf('%s_area', roi_name))
+        area = area + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_volume', roi_name))
+        volume = volume + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_thickness', roi_name))
+        thickness = thickness + X[, eval(var_name)]
+        cnt = cnt + 1
+      }
+      else {
+        var_name = quote(roi_name)
+        aparc = aparc + X[, eval(var_name)]
+      }
+    }
+    if (sum(area) > 0) {
+      hdr = c(hdr, s)
+      areaTheory_data = cbind(areaTheory_data, area)
+      volumeTheory_data = cbind(volumeTheory_data, volume)
+      thicknessTheory_data = cbind(thicknessTheory_data, thickness / cnt)
+    }
+    else {
+      aparc_hdr = c(aparc_hdr, s)
+      aparcTheory_data = cbind(aparcTheory_data, aparc)
+    }
+  }
+}
+colnames(areaTheory_data) = hdr
+colnames(volumeTheory_data) = hdr
+colnames(thicknessTheory_data) = hdr
+colnames(aparcTheory_data) = aparc_hdr
+```
+
+## Lobar
+```{r}
+ldata = areaLobar_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAreaLobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = thicknessLobar_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structThicknessLobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = volumeLobar_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structVolumeLobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = aparcLobar_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAparcLobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+## Sublobar
+```{r}
+ldata = area_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAreaSublobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = thickness_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structThicknessSublobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = volume_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structVolumeSublobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = aparc_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAparcSublobar_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+## Theory
+```{r}
+ldata = areaTheory_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAreaTheory_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = thicknessTheory_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structThicknessTheory_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = volumeTheory_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structVolumeTheory_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = aparcTheory_data
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_structAparcTheory_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+No matter how we slice it, the structural data doesn't seem to do a good job in predicting ADHD vs NV. I could try replicating the exact same thing one of those papers did, with RFE, but I think I should focus on the other datasets and decision targets first.
+
+
+
+

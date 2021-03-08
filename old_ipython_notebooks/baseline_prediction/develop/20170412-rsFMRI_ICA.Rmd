@@ -1,0 +1,71 @@
+---
+title: "rsFMRI baseline ICA"
+output: html_notebook
+---
+
+Just for kicks, let's see what we get if we use the same approach of expression scores we employed in the resting paper, so that we can reduce the dimensionality of the rsFMRI data.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+# take advantage that filtering has already been done to create the expression scores
+fmri_meta = read.csv('~/data/baseline_prediction/fmri/good_scans_01312017.csv')
+min_minutes = 2
+idx = fmri_meta$trs_left >= (min_minutes * 60 / 2.5)
+fmri_meta = fmri_meta[idx, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+clin = read.csv(gf_fname)
+my_ids = intersect(clin$MRN, fmri_meta$MRN)
+merged = mergeOnClosestDate(fmri_meta, clin, my_ids, x.date = 'record.date.collected...Scan')
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+
+X = read.csv('~/data/baseline_prediction/fmri/rois_spheres/exp_scores_274merged_1KNaNZeroed.csv', header=F)
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+Now we do just some basic ML:
+
+```{r}
+library(caretEnsemble)
+myseed = 1234
+mymetric='Accuracy'
+smFunc = defaultSummary
+
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createResample(ytrain, 25)
+
+my_control <- trainControl(
+  method="boot",
+  number=25,
+  savePredictions="final",
+  classProbs=TRUE,
+  index=index,
+  summaryFunction=smFunc,
+  preProc=c('YeoJohnson', 'center', 'scale')
+  )
+
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=my_control,
+  metric = mymetric,
+  methodList=c('lda', 'rpart', 'glm', 'knn', 'svmRadial', 'LogitBoost', 'rf', 'xgbTree')
+  )
+results <- resamples(model_list)
+summary(results)
+dotplot(results)
+modelCor(results)
+```
+
+No, even with the training set we're not doing great. 65% is the no information rate :(
+
+

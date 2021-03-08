@@ -1,0 +1,119 @@
+---
+title: "Data visualization"
+output: html_notebook
+---
+
+Let's see if we can get any more insights by visualizing the data.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+library(caret)
+adhd_idx = gf_base$DX_BASELINE!='NV'
+```
+
+First let's figure out if the ADHD symptoms for the kid persisted or remitted in their last visit:
+
+```{r}
+out_group = c()
+for (s in gf_base[adhd_idx,]$MRN) {
+  idx = which(gf$MRN==s)
+  subj_sx = gf[idx, c('SX_inatt', 'SX_HI')]
+  last_age = sort(gf[idx,]$age, index.return=T, decreasing=T)
+  last_sx = subj_sx[last_age$ix[1], ]
+  if (last_age$x[1] > 18) {
+    # adult
+    if (last_sx$SX_inatt > 4 || last_sx$SX_HI > 4) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  } else {
+    # child
+    if (last_sx$SX_inatt > 5 || last_sx$SX_HI > 5) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  }
+}
+out_group = factor(out_group, levels=c('remission', 'persistent'))
+```
+
+```{r}
+X = geospatial
+# recoding SEX
+X$SEX = as.numeric(X$SEX)
+# dummies = dummyVars(~SEX, data=X)
+# X = cbind(X, predict(dummies, newdata=X))
+# X$SEX = NULL
+
+# removing anyone that is all NaNs for this dataset
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+featurePlot(x = X, 
+            y = gf_base$HI3_named, 
+            plot = "box", 
+            ## Pass in options to bwplot() 
+            scales = list(y = list(relation="free"),
+                          x = list(rot = 90)), 
+            layout = c(4,1 ),
+            auto.key = list(columns = 2))
+```
+
+It looks like we have a whole lot of outliers! What can we do to clean them up a bit?
+
+```{r}
+cleanX = sapply(X, function(d) {outlier = boxplot.stats(d)$out; return(ifelse(d %in% outlier, NA, d))})
+featurePlot(x = cleanX, 
+            y = gf_base$HI3_named, 
+            plot = "box", 
+            ## Pass in options to bwplot() 
+            scales = list(y = list(relation="free"),
+                          x = list(rot = 90)), 
+            layout = c(4,1 ),
+            auto.key = list(columns = 2))
+```
+
+This looks a bit better. We do need to remove a few variables that don't make much sense anymore, like the PCs, and some non-informative variables. Not sure if it'll make a difference in terms of prediction, though. 
+
+```{r}
+rm_me = which(colnames(X) %in% c('Exercise_Access', 'social_environment',
+                                 'physical_envronment', 'physical_health_environment',
+                                 'Home_Type', 'SEX', 'age'))
+cleanX = cleanX[, -rm_me]
+cleanX = cbind(cleanX, X[, c('SEX', 'age')])  # making sure we didn't clean those 2
+```
+In any case, let's make a few other plots:
+
+```{r}
+featurePlot(x = cleanX,
+            y = gf_base$HI3_named, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 3))
+```
+I honestly don't think these types of oplots will be too useful, as we won't be able to observe more than a handful of variable interaction. We can, however, do the exact type pe cleaning we did above for other variable types:
+
+```{r}
+dsets = c('prs', 'geospatial', 'neuropsych', 'dti_tracts', 'struct_rois')
+for (dset in dsets) {
+  print(sprintf('cleaning %s', dset))
+  eval(parse(text=sprintf('X = %s', dset)))
+  X$SEX = as.numeric(X$SEX)
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  rm_me = which(colnames(X) %in% c('Exercise_Access', 'social_environment',
+                                 'physical_envronment', 'physical_health_environment',
+                                 'Home_Type', 'SEX', 'age'))
+  cleanX = sapply(X, function(d) {outlier = boxplot.stats(d)$out; return(ifelse(d %in% outlier, NA, d))})
+  cleanX = cleanX[, -rm_me]
+  cleanX = cbind(cleanX, X[, c('SEX', 'age')])  # making sure we didn't clean those 2
+  print(sprintf('Before cleaning: %d NAs', sum(is.na(X))))
+  print(sprintf('Before cleaning: %d NAs', sum(is.na(cleanX))))
+}
+```
+So, we can certainly remove some of the outliers, but whether that makes a difference in prediction results is still to be seen. In fact, tree-based classifiers shouldn't care too much about outliers anyways, and neither should SVMs as long as the outliers are not vectors.

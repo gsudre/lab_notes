@@ -1,0 +1,248 @@
+---
+title: "DTI data cleaning"
+output: html_notebook
+---
+
+Inpired by the APM book, let's do some further cleaning in the DTI data.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | 
+         tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+Now we make a few plots:
+
+```{r}
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+```
+
+```{r}
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale', 'knnImpute'))
+filtXtrain = predict(pp, Xtrain)
+nearZeroVar(filtXtrain)
+correlations = cor(filtXtrain)
+library(corrplot)
+corrplot(correlations, order='hclust')
+```
+
+```{r}
+highCorr = findCorrelation(correlations, cutoff=.75)
+length(highCorr)
+noncorrXtrain = filtXtrain[, -highCorr]
+```
+
+Now let's see if these transformations matter at all for some of the algorithms we've been playing with:
+
+```{r}
+noncorrXtest = predict(pp, Xtest)[, -highCorr]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(pROC)
+cpuDiff = 0
+tuneLength = 10
+default_preproc = c("center", 'scale')
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+
+
+m1 <- train(noncorrXtrain, ytrain,
+                method = 'AdaBoost.M1',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m1
+pred = predict(m1, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m2 <- train(noncorrXtrain, ytrain,
+                method = 'AdaBag',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m2
+pred = predict(m2, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m3 <- train(noncorrXtrain, ytrain,
+                method = 'rf',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m3
+pred = predict(m3, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m4 <- train(noncorrXtrain, ytrain,
+                method = 'svmRadial',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m4
+pred = predict(m4, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m5 <- train(noncorrXtrain, ytrain,
+                method = 'xgbTree',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m5
+pred = predict(m5, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m6 <- train(noncorrXtrain, ytrain,
+                method = 'LogitBoost',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m6
+pred = predict(m6, noncorrXtest)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+```
+Model  | TrainROC | TestROC | TestAcc | TestKappa
+------------- | ------------- | ------------- | ------------- | -------------
+AdaBag     | .53 |  .8| .8 | .6
+AdaBoost.M1     | .51 | .75 | .75 | .50 
+rndForest        | .49 | .67 |  .68 | .34 
+xgbTree      | .55 |  .65 | .65 | .29
+svmRadial      | .53 | .36 | .38  | -.29 
+logReg      | .51 | .55 | .55 | .11 
+
+For comparison, these are the results if we didn't do any of the preprocessing above (only knnImpute so we can use the same features):
+
+```{r}
+pp2 = preProcess(Xtrain, method=c('knnImpute'))
+Xtrain2 = predict(pp, Xtrain)
+Xtest2 = predict(pp, Xtest)
+
+m1 <- train(Xtrain2, ytrain,
+                method = 'AdaBoost.M1',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m1
+pred = predict(m1, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m2 <- train(Xtrain2, ytrain,
+                method = 'AdaBag',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m2
+pred = predict(m2, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m3 <- train(Xtrain2, ytrain,
+                method = 'rf',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m3
+pred = predict(m3, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m4 <- train(Xtrain2, ytrain,
+                method = 'svmRadial',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m4
+pred = predict(m4, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m5 <- train(Xtrain2, ytrain,
+                method = 'xgbTree',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m5
+pred = predict(m5, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+
+m6 <- train(Xtrain2, ytrain,
+                method = 'LogitBoost',
+                trControl = fullCtrl,
+                tuneLength = tuneLength,
+                metric = 'ROC',
+                preProcess = default_preproc)
+m6
+pred = predict(m6, Xtest2)
+postResample(pred, ytest)
+roc(as.numeric(ytest), as.numeric(pred))
+```
+
+Model  | TrainROC | TestROC | TestAcc | TestKappa
+------------- | ------------- | ------------- | ------------- | -------------
+AdaBag     | .56 | .71 |  .70 | .41
+AdaBoost.M1    | .53 |  .62 | .63 |  .25 
+rndForest        |  .51 | .65 | .65 | .30 
+xgbTree      | .57 |  .57 | .58  | .15
+svmRadial      | .52 |  .71 | .3 | -.41
+logReg      |  .53 |  .54 | .55 | .09 
+
+So, although our training results weren't much different, it looks like the models with processed data do generalize better to the test set. So, this might be an argument for cleaning up all variables we have using a similar flow.
+
+As for classifiers, it seems like the Ada variants (Bad and Boost) were better than the other ones, even with the DTI data, which doesn't have many NAs. That's not great, as they take a long time to train, but if that's what it takes, then let's do it.

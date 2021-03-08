@@ -1,0 +1,129 @@
+---
+title: "Stripped rsFMRI classification"
+output: html_notebook
+---
+
+Let's give it a try with the rsFMRI data, this time using the things we've learned so far about the data cleaning, like univariate selection and removing correlations. The latter will likely be huge for rsFMRI, given the proximity of spheres.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+fmri_meta = read.csv('~/data/baseline_prediction/fmri/good_scans_01312017.csv')
+histogram(fmri_meta$trs_left, breaks=40)
+plot(ecdf(fmri_meta$trs_left))
+```
+
+Given that the total of a run is 123, we have a few subjects with data combined for more than one run. Also, each TR is 2.5s, so we should probably establish how many minutes we want to use as a threshold. There isn't a clear cut-off in the cumulative plot either... maybe we can do it around 45 TRs, where there is the first vertical split? Let's find a round cut-off. If each TR is 2.5, 50 TRs is a little above 2min (125sec), so let's go with 48 TRs for 2min.
+
+```{r}
+min_minutes = 2
+idx = fmri_meta$trs_left >= (min_minutes * 60 / 2.5)
+fmri_meta = fmri_meta[idx, ]
+```
+
+Now we merge it with the clinical data and remove the ones too far away, to get our classification targets:
+
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+clin = read.csv(gf_fname)
+my_ids = intersect(clin$MRN, fmri_meta$MRN)
+merged = mergeOnClosestDate(fmri_meta, clin, my_ids, x.date = 'record.date.collected...Scan')
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+load('~/data/baseline_prediction/fmri/rois_spheres/spheres_corr.RData')
+```
+
+Keeping only subjects we need:
+
+```{r}
+gf_fname = '~/data/baseline_prediction/fmri/good_scans_01312017.csv'
+gf = read.csv(gf_fname)
+keep_me = sapply(merged$Mask.ID, function(d) which(gf$Mask.ID == d))
+X = data[keep_me, ]
+rm(data)
+```
+
+Now we do the usual cleaning:
+
+```{r}
+library(pROC)
+
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+
+# because I have so many variables, let's go ahead and take out anything that has a NAN in it
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+# let's work with residuals
+get_needed_residuals = function(y, fm_str, cutoff) {
+  fm = as.formula(fm_str)
+  if (class(y) != 'factor') {
+    fit = lm(fm)
+    # selecting which covariates to use
+    fm = "y ~ "
+    for (r in 2:dim(summary(fit)$coefficients)[1]) {
+      if (summary(fit)$coefficients[r, 4] < cutoff) {
+        cname = rownames(summary(fit)$coefficients)[r]
+        cname = gsub("SEXMale", "SEX", cname)
+        fm = sprintf('%s + %s', fm, cname)
+      }
+    }
+    # don't do anything if no variables were significant
+    if (fm != 'y ~ ') {
+      idx = !is.na(y)
+      opt_fit = lm(as.formula(fm))
+      y[idx] = opt_fit$residuals
+    }
+  }
+  return(y)
+}
+
+X_resid = sapply(as.data.frame(X), get_needed_residuals, 'y ~ merged$age + I(merged$age^2) + merged$SEX', .1)
+rm(X)
+X_resid = as.data.frame(X_resid)
+
+
+myseed = 1234
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+# in resting it's actually more costly to do the correlation in the entire set of variables
+# then to run the for loop, so let's first reduce the variables to only the univariate ones
+pvals = sapply(Xtrain, function(d) t.test(d ~ ytrain)$p.value)
+Xtrain = Xtrain[, pvals <= .05]
+print(dim(Xtrain))
+
+# now we can remove correlated and non-informative variables
+nzv = nearZeroVar(Xtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  Xtrain = Xtrain[, -nzv]
+}
+correlations = cor(Xtrain, use='na.or.complete')
+# library(corrplot)
+# corrplot(correlations, order = "hclust")
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  Xtrain = Xtrain[, -highCorr]
+}
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+```
+
+
+Trying to run some of this in the cluster because the matrix is HUGE.
+
+But even after removing anything not significant, I still have 132956 variables, and R complains it cannot allocate a vector of size 131.7Gb...  let me try cutting the p-value even deeper.
+
+OK, using p < .01 helped. Now, does it do any better in baseline prediction?
+

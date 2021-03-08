@@ -1,0 +1,217 @@
+---
+title: "DTI baseline DX"
+output: html_notebook
+---
+
+Let's try to get baseline DX from DTI. First, some data cleaning:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+gf_fname = '~/data/baseline_prediction/dti_match_02092017.csv'
+data_fname = '~/data/baseline_prediction/dti_match_02092017.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX2'
+all_data = read.csv(data_fname)
+mrn_gf = unique(gf[, c('ID', group_var)])
+
+idx = all_data$DTI_select < 2 & all_data$QC_GRADE < 3
+data = all_data[idx,]
+
+ldata = merge(mrn_gf, data, by.x='ID', by.y='ID')
+eval(parse(text=sprintf('groups = ldata$\"%s.y\"', group_var)))
+idx = groups=='NV' | groups=='ADHD'
+groups = factor(groups[idx])
+ldata_orig = ldata[idx,]
+
+phen_vars = c(which(grepl("MASKID", colnames(ldata))),
+              which(grepl("^FA_", colnames(ldata))),
+              which(grepl("^AD_", colnames(ldata))),
+              which(grepl("^RD_", colnames(ldata)))
+              )
+ldata = ldata[, phen_vars]
+
+```
+
+At this point we have only clean DTI data in ldata. Let's check whether they have any remaining outliers in the property averages:
+
+```{r}
+mean_data = read.csv('~/data/baseline_prediction/dti_tortoiseExported_meanTSA_02012017.csv')
+# remove data columns from mean_data to avoid duplicates
+phen_idx = grepl("^FA_", colnames(mean_data)) | 
+            grepl("^AD_", colnames(mean_data)) |
+            grepl("^RD_", colnames(mean_data))
+
+mean_data = mean_data[, !phen_idx]
+ldata2 = merge(ldata, mean_data, by.x='MASKID', by.y='Mask.ID...Scan')
+
+par(mfrow=c(1, 3))
+
+nbreaks = 40
+hist(ldata2$fa_avg, breaks=nbreaks)
+hist(ldata2$ad_avg, breaks=nbreaks)
+hist(ldata2$rd_avg, breaks=nbreaks)
+```
+
+Cleaning up based on visual cutoffs:
+
+``` {r}
+rm_me = ldata2$fa_avg < .4 | ldata2$ad_avg < 1.18 | ldata2$rd_avg > .7
+ldata_orig = ldata2[!rm_me, ]
+groups_orig = groups[!rm_me]
+```
+
+Now we keep only the variables we'll be using for predictions:
+
+``` {r}
+phen_vars = c(which(grepl("^FA_", colnames(ldata))),
+              which(grepl("^AD_", colnames(ldata))),
+              which(grepl("^RD_", colnames(ldata)))
+              )
+ldata = ldata_orig[, phen_vars]
+groups = groups_orig
+```
+
+Start classifying and plotting the results, first by using all variables:
+```{r}
+root_fname = '~/data/baseline_prediction/results/dti3prop_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# for the cluster, run_models=c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+Given the time they're taking to run, gbm and lsvm don't seem to be worth the effort, at least not with their current search grids. Maybe they do better if we PCA the features first?
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+The usual dichotomy, we go for 6 in EV1, and 2 in elbow.
+```{r}
+ldata = ldata.pca$x[, 1:6]
+root_fname = '~/data/baseline_prediction/results/dti3prop_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# for the cluster, run_models=c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/data/baseline_prediction/results/dti3prop_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# for the cluster, run_models=c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+LinearSVM and GBM are too slow and are not showing any improvement, so we drop them. Let's try the independent properties, and their PCAs:
+
+```{r}
+phen_vars = c(which(grepl("^FA_", colnames(ldata_orig))))
+ldata = ldata_orig[, phen_vars]
+root_fname = '~/data/baseline_prediction/results/dtiFA_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+What if we PCA that?
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Both metrics agree on only two PCs.
+
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/data/baseline_prediction/results/dtiFA_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+
+Let's try just AD and RD:
+
+```{r}
+phen_vars = c(which(grepl("^AD_", colnames(ldata_orig))),
+              which(grepl("^RD_", colnames(ldata_orig))))
+ldata = ldata_orig[, phen_vars]
+
+root_fname = '~/data/baseline_prediction/results/dtiADRD_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+And the PCA countepart:
+
+```{r}
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Here, we can try EV1=5 and 3 for elbow.
+
+```{r}
+ldata = ldata.pca$x[, 1:3]
+root_fname = '~/data/baseline_prediction/results/dtiADRD_PCAElbow_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:5]
+root_fname = '~/data/baseline_prediction/results/dtiADRD_PCAEV1_NVvsADHD'
+if (! file.exists(sprintf('%s.RData', root_fname))) {
+  save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+}
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+PCA might have hurt this a bit, now.

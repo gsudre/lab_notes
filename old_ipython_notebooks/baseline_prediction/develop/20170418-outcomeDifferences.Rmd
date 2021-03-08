@@ -1,0 +1,363 @@
+---
+title: "Differences in classification/regression results"
+output: html_notebook
+---
+
+I was curious about the differences in using a regression, factor, or ordinal factor in classification. Would it make a difference? 
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$SX_inatt
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+merged = merged[!rm_me, ]
+y = y[!rm_me]
+summary(y)
+class(y)
+```
+
+Now we do some very basic regression just do get a baseline:
+
+```{r}
+library(pROC)
+myseed = 1234
+cpuDiff = 1
+tuneLength = 10
+default_preproc = c("center", 'scale')
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(Xtrain))))
+rfFull <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+OK, now just to be safe, I'll run it again to show that we get the same results:
+```{r}
+set.seed(myseed)
+rfFull2 <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull2)
+pred = predict(rfFull2, Xtest)
+postResample(pred, ytest)
+```
+
+All good. Now, we know that y is a continuous variable. What happens if we make it into a factor, thus running a classification now:
+
+```{r}
+y = factor(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(Xtrain))))
+rfFull <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+We now switched to a 10-class classification, which we can reproduce here:
+```{r}
+set.seed(myseed)
+rfFull2 <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull2)
+pred = predict(rfFull2, Xtest)
+postResample(pred, ytest)
+```
+The main question is whether I get different results using ordered factors. 
+```{r}
+y = factor(y, ordered=T)
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rndForestGrid <- expand.grid(.mtry=c(1:sqrt(ncol(Xtrain))))
+rfFull <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+So, it looks like caret ignores that the factors are ordered, and uses them as regular classes.
+
+Now, could we run a simple regression, and simply round the predictions between 0 and 9?
+
+```{r}
+X = merged[, phen_vars]
+y = merged$SX_inatt
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+merged = merged[!rm_me, ]
+y = y[!rm_me]
+summary(y)
+class(y)
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rfFull <- train(Xtrain, ytrain,
+                method = "rf",
+                trControl = fullCtrl,
+                tuneGrid=rndForestGrid,
+                preProcess = default_preproc)
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+```
+
+The other option would be to run an ordinal classification in caret. Let's see if there is any different between a regular classification and the ordinal counterpart first:
+
+```{r}
+y = factor(y)
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rfFull <- train(Xtrain, ytrain,
+                method = "rpartScore",
+                trControl = fullCtrl,
+                tuneLength=2,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+
+
+
+```{r}
+y = factor(y, ordered=T)
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rfFull <- train(Xtrain, ytrain,
+                method = "rpartScore",
+                trControl = fullCtrl,
+                tuneLength=3,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+Well, the models are different, even though they're both crap. Can we have a better class split so that we end up with less than 10 classes?
+
+```{r}
+y = rep('low', nrow(merged))
+y[merged$SX_inatt>0] = 'medium'
+y[merged$SX_inatt>5] = 'high'
+y = factor(y, levels=c('low', 'medium', 'high'))
+
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rfFull <- train(Xtrain, ytrain,
+                method = "rpartScore",
+                trControl = fullCtrl,
+                tuneLength=3,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+
+```{r}
+y = rep('low', nrow(merged))
+y[merged$SX_inatt>0] = 'medium'
+y[merged$SX_inatt>5] = 'high'
+y = factor(y, levels=c('low', 'medium', 'high'), ordered = T)
+
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid')
+rfFull <- train(Xtrain, ytrain,
+                method = "rpartScore",
+                trControl = fullCtrl,
+                tuneLength=3,
+                preProcess = default_preproc)
+  
+getTrainPerf(rfFull)
+pred = predict(rfFull, Xtest)
+postResample(pred, ytest)
+```
+I honestly don't think it's making that much difference to have the outcomes ordered. Mayeb using a different classifier would help?
+
+```{r}
+y = rep('low', nrow(merged))
+y[merged$SX_inatt>0] = 'medium'
+y[merged$SX_inatt>5] = 'high'
+y = factor(y, levels=c('low', 'medium', 'high'), ordered = T)
+
+head(y)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final")
+
+set.seed(myseed)
+library(caretEnsemble)
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=fullCtrl,
+  # methodList=c('vglmAdjCat', 'vglmContRatio', 'vglmCumulative', 'ordinalNet')
+  methodList=c('ordinalNet')
+  )
+
+model_perf = data.frame(lapply(model_list, function(d) getTrainPerf(d)[1]))
+names(model_perf) = names(model_list)
+model_preds <- lapply(model_list, predict, newdata=Xtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+names(model_preds) = names(model_list)
+print(model_perf)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+```
+
+
+
+
+
+
+

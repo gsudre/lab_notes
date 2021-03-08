@@ -1,0 +1,166 @@
+---
+title: "Prediction light"
+output: html_notebook
+---
+
+I'll call this prediction light because I'm just using the variables I presented at the WIP. It might turn out that they're the best to go with anyways, but it's a limited set from what I've been working with. For example, we'll do no voxelwise stuff.
+
+Let's start with a single seed (1234), then (1), then try several seeds to see what we get. Also, I'll start with a dataset that had very nice descriptive results (neuropsych), but also a few NAs if we use them all together. So, we'll need to either impute or use some algorithms that don't care about that.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+merged = merge(mwj, mbeery, by='MRN', all.x=T, all.y=T)
+merged = merge(merged, miq, by='MRN', all.x=T, all.y=T)
+merged = merge(merged, mwisc, by='MRN', all.x=T, all.y=T)
+merged = merge(merged, mcpt, by='MRN', all.x=T, all.y=T)
+# now age and SEX might have NAs if the entries came from two datasets, so let's grab
+# them from gf again
+age = c()
+sex = c()
+for (s in 1:nrow(merged)) {
+  age = c(age, gf[gf$MRN==merged[s,]$MRN,]$age)
+  sex = c(sex, gf[gf$MRN==merged[s,]$MRN,]$SEX)
+}
+SEX = factor(sex, labels = c('Female', 'Male'))
+merged$age = NULL
+merged$SEX = NULL
+merged = cbind(merged, age, SEX)
+
+
+phen_vars = c('FSIQ',
+              # WISC
+              'Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB',
+              # WJ
+              'Raw.Score..VM', 'Raw.Score..DS', 'PS',
+              # Beery
+              'Standard.score'
+              )
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+```
+
+*Note that since we're residualizing the entire dataset, I won't be a stickler for doing PCA and/or imputation in the entire data either. If we decide to not do that in the future, we can change it.*
+
+```{r}
+get_needed_residuals = function(y, fm_str, cutoff, df) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+      print(fm)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm != 'y ~ ') {
+    opt_fit = lm(as.formula(fm))
+    y[!is.na(y)] = opt_fit$residuals
+  }
+  return(y)
+}
+
+X_resid = sapply(X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+y = as.character(merged$DX_BASELINE)
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+```
+
+Now let's go for a simple classifier using a given random seed:
+
+```{r}
+myseed = 1234
+tuneLength = 10
+k = 5
+times = 5
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+# library(parallel)
+# cl <- makeCluster(8)
+# pvals = parSapply(cl, Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+# stopCluster(cl)
+# Xtrain = Xtrain[, which(pvals <= .05)]
+# print(dim(Xtrain))
+# 
+# keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+# Xtest = Xtest[, keep_me]
+# 
+# pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+# filtXtrain<- predict(pp, Xtrain)
+# filtXtest <- predict(pp, Xtest)
+# print(dim(filtXtrain))
+
+filtXtrain = Xtrain
+filtXtest = Xtest
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         number = k,
+                         repeats = times,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary)
+
+mymod <- train(filtXtrain, ytrain, tuneLength=tuneLength,
+               trControl=fullCtrl, metric='ROC',
+               method='ada')
+
+```
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).

@@ -1,0 +1,876 @@
+---
+title: "Voxelwise thickness analysis"
+output: html_notebook
+---
+
+In the same spirit of Philip's cortical trajectories paper, let's see if we can use voxelwise thickness data to predict outcome. 
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_thickness.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_thickness[,2:ncol(lh_thickness)],
+              rh_thickness[,2:ncol(rh_thickness)])
+rm(lh_thickness)
+rm(rh_thickness)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+```
+
+We'll start with the symptom slopes for kids with baseline assessment <= 12.
+
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+y = vector()
+keep_me = vector()
+target_col = which(colnames(gf)=='SX_inatt')
+for (s in mstruct$MRN) {
+  if ((gf_base[gf_base$MRN==s,]$age <= 12) && (gf_base[gf_base$MRN==s, target_col] >= 2)) {
+    idx = gf$MRN==s
+    sx_slope = lm(gf[idx, target_col] ~ gf[idx, ]$age)$coefficients[2]
+    keep_me = c(keep_me, which(mstruct$MRN == s))
+    y = c(y, sx_slope)
+  }
+}
+X = X[keep_me, ]
+
+myseed = 1234
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+# in voxel analysis it's actually more costly to do the correlation in the entire set of variables
+# then to run the for loop, so let's first reduce the variables to only the univariate ones
+pvals = sapply(Xtrain, function(d) cor.test(d, ytrain)$p.value)
+Xtrain = Xtrain[, which(pvals <= .05)]
+print(dim(Xtrain))
+
+# now we can remove correlated and non-informative variables
+nzv = nearZeroVar(Xtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  Xtrain = Xtrain[, -nzv]
+}
+correlations = cor(Xtrain, use='na.or.complete')
+# # library(corrplot)
+# # corrplot(correlations, order = "hclust")
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  Xtrain = Xtrain[, -highCorr]
+}
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+```
+
+```{r}
+tuneLength=10
+mymod='rf'
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final")
+m1 <- train(Xtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength)
+print(m1)
+pred = predict(m1, Xtest)
+print(postResample(pred, ytest))
+print(sprintf('No information rate: RMSE=%f', postResample(mean(ytrain), ytest)[1]))
+```
+
+Judgin by the results in the cluster, neither training nor testing is better than the No Information rate. A few more things we can try:
+ * do other methods do better with this filtering method of feature selection?
+ * can we do better with wrapper methods instead?
+ 
+Also, note that even when running rf I'm still using 11Gb of memory in a single core... making this a parallel thing will take some patience.
+
+Because of how they're designed, regression trees and MARS won't be too succeptible to noisy predictors. In general, tree and rule-based models, MARS and lasso have implicit feature selection. Still, something on top of it might still make it better. See here for a few options: https://topepo.github.io/caret/train-models-by-tag.html#implicit-feature-selection
+
+If none of these things help, even after using wrappers, we can try going back to the latent class outcomes (instead of symptom slopes), and also go back to some data cleaning.
+
+Let's see how other methods perform:
+
+```{r}
+library(caretEnsemble)
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=fullCtrl,
+  # when doing classification, also try 'LogitBoost', 'lda', and 'nb'
+  methodList=c('rf', 'kernelpls', 'svmRadial', 'lasso', 'knn', 'rpart', 'bagEarthGCV')
+  )
+
+greedy_ensemble <- caretEnsemble(
+  model_list, 
+  trControl=trainControl(
+    number=2
+    ))
+
+glm_ensemble <- caretStack(
+  model_list,
+  method="glm",
+  trControl=trainControl(
+    method="boot",
+    number=10,
+    savePredictions="final"
+  )
+)
+
+gbm_ensemble <- caretStack(
+  model_list,
+  method="gbm",
+  verbose=FALSE,
+  tuneLength=10,
+  trControl=trainControl(
+    method="boot",
+    number=10,
+    savePredictions="final"
+  )
+)
+summary(greedy_ensemble)
+model_preds <- lapply(model_list, predict, newdata=Xtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+ens_preds <- predict(glm_ensemble, newdata=Xtest)
+model_preds$glmE <- postResample(ens_preds, ytest)[1]
+ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+print(model_preds)
+print(sprintf('No information rate: RMSE=%f', postResample(mean(ytrain), ytest)[1]))
+```
+
+Unfortunately, still no better than NIR:
+
+```
+> summary(greedy_ensemble)
+The following models were ensembled: rf, kernelpls, svmRadial, lasso, knn, rpart, bagEarthGCV 
+They were weighted: 
+-0.1579 0.0193 0.6548 0.2413 0.2294 -0.4299 -0.2449 0.255
+The resulting RMSE is: 1.142
+The fit for each individual model on the RMSE is: 
+      method     RMSE    RMSESD
+          rf 1.131451 0.2092185
+   kernelpls 1.137326 0.1784456
+   svmRadial 1.142820 0.2193206
+       lasso 1.202993 0.2019095
+         knn 1.154453 0.1949865
+       rpart 1.380211 0.1950522
+ bagEarthGCV 1.165401 0.1932832
+> model_preds <- lapply(model_list, predict, newdata=Xtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+> model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(glm_ensemble, newdata=Xtest)
+> model_preds$glmE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+> model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+> print(model_preds)
+          rf kernelpls svmRadial   lasso      knn    rpart bagEarthGCV  greedyE     glmE     gbmE
+RMSE 1.13876  1.157259  1.098754 1.33807 1.210579 1.105219    1.212761 1.146435 1.146435 1.251327
+> print(sprintf('No information rate: RMSE=%f', postResample(mean(ytrain), ytest)[1]))
+[1] "No information rate: RMSE=1.105219"
+```
+
+Before we try wrapping methods, as they're more computationally intensive, let's see if we can do better with either HI slopes, or any of the two types of outcomes:
+
+## HI slopes
+
+```
+> summary(greedy_ensemble)
+The following models were ensembled: rf, kernelpls, svmRadial, lasso, knn, rpart, bagEarthGCV 
+They were weighted: 
+0.1138 1.7817 0 0.0511 0.55 -0.6114 -0.1779 -0.4045
+The resulting RMSE is: 1
+The fit for each individual model on the RMSE is: 
+      method     RMSE    RMSESD
+          rf 1.128063 0.2783808
+   kernelpls 1.131770 0.2571158
+   svmRadial 1.124236 0.2256971
+       lasso 1.113390 0.2197021
+         knn 1.169518 0.2944045
+       rpart 1.279183 0.2866664
+ bagEarthGCV 1.232540 0.2535744
+> model_preds <- lapply(model_list, predict, newdata=Xtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+> model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(glm_ensemble, newdata=Xtest)
+> model_preds$glmE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+> model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+> print(model_preds)
+            rf kernelpls svmRadial     lasso       knn     rpart bagEarthGCV
+RMSE 0.8044404 0.9388144  1.015251 0.9893239 0.8517311 0.9022074     1.10073
+       greedyE      glmE     gbmE
+RMSE 0.8226015 0.8226015 1.047591
+> print(sprintf('No information rate: RMSE=%f', postResample(mean(ytrain), ytest)[1]))
+[1] "No information rate: RMSE=0.902207"
+```
+Here none of the models do too well in training, but rf and knn do a decent job in prediction. The ensembles don't. 
+
+Note that ensemble results might perform better if I only choose uncorrelated models, or bump up the sampling for glm and gbm, but for now let's try other things.
+
+## inatt3 outcomes
+Just to have a better comparison to the results above, we'll restrict ourselves to kids < 12 y.o.
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+y = y[keep_me]
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+# in voxel analysis it's actually more costly to do the correlation in the entire set of variables
+# then to run the for loop, so let's first reduce the variables to only the univariate ones
+pvals = sapply(Xtrain, function(d) summary(aov(lm(d ~ ytrain)))[[1]][[5]][1])
+Xtrain = Xtrain[, which(pvals <= .05)]
+print(dim(Xtrain))
+
+# now we can remove correlated and non-informative variables
+nzv = nearZeroVar(Xtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  Xtrain = Xtrain[, -nzv]
+}
+correlations = cor(Xtrain, use='na.or.complete')
+# # library(corrplot)
+# # corrplot(correlations, order = "hclust")
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  Xtrain = Xtrain[, -highCorr]
+}
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final")
+
+library(doMC)
+registerDoMC(cores = 8)
+set.seed(myseed)
+library(caretEnsemble)
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=fullCtrl,
+  methodList=c('rf', 'kernelpls', 'svmRadial', 'bagEarthGCV', 'LogitBoost', 'rpart', 'PenalizedLDA')
+  )
+
+model_perf = data.frame(lapply(model_list, function(d) getTrainPerf(d)[1]))
+names(model_perf) = names(model_list)
+model_preds <- lapply(model_list, predict, newdata=Xtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+names(model_preds) = names(model_list)
+print(model_perf)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+```
+
+```
+> print(model_perf)
+         rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+1 0.5515133 0.6618796 0.6063994   0.3562068  0.5836952 0.4047192    0.5747372
+> print(model_preds)
+                rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+Accuracy 0.4468085 0.3617021 0.4042553   0.3404255  0.3181818 0.3191489    0.3617021
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.407216"
+
+```
+rf does a bit better than chance, but not by much :(
+
+
+## HI3 outcomes
+Here we do something similar, except that the initial preparation of variables is slightly different:
+
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$HI3_named
+y = factor(y)
+y = y[keep_me]
+```
+
+```
+> print(model_perf)
+        rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+1 0.560197 0.6197827 0.6105223    0.449215  0.5594443 0.4684521    0.5880013
+> print(model_preds)
+                rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+Accuracy 0.4893617 0.4680851 0.4680851   0.4042553        0.4 0.5319149    0.3829787
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.515464"
+```
+
+No results... just for reference, I used to get some nice results, but there was a voxel index variable that was creeping in. Not sure why there would be outcome information there, but the fact is that there is not much else going on when there's only thickness data involved :(
+
+But what happens if we reduce out outcome categories to only the two affected ones?
+
+## inatt2 outcome
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+y = y[keep_me]
+keep_me = y!='low'
+y = y[keep_me]
+y = factor(y, levels=c('medium', 'high'))
+X = X[keep_me, ]
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+# in voxel analysis it's actually more costly to do the correlation in the entire set of variables
+# then to run the for loop, so let's first reduce the variables to only the univariate ones
+pvals = sapply(Xtrain, function(d) t.test(d ~ ytrain)$p.value)
+Xtrain = Xtrain[, which(pvals <= .05)]
+print(dim(Xtrain))
+
+# now we can remove correlated and non-informative variables
+nzv = nearZeroVar(Xtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  Xtrain = Xtrain[, -nzv]
+}
+correlations = cor(Xtrain, use='na.or.complete')
+# # library(corrplot)
+# # corrplot(correlations, order = "hclust")
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  Xtrain = Xtrain[, -highCorr]
+}
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE)
+
+library(caretEnsemble)
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=fullCtrl,
+  methodList=c('rf', 'kernelpls', 'svmRadial', 'knn', 'rpart', 'bagEarthGCV', 'LogitBoost', 'lda', 'nb')
+  )
+
+greedy_ensemble <- caretEnsemble(
+  model_list, 
+  trControl=trainControl(
+    number=2
+    ))
+
+glm_ensemble <- caretStack(
+  model_list,
+  method="glm",
+  trControl=trainControl(
+    method="boot",
+    number=10,
+    savePredictions="final"
+  )
+)
+
+gbm_ensemble <- caretStack(
+  model_list,
+  method="gbm",
+  verbose=FALSE,
+  tuneLength=10,
+  trControl=trainControl(
+    method="boot",
+    number=10,
+    savePredictions="final"
+  )
+)
+summary(greedy_ensemble)
+model_preds <- lapply(model_list, predict, newdata=Xtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+ens_preds <- predict(glm_ensemble, newdata=Xtest)
+model_preds$glmE <- postResample(ens_preds, ytest)[1]
+ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+```
+
+```
+> summary(greedy_ensemble)
+The following models were ensembled: rf, kernelpls, svmRadial, knn, rpart, bagEarthGCV, LogitBoost, lda, nb 
+They were weighted: 
+7.4118 11.523 -18.3718 -6.0088 -6.7932 -0.0421 5.4892 0.29 -0.1571 1.4606
+The resulting Accuracy is: 0.8667
+The fit for each individual model on the Accuracy is: 
+      method  Accuracy AccuracySD
+          rf 0.7533926 0.05503352
+   kernelpls 0.8538867 0.06185427
+   svmRadial 0.8401054 0.04802646
+         knn 0.8086364 0.07742472
+       rpart 0.5750132 0.07331594
+ bagEarthGCV 0.7345718 0.08067994
+  LogitBoost 0.7253953 0.06273664
+         lda 0.6907115 0.08453407
+          nb 0.8037286 0.06873480
+> model_preds <- lapply(model_list, predict, newdata=Xtest)
+There were 16 warnings (use warnings() to see them)
+> model_preds <- data.frame(model_preds)ction(d, obs) postResample(d, obs)[1], o 
+> ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+There were 16 warnings (use warnings() to see them)
+> model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(glm_ensemble, newdata=Xtest)
+There were 16 warnings (use warnings() to see them)
+> model_preds$glmE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+There were 16 warnings (use warnings() to see them)
+> model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+> print(model_preds)
+                rf kernelpls svmRadial       knn     rpart bagEarthGCV
+Accuracy 0.5357143 0.4642857       0.5 0.3928571 0.6071429         0.5
+         LogitBoost       lda        nb greedyE glmE      gbmE
+Accuracy  0.5714286 0.5357143 0.4642857     0.5  0.5 0.5714286
+[1] "No information rate: Accuracy=0.600000" 
+```
+They all seem to be overfitting a bit, and not generalizing properly. That might be corrected by proper tuning though.
+
+## HI2 outcome
+The code for HI is very similar, excpet that we crop a different factor out:
+
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$HI3_named
+y = y[keep_me]
+keep_me = y!='never_affected'
+y = y[keep_me]
+y = factor(y, levels=c('rapid_improvers', 'severe'))
+X = X[keep_me, ]
+```
+
+```
+> summary(greedy_ensemble)
+The following models were ensembled: rf, kernelpls, svmRadial, knn, rpart, bagEarthGCV, LogitBoost, lda, nb 
+They were weighted: 
+4.2686 -0.2711 -0.9866 -3.1022 -2.7313 0.3677 -2.5084 0.5117 0.2848 0.2944
+The resulting Accuracy is: 0.7416
+The fit for each individual model on the Accuracy is: 
+      method  Accuracy AccuracySD
+          rf 0.7231930 0.06444095
+   kernelpls 0.7297544 0.07831165
+   svmRadial 0.7640117 0.06180321
+         knn 0.7836608 0.07425497
+       rpart 0.5718596 0.10532386
+ bagEarthGCV 0.7167602 0.11037959
+  LogitBoost 0.6463392 0.09114580
+         lda 0.5385146 0.10446649
+          nb 0.6929006 0.08862582
+> model_preds <- lapply(model_list, predict, newdata=Xtest)
+There were 19 warnings (use warnings() to see them)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> ens_preds <- predict(greedy_ensemble, newdata=Xtest)
+There were 19 warnings (use warnings() to see them)
+> model_preds$greedyE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(glm_ensemble, newdata=Xtest)
+There were 19 warnings (use warnings() to see them)
+> model_preds$glmE <- postResample(ens_preds, ytest)[1]
+> ens_preds <- predict(gbm_ensemble, newdata=Xtest)
+There were 19 warnings (use warnings() to see them)
+> model_preds$gbmE <- postResample(ens_preds, ytest)[1]
+> print(model_preds)
+                rf kernelpls svmRadial       knn     rpart bagEarthGCV
+Accuracy 0.6363636 0.5909091 0.6363636 0.4090909 0.6363636   0.6363636
+         LogitBoost       lda        nb   greedyE      glmE      gbmE
+Accuracy  0.5909091 0.6363636 0.5454545 0.3636364 0.3636364 0.5909091
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.617021"
+```
+A bit better, but still overfitting.
+
+# Built-in feature selection 
+Let's play a bit with algorithms that have built-in feature selection. We'll go with the 3-case inatt because it had some interesting results (with structural data), and we can see how well they survive:
+
+## inatt3
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+y = y[keep_me]
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+tuneLength=10
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         savePredictions="final")
+
+# here we should be able to burn through our CPUs without running out of memory if we stick to 8 core machines.
+# I'm at 47Gb memory in struct and 8 cores, so I guess I could go to 16in 100Gb of ram. DTI is only at 7
+library(doMC)
+registerDoMC(cores = 8)
+library(caretEnsemble)
+model_list <- caretList(
+  Xtrain, ytrain,
+  tuneLength=10,
+  trControl=fullCtrl,
+  methodList=c('rf', 'svmRadial', 'bagEarthGCV', 'LogitBoost', 'rpart', 'PenalizedLDA')
+  )
+
+model_perf = data.frame(lapply(model_list, function(d) getTrainPerf(d)[1]))
+names(model_perf) = names(model_list)
+model_preds <- lapply(model_list, predict, newdata=Xtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+names(model_preds) = names(model_list)
+print(model_perf)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+```
+
+Machines not running for enough time (36h). Gotta fire up individual machines per model and do it in batch mode.
+```
+[1] "training"
+  LogitBoost
+1   0.749748
+[1] "testing"
+         LogitBoost
+Accuracy  0.7173913
+[1] "training"
+       rf
+1 0.73513
+[1] "testing"
+                rf
+Accuracy 0.7659574
+[1] "training"
+  svmRadial
+1 0.7484432
+[1] "testing"
+         svmRadial
+Accuracy 0.7234043
+[1] "No information rate: Accuracy=0.407216"
+
+```
+
+## HI3
+```
+[1] "training"
+  LogitBoost
+1  0.6395187
+[1] "testing"
+         LogitBoost
+Accuracy  0.6521739
+[1] "training"
+         rf
+1 0.6694291
+[1] "testing"
+                rf
+Accuracy 0.6382979
+[1] "training"
+  svmRadial
+1  0.710444
+[1] "testing"
+         svmRadial
+Accuracy 0.6170213
+[1] "No information rate: Accuracy=0.515464"
+```
+
+Note that I had also tried rpart and MARS. The former couldn't allocate a 400Gb vector, so it crashed. It's a shame because it was getting nice results, but comparable to SVM and rf. MARS died with NANs, but the results were crap anyways before.
+
+These results are comparable to what we get with filtered variables. The difference is that with filtered I might be able to use ensembles to boost the results up, while it's more complicated (more computationally intensive) to do this with the entire feature set. I should probably see how this behaves with other seeds, though. Another thing to do is to look at residuals, as these are not residualized and we need to make sure it's not being driven by sex and age.
+
+But keep in mind that caretEnsemble doesn't deal with multiclass problems yet. So, I'd need to code the ensembling part on my own, probably through some kind of greedy voting mechanism based on probabilities. Maybe I could check how correlated the models are first?
+
+Also, DTI or other modalities might help make his decision, as we should go with the same framework across the board. Or, baseline prediction.
+
+# Area
+I was interested to see if we can do better by using area (and later volume) data, compared to thickness. Here we'll stick with the 3 class case, because we've had some nice results so far and it gets to our end goal of predicting outcome.
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_area.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_area[,2:ncol(lh_area)],
+              rh_area[,2:ncol(rh_area)])
+rm(lh_area)
+rm(rh_area)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+```
+
+## inatt3
+Filtered:
+
+Unfiltered:
+```
+[1] "training"
+  LogitBoost
+1  0.3966386
+[1] "testing"
+         LogitBoost
+Accuracy  0.4186047
+[1] "No information rate: Accuracy=0.407216"
+
+[1] "training"
+        rf
+1 0.454847
+[1] "testing"
+                rf
+Accuracy 0.5319149
+[1] "No information rate: Accuracy=0.407216"
+
+[1] "training"
+  svmRadial
+1 0.4394881
+[1] "testing"
+         svmRadial
+Accuracy 0.5106383
+[1] "No information rate: Accuracy=0.407216"
+```
+Some minor results, but nothign great.
+
+~
+## HI
+Filtered:
+```
+> print(model_perf)
+         rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+1 0.5727989 0.6165965 0.6126208   0.4593018  0.5530024 0.5250229    0.5814197
+> print(model_preds)
+                rf kernelpls svmRadial bagEarthGCV LogitBoost     rpart PenalizedLDA
+Accuracy 0.5531915 0.4255319 0.5531915   0.3191489  0.4615385 0.4042553    0.5744681
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.515464"
+```
+We do slightly better than chance using filtered area. Nothing to write home about though.
+
+Unfiltered:
+```
+[1] "training"
+  LogitBoost
+1   0.449043
+[1] "testing"
+         LogitBoost
+Accuracy        0.5
+[1] "No information rate: Accuracy=0.515464"
+
+[1] "training"
+         rf
+1 0.5157314
+[1] "testing"
+                rf
+Accuracy 0.5319149
+[1] "No information rate: Accuracy=0.515464"
+
+[1] "training"
+  svmRadial
+1 0.5156545
+[1] "testing"
+         svmRadial
+Accuracy 0.5319149
+[1] "No information rate: Accuracy=0.515464"
+
+```
+
+# Volume
+The issue with the volume analysis is that not all scans had that measure, so we need to load it a bit differently:
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_volume.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(volume_ids,
+              lh_volume[,2:ncol(lh_volume)],
+              rh_volume[,2:ncol(rh_volume)])
+rm(lh_volume)
+rm(rh_volume)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+keep_me = c()
+for (i in 1:nrow(vdata)) {
+  if (vdata[i, 1] %in% mstruct$Mask.ID...Scan) {
+    keep_me = c(keep_me, i)
+  }
+}
+struct_base_vdata = vdata[keep_me, ]
+rm(vdata)
+```
+
+## inatt3
+Filtered:
+
+Unfiltered:
+
+## HI
+Filtered:
+
+Unfiltered:
+
+
+
+
+Now we can do some wrapping feature selection to see if it does better than filtering. Note that we'll need to train the functions by themselves and then make a list, otherwise it won't work for ensembles:
+
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+
+y = vector()
+keep_me = vector()
+target_col = which(colnames(gf)=='SX_inatt')
+for (s in mstruct$MRN) {
+  if ((gf_base[gf_base$MRN==s,]$age <= 12) && (gf_base[gf_base$MRN==s, target_col] >= 2)) {
+    idx = gf$MRN==s
+    sx_slope = lm(gf[idx, target_col] ~ gf[idx, ]$age)$coefficients[2]
+    keep_me = c(keep_me, which(mstruct$MRN == s))
+    y = c(y, sx_slope)
+  }
+}
+X = X[keep_me, ]
+
+myseed = 1234
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+varSeq = 1:10#ncol(X)
+ctrl <- rfeControl(method = "repeatedcv",
+                   saveDetails = TRUE,
+                   index = index,
+                   returnResamp = "final")
+ctrl$functions <- rfFuncs
+set.seed(myseed)
+rfRFE <- rfe(Xtrain[1:10], ytrain,
+             sizes = varSeq,
+             rfeControl = ctrl,
+             summaryFunction = defaultSummary)
+ctrl$functions <- lmFuncs
+set.seed(myseed)
+lmRFE <- rfe(Xtrain[1:10], ytrain,
+             sizes = varSeq,
+             rfeControl = ctrl,
+             summaryFunction = defaultSummary)
+
+
+tbRFE
+
+lrRFE
+
+```
+
+
+
+
+
+
+

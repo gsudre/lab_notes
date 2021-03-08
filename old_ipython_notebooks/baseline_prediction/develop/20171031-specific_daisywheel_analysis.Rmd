@@ -1,0 +1,257 @@
+---
+title: "Specific daisywheel analysis"
+output: html_notebook
+---
+
+Philip asked me to condense the daisywheel results to make them easier to see in the daisy-wheel. So, we'll need to rerun the regressions after we collapse the variables.
+
+```{r}
+outcomePairwise_test = function(pheno, df, get_resid=T) {
+  library(lsr)
+  library(compute.es)
+  if (sum(pheno, na.rm = T) == 0) {
+    fstat = NA
+    pval = NA
+    fstat2 = NA
+    pval2 = NA
+  } else {
+    if (get_resid) {
+      pheno = get_needed_residuals(pheno, 'y ~ df$age + I(df$age^2) + df$SEX', .1, df)
+    }    
+    y = df$inatt3_named
+    fit = pairwise.t.test(pheno, y, p.adjust.method = 'none')
+    mypairs = list(c('low', 'high'), c('medium', 'high'), c('medium', 'low'))
+    ps = c()
+    ds = c()
+    pnames = c()
+    dnames = c()
+    for (pa in mypairs) {
+      myp = fit$p.value[pa[1], pa[2]]
+      ps = c(ps, myp)
+      ds = c(ds, pes(myp, table(y)[pa[1]], table(y)[pa[2]], verbose=FALSE)$d)
+      pnames = c(pnames, sprintf('inatt_%sVS%s_pval', pa[1], pa[2]))
+      dnames = c(dnames, sprintf('inatt_%sVS%s_es', pa[1], pa[2]))
+    }
+    
+    y = df$HI3_named
+    fit = pairwise.t.test(pheno, y, p.adjust.method = 'none')
+    mypairs = list(c('rapid_improvers', 'never_affected'), c('severe', 'never_affected'),
+                   c('severe', 'rapid_improvers'))
+    ps2 = c()
+    ds2 = c()
+    pnames2 = c()
+    dnames2 = c()
+    for (pa in mypairs) {
+      myp = fit$p.value[pa[1], pa[2]]
+      ps2 = c(ps2, myp)
+      ds2 = c(ds2, pes(myp, table(y)[pa[1]], table(y)[pa[2]], verbose=FALSE)$d)
+      pnames2 = c(pnames2, sprintf('HI_%sVS%s_pval', pa[1], pa[2]))
+      dnames2 = c(dnames2, sprintf('HI_%sVS%s_es', pa[1], pa[2]))
+    }
+  }
+  
+  res = c(ps, ds, ps2, ds2)
+  names(res) = c(pnames, dnames, pnames2, dnames2)
+  return(res)
+}
+
+get_needed_residuals = function(y, fm_str, cutoff, df) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm != 'y ~ ') {
+    idx = !is.na(y)
+    opt_fit = lm(as.formula(fm))
+    y[idx] = opt_fit$residuals
+  }
+  return(y)
+}
+```
+
+# DTI
+## Tract-based
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+phen_vars = which(grepl("^FA_", colnames(merged)))
+X = merged[, phen_vars]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+X2 = cbind(X[,1]+X[6], X[,2]+X[,7], X[,3]+X[,8], X[,4]+X[,9], X[,5]+X[,10], X[,11])
+colnames(X2) = c('cst', 'ifo', 'ilf', 'slf', 'unc', 'cc')
+print(sprintf('DTI tracts: %d datapoints, %d phenotypes', nrow(X2), ncol(X2)))
+
+res = sapply(X2, outcomePairwise_test, merged)
+write.csv(t(res), file='~/data/baseline_prediction/descriptives/dw_dti_tracts.csv')
+```
+
+# Neuropsych
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+res5 = outcomePairwise_test(miq$FSIQ, miq, F)
+
+phen_vars = c('Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB')
+keep_me = sapply(phen_vars, function(d) which(colnames(mwisc) == d))
+X = mwisc[, keep_me]
+X2 = as.matrix(rowSums(X))
+res5 = cbind(res5, outcomePairwise_test(X2, mwisc))
+colnames(res5) = c('FSIQ', 'WorkMem')
+
+res5 = cbind(res5, outcomePairwise_test(mwj$PS, mwj, F))
+colnames(res5)[ncol(res5)] = 'PS'
+res5 = cbind(res5, outcomePairwise_test(mbeery$Standard.score, mbeery, F))
+colnames(res5)[ncol(res5)] = 'Beery_VM'
+
+write.csv(t(res5), file='~/data/baseline_prediction/descriptives/dw_neuropsych.csv')
+```
+
+
+# Geospatial
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+merged = merge(gf_base, geo_data, by='MRN')
+# some variables are being read as numeric...
+merged$Home_Price = as.numeric(merged$Home_Price)
+merged$Fam_Income = as.numeric(merged$Fam_Income)
+merged$Crime_Rate = as.numeric(merged$Crime_Rate)
+phen_vars = c('SES', 'poverty_education', 'social_environment', 'physical_health_environment', 
+              'physical_envronment')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+print(sprintf('Geospatial: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+res = sapply(X, outcomePairwise_test, merged)
+write.csv(t(res), file='~/data/baseline_prediction/descriptives/dw_geospatial.csv')
+```
+
+# Polygenic risk score
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+prs_data = read.csv('~/data/baseline_prediction/stripped/PRS2017_original_clump_default.csv')
+# # we don't need the extra BASELINE column
+# prs_data = prs_data[, -3]
+merged = merge(gf_base, prs_data, by='MRN')
+X = merged[, 44:ncol(merged)]
+print(sprintf('PRS: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+res = sapply(X, outcomePairwise_test, merged)
+write.csv(t(res), file='~/data/baseline_prediction/descriptives/dw_prs2017.csv')
+```
+
+# Main lobar structures
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+merged = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+X = merged[, 33:302]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('Freesurfer ROIs: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+
+vars = c('lh_caudalmiddlefrontal_volume', 'lh_parsopercularis_volume',
+         'lh_parsorbitalis_volume', 'lh_parstriangularis_volume',
+         'lh_rostralmiddlefrontal_volume', 'lh_superiorfrontal_volume',
+         'lh_frontalpole_volume', 'rh_caudalmiddlefrontal_volume',
+         'rh_parsopercularis_volume', 'rh_parsorbitalis_volume',
+         'rh_parstriangularis_volume', 'rh_rostralmiddlefrontal_volume',
+         'rh_superiorfrontal_volume', 'rh_frontalpole_volume')
+keep_me = sapply(vars, function(d) which(colnames(X) == d))
+X2 = rowSums(X[, keep_me])
+vars = c('lh_inferiorparietal_volume', 'lh_superiorparietal_volume',
+         'lh_supramarginal_volume', 'rh_inferiorparietal_volume',
+         'rh_superiorparietal_volume', 'rh_supramarginal_volume')
+keep_me = sapply(vars, function(d) which(colnames(X) == d))
+X2 = cbind(X2, rowSums(X[, keep_me]))
+vars = c('Left.Caudate', 'Left.Putamen', 'Left.Pallidum',
+         'Right.Caudate', 'Right.Putamen', 'Right.Pallidum' ,'X5th.Ventricle')
+keep_me = sapply(vars, function(d) which(colnames(X) == d))
+X2 = cbind(X2, rowSums(X[, keep_me]))
+vars = c('Left.Cerebellum.White.Matter', 'Left.Cerebellum.Cortex',
+         'Right.Cerebellum.White.Matter', 'Right.Cerebellum.Cortex')
+keep_me = sapply(vars, function(d) which(colnames(X) == d))
+X2 = cbind(X2, rowSums(X[, keep_me]))
+colnames(X2) = c('Lateral frontal lobe', 'lateral parietal lobe',
+                 'Basal ganglia', 'Cerebellum')
+
+res = sapply(as.data.frame(X2), outcomePairwise_test, merged)
+write.csv(t(res), file='~/data/baseline_prediction/descriptives/dw_volumes.csv')
+```

@@ -1,0 +1,54 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(TInPosition)
+gf = read.csv('~/data/baseline_prediction/gf_updated_01312017b.csv')
+group_var = 'inatt3_named' # HI3_named	HI4_named	HI5_named	inatt3_named
+all_data = read.csv('~/data/baseline_prediction/dti_tortoiseExported_meanTSA_02012017.csv')
+mrn_gf = unique(gf[, c('ID', group_var)])
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+data = get_baseline_scans(all_data)
+ldata = merge(mrn_gf, data, by.x='ID', by.y='MRN')
+```
+
+Let's clean up some of these variables, because in the variance plots it looks like there are some outliers.
+
+```{r}
+par(mfrow=c(3, 2))
+nbreaks = 40
+hist(ldata$norm.trans, breaks=nbreaks)
+hist(ldata$norm.rot, breaks=nbreaks)
+hist(ldata$volumes_remain, breaks=nbreaks)
+hist(ldata$fa_avg, breaks=nbreaks)
+hist(ldata$ad_avg, breaks=nbreaks)
+hist(ldata$rd_avg, breaks=nbreaks)
+```
+
+```{r}
+rm_me = ldata$norm.trans > .5 | ldata$norm.rot > .01 | ldata$volumes_remain < 50 | ldata$fa_avg < .4 | ldata$ad_avg < 1.17 | ldata$rd_avg > .67
+ldata = ldata[!rm_me, ]
+cat(sprintf('Removing %d scans from data. Remaining: %d', sum(rm_me), dim(ldata)[1]))
+```
+
+```{r}
+group_var = 'HI5_named' # HI3_named	HI4_named	HI5_named	inatt3_named
+mrn_gf = unique(gf[, c('ID', group_var)])
+ldata = merge(mrn_gf, data, by.x='ID', by.y='MRN')
+phen_vars = which(grepl("FA_", colnames(ldata)))
+# phen_vars = c(which(grepl("AD_", colnames(ldata))), which(grepl("RD_", colnames(ldata))))
+eval(parse(text=sprintf('groups = ldata$\"%s\"', group_var)))
+tmp = tepBADA.inference.battery(DATA=ldata[,phen_vars], DESIGN=groups,
+                                scale='ss1', center=T, make_design_nominal=T,
+                                test.iters=1000, graphs=F)
+tinGraphs2(tmp)
+```
+
+Neither FA or AD+RD explain inatt, regardless of how we scale it. 
+

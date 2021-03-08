@@ -1,0 +1,297 @@
+---
+title: "Mediation through different variables"
+output: html_notebook
+---
+
+Now that we know that ADHD_DX is related to many of the PRS thresholds, let's see how different variables mediate the result:
+
+```{r}
+gf = read.csv('~/data/prs/clinical_06192017.csv')
+gf = gf[gf$ADHD_current_yes_no!='exclude',]
+pgc = read.csv('~/data/prs/PRS2017_original_clump_default.csv')
+```
+
+Let's combine the clinical data and PRS to restrict the size of our matrices:
+
+```{r}
+df = merge(gf, pgc)
+# remove duplicated MRNs
+df = df[!duplicated(df$MRN),]
+```
+
+Now we're ready to run our LME using family ID as the random term, so we can have an idea of what threshold to use:
+
+```{r}
+library(nlme)
+
+print(sprintf('NV vs ADHD: %d subjects', sum(!is.na(df$ADHD_current_yes_no))))
+# start with quick T-test for DX
+vars = which(grepl('^PROFILES', colnames(df)))
+all_res = c()
+x_str = 'ADHD_current_yes_no'
+for (i in 1:length(vars)) {
+    y_str = colnames(df)[vars][i]
+    fm_str = sprintf('%s ~ %s', y_str, x_str) # make sure the interesting variable comes last!
+    fit = try(lme(as.formula(fm_str), random=~1|NuclearFamID, data=df, na.action = na.omit))
+    last_row = nrow(summary(fit)$tTable)
+    res = c(summary(fit)$tTable[last_row,'t-value'], summary(fit)$tTable[last_row,'p-value'])
+    all_res = rbind(all_res, res)
+}
+colnames(all_res) = c(sprintf('Tstat_%s', x_str), sprintf('pval_%s', x_str))
+rownames(all_res) = colnames(df)[vars]
+print(all_res)
+```
+
+Let's go with .3 for now. We'll try a simple mediation model, using IQ because we know it works:
+
+```{r}
+X = 'PROFILES.0.3.profile'
+M = 'IQ'
+Y = 'ADHD_current_yes_no'
+library(mediation)
+neuropsych = read.csv('~/data/prs/neuropsych_07072017.csv')
+data = merge(df, neuropsych, by='MRN')
+data = data[!is.na(data$IQ), ]
+
+fm = as.formula(sprintf('%s ~ %s', M, X))
+fy = as.formula(sprintf('%s ~ %s + %s', Y, X, M))
+model.M <- lm(fm, data=data)
+model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=100, boot.ci.type='bca')
+summary(results)
+```
+
+What are the effects of scaling the variables?
+
+```{r}
+X = 'PROFILES.0.3.profile'
+M = 'IQ'
+Y = 'ADHD_current_yes_no'
+library(mediation)
+neuropsych = read.csv('~/data/prs/neuropsych_07072017.csv')
+data = merge(df, neuropsych, by='MRN')
+data = data[!is.na(data$IQ), ]
+data[, c(X, M)] = scale(data[, c(X, M)])
+data = as.data.frame(data)
+
+fm = as.formula(sprintf('%s ~ %s', M, X))
+fy = as.formula(sprintf('%s ~ %s + %s', Y, X, M))
+model.M <- lm(fm, data=data)
+model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=100, boot.ci.type='bca')
+summary(results)
+plot(results)
+```
+
+These seem to be quite different than the ones without scaling the variables. What's up?
+
+First, let's interpret this scaled model, because the numbers seem to make a bit more sense. As we're using linear models, Total Effect ~ ADE + ACME. This *Total effect* is the effect of X in Y without M (PRS on DX without IQ). The *Direct Effect (ADE)* is the direct effect of X on Y after taking into account a mediation (indirect) effect of M (i.e. direct effect of PRS on DX after taking IQ into account). Finally, the *Average Causal Mediation Effects (ACME)* is the total minus the direct effect. The goal of mediation analysis is to obtain this indirect effect and see if it’s statistically significant, which in our case actually is.
+
+The results above could be seen as: of the estimated -.06735 (the Total Effect) decrease in likelihood of ADHD DX due to PRS, an estimated -0.01874 (ACME (average)) is as a result of IQ and the remaining -0.04860 (ADE (average)) is from PRS itself. Since the outcome (DX) is binary all estimated effects are expressed as the increase/decrease in probability that the subject has ADHD. Also note that the difference in mediation between the two classes is negligible, so it's OK to average them.
+
+Now, what's going on with scaling? Maybe it's because it uses the actual coefficients in the equations. So, if we're looking at a correlation, the coefficients need to be standardized to match something like R. If X were binary, it wouldn't matter. In any case, let's keep on scaling them.
+
+Now, let's see how it compares to SPSS:
+
+```{r}
+write.csv(data, file='/Volumes/Shaw/prs_mediation/spss_test.csv')
+```
+
+```
+Run MATRIX procedure:
+
+************** PROCESS Procedure for SPSS Release 2.16.1 *****************
+
+          Written by Andrew F. Hayes, Ph.D.       www.afhayes.com
+    Documentation available in Hayes (2013). www.guilford.com/p/hayes3
+
+**************************************************************************
+Model = 4
+    Y = ADHDyn
+    X = PRSp3
+    M = IQ
+
+Sample size
+        953
+
+**************************************************************************
+Outcome: IQ
+
+Model Summary
+          R       R-sq        MSE          F        df1        df2          p
+      .2733      .0747      .9263    76.7582     1.0000   951.0000      .0000
+
+Model
+              coeff         se          t          p       LLCI       ULCI
+constant      .0000      .0312      .0000     1.0000     -.0612      .0612
+PRSp3         .2733      .0312     8.7612      .0000      .2121      .3345
+
+**************************************************************************
+**************************************************************************
+Outcome: ADHDyn
+
+Coding of binary DV for analysis:
+    ADHDyn  Analysis
+       .00       .00
+       .00      1.00
+
+Logistic Regression Summary
+       -2LL   Model LL    p-value   McFadden   CoxSnell   Nagelkrk          n
+  1217.5486    38.8354      .0000      .0309      .0399      .0545   953.0000
+
+Model
+              coeff         se          Z          p       LLCI       ULCI
+constant     -.5506      .0687    -8.0088      .0000     -.6854     -.4159
+IQ           -.3127      .0725    -4.3129      .0000     -.4548     -.1706
+PRSp3        -.2175      .0709    -3.0664      .0022     -.3565     -.0785
+
+******************** DIRECT AND INDIRECT EFFECTS *************************
+
+Direct effect of X on Y
+     Effect         SE          Z          p       LLCI       ULCI
+     -.2175      .0709    -3.0664      .0022     -.3565     -.0785
+
+Indirect effect of X on Y
+       Effect    Boot SE   BootLLCI   BootULCI
+IQ     -.0855      .0221     -.1335     -.0466
+******************** ANALYSIS NOTES AND WARNINGS *************************
+
+Number of bootstrap samples for bias corrected bootstrap confidence intervals:
+     5000
+
+Level of confidence for all confidence intervals in output:
+    95.00
+
+NOTE: The TOTAL option is not available when Y is dichotomous.
+
+------ END MATRIX -----
+```
+
+The numbers don't match perfectly, btu at least in overall significance we're in the same ballpark. Let me try to increase the number of bootstraps:
+
+```{r}
+X = 'PROFILES.0.3.profile'
+M = 'IQ'
+Y = 'ADHD_current_yes_no'
+library(mediation)
+neuropsych = read.csv('~/data/prs/neuropsych_07072017.csv')
+data = merge(df, neuropsych, by='MRN')
+data = data[!is.na(data$IQ), ]
+data[, c(X, M)] = scale(data[, c(X, M)])
+data = as.data.frame(data)
+
+fm = as.formula(sprintf('%s ~ %s', M, X))
+fy = as.formula(sprintf('%s ~ %s + %s', Y, X, M))
+model.M <- lm(fm, data=data)
+model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=5000, boot.ci.type='bca')
+summary(results)
+```
+
+As expected, the results just get stronger. For better comparison with SPSS, here's the logit model:
+
+```{r}
+summary(model.Y)
+```
+
+So, this matches quite well. The main differences then are in the calculation of the mediation. But it doesn't look like the differences are that big anyways.
+
+But the mediation package can also run lmer, even though bootstrap doesn't work... should we try it?
+
+```{r}
+library(lme4)
+
+X = 'PROFILES.0.3.profile'
+M = 'IQ'
+Y = 'ADHD_current_yes_no'
+library(mediation)
+neuropsych = read.csv('~/data/prs/neuropsych_07072017.csv')
+data = merge(df, neuropsych, by='MRN')
+data = data[!is.na(data$IQ), ]
+# here we have to scale otherwise we get some weird warnings
+data[, c(X, M)] = scale(data[, c(X, M)])
+
+fm = as.formula(sprintf('%s ~ %s + (1|NuclearFamID)', M, X))
+fy = as.formula(sprintf('%s ~ %s + %s + (1|NuclearFamID)', Y, X, M))
+model.M <- lmer(fm, data=data)
+model.Y <- glmer(fy, data=data, family=binomial(link='probit'))
+results <- mediate(model.M, model.Y, treat=X, mediator=M, sims=100)
+summary(results)
+plot(results)
+```
+
+The results using mixed-effect models is similar to not using it, which is reassuring. Also, if we use simpler models (i.e. non-mixed), we could also run some functions from the MBESS package, which would allow us to calculate effect sizes for the estimates.
+
+# Checking several different mediators
+
+Now we can have some fun checking several different mediators.
+
+```{r}
+library(mediation)
+run_mediation = function(data, X, M, Y, nboot=100, short=T) {
+    data = data[!is.na(data[, M]), ]
+    data[, c(X, M)] = scale(data[, c(X, M)])
+    data = as.data.frame(data)
+    
+    fm = as.formula(sprintf('%s ~ %s', M, X))
+    fy = as.formula(sprintf('%s ~ %s + %s', Y, X, M))
+    model.M <- lm(fm, data=data)
+    model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+    results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=nboot, boot.ci.type='bca')
+    if (short) {
+      res = c(results$mediator, results$nobs, results$tau.coef, results$tau.p, results$d.avg, results$d.avg.p,
+              results$z.avg, results$z.avg.p, results$n.avg, results$n.avg.p)
+      names(res) = c('M', 'nobs', 'tot', 'tot_p', 'acme', 'acme_p', 'ade', 'ade_p', 'prop', 'prop_p')
+      return(res)
+    } else {
+      return(results)
+    }
+}
+```
+
+Now we're ready to try different variables:
+
+```{r}
+neuropsych = read.csv('~/data/prs/neuropsych_07072017.csv')
+data = merge(df, neuropsych, by='MRN')
+res = c()
+for (m in colnames(neuropsych)[2:ncol(neuropsych)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(data, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+res = cbind(res, 'neuropsych')
+colnames(res)[ncol(res)] = 'dtype'
+all_res = res
+```
+```{r}
+dti = read.csv('~/data/prs/dti_07062017.csv')
+data = merge(df, dti, by='MRN')
+res = c()
+for (m in colnames(dti)[25:ncol(dti)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(data, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+res = cbind(res, 'dti')
+colnames(res)[ncol(res)] = 'dtype'
+all_res = rbind(all_res, res) 
+```
+
+```{r}
+struct = read.csv('~/data/prs/struct_07072017_v3.csv')
+data = merge(df, struct, by='MRN')
+res = c()
+for (m in colnames(struct)[11:ncol(struct)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(data, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+res = cbind(res, 'struct')
+colnames(res)[ncol(res)] = 'dtype'
+all_res = rbind(all_res, res) 
+```
+
+
+
+
+
+
+

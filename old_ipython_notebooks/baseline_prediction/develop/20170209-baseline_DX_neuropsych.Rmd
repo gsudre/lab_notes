@@ -1,0 +1,643 @@
+---
+title: "Analysis of neuropsych data"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+Now we do some classification using rsFMRI. First, some data cleaning:
+
+```{r}
+# for replication purposes
+set.seed(107)
+library(caret)
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+gf_fname = '~/data/baseline_prediction/gf_updated_02152017_3.csv'
+gf = read.csv(gf_fname)
+group_var = 'DX2'
+idx = gf$BASELINE == 'BASELINE'
+gf = gf[idx,]
+eval(parse(text=sprintf('groups = gf$\"%s\"', group_var)))
+groups_orig = groups
+```
+
+Now it's a matter of selecting the variables we want to test. Because there are too many variables with NAs, and right now I don't have an intuition of whether imputation or removing subjects would work best. Let's do this within domain first, and evaluate in a per-domain basis.
+
+# IQ
+
+Philip says that VIQ and PIQ make up FSIQ. So, let's run them separately:
+
+```{r}
+phen_vars = c('VIQ', 'PIQ')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+groups_orig = groups
+```
+
+First we try some imputation:
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+ncv = 5
+nrepeatcv = 2
+nsplits = 5
+train_test_ratio = .85
+root_fname = '~/tmp/VIQPIQ_medianImputed_NVvsADHD'
+# saving output
+library(caret)
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+ncpus <- detectBatchCPUs()
+njobs = ncpus - 1
+
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+metric = "ROC"
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+We should try doing the imputation from within the cross-validation later. For now, let's try just removing subjects with NAs:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+root_fname = '~/tmp/VIQPIQ_NAremoved_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+And now we try FSIQ by itself:
+
+```{r}
+phen_vars = c('FSIQ')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+ldata_orig = as.data.frame(ldata_orig)
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/tmp/FSIQ_medianImputed_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr')  # rsvm was taking a long-ass time, and xgb was crapping out
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+And subjects removed:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = as.data.frame(ldata[keep_me, ])
+groups = groups[keep_me]
+root_fname = '~/tmp/FSIQ_NAremoved_NVvsADHD'
+run_models = c('rndForest', 'lr')  # rsvm was taking a long-ass time, and xgb was crapping out
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+# CPT
+
+```{r}
+phen_vars = c('N_of_omissions', 'N_commissions', 
+              'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change',
+              'hit_RT_ISI_change', 'hit_RT_SE_ISI_change')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/tmp/CPT_medianImputed_NVvsADHD'
+# saving output
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+metric = "ROC"
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+And removing subjects with NA:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+root_fname = '~/tmp/CPT_NAremoved_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+## PCA
+Let's see if doing a PCA of the CPT components helps a bit. Like the imputation, let's PCA the entire data, but first impute the median:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+The elbow seems to be at PC 2, but if we look at the eigenvalues as Philip suggested we'd go for PC 3. Let's try both.
+
+```{r}
+ldata = ldata.pca$x[, 1:2]
+groups = groups_orig
+root_fname = '~/tmp/CPT_medianImputedPCAElbow_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:3]
+groups = groups_orig
+root_fname = '~/tmp/CPT_medianImputedPCAEV1_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+How does it look if instead of using the medianImpute we just remove the NAs?
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Same as before, we could go for 2 or 3 PCs. Let's try both:
+
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/tmp/CPT_NAremovedPCAElbow_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:3]
+root_fname = '~/tmp/CPT_NAremovedPCAEV1_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+# Decision speed
+
+Philip says that DS_SS and SS_SS should be split from the raw bunch (DSF, DSB, SSB, SSF). Let's try that, but also with within group PCs.
+
+```{r}
+conn_na = colSums(is.na(ldata)) / nrow(ldata)
+phen_vars = c('DS_SS', 'SS_SS')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+```
+
+First we try some imputation:
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/tmp/DSSS-SS_medianImputed_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+root_fname = '~/tmp/DSSS-SS_NAremoved_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+Let's run the raw variables now:
+
+```{r}
+phen_vars = c('DSF_raw', 'DSB_raw', 'SSB_raw', 'SSF_raw')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/tmp/DS-raw_medianImputed_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+root_fname = '~/tmp/DS-raw_NAremoved_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+What if we apply the PCA idea to the raw set of variables:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+Here we have the inverted scenario: even though the elbow is at 2, the eigen values point to 1. Again, we try both:  
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/tmp/DS-raw_medianImputePCAElbow_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = as.data.frame(ldata.pca$x[, 1])
+root_fname = '~/tmp/DS-raw_medianImputePCAEV1_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+And like before, we do the same after removing subjects:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = ldata[keep_me, ]
+groups = groups[keep_me]
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:2]
+root_fname = '~/tmp/DS-raw_NAremovedPCAElbow_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr', 'rsvm', 'xgb') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+```{r}
+ldata = as.data.frame(ldata.pca$x[, 1])
+root_fname = '~/tmp/DS-raw_NAremovedPCAEV1_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr') # c('rndForest', 'lr', 'lsvm', 'rsvm', 'xgb', 'gbm')
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+# Processing speed
+It's univariate as well:
+
+```{r}
+phen_vars = c('PS_all')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(gf) == v))
+}
+ldata_orig = gf[, keep_me]
+ldata_orig = as.data.frame(ldata_orig)
+```
+
+Median imputed first:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/tmp/PS_medianImpute_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr')  # rsvm was taking a long-ass time, and xgb was crapping out
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+ncv = 5
+nrepeatcv = 2
+nsplits = 5
+train_test_ratio = .85
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+ncpus <- detectBatchCPUs()
+njobs = ncpus - 1
+metric = "ROC"
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```
+
+Remove NAs:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = as.data.frame(ldata[keep_me, ])
+groups = groups[keep_me]
+root_fname = '~/tmp/PS_NAremoved_NVvsADHD'
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+run_models = c('rndForest', 'lr')  # rsvm was taking a long-ass time, and xgb was crapping out
+inTrain = createDataPartition(y = groups,
+                              times= nsplits,
+                              p=train_test_ratio)
+ncv = 5
+nrepeatcv = 2
+nsplits = 5
+train_test_ratio = .85
+sink(sprintf('%s.log', root_fname), append=FALSE, split=TRUE)
+ncpus <- detectBatchCPUs()
+njobs = ncpus - 1
+metric = "ROC"
+default_preproc = c("center", 'scale')
+default_options = c()
+ctrl_cv <- trainControl(method = "repeatedcv",
+                        number = ncv,
+                        repeats = nrepeatcv,
+                        classProbs = TRUE,
+                        returnData = FALSE,
+                        summaryFunction = twoClassSummary,
+                        preProcOptions = default_options,
+                        search='grid')
+
+source('~/ncr_notebooks/baseline_prediction/src/do_classification.R')
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+sink()
+```

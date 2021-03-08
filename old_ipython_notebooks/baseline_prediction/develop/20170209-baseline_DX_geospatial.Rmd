@@ -1,0 +1,151 @@
+---
+title: "Analysis of geospatial and SES data"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+First, some data cleaning:
+
+```{r}
+# for replication purposes
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+# Philip pre-selected which structural scans to use
+gf_fname = '~/data/baseline_prediction/gf_updated_02152017_3.csv'
+gf = read.csv(gf_fname)
+data_fname = '~/data/baseline_prediction/gustavo_PLS.csv'
+geo_data = read.csv(data_fname)
+data = merge(gf, geo_data, by.x='ID', by.y='MRN', all.x=F, all.Y=F)
+group_var = 'DX2'
+idx = data$BASELINE == 'BASELINE'
+data = data[idx,]
+eval(parse(text=sprintf('groups = data$\"%s\"', group_var)))
+groups_orig = groups
+```
+
+Now it's a matter of selecting the variables we want to test. Because there are too many variables with NAs, and right now I don't have an intuition of whether imputation or removing subjects would work best. Let's do this within domain first, and evaluate in a per-domain basis.
+
+# Philip's factors
+
+These are the results from the PCA Philip ran:
+
+```{r}
+phen_vars = c('poverty_education', 'social_environment', 'physical_health_environment', 'physical_envronment')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(data) == v))
+}
+ldata_orig = data[, keep_me]
+ldata = ldata_orig
+groups = groups_orig
+root_fname = '~/data/baseline_prediction/results/GeoPCA_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+But we should try the same analysis using the raw data:
+
+```{r}
+phen_vars = c('Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School', 'Crime_Rate',
+              'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate', 'Food_Index',
+              'Exercise_Access', 'Excessive_Drinking')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(data) == v))
+}
+ldata_orig = data[, keep_me]
+ldata = ldata_orig
+groups = groups_orig
+root_fname = '~/data/baseline_prediction/results/GeoRaw_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+What if I do my own PCA in the raw values?
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+ldata.pca <- prcomp(ldata, center=T, scale=T)
+plot(ldata.pca, type = "l")
+print(ldata.pca$sdev^2)  # these are the eignevalues
+```
+
+Like before, the elbow is at 3, but the eigenvalue threshold (1) is at 4. Let's try both.
+
+```{r}
+ldata = ldata.pca$x[, 1:3]
+root_fname = '~/data/baseline_prediction/results/GeoRaw_PCAElbow_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+```{r}
+ldata = ldata.pca$x[, 1:4]
+root_fname = '~/data/baseline_prediction/results/GeoRaw_PCAEV1_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+Using the raw values ended up being a bit better than any PCAs. Let's try adding SES to see if they improve. But the issue is NANs in SES, so we'll need to impute or remove subjects:
+
+```{r}
+phen_vars = c('Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL',	'Pub_School', 'Crime_Rate',
+              'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate', 'Food_Index',
+              'Exercise_Access', 'Excessive_Drinking', 'SES')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(data) == v))
+}
+ldata_orig = data[, keep_me]
+```
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+preProcValues <- preProcess(ldata, method = c("medianImpute"))
+ldata <- predict(preProcValues, ldata)
+root_fname = '~/data/baseline_prediction/results//GeoRawSES_meanImputed_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+Removing NAs:
+
+```{r}
+ldata = ldata_orig
+groups = groups_orig
+keep_me = rowSums(is.na(ldata)) == 0
+ldata = as.data.frame(ldata[keep_me, ])
+groups = groups[keep_me]
+root_fname = '~/data/baseline_prediction/results/GeoRawSES_NAremoved_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+# ... waiting ...
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+

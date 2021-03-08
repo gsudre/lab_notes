@@ -1,0 +1,963 @@
+---
+title: "Fixed seed results"
+output: html_notebook
+---
+
+Just so we can have a set of results to show in the WIP, let's fixate the seed and run several datasets. We can also implement our voting across modalities if we get there. But let's stick with the same ML tricks for now.
+
+# AD
+```{r}
+get_needed_residuals = function(y, fm_str, cutoff, df) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm == 'y ~ ') {
+    return(y)
+  } else {
+    opt_fit = lm(as.formula(fm))
+    return(opt_fit$residuals)
+  }
+}
+
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+y = merged$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+library(parallel)
+cl <- makeCluster(8)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged[keep_me, ])
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+library(parallel)
+cl <- makeCluster(8)
+pvals = parSapply(cl, Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+stopCluster(cl)
+Xtrain = Xtrain[, which(pvals <= .05)]
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtXtrain<- predict(pp, Xtrain)
+filtXtest <- predict(pp, Xtest)
+print(dim(filtXtrain))
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=20)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = T)
+
+methodList=c('kernelpls', 'svmRadial', 'rf')
+train_model = lapply(methodList, function(m) train(filtXtrain, ytrain,
+                                                   tuneLength=10, trControl=fullCtrl,
+                                                   metric='ROC', method=m))
+
+names(train_model) = methodList
+resamps <- resamples(train_model)
+print(summary(resamps))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+model_preds <- data.frame(model_preds)
+print(model_preds)
+```
+
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.9545  0.9775 0.9864 0.9836  0.9932 1.0000    0
+svmRadial 0.7091  0.7802 0.8174 0.8209  0.8643 0.9413    0
+rf        0.7588  0.8922 0.9047 0.9062  0.9279 0.9873    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.8824  0.9062 0.9310 0.9366  0.9643 1.0000    0
+svmRadial 0.6429  0.7300 0.7931 0.8020  0.8661 0.9655    0
+rf        0.7586  0.8192 0.8944 0.8805  0.9286 0.9643    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.8000  0.8917 0.9200 0.9201  0.9600 1.00    0
+svmRadial 0.4074  0.6044 0.6522 0.6717  0.7692 0.96    0
+rf        0.5600  0.7023 0.7550 0.7567  0.8216 1.00    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy 0.7413793 0.7241379 0.5344828
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.535714"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+                  kernelpls   svmRadial        rf
+AccuracyPValue 0.0009915464 0.002447212 0.5534668
+
+```
+Our best model is PLS:
+```
+Confusion Matrix and Statistics
+
+          Reference
+Prediction ADHD NV
+      ADHD   23  7
+      NV      8 20
+                                          
+               Accuracy : 0.7414          
+                 95% CI : (0.6096, 0.8474)
+    No Information Rate : 0.5345          
+    P-Value [Acc > NIR] : 0.0009915       
+                                          
+                  Kappa : 0.4815          
+ Mcnemar's Test P-Value : 1.0000000       
+                                          
+            Sensitivity : 0.7419          
+            Specificity : 0.7407          
+         Pos Pred Value : 0.7667          
+         Neg Pred Value : 0.7143          
+             Prevalence : 0.5345          
+         Detection Rate : 0.3966          
+   Detection Prevalence : 0.5172          
+      Balanced Accuracy : 0.7413          
+                                          
+       'Positive' Class : ADHD            
+```
+
+# FA
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/fa_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, fa_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+```
+
+```
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+xgbTree   0.6184  0.6826 0.7066 0.7091  0.7218 0.8348    0
+kernelpls 0.7513  0.7740 0.8088 0.8173  0.8532 0.9048    0
+svmRadial 0.4667  0.6276 0.6601 0.6480  0.6973 0.7692    0
+rf        0.6108  0.7083 0.7334 0.7250  0.7557 0.8387    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu.  Max. NA's
+xgbTree   0.5357  0.6205 0.7020 0.7090  0.7673 1.000    0
+kernelpls 0.4828  0.6681 0.7364 0.7360  0.8214 1.000    0
+svmRadial 0.2069  0.3420 0.4544 0.4862  0.5642 0.931    0
+rf        0.4138  0.5761 0.6550 0.6805  0.7542 1.000    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+xgbTree   0.3548  0.5589 0.6043 0.6278  0.7281 0.8636    0
+kernelpls 0.4400  0.5981 0.6862 0.7002  0.8236 0.9167    0
+svmRadial 0.3000  0.6231 0.7200 0.7068  0.8431 0.9474    0
+rf        0.3548  0.4433 0.6511 0.6303  0.7050 0.9167    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+           xgbTree kernelpls svmRadial        rf
+Accuracy 0.5862069 0.5689655 0.6034483 0.5689655
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.535714"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+                 xgbTree kernelpls svmRadial        rf
+AccuracyPValue 0.2559767 0.3476086 0.1786186 0.3476086
+
+```
+
+# RD
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/rd_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, rd_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+```
+
+```
+ROC 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+xgbTree   0.4785  0.5783 0.6189 0.6098  0.6668 0.7260    0
+kernelpls 0.6617  0.7151 0.7427 0.7484  0.7825 0.8469    0
+svmRadial 0.4657  0.5293 0.5679 0.5694  0.6110 0.6400    0
+rf        0.3650  0.5097 0.6186 0.6043  0.6916 0.7836    0
+
+Sens 
+             Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+xgbTree   0.46150  0.5517 0.6250 0.6225  0.6563 0.8571    0
+kernelpls 0.44830  0.6885 0.7426 0.7275  0.7872 0.9048    0
+svmRadial 0.06897  0.2411 0.4037 0.4283  0.5235 0.8750    0
+rf        0.34380  0.5755 0.6674 0.6713  0.7798 0.8636    0
+
+Spec 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+xgbTree   0.3333  0.4231 0.5000 0.5179  0.5722 0.7895    0
+kernelpls 0.2400  0.5589 0.6235 0.6204  0.7500 0.8500    0
+svmRadial 0.1500  0.5958 0.6821 0.6305  0.7726 0.9474    0
+rf        0.1667  0.3396 0.5000 0.5137  0.6573 0.8000    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+           xgbTree kernelpls svmRadial  rf
+Accuracy 0.4827586 0.5344828 0.5172414 0.5
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.535714"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+                 xgbTree kernelpls svmRadial        rf
+AccuracyPValue 0.8216288 0.5534668 0.6542952 0.7451418
+
+```
+
+# Area
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_area.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_area[,2:ncol(lh_area)],
+              rh_area[,2:ncol(rh_area)])
+rm(lh_area)
+rm(rh_area)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+```
+
+```{r}
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm(struct_base_vdata)
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+# apparently we have many columns with zeros
+rm_me = colSums(X) == 0
+X = X[, !rm_me]
+
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+y = mstruct$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+# twoClassSummary uses the first level as the case of interest (https://topepo.github.io/caret/measuring-performance.html#measures-for-class-probabilities)
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+library(parallel)
+cl <- makeCluster(8)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, mstruct[keep_me, ])
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+rm(X)
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+rm(X_resid)
+
+library(parallel)
+cl <- makeCluster(8)
+pvals = parSapply(cl, Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+stopCluster(cl)
+Xtrain = Xtrain[, which(pvals <= .01)]
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtXtrain<- predict(pp, Xtrain)
+filtXtest <- predict(pp, Xtest)
+print(dim(filtXtrain))
+rm(Xtrain)
+rm(Xtest)
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=20)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = F)
+
+methodList=c('kernelpls', 'svmRadial', 'rf')
+train_model = lapply(methodList, function(m) train(filtXtrain, ytrain,
+                                                   tuneLength=10, trControl=fullCtrl,
+                                                   metric='ROC', method=m))
+
+names(train_model) = methodList
+resamps <- resamples(train_model)
+print(summary(resamps))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+model_preds <- data.frame(model_preds)
+print(model_preds)
+```
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.6626  0.6929 0.7349 0.7339  0.7642 0.8330    0
+svmRadial 0.4005  0.4849 0.5310 0.5275  0.5645 0.6798    0
+rf        0.5004  0.5746 0.6211 0.6227  0.6925 0.7110    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.4872  0.6364 0.7596 0.7302  0.8230 0.9355    0
+svmRadial 0.2955  0.5829 0.6174 0.6119  0.6595 0.8286    0
+rf        0.4773  0.6165 0.7286 0.7141  0.7677 0.9677    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.2973  0.4681 0.5782 0.5582  0.6614 0.7917    0
+svmRadial 0.1500  0.2913 0.3935 0.3972  0.4756 0.6923    0
+rf        0.1351  0.3344 0.4618 0.4443  0.5647 0.7000    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy 0.5972222 0.5694444 0.5416667
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.568047"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue  0.362497 0.5494726 0.7251324
+
+```
+# Thickness
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_thickness.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_thickness[,2:ncol(lh_thickness)],
+              rh_thickness[,2:ncol(rh_thickness)])
+rm(lh_thickness)
+rm(rh_thickness)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+```
+
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.7992  0.8463 0.8689 0.8640  0.8898 0.9214    0
+svmRadial 0.7327  0.7707 0.8079 0.8075  0.8380 0.8929    0
+rf        0.7138  0.7833 0.8075 0.8092  0.8503 0.8971    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.6154  0.7533 0.7905 0.7877  0.8248 0.9375    0
+svmRadial 0.5526  0.7542 0.7899 0.7858  0.8287 0.9118    0
+rf        0.6842  0.8409 0.9083 0.8874  0.9424 1.0000    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.5833  0.6825 0.7413 0.7370  0.7733 0.9000    0
+svmRadial 0.5200  0.6036 0.6667 0.6557  0.7083 0.7931    0
+rf        0.1818  0.3705 0.4575 0.4674  0.5596 0.7500    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy 0.5972222 0.5555556 0.5833333
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.568047"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue  0.362497   0.64113 0.4548584
+```
+
+# Volume
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_volume.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(volume_ids,
+              lh_volume[,2:ncol(lh_volume)],
+              rh_volume[,2:ncol(rh_volume)])
+rm(lh_volume)
+rm(rh_volume)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+keep_me = c()
+keep_mstruct = c()
+for (i in 1:nrow(vdata)) {
+  if (vdata[i, 1] %in% mstruct$Mask.ID...Scan) {
+    keep_me = c(keep_me, i)
+    keep_mstruct = c(keep_mstruct, which(mstruct$Mask.ID...Scan == vdata[i, 1]))
+  }
+}
+struct_base_vdata = vdata[keep_me, ]
+mstruct = mstruct[keep_mstruct, ]
+rm(vdata)
+```
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: kernelpls, svmRadial, rf 
+Number of resamples: 20 
+
+ROC 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.6524  0.6992 0.7312 0.7331  0.7458 0.8459    0
+svmRadial 0.3847  0.4587 0.4785 0.4783  0.5035 0.5509    0
+rf        0.4825  0.5313 0.5864 0.5820  0.6288 0.6654    0
+
+Sens 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.5526  0.6874 0.7543 0.7436  0.8287 0.9062    0
+svmRadial 0.3500  0.4792 0.5957 0.5819  0.6620 0.7586    0
+rf        0.4211  0.5549 0.6664 0.6416  0.7233 0.8571    0
+
+Spec 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.3333  0.4175 0.5100 0.5196  0.6255 0.7222    0
+svmRadial 0.1600  0.2933 0.3808 0.3760  0.4470 0.6087    0
+rf        0.1600  0.3189 0.4077 0.4174  0.5150 0.6957    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy 0.6338028 0.6197183 0.5915493
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.571429"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue 0.2008011 0.2755323 0.4546873
+```
+
+# Geospatial
+```{r}
+# source('~/ncr_notebooks/baseline_prediction/src/load_voting_data.R')
+X = geospatial
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+y = merged$DX_BASELINE
+y[y!='NV'] = 'ADHD'
+# twoClassSummary uses the first level as the case of interest (https://topepo.github.io/caret/measuring-performance.html#measures-for-class-probabilities)
+y = factor(y, levels=c('ADHD', 'NV'))
+y = y[keep_me]
+library(parallel)
+cl <- makeCluster(8)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged[keep_me, ])
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+pp <- preProcess(Xtrain, method = c('kImpute','BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtXtrain<- predict(pp, Xtrain)
+filtXtest <- predict(pp, Xtest)
+print(dim(filtXtrain))
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=20)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = T)
+
+
+methodList=c('xgbTree', 'kernelpls', 'svmRadial', 'rf')
+train_model = lapply(methodList, function(m) train(filtXtrain, ytrain,
+                                                   tuneLength=10, trControl=fullCtrl,
+                                                   metric='ROC', method=m))
+
+greedy_ensemble <- caretEnsemble(
+  model_list,
+  metric='ROC',
+  trControl=trainControl(
+    number=2,
+    summaryFunction=twoClassSummary,
+    classProbs=TRUE
+    ))
+
+# ROC stats
+summary(greedy_ensemble)
+model_preds <- lapply(model_list, function(d, x, y) eval_model(d, x, y, c('ADHD', 'NV'))['ROC'], filtXtest, ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+# sensitivity stats
+model_preds <- lapply(model_list, function(d, x, y) eval_model(d, x, y, c('ADHD', 'NV'))['Sens'], filtXtest, ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+# specificity stats
+model_preds <- lapply(model_list, function(d, x, y) eval_model(d, x, y, c('ADHD', 'NV'))['Spec'], filtXtest, ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+# Accuracy stats
+model_preds <- lapply(model_list, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+model_preds <- lapply(model_list, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+model_preds <- data.frame(model_preds)
+print(model_preds)
+```
+
+# Neuropsych
+
+# PRS
+
+
+# Two class HI:
+```{r}
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+y = merged$HI3_named
+keep_me = y!='never_affected'
+y = factor(y[keep_me])
+X = X[keep_me, ]
+merged = merged[keep_me,]
+
+library(parallel)
+cl <- makeCluster(8)
+X_resid = parSapply(cl, X, get_needed_residuals, 'y ~ df$age + I(df$age^2) + df$SEX', .1, merged)
+stopCluster(cl)
+X_resid = as.data.frame(X_resid)
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+library(parallel)
+cl <- makeCluster(8)
+pvals = parSapply(cl, Xtrain, function(d, ytrain) t.test(d ~ ytrain)$p.value, ytrain)
+stopCluster(cl)
+Xtrain = Xtrain[, which(pvals <= .05)]
+print(dim(Xtrain))
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtXtrain<- predict(pp, Xtrain)
+filtXtest <- predict(pp, Xtest)
+print(dim(filtXtrain))
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=20)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = T)
+
+methodList=c('kernelpls', 'svmRadial', 'rf')
+train_model = lapply(methodList, function(m) train(filtXtrain, ytrain,
+                                                   tuneLength=10, trControl=fullCtrl,
+                                                   metric='ROC', method=m))
+
+names(train_model) = methodList
+resamps <- resamples(train_model)
+print(summary(resamps))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+model_preds <- data.frame(model_preds)
+print(model_preds)
+```
+AD
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.9933  1.0000  1.000 0.9997  1.0000    1    0
+svmRadial 0.5923  0.7998  0.861 0.8484  0.9293    1    0
+rf        0.9400  0.9906  1.000 0.9925  1.0000    1    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.9091  1.0000 1.0000 0.9931       1    1    0
+svmRadial 0.7500  0.8805 0.9333 0.9194       1    1    0
+rf        0.8182  0.9375 1.0000 0.9607       1    1    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.8000  0.9808 1.0000 0.9670  1.0000    1    0
+svmRadial 0.1818  0.3794 0.6625 0.5913  0.7778    1    0
+rf        0.6000  0.8392 0.8889 0.8857  1.0000    1    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy 0.6153846 0.4230769 0.6153846
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.646154"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue 0.7357964 0.9954351 0.7357964
+
+```
+FA
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median  Mean 3rd Qu. Max. NA's
+kernelpls 1.0000  1.0000 1.0000 1.000  1.0000    1    0
+svmRadial 0.5156  0.7102 0.8691 0.845  0.9677    1    0
+rf        0.8867  0.9687 0.9803 0.973  0.9928    1    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.9231  1.0000 1.0000 0.9908       1    1    0
+svmRadial 0.6250  0.8782 0.9393 0.9111       1    1    0
+rf        0.8667  0.9412 1.0000 0.9698       1    1    0
+
+Spec
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.7000  1.0000 1.0000 0.9665  1.0000 1.0000    0
+svmRadial 0.1111  0.3182 0.4773 0.5226  0.7000 0.9091    0
+rf        0.6000  0.7121 0.7889 0.8037  0.8889 1.0000    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial  rf
+Accuracy 0.5384615 0.4615385 0.5
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.646154"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue 0.9231351 0.9865792 0.9656695
+
+```
+RD
+```
+Models: kernelpls, svmRadial, rf
+Number of resamples: 20
+
+ROC
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+kernelpls 0.8727  0.9713 0.9933 0.9795  1.0000 1.0000    0
+svmRadial 0.5818  0.7869 0.8244 0.8039  0.8528 0.9596    0
+rf        0.2756  0.5445 0.5993 0.6059  0.6871 0.8750    0
+
+Sens
+            Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.8125  0.9185 1.0000 0.9486  1.0000    1    0
+svmRadial 0.4375  0.7681 0.8516 0.8264  0.9531    1    0
+rf        0.5294  0.8571 0.9412 0.9008  1.0000    1    0
+
+Spec
+             Min. 1st Qu. Median   Mean 3rd Qu. Max. NA's
+kernelpls 0.60000  0.8136 0.8889 0.8780  1.0000 1.00    0
+svmRadial 0.08333  0.3561 0.5505 0.5468  0.6750 1.00    0
+rf        0.00000  0.0625 0.1667 0.2370  0.4325 0.75    0
+
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+         kernelpls svmRadial        rf
+Accuracy       0.5 0.3846154 0.5384615
+> print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+[1] "No information rate: Accuracy=0.646154"
+> model_preds <- lapply(train_model, predict, newdata=filtXtest)
+> model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+> model_preds <- data.frame(model_preds)
+> print(model_preds)
+               kernelpls svmRadial        rf
+AccuracyPValue 0.9656695 0.9986584 0.9231351
+
+```
+
+# Everything 2 class HI
+```{r}
+library(caret)
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+X = cbind(geospatial, prs, neuropsych, struct_rois, dti_tracts)
+# everything in voting_data is already < 12. Let's keep the first age and SEX only,
+# which will from geospatial and therefore there are no NAs (everybody has geospatial data)
+X <- X[, !duplicated(colnames(X))]
+y = gf_base$HI3_named
+keep_me = y!='never_affected'
+y = factor(y[keep_me])
+X = X[keep_me, ]
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+  
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp <- preProcess(Xtrain, method = c('BoxCox', 'center', 'scale', 'pca'), thresh=.9)
+filtXtrain<- predict(pp, Xtrain)
+filtXtest <- predict(pp, Xtest)
+print(dim(filtXtrain))
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=50)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = T)
+
+
+methodList=c('kernelpls', 'svmRadial', 'rf')
+train_model = lapply(methodList, function(m) train(filtXtrain, ytrain,
+                                                   tuneLength=10, trControl=fullCtrl,
+                                                   metric='ROC', method=m))
+names(train_model) = methodList
+resamps <- resamples(train_model)
+print(summary(resamps))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d, obs) postResample(d, obs)[1], obs=ytest)
+model_preds <- data.frame(model_preds)
+print(model_preds)
+print(sprintf('No information rate: Accuracy=%f', max(table(ytrain)/length(ytrain))))
+model_preds <- lapply(train_model, predict, newdata=filtXtest)
+model_preds <- lapply(model_preds, function(d) confusionMatrix(d, ref=ytest)$overall['AccuracyPValue'])
+model_preds <- data.frame(model_preds)
+print(model_preds)
+```
+
+# Everything 2 class HI no imputation
+```{r}
+library(caret)
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+X = cbind(geospatial, prs, neuropsych, struct_rois, dti_tracts)
+# everything in voting_data is already < 12. Let's keep the first age and SEX only,
+# which will from geospatial and therefore there are no NAs (everybody has geospatial data)
+X <- X[, !duplicated(colnames(X))]
+y = gf_base$HI3_named
+keep_me = y!='never_affected'
+y = factor(y[keep_me])
+X = X[keep_me, ]
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+myseed = 1234
+set.seed(myseed)
+split <- createDataPartition(y, p = .7, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+tuneLength=10
+set.seed(myseed)
+index <- createResample(ytrain, times=50)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "boot",
+                         index = index,
+                         savePredictions="final",
+                         classProbs=TRUE,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = T)
+
+mymod = train(Xtrain, ytrain,
+              tuneLength=10, trControl=fullCtrl,
+              metric='ROC', method='AdaBag')
+confusionMatrix(predict(mymod, Xtest))
+```
+

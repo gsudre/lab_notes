@@ -1,0 +1,43 @@
+---
+title: "DTI and inattention"
+output: html_notebook
+---
+
+Let's try predicting inattetion symptoms at baseline. This might be easier than the binary groups:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction//src/aux_functions.R')
+
+# everything in this file is already BASELINE!
+gf_fname = '~/data/baseline_prediction/dti_match_02092017.csv'
+data_fname = '~/data/baseline_prediction/dti_match_02092017.csv'
+gf = read.csv(gf_fname)
+y_var = 'SX_inatt'
+all_data = read.csv(data_fname)
+mrn_gf = unique(gf[, c('ID', y_var)])
+
+idx = all_data$DTI_select < 2 & all_data$QC_GRADE < 3
+data = all_data[idx,]
+
+ldata = merge(mrn_gf, data, by.x='ID', by.y='ID')
+eval(parse(text=sprintf('y = ldata$\"%s.y\"', y_var)))
+
+phen_vars = c(which(grepl("MASKID", colnames(ldata))),
+              which(grepl("^FA_", colnames(ldata))),
+              which(grepl("^AD_", colnames(ldata))),
+              which(grepl("^RD_", colnames(ldata)))
+              )
+ldata = ldata[, phen_vars]
+seed = 107
+```
+
+Let's try with the entire dataset first for a benchmark:
+
+```{r}
+library(randomForest)
+set.seed(seed)
+bestmtry <- tuneRF(ldata, y, stepFactor=1.5, improve=1e-5, ntreeTry=1000)
+print(bestmtry)
+```
+
+So, we're looking at about 4 predictors... let's see 

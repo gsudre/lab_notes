@@ -1,0 +1,160 @@
+---
+title: "Future prediction"
+output: html_notebook
+---
+
+Let's focus on what we can predict in the future. We can go for:
+
+* persistent vs remission
+* binary symptoms
+* SX slope
+* actual SX
+
+Note that here I'm not making use of the latent classes, because they need to be recomputed now that I have revised the symptom counts while collecting the binary symptom data. I also removed one subject for whom we only had one clinical assessment. Finally, we do all of that only within the ADHD at baseline group, almost like simulating an environment where we diagnosed the person with ADHD, and then try to figure out the chances he/she will change.
+
+For binary symptoms and actual SX we could even add the baseline predictors to the mix to see what we get.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+library(caret)
+adhd_idx = gf_base$DX_BASELINE!='NV'
+```
+
+First let's figure out if the ADHD symptoms for the kid persisted or remitted in their last visit:
+
+```{r}
+out_group = c()
+for (s in gf_base[adhd_idx,]$MRN) {
+  idx = which(gf$MRN==s)
+  subj_sx = gf[idx, c('SX_inatt', 'SX_HI')]
+  last_age = sort(gf[idx,]$age, index.return=T, decreasing=T)
+  last_sx = subj_sx[last_age$ix[1], ]
+  if (last_age$x[1] > 18) {
+    # adult
+    if (last_sx$SX_inatt > 4 || last_sx$SX_HI > 4) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  } else {
+    # child
+    if (last_sx$SX_inatt > 5 || last_sx$SX_HI > 5) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  }
+}
+out_group = factor(out_group, levels=c('remission', 'persistent'))
+```
+
+Now we do some simple prediction using the entire data:
+
+```{r}
+dtype = 'prs'
+
+y = out_group
+
+methods = c('rf', 'svmRadial', 'kernelpls')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+eval(parse(text=sprintf('X = %s[adhd_idx, ]', dtype)))
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+# removing anyone that is all NaNs for this dataset
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+# do PCA but do not include age and sex variables in it
+not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+nfeat = ncol(X)
+Xfilt = predict(pp, X[, -not_include])
+X = cbind(Xfilt, X[, not_include])
+print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="repeatedcv",
+    repeats=5,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap,
+    classProbs = T,
+    summaryFunction = twoClassSummary,
+    sampling = "smote"
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                metric = 'ROC')
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+```
+
+Didn't work so well. Let's see what we get if we try this for individual symptoms. We'll focus in 2 categories: stay the same and gain a symptom, just to avoid anyone who might gain symptoms.
+
+```{r}
+get_binary_SX_status = function (df, ids) {
+  cnames = c(which(grepl("^inatt_", colnames(df))),
+              which(grepl("^hi_", colnames(df))))
+  bin = df[, cnames]
+  mrns = c()
+  res = c()
+  for (s in ids) {
+    idx = which(df$MRN==s)
+    # proceed if we have more than one observation in the data
+    if (length(idx) >= 2) {
+      # sort visits based on age
+      visits = sort(df[idx,]$age, index.return=T)
+      this_status = bin[idx[visits$ix][length(idx)], ] - bin[idx[visits$ix][1],]
+      res = rbind(res, this_status)
+      mrns = c(mrns, s)
+    }
+  }
+  rownames(res) = mrns
+  return(res)
+}
+```
+
+But before we go nuts with classification, let's see how many people actually get symptoms as they grow older:
+
+```{r}
+status = get_binary_SX_status(gf, gf_base$MRN)
+print(sapply(status, table))
+```
+
+I was a bit surprised by the number of people gaining symptoms... what happens if we restrict it only to the people with ADHD?
+
+```{r}
+status_adhd = get_binary_SX_status(gf, gf_base[adhd_idx,]$MRN)
+print(sapply(status_adhd, table))
+```
+
+Still not very encouraging... there might be something there, but it will require quite a bit of digging. Let's see if there is anything else we can work on.

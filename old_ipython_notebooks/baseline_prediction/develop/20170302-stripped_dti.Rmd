@@ -1,0 +1,160 @@
+---
+title: "DTI analysis using stripped files"
+output: html_notebook
+---
+
+First, some data cleaning even before we match scans to clinical assessments:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+# remove data columns from mean_data to avoid duplicates
+
+par(mfrow=c(2, 3))
+nbreaks = 40
+hist(tract_data$fa_avg, breaks=nbreaks)
+hist(tract_data$ad_avg, breaks=nbreaks)
+hist(tract_data$rd_avg, breaks=nbreaks)
+hist(tract_data$norm.trans, breaks=nbreaks)
+hist(tract_data$norm.rot, breaks=nbreaks)
+hist(tract_data$goodSlices, breaks=nbreaks)
+```
+
+Cleaning up based on visual cutoffs:
+
+```{r}
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+```
+
+Now we work under the assumption that all leftover scans are good, so we match them to the baseline clinical of each participant:
+
+``` {r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+```
+
+Finally, let's remove anyone with difference between clinical and scan that's too big:
+
+```{r}
+hist(merged$dateX.minus.dateY.months, breaks=nbreaks)
+```
+
+There is clearly a big spread. Let's err in the side of caution and cap it to 1 year before or after:
+
+```{r}
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(merged), nrow(merged)-sum(rm_me)))
+merged = merged[!rm_me, ]
+```
+
+Ready for some ML. Let's get all features first, and try some NV vs ADHD classification, clumping in the ADHD_NOS folks:
+
+```{r}
+library(caret)
+library(randomForest)
+seed = 107
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+By adding MO, we have a few variables that have NAs. We could impute, not use the variables, or remove subjects. All valid approaches, and the imputation could potentially be done in CV. For now, let's see how many subjects we remove... using colSums and rowSums, only 2 variables, and 2 subjects. Let's remove subjects for now.
+
+```{r}
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+```{r}
+ctrl = trainControl(method="repeatedcv", number=10, repeats=5, selectionFunction = "tolerance")
+in_train = createDataPartition(y, p=.8, list=FALSE)
+set.seed(seed)
+bestmtry <- tuneRF(X, y, stepFactor=1.5, improve=1e-5, ntreeTry=500, subset=in_train)
+print(bestmtry)
+```
+Try some RFE:
+
+```{r}
+subsets <- c(1:5, 10, 15, 20, 25)
+rfe_ctl <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 5,
+                   verbose = FALSE)
+
+rf_RFE <- rfe(X, y, sizes = subsets, rfeControl = rfe_ctl)
+print(rf_RFE)
+```
+
+Still nothing to write home about... let's do our old XGBoost to see if we can get anything else out of it.
+
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_NVvsADHD'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, run_models=c('rndForest', 'lr', 'rsvm', 'xgb'))
+
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+So, we can better distribution, let's run it for a few more splits:
+
+```{r}
+ldata = X
+groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_allDTI_NVvsADHD_big'
+save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+res = collect_results(root_fname)
+mylist = res[[1]]
+run_models = res[[2]]
+source('~/ncr_notebooks/baseline_prediction/src/do_metrics_plots.R')
+```
+
+Now, I did a quick analysis to see how to best split baseline GAS into 2 groups:
+
+```{r}
+myc = kmeans(merged$GAS...GAS, 2)
+print(sprintf('Cutoff: %.2f', myc$centers[1] + diff(myc$centers)/2))
+```
+
+So, would it be easier to classify GAS below or above 77?
+
+```{r}
+yGas = vector(length=length(y))
+yGas[merged$GAS...GAS < 77] = 'impaired'
+yGas[merged$GAS...GAS >= 77] = 'normal'
+yGas = factor(yGas)
+```
+
+But we should also make sure we are looking at baseline GAS, by removing anyone who didn't have the assessment too close:
+
+```{r}
+hist(merged$dateClinical.minus.dateGAS.months, breaks=nbreaks)
+```
+
+We'd end up with almost no scans if we threshold this. Let's cap it to ADHDs only, assuming GAS for NVs stays constant:
+
+```{r}
+hist(merged[y=='ADHD',]$dateClinical.minus.dateGAS.months, breaks=nbreaks)
+```
+
+Still not good. Will get better values from Wendy. 

@@ -1,0 +1,778 @@
+---
+title: "Final SX using current one"
+output: html_notebook
+---
+
+The question here is whether we can predict future symptom count, but adding current cymptom count to the set of predictors.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+library(caret)
+adhd_idx = gf_base$DX_BASELINE!='NV'
+```
+
+First let's figure out the last symptom count for each individual:
+
+```{r}
+get_last_SX = function (df, ids) {
+  mrns = c()
+  res = c()
+  for (s in ids) {
+    idx = which(df$MRN==s)
+    # proceed if we have more than one observation in the data
+    if (length(idx) >= 2) {
+      # sort visits based on age
+      visits = sort(df[idx,]$age, index.return=T)
+      this_status = c(df[idx[visits$ix][length(idx)], 'SX_inatt'],
+                      df[idx[visits$ix][length(idx)], 'SX_HI'])
+      res = rbind(res, this_status)
+      mrns = c(mrns, s)
+    }
+  }
+  rownames(res) = mrns
+  colnames(res) = c('inatt', 'hi')
+  return(res)
+}
+```
+
+Now we do some simple prediction using the entire data:
+
+```{r}
+dtype = 'neuropsych'
+
+lastSX = get_last_SX(gf, gf_base$MRN)
+y = lastSX[adhd_idx, 'hi']
+X = gf_base[adhd_idx, 'SX_HI']
+
+methods = c('rpart', 'rpart2')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+eval(parse(text=sprintf('X = cbind(X, %s[adhd_idx, ])', dtype)))
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+# removing anyone that is all NaNs for this dataset
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+# # do PCA but do not include age and sex variables in it
+# not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+# pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+# nfeat = ncol(X)
+# Xfilt = predict(pp, X[, -not_include])
+# X = cbind(Xfilt, X[, not_include])
+# print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boots",
+    repeats=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+nir = RMSE(mean(y), y)
+print(sprintf('NIR: %.2f', nir))
+```
+
+This is slightly better than chance, but certainly not clinically relevant. Let's take a quick look at voxels again to figure out if we can do better. The approach is to first do a univariate selection to reduce computation, then we do a PCA to remove correlations, and finally use what we get for prediction:
+
+```{r}
+dtype = 'brain_ad'
+mysx = 'inatt'
+
+lastSX = get_last_SX(gf, gf_base$MRN)
+if (mysx == 'inatt') {
+  y = lastSX[, 'inatt']
+  X = gf_base[, 'SX_inatt']
+} else {
+  y = lastSX[, 'hi']
+  X = gf_base[, 'SX_HI']
+}
+
+
+methods = c('rpart', 'rpart2', 'rf', 'enet', 'svmLinear', 'svmRadial')
+
+library(caret)
+library(doMC)
+ncpus <- 8#detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+eval(parse(text=sprintf('X = cbind(X, %s[, ])', dtype)))
+colnames(X)[1] = 'sx0'
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+# removing anyone that is all NaNs for this dataset
+vox_cols = grepl('^V', colnames(X))
+rm_me = rowSums(is.na(X[, vox_cols])) == sum(vox_cols)
+X = X[!rm_me,]
+y = y[!rm_me]
+# remove variables that are 0 for everyone
+rm_me = colSums(X) == 0
+X = X[,!rm_me]
+
+# do PCA but do not include age and sex variables in it
+not_include = c(which(grepl("^SEX", colnames(X))),
+                which(grepl("age", colnames(X))),
+                which(grepl("sx0", colnames(X))))
+X2 = X[, -not_include]
+pvals = sapply(X2, function(d) cor.test(d, y)$p.value)
+X2 = X2[, which(pvals <= .05)]
+pp = preProcess(X2, method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+nfeat = ncol(X)
+X2 = predict(pp, X2)
+X = cbind(X2, X[, not_include])
+print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+
+set.seed(myseed)
+index=createResample(y, ntimes)
+rm(X2)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boots",
+    repeats=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+nir = RMSE(mean(y), y)
+print(sprintf('NIR: %.2f', nir))
+```
+# Inattention
+
+##FA
+```
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.703   2.002  2.103 2.091   2.174 2.498    0
+rpart2    1.703   1.948  2.022 2.047   2.155 2.498    0
+rf        1.700   1.946  2.006 2.018   2.120 2.362    0
+enet      1.645   1.834  1.897 1.895   1.977 2.181    0
+svmLinear 2.881   3.347  3.529 3.749   4.155 5.883    0
+svmRadial 1.899   2.144  2.213 2.210   2.281 2.555    0
+
+Rsquared
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.4353  0.5579 0.5772 0.5865  0.6324 0.7433    0
+rpart2    0.4392  0.5631 0.6223 0.6036  0.6468 0.7433    0
+rf        0.4979  0.5868 0.6149 0.6144  0.6497 0.7187    0
+enet      0.5597  0.6358 0.6666 0.6665  0.6968 0.7484    0
+svmLinear 0.1367  0.2700 0.3492 0.3318  0.3976 0.5425    0
+svmRadial 0.4211  0.5112 0.5466 0.5461  0.5798 0.6482    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+```
+
+##AD
+```
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.703   2.001  2.098 2.088   2.180 2.411    0
+rpart2    1.703   1.922  2.020 2.041   2.132 2.528    0
+rf        1.686   1.934  2.002 2.006   2.131 2.307    0
+enet      1.605   1.829  1.897 1.896   1.964 2.170    0
+svmLinear 2.698   3.312  3.688 3.922   4.344 7.399    0
+svmRadial 1.901   2.101  2.162 2.153   2.219 2.447    0
+
+Rsquared
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.4353  0.5535 0.5826 0.5875  0.6300 0.7433    0
+rpart2    0.3926  0.5772 0.6223 0.6057  0.6438 0.7433    0
+rf        0.5205  0.5760 0.6164 0.6190  0.6604 0.7320    0
+enet      0.5382  0.6412 0.6604 0.6649  0.6927 0.7632    0
+svmLinear 0.1213  0.2789 0.3354 0.3328  0.3924 0.5338    0
+svmRadial 0.4456  0.5457 0.5778 0.5728  0.6056 0.6600    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+```
+
+# HI
+
+## FA
+```
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.677   1.975  2.102 2.104   2.240 2.627    0
+rpart2    1.710   1.993  2.099 2.092   2.199 2.439    0
+rf        1.669   1.887  2.002 1.992   2.057 2.302    0
+enet      1.579   1.789  1.912 1.891   1.971 2.220    0
+svmLinear 2.558   3.323  3.647 3.743   4.040 5.297    0
+svmRadial 1.990   2.199  2.266 2.283   2.409 2.550    0
+
+Rsquared
+             Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.34610  0.4461 0.4985 0.4937  0.5474 0.6411    0
+rpart2    0.36810  0.4467 0.4925 0.4965  0.5378 0.6391    0
+rf        0.40470  0.5180 0.5423 0.5393  0.5708 0.6572    0
+enet      0.51770  0.5621 0.5950 0.5956  0.6305 0.6912    0
+svmLinear 0.03276  0.1338 0.1875 0.1958  0.2581 0.4196    0
+svmRadial 0.29150  0.3690 0.4067 0.4073  0.4439 0.5209    0
+
+ nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.92"
+
+```
+
+## AD
+```
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.710   2.007  2.143 2.125   2.236 2.577    0
+rpart2    1.710   2.005  2.122 2.118   2.232 2.577    0
+rf        1.673   1.885  1.995 1.986   2.058 2.266    0
+enet      1.568   1.790  1.889 1.878   1.951 2.207    0
+svmLinear 3.065   3.915  4.468 4.592   5.133 7.263    0
+svmRadial 1.963   2.097  2.188 2.195   2.293 2.448    0
+
+Rsquared
+             Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.35580 0.43720 0.4748 0.4811  0.5188 0.6391    0
+rpart2    0.35580 0.44100 0.4794 0.4848  0.5262 0.6391    0
+rf        0.42770 0.51410 0.5449 0.5424  0.5765 0.6483    0
+enet      0.51980 0.56590 0.6015 0.5976  0.6235 0.7057    0
+svmLinear 0.01534 0.09432 0.1381 0.1574  0.2190 0.4061    0
+svmRadial 0.36750 0.43540 0.4710 0.4657  0.4890 0.6091    0
+ nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.92"
+
+
+```
+
+This is better than chance for sure, but it heavily relies on symptom counts, and I'd have to prove that it's significantly better than just using symptom counts. Even if it is, would the difference be clinically relevant? In other words, is 2 symptoms of better that much better than 3? And the difference between adding the brain variables and not? Are those clinically relevant?
+
+Let's see how we do just using symptoms, age, and sex:
+
+```{r}
+dtype = 'geospatial'
+
+lastSX = get_last_SX(gf, gf_base$MRN)
+# y = lastSX[, 'hi']
+# X = gf_base[, 'SX_HI']
+y = lastSX[, 'inatt']
+X = gf_base[, 'SX_inatt']
+
+methods = c('rpart', 'rpart2', 'rf', 'enet', 'svmLinear', 'svmRadial')
+
+library(caret)
+library(doMC)
+ncpus <- detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+eval(parse(text=sprintf('X = cbind(X, %s[, ])', dtype)))
+colnames(X)[1] = 'sx0'
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=X)
+X = cbind(X, predict(dummies, newdata=X))
+X$SEX = NULL
+
+# removing anyone that is all NaNs for this dataset
+rm_me = rowSums(is.na(X)) == ncol(X)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+# do PCA but do not include age and sex variables in it
+include = c(which(grepl("^SEX", colnames(X))),
+                which(grepl("age", colnames(X))),
+                which(grepl("sx0", colnames(X))))
+X = X[, not_include]
+
+set.seed(myseed)
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boots",
+    repeats=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+nir = RMSE(mean(y), y)
+print(sprintf('NIR: %.2f', nir))
+```
+
+## Inatt
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial 
+Number of resamples: 50 
+
+RMSE 
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.731   1.886  1.995 2.001   2.090 2.496    0
+rpart2    1.703   1.894  1.992 1.999   2.100 2.329    0
+rf        1.743   1.999  2.081 2.102   2.205 2.508    0
+enet      1.603   1.842  1.932 1.921   1.990 2.095    0
+svmLinear 1.572   1.864  1.960 1.939   2.036 2.176    0
+svmRadial 1.794   2.026  2.086 2.093   2.186 2.372    0
+
+Rsquared 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.4111  0.5933 0.6297 0.6206  0.6469 0.7420    0
+rpart2    0.4514  0.5915 0.6304 0.6213  0.6534 0.7433    0
+rf        0.4073  0.5558 0.5986 0.5882  0.6284 0.7633    0
+enet      0.5379  0.6280 0.6527 0.6528  0.6840 0.7599    0
+svmLinear 0.5340  0.6246 0.6465 0.6537  0.6818 0.7547    0
+svmRadial 0.4724  0.5463 0.5877 0.5861  0.6196 0.7351    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+```
+## HI
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial 
+Number of resamples: 50 
+
+RMSE 
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.677   2.001  2.058 2.061   2.150 2.359    0
+rpart2    1.603   2.001  2.051 2.051   2.123 2.358    0
+rf        1.741   2.018  2.130 2.118   2.242 2.507    0
+enet      1.596   1.855  1.942 1.930   2.005 2.210    0
+svmLinear 1.623   1.864  1.953 1.950   2.052 2.220    0
+svmRadial 1.566   1.959  2.066 2.056   2.171 2.465    0
+
+Rsquared 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.3725  0.4666 0.5248 0.5152  0.5558 0.6454    0
+rpart2    0.3725  0.4903 0.5248 0.5189  0.5525 0.6809    0
+rf        0.3660  0.4492 0.5028 0.4958  0.5301 0.6510    0
+enet      0.4597  0.5290 0.5747 0.5707  0.6152 0.6706    0
+svmLinear 0.4684  0.5329 0.5734 0.5698  0.6069 0.6718    0
+svmRadial 0.3530  0.4752 0.5127 0.5141  0.5565 0.6623    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.92"
+```
+
+So, we do a bit better by adding brain data, but it's hard to say it's statiscally significant. Moreover, it's far from clinically relevant.
+
+Out of curiosity, let's see how well we can do with brain struct voxelwise, which has always been surprisingly interesting... note that I only ran 8 cpus and 100Gb, and had to delete the other brain_* variables, in order to not run out of memory!
+
+# Inattention
+
+## area
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial
+Number of resamples: 50
+
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.720   1.955  2.096 2.084   2.180 2.480    0
+rpart2    1.720   1.925  2.060 2.078   2.170 2.477    0
+rf        1.683   1.881  1.931 1.941   2.015 2.195    0
+enet      1.641   1.832  1.910 1.892   1.962 2.131    0
+svmLinear 2.183   2.592  2.702 3.224   3.437 7.224    0
+svmRadial 2.043   2.185  2.271 2.267   2.351 2.492    0
+
+Rsquared
+             Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.45070  0.5461 0.5826 0.5877  0.6322 0.7236    0
+rpart2    0.46740  0.5485 0.6020 0.5905  0.6403 0.7236    0
+rf        0.54740  0.6144 0.6368 0.6404  0.6738 0.7407    0
+enet      0.55920  0.6406 0.6553 0.6654  0.6888 0.8042    0
+svmLinear 0.02883  0.2883 0.4381 0.3889  0.4880 0.6040    0
+svmRadial 0.39370  0.4772 0.5120 0.5163  0.5618 0.6496    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+```
+
+## thickness
+```
+> print(summary(resamps))
+
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial
+Number of resamples: 50
+
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.720   1.985  2.082 2.105   2.207 2.497    0
+rpart2    1.720   1.963  2.066 2.091   2.205 2.641    0
+rf        1.636   1.820  1.901 1.890   1.944 2.166    0
+enet      1.584   1.750  1.799 1.815   1.901 2.034    0
+svmLinear 1.732   1.996  2.113 2.099   2.208 2.620    0
+svmRadial 1.710   1.890  1.935 1.930   1.981 2.247    0
+
+Rsquared
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.4186  0.5430 0.5833 0.5811  0.6152 0.7236    0
+rpart2    0.3974  0.5449 0.5986 0.5869  0.6266 0.7236    0
+rf        0.5603  0.6500 0.6708 0.6730  0.6940 0.7668    0
+enet      0.5922  0.6569 0.6954 0.6874  0.7156 0.7723    0
+svmLinear 0.5105  0.5945 0.6184 0.6224  0.6591 0.7201    0
+svmRadial 0.5785  0.6214 0.6604 0.6555  0.6879 0.7325    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+```
+
+## volume
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial 
+Number of resamples: 50 
+
+RMSE 
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.581   2.020  2.114 2.135   2.254 2.564    0
+rpart2    1.581   1.935  2.097 2.110   2.252 2.602    0
+rf        1.664   1.873  1.996 1.981   2.070 2.375    0
+enet      1.639   1.844  1.904 1.910   1.999 2.174    0
+svmLinear 2.590   3.009  3.249 3.266   3.432 4.124    0
+svmRadial 2.224   2.391  2.467 2.464   2.531 2.688    0
+
+Rsquared 
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.4162  0.5179 0.5775 0.5691  0.6246 0.7412    0
+rpart2    0.4037  0.5340 0.5914 0.5789  0.6465 0.7412    0
+rf        0.4686  0.5907 0.6347 0.6273  0.6657 0.7319    0
+enet      0.5105  0.6354 0.6682 0.6635  0.6929 0.7880    0
+svmLinear 0.1420  0.2789 0.3301 0.3329  0.3632 0.5201    0
+svmRadial 0.2993  0.3814 0.4260 0.4265  0.4702 0.5513    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+
+```
+
+# HI
+
+## area
+```
+> print(summary(resamps))
+
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial 
+Number of resamples: 50 
+
+RMSE 
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.915   2.080  2.165 2.180   2.258 2.545    0
+rpart2    1.915   2.094  2.165 2.166   2.232 2.420    0
+rf        1.690   1.933  2.030 2.009   2.075 2.221    0
+enet      1.631   1.845  1.939 1.911   1.987 2.103    0
+svmLinear 2.608   3.128  3.326 3.666   3.692 9.418    0
+svmRadial 2.093   2.328  2.393 2.405   2.479 2.673    0
+
+Rsquared 
+              Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.264000  0.4168 0.4542 0.4438  0.4781 0.5635    0
+rpart2    0.326900  0.4198 0.4492 0.4477  0.4777 0.5635    0
+rf        0.418000  0.4912 0.5189 0.5227  0.5584 0.6831    0
+enet      0.453000  0.5430 0.5694 0.5758  0.6118 0.6900    0
+svmLinear 0.007369  0.1548 0.2284 0.2155  0.2848 0.4773    0
+svmRadial 0.176400  0.2758 0.3156 0.3159  0.3480 0.4632    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.89"
+```
+
+## thickness
+```
+> print(summary(resamps))
+
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial
+Number of resamples: 50
+
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.939   2.040  2.134 2.185   2.314 2.635    0
+rpart2    1.870   2.066  2.127 2.158   2.211 2.516    0
+rf        1.617   1.825  1.929 1.903   1.960 2.127    0
+enet      1.553   1.787  1.857 1.841   1.926 2.063    0
+svmLinear 1.906   2.127  2.263 2.281   2.435 2.704    0
+svmRadial 1.798   1.976  2.037 2.046   2.153 2.283    0
+
+Rsquared
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.2855  0.4193 0.4655 0.4571  0.5205 0.5641    0
+rpart2    0.2854  0.4258 0.4738 0.4632  0.5048 0.6298    0
+rf        0.4791  0.5380 0.5720 0.5753  0.6152 0.7157    0
+enet      0.4725  0.5644 0.5906 0.6001  0.6355 0.7080    0
+svmLinear 0.3144  0.4188 0.4795 0.4675  0.5173 0.6108    0
+svmRadial 0.3768  0.4844 0.5126 0.5192  0.5500 0.6440    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.89"
+```
+
+## volume
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rpart, rpart2, rf, enet, svmLinear, svmRadial
+Number of resamples: 50
+
+RMSE
+           Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rpart     1.915   2.051  2.171 2.173   2.259 2.606    0
+rpart2    1.759   2.051  2.154 2.171   2.255 2.606    0
+rf        1.689   1.914  2.013 2.001   2.063 2.356    0
+enet      1.671   1.834  1.938 1.919   1.991 2.207    0
+svmLinear 2.294   2.783  2.974 2.964   3.107 3.535    0
+svmRadial 2.028   2.219  2.289 2.290   2.353 2.599    0
+
+Rsquared
+            Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rpart     0.3032  0.3968 0.4567 0.4444  0.4843 0.5792    0
+rpart2    0.2802  0.4024 0.4569 0.4483  0.5032 0.5792    0
+rf        0.3640  0.4881 0.5331 0.5259  0.5572 0.6580    0
+enet      0.4143  0.5416 0.5711 0.5736  0.6175 0.6942    0
+svmLinear 0.1469  0.2310 0.2729 0.2824  0.3212 0.4397    0
+svmRadial 0.2482  0.3498 0.3736 0.3778  0.4147 0.4792    0
+```
+
+We can see that there is only a minor improvement here. How much better do we get if we simply concatenate the PCs or each modality?
+
+```{r}
+mysx = 'inatt'
+
+lastSX = get_last_SX(gf, gf_base$MRN)
+
+methods = c('rf', 'enet')
+
+library(caret)
+library(doMC)
+ncpus <- 8#detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+# adding SX
+if (mysx == 'inatt') {
+  y = lastSX[, 'inatt']
+  sx0 = gf_base[, 'SX_inatt']
+} else {
+  y = lastSX[, 'hi']
+  sx0 = gf_base[, 'SX_HI']
+}
+
+filterX = function(X) {
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))),
+                  which(grepl("age", colnames(X))))
+  X2 = X[, -not_include]
+  # remove variables that are 0 for everyone
+  rm_me = colSums(X2, na.rm=T) == 0
+  X2 = X2[,!rm_me]
+  pvals = sapply(X2, function(d) cor.test(d, y)$p.value)
+  X2 = X2[, which(pvals <= .05)]
+  pp = preProcess(X2, method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  X2 = predict(pp, X2)
+}
+Xarea = filterX(brain_area)
+colnames(Xarea) = sapply(colnames(Xarea), function(d) return(sprintf('area_%s', d)))
+Xvolume = filterX(brain_volume)
+colnames(Xvolume) = sapply(colnames(Xvolume), function(d) return(sprintf('volume_%s', d)))
+Xthickness = filterX(brain_thickness)
+colnames(Xthickness) = sapply(colnames(Xthickness), function(d) return(sprintf('thickness_%s', d)))
+allX = cbind(Xarea, Xvolume, Xthickness, brain_area$SEX, brain_area$age)
+colnames(allX)[ncol(allX)-1]='SEX'
+colnames(allX)[ncol(allX)]='age'
+rm(X2)
+rm(struct_base_vdata)
+
+# recoding SEX
+dummies = dummyVars(~SEX, data=allX)
+X = cbind(allX, predict(dummies, newdata=allX))
+X$SEX = NULL
+X = cbind(X, sx0)
+
+# removing anyone that is all NaNs for this dataset
+vox_cols = grepl('PC', colnames(X))
+rm_me = rowSums(is.na(X[, vox_cols])) == sum(vox_cols)
+X = X[!rm_me,]
+y = y[!rm_me]
+
+set.seed(myseed)
+index=createResample(y, ntimes)
+
+train_model = function(m) {
+  if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+    ap = F
+  } else { ap = T }
+  set.seed(myseed)
+  my_control <- trainControl(
+    method="boots",
+    repeats=ntimes,
+    savePredictions="final",
+    index=index,
+    allowParallel = ap
+  )
+  print(sprintf('===== TRYING %s =====', m))
+  mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength)
+  return(mymod)
+}
+
+trained_models = lapply(methods, train_model)
+
+names(trained_models) = methods
+resamps <- resamples(trained_models)
+print(summary(resamps))
+nir = RMSE(mean(y), y)
+print(sprintf('NIR: %.2f', nir))
+```
+
+## inatt
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rf, enet
+Number of resamples: 50
+
+RMSE  
+      Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rf   1.746   1.897  1.996 1.977   2.050 2.172    0
+enet 1.677   1.829  1.903 1.893   1.961 2.104    0
+
+Rsquared
+       Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rf   0.5004  0.6116 0.6390 0.6404  0.6737 0.7525    0
+enet 0.5447  0.6464 0.6601 0.6687  0.6994 0.7544    0
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 3.21"
+
+```
+
+## HI
+```
+Call:
+summary.resamples(object = resamps)
+
+Models: rf, enet 
+Number of resamples: 50 
+
+RMSE 
+      Min. 1st Qu. Median  Mean 3rd Qu.  Max. NA's
+rf   1.562   1.835  1.944 1.927   2.017 2.250    0
+enet 1.629   1.774  1.874 1.874   1.976 2.191    0
+
+Rsquared 
+       Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+rf   0.4480  0.5365 0.5819 0.5770  0.6094 0.7219    0
+enet 0.5157  0.5727 0.6039 0.6011  0.6324 0.7104    0
+
+> nir = RMSE(mean(y), y)
+> print(sprintf('NIR: %.2f', nir))
+[1] "NIR: 2.92"
+```
+
+It actually doesn't improve much. Using thickness is still the best option here. Do we do any better if we use a different sampling technique? (keeping thickness and HI constant).
+
+On the tests I've done, it looks like boot632 does improve the results compared to boots, but it could be just a resampling issue as I don't think the algorithms are being initialized the same way. I should probably reset the seed before each training, but I don't know if that's going to stay as we're using multicores. Using repeatedCV the median went down to 1.76, but the variance went up.
+
+
+
+

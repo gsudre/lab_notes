@@ -1,0 +1,684 @@
+---
+title: "Best descriptives"
+output: html_notebook
+---
+
+Let me run a test to see if narrowing the results to only the variables with the best descriptives improve our results. Note that I'll create a new feature set with the best descriptive features, and INCLUDE them even if they weren't in the initial set of features we used. This is more data-driven anyways.
+
+Note that I'm using the set of results without adjusting for age and sex, as these classification models don't use that.
+
+We start by loading the entire dataset:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+
+gf = gf[gf$BASELINE=='BASELINE', ]
+# we only need to keep MRN and DOA for now, to avoid duplicated
+gf = gf[, c('MRN', 'DOA')]
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mbeery), nrow(mbeery)-sum(rm_me)))
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mcpt), nrow(mcpt)-sum(rm_me)))
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(miq), nrow(miq)-sum(rm_me)))
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mwisc), nrow(mwisc)-sum(rm_me)))
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mwj), nrow(mwj)-sum(rm_me)))
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+merged = merge(mwj, mbeery, by='MRN', all.x = T, all.y = T)
+merged = merge(merged, miq, by='MRN', all.x = T, all.y = T)
+merged = merge(merged, mwisc, by='MRN', all.x = T, all.y = T)
+merged = merge(merged, mcpt, by='MRN', all.x = T, all.y = T)
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+mdti = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(mdti$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(mdti), nrow(mdti)-sum(rm_me)))
+mdti = mdti[!rm_me, ]
+
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+mgeo = merge(gf, geo_data, by='MRN')
+# some variables are being read as numeric...
+mgeo$Home_Price = as.numeric(mgeo$Home_Price)
+mgeo$Fam_Income = as.numeric(mgeo$Fam_Income)
+mgeo$Crime_Rate = as.numeric(mgeo$Crime_Rate)
+
+merged = merge(merged, mdti, by='MRN', all.x = T, all.y = T)
+merged = merge(merged, mgeo, by='MRN', all.x = T, all.y = T)
+
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+my_ids = intersect(gf$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(mstruct), nrow(mstruct)-sum(rm_me)))
+mstruct = mstruct[!rm_me, ]
+merged = merge(merged, mstruct, by='MRN', all.x = T, all.y = T)
+
+# putting back clinical data
+clin = read.csv(gf_fname)
+my_ids = gf$MRN
+merged = mergeOnClosestDate(merged, clin, my_ids)
+```
+
+# NV vs ADHD
+
+Let's get a  baseline results here (Biowulf):
+
+```{r}
+phen_vars = c('FSIQ',
+              # CPT
+              'N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change',
+              # WISC
+              'Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB',
+              # WJ
+              'PS',
+              # Beery
+              'Standard.score',
+              #GeoSpatial
+              'SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              # DTI
+              colnames(merged)[grepl("^FA_", colnames(merged))],
+              colnames(merged)[grepl("^AD_", colnames(merged))],
+              colnames(merged)[grepl("^RD_", colnames(merged))],
+              colnames(merged)[grepl("^MO_", colnames(merged))],
+              colnames(merged)[grepl("^lh_", colnames(merged))],
+              colnames(merged)[grepl("^rh_", colnames(merged))],
+              colnames(merged)[grepl("^Left", colnames(merged))],
+              colnames(merged)[grepl("^Right", colnames(merged))],
+              colnames(merged)[grepl("^CC_", colnames(merged))]
+)
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels = c('NV', 'ADHD'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(proc.time() - ptm)
+print(m1)
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+# note that this value below is an approximation. When we run the classSummary
+# function it takes the probabilities of each class into consideration, which
+# can be more reliable?
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+
+Test accuracy: .66
+Kappa: .23
+Test AUC: .61
+
+Now we select the variables differently, based on our top (p < .01) NV vs ADHD descriptive.
+
+```{r}
+phen_vars = c('Standard.score','hit_RT_SE_ISI_change','PS','FA_right_slf','Air_Quality','physical_envronment',
+              'FA_right_ifo','MO_right_ifo','rh_superiortemporal_area','Fam_Income','Pub_School','FA_right_cst',
+              'Raw.score..SSB','lh_transversetemporal_area','lh_lingual_thickness','RD_right_slf','Raw.score..SSF',
+              'lh_caudalmiddlefrontal_area','FA_right_ilf','variability_of_SE','rh_superiorparietal_area',
+              'hit_RT_ISI_change','rh_WhiteSurfArea_area','N_perservations','FA_left_cst','rh_lingual_thickness',
+              'lh_parsopercularis_area','MO_left_ifo','rh_fusiform_area','rh_caudalmiddlefrontal_volume')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels = c('NV', 'ADHD'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(proc.time() - ptm)
+print(m1)
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+# note that this value below is an approximation. When we run the classSummary
+# function it takes the probabilities of each class into consideration, which
+# can be more reliable?
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+Test accuracy: .71
+Kappa: .36
+Test AUC: .67
+
+
+And just for completeness, we run the best at p < .05:
+
+```{r}
+phen_vars = c('Standard.score','hit_RT_SE_ISI_change','PS','FA_right_slf','Air_Quality','physical_envronment',
+              'FA_right_ifo','MO_right_ifo','rh_superiortemporal_area','Fam_Income','Pub_School','FA_right_cst',
+              'Raw.score..SSB','lh_transversetemporal_area','lh_lingual_thickness','RD_right_slf','Raw.score..SSF',
+              'lh_caudalmiddlefrontal_area','FA_right_ilf','variability_of_SE','rh_superiorparietal_area',
+              'hit_RT_ISI_change','rh_WhiteSurfArea_area','N_perservations','FA_left_cst','rh_lingual_thickness',
+              'lh_parsopercularis_area','MO_left_ifo','rh_fusiform_area','rh_caudalmiddlefrontal_volume',
+              'lh_transversetemporal_volume','social_environment','lh_supramarginal_area',
+              'lh_caudalmiddlefrontal_volume','rh_superiortemporal_volume','rhCorticalWhiteMatterVol',
+              'lh_parsopercularis_volume','rh_precuneus_area','rh_middletemporal_area','FA_left_ifo',
+              'lh_WhiteSurfArea_area','rh_caudalmiddlefrontal_area','RD_right_ifo','lh_superiorparietal_area',
+              'EstimatedTotalIntraCranialVol','rh_cuneus_area','CorticalWhiteMatterVol','BrainSegVol',
+              'SupraTentorialVol','FA_right_unc','rh_supramarginal_area','lh_medialorbitofrontal_area',
+              'BrainSegVolNotVent','BrainSegVolNotVentSurf','MO_right_ilf','SupraTentorialVolNotVent',
+              'Left.VentralDC','SupraTentorialVolNotVentVox','lh_rostralanteriorcingulate_area',
+              'lhCorticalWhiteMatterVol','SES','rh_posteriorcingulate_thickness','lh_lateralorbitofrontal_area',
+              'rh_lateraloccipital_thickness','rh_lateralorbitofrontal_area','MO_right_slf',
+              'lh_rostralanteriorcingulate_volume','RD_right_cst','RD_right_ilf','rh_middletemporal_volume',
+              'rh_medialorbitofrontal_area','lh_parahippocampal_area','lh_supramarginal_volume','Right.VentralDC',
+              'Left.Amygdala','rh_isthmuscingulate_area','Left.Thalamus.Proper','rh_postcentral_area',
+              'Food_Index','Right.vessel','lh_precuneus_area','lh_cuneus_thickness','MO_left_ilf','FA_cc',
+              'rh_bankssts_volume','MO_left_slf','FA_left_unc','Brain.Stem','Pop_BPL','lh_postcentral_area',
+              'rh_medialorbitofrontal_thickness','lh_temporalpole_area')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels = c('NV', 'ADHD'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(proc.time() - ptm)
+print(m1)
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+# note that this value below is an approximation. When we run the classSummary
+# function it takes the probabilities of each class into consideration, which
+# can be more reliable?
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+Test accuracy: .77 
+Kappa: .51
+Test AUC: .74
+
+
+# Inattention 3 group outcome
+
+We do a similar analysis for the 3 group inattention outcome. Starting with baseline:
+
+```{r}
+phen_vars = c('FSIQ',
+              # CPT
+              'N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change',
+              # WISC
+              'Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB',
+              # WJ
+              'PS',
+              # Beery
+              'Standard.score',
+              #GeoSpatial
+              'SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              # DTI
+              colnames(merged)[grepl("^FA_", colnames(merged))],
+              colnames(merged)[grepl("^AD_", colnames(merged))],
+              colnames(merged)[grepl("^RD_", colnames(merged))],
+              colnames(merged)[grepl("^MO_", colnames(merged))],
+              colnames(merged)[grepl("^lh_", colnames(merged))],
+              colnames(merged)[grepl("^rh_", colnames(merged))],
+              colnames(merged)[grepl("^Left", colnames(merged))],
+              colnames(merged)[grepl("^Right", colnames(merged))],
+              colnames(merged)[grepl("^CC_", colnames(merged))]
+)
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+    filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = multiClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'Mean_ROC')
+print(proc.time() - ptm)
+print(m1)
+print(getTrainPerf(m1))
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+print(multiclass.roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+
+Test accuracy: .47
+Kappa:.13
+Test AUC: .57
+
+Then, we do a similar thing, but with variables at p < .01:
+
+```{r}
+phen_vars = c('Standard.score','PS','hit_RT_SE_ISI_change','lh_middletemporal_thickness',
+              'rh_inferiorparietal_thickness','Raw.score..SSB','rh_supramarginal_thickness','Air_Quality',
+              'physical_envronment','Fam_Income','Raw.score..SSF','lh_fusiform_thickness',
+              'lh_middletemporal_volume','lh_supramarginal_thickness','FA_right_slf','variability_of_SE',
+              'MO_right_ifo')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+    filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = multiClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'Mean_ROC')
+print(proc.time() - ptm)
+print(m1)
+print(getTrainPerf(m1))
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+print(multiclass.roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+
+Test accuracy: .55
+Kappa: .28
+Test AUC: .66
+
+And finally, with variables at p < .05:
+
+```{r}
+phen_vars = c('Standard.score','PS','hit_RT_SE_ISI_change','lh_middletemporal_thickness',
+              'rh_inferiorparietal_thickness','Raw.score..SSB','rh_supramarginal_thickness','Air_Quality',
+              'physical_envronment','Fam_Income','Raw.score..SSF','lh_fusiform_thickness',
+              'lh_middletemporal_volume','lh_supramarginal_thickness','FA_right_slf','variability_of_SE',
+              'MO_right_ifo','FA_right_cst','lh_superiortemporal_volume','rh_middletemporal_thickness',
+              'lh_caudalmiddlefrontal_area','lh_postcentral_thickness','Pub_School','lh_entorhinal_thickness',
+              'rh_fusiform_area','lh_lingual_thickness','BrainSegVol.to.eTIV','rh_bankssts_thickness',
+              'hit_RT_ISI_change','lh_caudalmiddlefrontal_volume','lh_fusiform_volume','rh_middletemporal_volume',
+              'RD_right_slf','FA_right_ifo','rh_posteriorcingulate_thickness','N_perservations',
+              'rh_caudalmiddlefrontal_volume','FA_left_cst','RD_left_slf','lh_parahippocampal_area',
+              'rh_caudalmiddlefrontal_thickness','lh_precentral_volume','lh_MeanThickness_thickness',
+              'rh_caudalanteriorcingulate_area','rh_pericalcarine_thickness','rh_bankssts_volume','AD_left_slf',
+              'lh_transversetemporal_area','N_of_omissions','SurfaceHoles','rhSurfaceHoles','MO_left_ifo',
+              'lh_superiortemporal_thickness','rh_fusiform_volume','lh_inferiorparietal_thickness',
+              'lhSurfaceHoles','social_environment')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$inatt3_named
+y = factor(y, levels=c('low', 'medium', 'high'))
+
+myseed=1234
+cpuDiff=0
+tuneLength=10
+mymod='AdaBoost.M1'
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+nzv = nearZeroVar(filtXtrain)
+print(nzv)
+if (length(nzv) > 0) {
+    filtXtrain = filtXtrain[, -nzv]
+}
+correlations = cor(filtXtrain, use='na.or.complete')
+
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  noncorrXtrain = filtXtrain[, -highCorr]
+  noncorrXtest = filtXtest[, -highCorr]
+} else {
+  noncorrXtrain = filtXtrain
+  noncorrXtest = filtXtest
+}
+
+library(pROC)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'best'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = multiClassSummary,
+                         classProbs = TRUE)
+
+ptm <- proc.time()
+m1 <- train(noncorrXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'Mean_ROC')
+print(proc.time() - ptm)
+print(m1)
+print(getTrainPerf(m1))
+pred = predict(m1, noncorrXtest)
+print(postResample(pred, ytest))
+print(multiclass.roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+Test accuracy: .60
+Kappa: .35
+Test AUC: .65
+
+OK, so it is clear that (at least with this seed) by using a univariate filter we can get an improvement in results. This is an approach we can use iteratively within the cross validation folds. We just need to code it.
+
+
+
+

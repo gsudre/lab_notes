@@ -1,0 +1,247 @@
+---
+title: "DTI univariate selection"
+output: html_notebook
+---
+
+Let's try some univariate selection with DTI.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+           tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 |
+           tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+)
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels = c('NV', 'ADHD'))
+```
+
+Let's get some baseline results before we start filtering:
+
+```{r}
+myseed = 1234
+tuneLength = 10
+cpuDiff = 1
+mymod = 'rf'
+library(pROC)
+library(Hmisc)
+
+set.seed(myseed)
+split <- createDataPartition(y, p = .8, list = FALSE)
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale', 'knnImpute'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+
+set.seed(myseed)
+index <- createMultiFolds(ytrain, k = 5, times = 5)
+
+library(doMC)
+ncpus <- detectBatchCPUs()
+njobs <- ncpus - cpuDiff
+registerDoMC(njobs)
+selFunc = 'oneSE'  # maybe try oneSE and tolerance as well?
+
+set.seed(myseed)
+fullCtrl <- trainControl(method = "repeatedcv",
+                         index = index,
+                         search='grid',
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+m1 <- train(filtXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(getTrainPerf(m1))
+pred = predict(m1, filtXtest)
+print(postResample(pred, ytest))
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+These were very poor results, considering that our dumb classifier would get `r max(table(ytrain))/length(ytrain)`. If we add a 95% confidence interval, we're up to `r binconf(x=max(table(ytrain)), n=length(ytrain), alpha=.05)[3]`.
+
+Now, let's use the pre-defined good variables, from the descriptives table:
+
+```{r}
+phen_vars = c('FA_right_slf',
+              'FA_right_ifo','MO_right_ifo','FA_right_cst',
+              'RD_right_slf',
+              'FA_right_ilf',
+              'FA_left_cst',
+              'MO_left_ifo',
+              'FA_left_ifo',
+              'RD_right_ifo',
+              'FA_right_unc',
+              'MO_right_ilf',
+              'MO_right_slf',
+              'RD_right_cst','RD_right_ilf','MO_left_ilf','FA_cc',
+              'MO_left_slf','FA_left_unc')
+keep_me = sapply(phen_vars, function(d) which(colnames(merged) == d))
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y, levels = c('NV', 'ADHD'))
+
+Xtrain <- X[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale', 'knnImpute'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+
+m1 <- train(filtXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(getTrainPerf(m1))
+pred = predict(m1, filtXtest)
+print(postResample(pred, ytest))
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+Not that much better... we can play with it a bit more, like using the covariates, trying different models, or different cleaning strategies. But first, let me check that within subject differences thing.
+
+```{r}
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+)
+X = merged[, phen_vars]
+
+var_set = c("^FA_", "^AD_", "^RD_", "^MO_")
+X2 = X
+for (v in var_set) {
+  cols = grepl(v, colnames(X))
+  tmp = scale(t(X[,cols]))
+  X2[, cols] = t(tmp)
+}
+```
+
+```{r}
+Xtrain <- X2[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X2[-split, ]
+ytest = y[-split]
+
+pp = preProcess(Xtrain, method=c('YeoJohnson', 'center', 'scale', 'knnImpute'))
+filtXtrain = predict(pp, Xtrain)
+filtXtest = predict(pp, Xtest)
+
+m1 <- train(filtXtrain, ytrain,
+            method = mymod,
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+print(getTrainPerf(m1))
+pred = predict(m1, filtXtest)
+print(postResample(pred, ytest))
+print(roc(as.numeric(ytest), as.numeric(pred)))
+```
+
+Not great. Let's go back to our filters. 
+
+```{r}
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged))),
+              which(grepl("^MO_", colnames(merged)))
+)
+X = merged[, phen_vars]
+
+# let's work with residuals
+get_needed_residuals = function(y, fm_str, cutoff) {
+  fm = as.formula(fm_str)
+  fit = lm(fm)
+  # selecting which covariates to use
+  fm = "y ~ "
+  for (r in 2:dim(summary(fit)$coefficients)[1]) {
+    if (summary(fit)$coefficients[r, 4] < cutoff) {
+      cname = rownames(summary(fit)$coefficients)[r]
+      cname = gsub("SEXMale", "SEX", cname)
+      fm = sprintf('%s + %s', fm, cname)
+    }
+  }
+  # don't do anything if no variables were significant
+  if (fm == 'y ~ ') {
+    return(y)
+  } else {
+    idx = !is.na(y)
+    opt_fit = lm(as.formula(fm))
+    y[idx] = opt_fit$residuals
+    return(opt_fit$residuals)
+  }
+}
+
+X = merged[, phen_vars]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+
+X_resid = sapply(X, get_needed_residuals, 'y ~ merged$age_at_scan + I(merged$age_at_scan^2) + merged$SEX', .1)
+X_resid = as.data.frame(X_resid)
+
+Xtrain <- X_resid[ split, ]
+ytrain <- y[ split ]
+Xtest  <- X_resid[-split, ]
+ytest = y[-split]
+
+# now we can remove correlated and non-informative variables
+nzv = nearZeroVar(Xtrain)
+print(nzv)
+if (length(nzv) > 0) {
+  Xtrain = Xtrain[, -nzv]
+}
+correlations = cor(Xtrain, use='na.or.complete')
+# library(corrplot)
+# corrplot(correlations, order = "hclust")
+highCorr = findCorrelation(correlations, cutoff=.75)
+print(length(highCorr))
+if (length(highCorr) > 0) {
+  Xtrain = Xtrain[, -highCorr]
+} else {
+  Xtrain = Xtrain
+}
+
+# only evaluate variables with p-value < .05
+pvals = sapply(Xtrain, function(d) t.test(d ~ ytrain)$p.value)
+Xtrain = Xtrain[pvals <= .05]
+
+keep_me = sapply(colnames(Xtrain), function(d) which(colnames(Xtest) == d))
+Xtest = Xtest[, keep_me]
+
+m1 <- train(Xtrain, ytrain,
+            method = 'AdaBoost.M1',
+            trControl = fullCtrl,
+            tuneLength = tuneLength,
+            metric = 'ROC')
+m1
+```
+
+
+
+
+

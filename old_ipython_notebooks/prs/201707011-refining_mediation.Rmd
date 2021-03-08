@@ -1,0 +1,363 @@
+---
+title: "Using QC and age groups"
+output: html_notebook
+---
+
+Let's see what happens, especially with DTI, as we restrict by QC and age groups:
+
+```{r}
+gf = read.csv('~/data/prs/clinical_06192017.csv')
+gf = gf[gf$ADHD_current_yes_no!='exclude',]
+pgc = read.csv('~/data/prs/PRS2017_original_clump_default.csv')
+df = merge(gf, pgc)
+# remove duplicated MRNs
+df = df[!duplicated(df$MRN),]
+```
+
+```{r}
+library(mediation)
+run_mediation = function(data, X, M, Y, nboot=100, short=T) {
+    data = data[!is.na(data[, M]), ]
+    data[, c(X, M)] = scale(data[, c(X, M)])
+    data = as.data.frame(data)
+    
+    fm = as.formula(sprintf('%s ~ %s', M, X))
+    fy = as.formula(sprintf('%s ~ %s + %s', Y, X, M))
+    model.M <- lm(fm, data=data)
+    model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+    results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=nboot, boot.ci.type='bca')
+    if (short) {
+      res = c(results$mediator, results$nobs, results$tau.coef, results$tau.p, results$d.avg, results$d.avg.p,
+              results$z.avg, results$z.avg.p, results$n.avg, results$n.avg.p)
+      names(res) = c('M', 'nobs', 'tot', 'tot_p', 'acme', 'acme_p', 'ade', 'ade_p', 'prop', 'prop_p')
+      return(res)
+    } else {
+      return(results)
+    }
+}
+```
+
+Let's see make a few plots to decide on thresholds:
+
+```{r}
+dti = read.csv('~/data/prs/dti_07062017.csv')
+tracts = merge(df, dti, by='MRN')
+par(mfrow=c(3, 3))
+hist(tracts$age, breaks=20)
+hist(tracts$numVolumes, breaks=20)
+hist(tracts$norm.rot, breaks=20)
+hist(tracts$norm.trans, breaks=20)
+hist(tracts$mean_fa, breaks=20)
+hist(tracts$mean_ad, breaks=20)
+hist(tracts$mean_rd, breaks=20)
+```
+
+Let's look at all DTI again, but without the bad data based on histograms:
+
+```{r}
+rm_me = tracts$numVolumes < 60 | tracts$norm.rot > .003 | tracts$norm.trans > .3 | tracts$mean_fa < .3 | tracts$mean_ad < .97 | tracts$mean_rd < .5
+dti_tracts = tracts[!rm_me, ]
+
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleaned.csv', row.names=F)
+```
+
+Now, let's make it even more stringent, restricting noise within phenotype:
+
+```{r}
+for (j in 56:ncol(dti_tracts)) {
+  upper = mean(dti_tracts[, j], na.rm=T) + 2*sd(dti_tracts[, j], na.rm=T)
+  lower = mean(dti_tracts[, j], na.rm=T) - 2*sd(dti_tracts[, j], na.rm=T)
+  idx = which(dti_tracts[, j] < lower | dti_tracts[, j] > upper)
+  dti_tracts[idx, j] = NA
+}
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleanedWithinTract2SD.csv', row.names=F)
+```
+
+Finally, let's see how this looks just for restricted age ranges:
+
+```{r}
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts[dti_tracts$age_at_scan < 21, ], 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleanedWithinTract2SD_AgeSE21.csv', row.names=F)
+```
+
+```{r}
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts[dti_tracts$age_at_scan < 18, ], 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleanedWithinTract2SD_AgeSE18.csv', row.names=F)
+```
+
+```{r}
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts[dti_tracts$age_at_scan < 16, ], 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleanedWithinTract2SD_AgeSE16.csv', row.names=F)
+```
+
+```{r}
+res = c()
+for (m in colnames(dti_tracts)[56:ncol(dti_tracts)]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts[dti_tracts$age_at_scan < 12, ], 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_histogramCleanedWithinTract2SD_AgeSE12.csv', row.names=F)
+```
+
+None of these look good... let's see what SPSS does with this cleaned dataset:
+
+```{r}
+write.csv(dti_tracts, row.names=F, file='/Volumes/Shaw/prs_mediation/spss_dti_cleanedHistogram_within2SD.csv')
+```
+
+Now we'll make the mediation function a bit fancier:
+
+```{r}
+library(mediation)
+run_mediation = function(data, X, M, Y, nboot=100, short=T) {
+    data = data[!is.na(data[, M]), ]
+    data[, c(X, M)] = scale(data[, c(X, M)])
+    data = as.data.frame(data)
+    # just removing the "exclude" factor
+    data$DX = factor(data$ADHD_current_yes_no)
+    Y = 'DX'
+    
+    fm = as.formula(sprintf('%s ~ %s + Sex + age', M, X))
+    fy = as.formula(sprintf('%s ~ %s + %s + Sex + age', Y, X, M))
+    model.M <- lm(fm, data=data)
+    model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+    results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=nboot, boot.ci.type='bca')
+    fit = lm(as.formula(sprintf('%s ~ %s + Sex + age', X, Y)), data=data)
+    fit2 = lm(as.formula(sprintf('%s ~ %s + Sex + age', M, Y)), data=data)
+    if (short) {
+      mycoef = which(rownames(summary(model.M)$coefficients) == X)
+      tstat.M <- summary(model.M)$coefficients[mycoef, 3]
+      pval.M <- summary(model.M)$coefficients[mycoef, 4]
+      mycoef = which(rownames(summary(fit)$coefficients) == 'DXyes')
+      tstat <- summary(fit)$coefficients[mycoef, 3]
+      pval <- summary(fit)$coefficients[mycoef, 4]
+      mycoef = which(rownames(summary(fit2)$coefficients) == 'DXyes')
+      tstat2 <- summary(fit2)$coefficients[mycoef, 3]
+      pval2 <- summary(fit2)$coefficients[mycoef, 4]
+      res = c(results$mediator, results$nobs, results$tau.coef, results$tau.p, results$d.avg, results$d.avg.p,
+              results$z.avg, results$z.avg.p, results$n.avg, results$n.avg.p, tstat.M, pval.M, tstat, pval, tstat2, pval2)
+      names(res) = c('M', 'nobs', 'tot', 'tot_p', 'acme', 'acme_p', 'ade', 'ade_p', 'prop', 'prop_p',
+                     'XtoM', 'XtoM_p', 'XtoYnoM', 'XtoYnoM_p', 'MtoYnoX', 'MtoYnoX_p')
+      return(res)
+    } else {
+      return(results)
+    }
+}
+```
+
+Now we need to make sure the age is the actual age_at_scan, and re-clean everything:
+
+```{r}
+rm_me = tracts$numVolumes < 60 | tracts$norm.rot > .003 | tracts$norm.trans > .3 | tracts$mean_fa < .3 | tracts$mean_ad < .97 | tracts$mean_rd < .5
+dti_tracts = tracts[!rm_me, ]
+dti_tracts$age = dti_tracts$age_at_scan
+phen_vars = c(which(grepl("^FA_", colnames(dti_tracts))),
+              which(grepl("^AD_", colnames(dti_tracts))),
+              which(grepl("^RD_", colnames(dti_tracts))),
+              which(grepl("^MO_", colnames(dti_tracts))))
+for (j in phen_vars) {
+  upper = mean(dti_tracts[, j], na.rm=T) + 2*sd(dti_tracts[, j], na.rm=T)
+  lower = mean(dti_tracts[, j], na.rm=T) - 2*sd(dti_tracts[, j], na.rm=T)
+  idx = which(dti_tracts[, j] < lower | dti_tracts[, j] > upper)
+  dti_tracts[idx, j] = NA
+}
+res = c()
+for (m in colnames(dti_tracts)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(dti_tracts, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_DTI_DX_PlusSexPlusAge_histogramCleanedWithinTract2SD.csv', row.names=F)
+```
+
+# Structural
+
+Let's incorporate some of the structural QC as well:
+
+```{r}
+struct = read.csv('~/data/prs/struct_07112017.csv')
+rois = merge(df, struct, by='MRN')
+keep_me = which(rois$avg_freesurfer_score < 2.5 & rois$MPRAGE_QC <= 2)
+struct_rois = rois[keep_me, ]
+
+phen_vars = c(which(grepl("^lh_", colnames(struct_rois))),
+              which(grepl("^rh_", colnames(struct_rois))),
+              250:311)
+for (j in phen_vars) {
+  upper = mean(struct_rois[, j], na.rm=T) + 2*sd(struct_rois[, j], na.rm=T)
+  lower = mean(struct_rois[, j], na.rm=T) - 2*sd(struct_rois[, j], na.rm=T)
+  idx = which(struct_rois[, j] < lower | struct_rois[, j] > upper)
+  struct_rois[idx, j] = NA
+}
+res = c()
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_ROIs_DX_PlusSexPlusAge_histogramCleanedWithinTract2SD.csv', row.names=F)
+
+```
+
+Let's make the function even more flexible, so that we can change the covariates as we go and correct for overall brain measures:
+
+```{r}
+library(mediation)
+run_mediation = function(data, X, M, Y, covars, nboot=100, short=T) {
+    data = data[!is.na(data[, M]), ]
+    data[, c(X, M)] = scale(data[, c(X, M)])
+    data = as.data.frame(data)
+    # just removing the "exclude" factor
+    data$DX = factor(data$ADHD_current_yes_no)
+    Y = 'DX'
+    
+    fm = as.formula(sprintf('%s ~ %s + %s', M, X, covars))
+    fy = as.formula(sprintf('%s ~ %s + %s + %s', Y, X, M, covars))
+    model.M <- lm(fm, data=data)
+    model.Y <- glm(fy, data=data, family=binomial(link='logit'))
+    results <- mediate(model.M, model.Y, treat=X, mediator=M, boot=T, sims=nboot, boot.ci.type='bca')
+    fit = lm(as.formula(sprintf('%s ~ %s + %s', X, Y, covars)), data=data)
+    fit2 = lm(as.formula(sprintf('%s ~ %s + %s', M, Y, covars)), data=data)
+    if (short) {
+      mycoef = which(rownames(summary(model.M)$coefficients) == X)
+      tstat.M <- summary(model.M)$coefficients[mycoef, 3]
+      pval.M <- summary(model.M)$coefficients[mycoef, 4]
+      mycoef = which(rownames(summary(fit)$coefficients) == 'DXyes')
+      tstat <- summary(fit)$coefficients[mycoef, 3]
+      pval <- summary(fit)$coefficients[mycoef, 4]
+      mycoef = which(rownames(summary(fit2)$coefficients) == 'DXyes')
+      tstat2 <- summary(fit2)$coefficients[mycoef, 3]
+      pval2 <- summary(fit2)$coefficients[mycoef, 4]
+      res = c(results$mediator, results$nobs, results$tau.coef, results$tau.p, results$d.avg, results$d.avg.p,
+              results$z.avg, results$z.avg.p, results$n.avg, results$n.avg.p, tstat.M, pval.M, tstat, pval, tstat2, pval2)
+      names(res) = c('M', 'nobs', 'tot', 'tot_p', 'acme', 'acme_p', 'ade', 'ade_p', 'prop', 'prop_p',
+                     'XtoM', 'XtoM_p', 'XtoYnoM', 'XtoYnoM_p', 'MtoYnoX', 'MtoYnoX_p')
+      return(res)
+    } else {
+      return(results)
+    }
+}
+```
+
+Now we have to do this by overall structure type:
+
+```{r}
+struct = read.csv('~/data/prs/struct_07112017.csv')
+rois = merge(df, struct, by='MRN')
+keep_me = which(rois$avg_freesurfer_score < 2.5 & rois$MPRAGE_QC <= 2)
+struct_rois = rois[keep_me, ]
+
+phen_vars = c(which(grepl("^lh_", colnames(struct_rois))),
+              which(grepl("^rh_", colnames(struct_rois))),
+              250:311)
+for (j in phen_vars) {
+  upper = mean(struct_rois[, j], na.rm=T) + 2*sd(struct_rois[, j], na.rm=T)
+  lower = mean(struct_rois[, j], na.rm=T) - 2*sd(struct_rois[, j], na.rm=T)
+  idx = which(struct_rois[, j] < lower | struct_rois[, j] > upper)
+  struct_rois[idx, j] = NA
+}
+res = c()
+phen_vars = which(grepl("lh_[a-z]*_thickness", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + lh_MeanThickness_thickness'))
+}
+phen_vars = which(grepl("rh_[a-z]*_thickness", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + rh_MeanThickness_thickness'))
+}
+phen_vars = which(grepl("_volume$", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + EstimatedTotalIntraCranialVol'))
+}
+phen_vars = which(grepl("lh_[a-z]*_area", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + lh_WhiteSurfArea_area'))
+}
+phen_vars = which(grepl("rh_[a-z]*_area", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + rh_WhiteSurfArea_area'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_ROIs_DX_PlusSexPlusAgePlusTotal_histogramCleanedWithinTract2SD.csv', row.names=F)
+```
+
+Let's run just the kids now:
+
+```{r}
+struct = read.csv('~/data/prs/struct_07112017.csv')
+rois = merge(df, struct, by='MRN')
+keep_me = which(rois$avg_freesurfer_score < 2.5 & rois$MPRAGE_QC <= 2)
+struct_rois = rois[keep_me, ]
+
+phen_vars = c(which(grepl("^lh_", colnames(struct_rois))),
+              which(grepl("^rh_", colnames(struct_rois))),
+              250:311)
+for (j in phen_vars) {
+  upper = mean(struct_rois[, j], na.rm=T) + 2*sd(struct_rois[, j], na.rm=T)
+  lower = mean(struct_rois[, j], na.rm=T) - 2*sd(struct_rois[, j], na.rm=T)
+  idx = which(struct_rois[, j] < lower | struct_rois[, j] > upper)
+  struct_rois[idx, j] = NA
+}
+struct_rois = struct_rois[struct_rois$age <= 18, ]
+res = c()
+phen_vars = which(grepl("lh_[a-z]*_thickness", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + lh_MeanThickness_thickness'))
+}
+phen_vars = which(grepl("rh_[a-z]*_thickness", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + rh_MeanThickness_thickness'))
+}
+phen_vars = which(grepl("_volume$", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + EstimatedTotalIntraCranialVol'))
+}
+phen_vars = which(grepl("lh_[a-z]*_area", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + lh_WhiteSurfArea_area'))
+}
+phen_vars = which(grepl("rh_[a-z]*_area", colnames(struct_rois)))
+for (m in colnames(struct_rois)[phen_vars]) {
+  print(sprintf('Running %s', m))
+  res = rbind(res, run_mediation(struct_rois, 'PROFILES.0.3.profile', m, 'ADHD_current_yes_no', 'Sex + age + rh_WhiteSurfArea_area'))
+}
+write.csv(res, file='~/data/prs/results_PRSp3_ROIs_DX_PlusSexPlusAgePlusTotal_histogramCleanedWithinTract2SD_AgeSE18.csv', row.names=F)
+```
+
+* Other PRS scores?
+* ICA for resting state, using just the default mode one
+* Brain space?
+
+
+
+
+
+

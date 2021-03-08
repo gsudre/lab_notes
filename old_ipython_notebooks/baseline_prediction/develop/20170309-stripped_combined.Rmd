@@ -1,0 +1,237 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+title: "Combined analysis using stripped files"
+output: html_notebook
+---
+
+Now that we have some somewhat decent classification results using DTI and Geospatial data (and neuropsych somewhat), we can check whether combining data form he different domains helps the overall accuracy. Let's do it the simple way first, jus merging the datasets, but then we can try some facier stuff, such as classifier emsembles, and adding data by either imputation of subjects, or using classifiers that can handle it.
+
+We start merging everything, and then get rid of NAs in the end:
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+
+gf = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mbeery), nrow(mbeery)-sum(rm_me)))
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mcpt), nrow(mcpt)-sum(rm_me)))
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(miq), nrow(miq)-sum(rm_me)))
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mwisc), nrow(mwisc)-sum(rm_me)))
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d tests', nrow(mwj), nrow(mwj)-sum(rm_me)))
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+merged = merge(mwj, mbeery, by='MRN')
+merged = merge(merged, miq, by='MRN')
+merged = merge(merged, mwisc, by='MRN')
+merged = merge(merged, mcpt, by='MRN')
+```
+
+Now we add in the DTI data, then finally geospatial:
+
+```{r}
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+print(sprintf('Reducing from %d to %d scans', nrow(tract_data), nrow(tract_data)-sum(rm_me)))
+tract_data = tract_data[!rm_me, ]
+my_ids = intersect(gf$MRN, tract_data$MRN)
+mdti = mergeOnClosestDate(gf, tract_data, my_ids)
+rm_me = abs(mdti$dateX.minus.dateY.months) > 12
+print(sprintf('Reducing from %d to %d scans', nrow(mdti), nrow(mdti)-sum(rm_me)))
+mdti = mdti[!rm_me, ]
+```
+
+```{r}
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+mgeo = merge(gf, geo_data, by='MRN')
+# some variables are being read as numeric...
+mgeo$Home_Price = as.numeric(mgeo$Home_Price)
+mgeo$Fam_Income = as.numeric(mgeo$Fam_Income)
+mgeo$Crime_Rate = as.numeric(mgeo$Crime_Rate)
+```
+
+Now we merge across domains:
+
+```{r}
+merged = merge(merged, mdti, by='MRN')
+merged = merge(merged, mgeo, by='MRN')
+```
+
+```{r}
+phen_vars = c('FSIQ',
+              # CPT
+              'N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change',
+              # WISC
+              'Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB',
+              # WJ
+              'PS',
+              # Beery
+              'Standard.score',
+              #GeoSpatial
+              'SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              # DTI
+              colnames(merged)[grepl("^FA_", colnames(merged))],
+              colnames(merged)[grepl("^AD_", colnames(merged))],
+              colnames(merged)[grepl("^RD_", colnames(merged))],
+              colnames(merged)[grepl("^MO_", colnames(merged))]
+              )
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+y = merged$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+Before we do some ML, we need to clean up the NAs. For now, I'll just remove the subjects:
+
+```{r}
+rm_me = rowSums(is.na(X)) > 0
+X = X[!rm_me, ]
+y = y[!rm_me]
+```
+
+At this point we go from 129 to only 118 subjects. Our upper sealing would be DTI, with only 200 subjects. Not sure how good our results will be, but let's see:
+
+```{r}
+# ldata = X
+# groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_combinedNoNA_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'))
+
+do_metrics_plots(root_fname)
+```
+
+Not really encouraging... a bit all over the place. It would need some more filtering, or at least a better tunning of parameters.
+
+Let's also try to keep the NAs across domains, and impute the data at training. Note that this will increase even the number of subjects within neuropsych, because before I only kept subjects that had all tests.
+
+```{r}
+my_ids = gf$MRN
+mbeery2 = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery2$dateX.minus.dateY.months) > 12
+mbeery2[which(rm_me), (ncol(gf) + 1):ncol(mbeery2)] = NA
+mbeery2$dateClinical.minus.dateBeery.months = mbeery2$dateX.minus.dateY.months
+mbeery2$dateX.minus.dateY.months = NULL
+
+mcpt2 = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt2$dateX.minus.dateY.months) > 12
+mcpt2[which(rm_me), (ncol(gf) + 1):ncol(mcpt2)] = NA
+mcpt2$dateClinical.minus.dateCPT.months = mcpt2$dateX.minus.dateY.months
+mcpt2$dateX.minus.dateY.months = NULL
+
+miq2 = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq2$dateX.minus.dateY.months) > 12
+miq2[which(rm_me), (ncol(gf) + 1):ncol(miq2)] = NA
+miq2$dateClinical.minus.dateIQ.months = miq2$dateX.minus.dateY.months
+miq2$dateX.minus.dateY.months = NULL
+
+mwisc2 = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc2$dateX.minus.dateY.months) > 12
+mwisc2[which(rm_me), (ncol(gf) + 1):ncol(mwisc2)] = NA
+mwisc2$dateClinical.minus.dateWISC.months = mwisc2$dateX.minus.dateY.months
+mwisc2$dateX.minus.dateY.months = NULL
+
+mwj2 = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj2$dateX.minus.dateY.months) > 12
+mwj2[which(rm_me), (ncol(gf) + 1):ncol(mwj2)] = NA
+mwj2$dateClinical.minus.dateWJ.months = mwj2$dateX.minus.dateY.months
+mwj2$dateX.minus.dateY.months = NULL
+
+merged2 = merge(mwj2, mbeery2, by='MRN')
+merged2 = merge(merged2, miq2, by='MRN')
+merged2 = merge(merged2, mwisc2, by='MRN')
+merged2 = merge(merged2, mcpt2, by='MRN')
+```
+
+```{r}
+merged2 = merge(merged2, mdti, by='MRN', all.x=T)
+merged2 = merge(merged2, mgeo, by='MRN', all.x=T)
+```
+```{r}
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged2) == v))
+}
+X = merged2[, keep_me]
+y = merged2$DX_BASELINE
+y[y != 'NV'] = 'ADHD'
+y = factor(y)
+```
+
+```{r}
+# ldata = X
+# groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_combinedMedianImpute_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+#runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'), default_preproc=c('center', 'scale', 'medianImpute'))
+
+do_metrics_plots(root_fname)
+```
+
+bagImpute and knnImpute crashed. There might be some tweaking needed to make them work, but I think we have other approaches for now to try first.
+
+Well, it improves by a bit, so that's nice. But still nothing to write home about. Does further processing of the data help?
+
+```{r}
+# ldata = X
+# groups = y
+root_fname = '~/data/baseline_prediction/results/stripped_combinedNZVYJMedianImpute_NVvsADHD'
+# save(ldata, groups, file=sprintf('%s.RData', root_fname), compress=T)
+
+# #runInCluster(root_fname, train_test_ratio=.8, cpuDiff=2, nsplits=30, nrepeatcv=5, run_models=c('rndForest', 'lr', 'xgb'), default_preproc=c('nzv', 'YeoJohnson', 'center', 'scale', 'medianImpute'))
+# 
+do_metrics_plots(root_fname)
+```
+
+The normalizations didn't affect random forest by a bit...

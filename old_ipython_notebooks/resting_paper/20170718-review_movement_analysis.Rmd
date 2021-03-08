@@ -1,0 +1,114 @@
+---
+title: "Review movement analysis"
+output: html_notebook
+---
+
+Herer's the comment:
+
+_2. Although the authors have paid attention to the possible effects of head movement of the subjects and excluded data with excessive head movements, I would still like to see a more explicit confirmation that (possible) differences in the amount of head movement could not explain the results, i.e. the differences in the identified networks could not be due to differences in the amount of head movement in the different subject groups. The authors could test e.g. whether there is a correlation between the symptoms of inattention and total head movement in fMRI and the pre/post head position displacement in MEG._
+
+#fMRI 
+
+As the reviewer suggested, let's check if the amount of movement (in the used TRs) differs among groups, or if it correlates with SX:
+
+```{r}
+gf = read.csv('~/data/fmri/gf.csv')
+idx = gf$used==1
+table(gf[idx,]$group)
+```
+```{r}
+t.test(gf[idx & gf$group=='NV',]$mvmt, gf[idx & gf$group=='remission',]$mvmt)
+t.test(gf[idx & gf$group=='NV',]$mvmt, gf[idx & gf$group=='persistent',]$mvmt)
+t.test(gf[idx & gf$group=='persistent',]$mvmt, gf[idx & gf$group=='remission',]$mvmt)
+```
+
+```{r}
+cor.test(gf[idx,]$mvmt, gf[idx,]$inatt)
+cor.test(gf[idx,]$mvmt, gf[idx,]$hi)
+adhdOnly = idx & gf$group!='NV'
+cor.test(gf[adhdOnly,]$mvmt, gf[adhdOnly,]$inatt)
+cor.test(gf[adhdOnly,]$mvmt, gf[adhdOnly,]$hi)
+```
+
+OK, nothing to worry about in the fMRI side. But let's do an ANOVA as well, just in case:
+
+```{r}
+fit = lm(gf[idx,]$mvmt ~ gf[idx,]$group)
+summary(aov(fit))
+```
+
+# MEG
+
+For MEG we'll do a similar analysis, but looking at the delta in head positions between end and begin:
+
+```{r}
+gf = read.csv('~/data/meg/gf.csv')
+idx = gf$used==1
+table(gf[idx,]$group)
+```
+```{r}
+t.test(gf[idx & gf$group=='NV',]$delta_movement, gf[idx & gf$group=='remission',]$delta_movement)
+t.test(gf[idx & gf$group=='NV',]$delta_movement, gf[idx & gf$group=='persistent',]$delta_movement)
+t.test(gf[idx & gf$group=='persistent',]$delta_movement, gf[idx & gf$group=='remission',]$delta_movement)
+```
+
+```{r}
+cor.test(gf[idx,]$delta_movement, gf[idx,]$inatt)
+cor.test(gf[idx,]$delta_movement, gf[idx,]$hi)
+adhdOnly = idx & gf$group!='NV'
+cor.test(gf[adhdOnly,]$delta_movement, gf[adhdOnly,]$inatt)
+cor.test(gf[adhdOnly,]$delta_movement, gf[adhdOnly,]$hi)
+```
+
+All good here as well. But we run an ANOVA just in case too:
+
+```{r}
+fit = lm(gf[idx,]$delta_movement ~ gf[idx,]$group)
+summary(aov(fit))
+```
+
+
+# Recalculating some variables using nonparemetric methods
+
+## fMRI
+
+```{r}
+gf = read.csv('~/data/fmri/gf.csv')
+idx = gf$used==1
+kruskal.test(gf[idx,]$trs_used ~ gf[idx,]$group)
+pairwise.wilcox.test(gf[idx,]$trs_used, gf[idx,]$group, p.adjust.method = 'none')
+cor.test(gf[idx & gf$group!='NV',]$trs_used, gf[idx & gf$group!='NV',]$inatt, method='spearman')
+cor.test(gf[idx & gf$group!='NV',]$trs_used, gf[idx & gf$group!='NV',]$hi, method='spearman')
+total = gf[idx & gf$group!='NV',]$inatt + gf[idx & gf$group!='NV',]$hi
+cor.test(gf[idx & gf$group!='NV',]$trs_used, total, method='spearman')
+kruskal.test(gf[idx,]$mvmt ~ gf[idx,]$group)
+pairwise.wilcox.test(gf[idx,]$mvmt, gf[idx,]$group, p.adjust.method = 'none')
+cor.test(gf[idx & gf$group!='NV',]$mvmt, gf[idx & gf$group!='NV',]$inatt, method='spearman')
+cor.test(gf[idx & gf$group!='NV',]$mvmt, gf[idx & gf$group!='NV',]$hi, method='spearman')
+total = gf[idx & gf$group!='NV',]$inatt + gf[idx & gf$group!='NV',]$hi
+cor.test(gf[idx & gf$group!='NV',]$mvmt, total, method='spearman')
+```
+
+## MEG
+
+```{r}
+gf = read.csv('~/data/meg/gf.csv')
+idx = gf$used==1
+kruskal.test(gf[idx,]$good_secs ~ gf[idx,]$group)
+pairwise.wilcox.test(gf[idx,]$good_secs, gf[idx,]$group, p.adjust.method = 'none')
+cor.test(gf[idx & gf$group!='NV',]$good_secs, gf[idx & gf$group!='NV',]$inatt, method='spearman')
+cor.test(gf[idx & gf$group!='NV',]$good_secs, gf[idx & gf$group!='NV',]$hi, method='spearman')
+total = gf[idx & gf$group!='NV',]$inatt + gf[idx & gf$group!='NV',]$hi
+cor.test(gf[idx & gf$group!='NV',]$good_secs, total, method='spearman')
+kruskal.test(gf[idx,]$delta_movement ~ gf[idx,]$group)
+pairwise.wilcox.test(gf[idx,]$delta_movement, gf[idx,]$group, p.adjust.method = 'none')
+cor.test(gf[idx & gf$group!='NV',]$delta_movement, gf[idx & gf$group!='NV',]$inatt, method='spearman')
+cor.test(gf[idx & gf$group!='NV',]$delta_movement, gf[idx & gf$group!='NV',]$hi, method='spearman')
+total = gf[idx & gf$group!='NV',]$inatt + gf[idx & gf$group!='NV',]$hi
+cor.test(gf[idx & gf$group!='NV',]$delta_movement, total, method='spearman')
+```
+
+
+
+
+

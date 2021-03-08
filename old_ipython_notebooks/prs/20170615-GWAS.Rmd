@@ -1,0 +1,221 @@
+---
+title: "GWAS PRS"
+output: html_notebook
+---
+
+Philip asked me to run PRS for all our kids using the new PGC data that was just released, and then grab the kids that were in the GWAS study to see if the new PRS does a better job correlating with the brain growth variables used.
+
+```{r}
+gwas = read.csv('~/data/gwas_brain_growth/FINAL_pheno_file_nhgri_genr_combined_18Aug2016.csv')
+gwas = gwas[gwas$COHORT=='nhgri_nimh',]
+pgc = read.csv('~/data/gwas_brain_growth/PRSPRJansen.csv')
+```
+
+Let's combine the GWAS data and PRS to restrict the size of our matrices:
+
+```{r}
+df = merge(gwas, pgc, by.x='PERSON', by.y = 'MRN')
+# remove duplicated MRNs
+df = df[!duplicated(df$PERSON),]
+```
+
+Now we're ready to run our LME using family ID as the random term:
+
+```{r}
+library(nlme)
+dep_vars = which(grepl('^Nresids_prop', colnames(df)))
+indep_vars = which(grepl('^PROFILES', colnames(df)))
+res = as.data.frame(matrix(nrow=length(indep_vars), ncol=(2*length(dep_vars))))
+rownames(res) = colnames(df)[indep_vars]
+i = 1
+cnt = 1
+while (i < 2*length(dep_vars)) {
+  colnames(res)[i] = sprintf('%s_tstat', colnames(df)[dep_vars][cnt])
+  colnames(res)[i+1] = sprintf('%s_pval', colnames(df)[dep_vars][cnt])
+  i = i + 2
+  cnt = cnt + 1
+}
+for (i in 1:length(indep_vars)) {
+  for (j in 1:length(dep_vars)) {
+    y_str = colnames(df)[dep_vars][j]
+    x_str = colnames(df)[indep_vars][i]
+    fm_str = sprintf('%s ~ %s', y_str, x_str)
+    fit = try(lme(as.formula(fm_str), random=~1|FID, data=df, na.action = na.omit))
+    res[x_str, sprintf('%s_tstat', y_str)] = summary(fit)$tTable[x_str,'t-value']
+    res[x_str, sprintf('%s_pval', y_str)] = summary(fit)$tTable[x_str,'p-value']
+  }
+}
+```
+
+Now let's make a plot to see the evolution of p-values for each profile, one curve per brain region:
+
+```{r}
+plot_me = which(grepl('_pval$', colnames(res)))
+x = 1:nrow(res)
+for (i in plot_me) {
+  plot(x, res[, i], lty=3, ylab=colnames(res)[i], xlab='profiles')
+}
+write.csv(res, file='~/tmp/gwas_nhgri_prs.csv')
+```
+
+It doesn't look like there's much there.
+
+# GenR
+
+Can we find anything in the GenR sample? 
+
+```{r}
+genr_prs = read.csv('~/data/gwas_brain_growth/ADHD_new_GENR_SCORES_N5731_raw.csv')
+gwas = read.csv('~/data/gwas_brain_growth/GenR_pheno_file_n257_31July2016.csv')
+mgenr = merge(gwas, genr_prs, by.x='PERSON', by.y='IID')
+```
+
+Let's quickly grab all phenotypes Jeremy sent (which I quickly checked and they match what's in the FINAL file for NHGRI). Note that we're using those so that we can also do the analysis for the GenR sample.
+
+```{r}
+dsets = c('LLAT', 'cortex', 'bg', 'RLAT', 'wm', 'cerebellum')
+for (d in dsets) {
+  pheno = read.table(sprintf('~/data/gwas_brain_growth/phenos/genr.%s.rit', d))
+  mgenr = merge(mgenr, pheno[,2:3], by.x='PERSON', by.y=1)
+  colnames(mgenr)[ncol(mgenr)] = sprintf('pheno_%s', d)
+}
+```
+
+genR sample doesn't have family IDs, so we run the vanilla lm.
+
+```{r}
+dep_vars = which(grepl('^pheno_', colnames(mgenr)))
+indep_vars = which(grepl('^pT', colnames(mgenr)))
+res = as.data.frame(matrix(nrow=length(indep_vars), ncol=(2*length(dep_vars))))
+rownames(res) = colnames(mgenr)[indep_vars]
+i = 1
+cnt = 1
+while (i < 2*length(dep_vars)) {
+  colnames(res)[i] = sprintf('%s_tstat', colnames(mgenr)[dep_vars][cnt])
+  colnames(res)[i+1] = sprintf('%s_pval', colnames(mgenr)[dep_vars][cnt])
+  i = i + 2
+  cnt = cnt + 1
+}
+for (i in 1:length(indep_vars)) {
+  for (j in 1:length(dep_vars)) {
+    y_str = colnames(mgenr)[dep_vars][j]
+    x_str = colnames(mgenr)[indep_vars][i]
+    fm_str = sprintf('%s ~ %s', y_str, x_str)
+    fit = try(lm(as.formula(fm_str), data=mgenr, na.action = na.omit))
+    res[x_str, sprintf('%s_tstat', y_str)] = summary(fit)$coefficients[x_str,'t value']
+    res[x_str, sprintf('%s_pval', y_str)] = summary(fit)$coefficients[x_str,'Pr(>|t|)']
+  }
+}
+plot_me = which(grepl('_pval$', colnames(res)))
+x = 1:nrow(res)
+for (i in plot_me) {
+  plot(x, res[, i], lty=3, ylab=colnames(res)[i], xlab='profiles')
+}
+write.csv(res, file='~/tmp/gwas_genr_prs.csv')
+```
+
+# Combined
+
+Here's what we get using the combined sample:
+
+```{r}
+genr_dep_vars = which(grepl('^pheno_', colnames(mgenr)))
+genr_indep_vars = which(grepl('^pT', colnames(mgenr)))
+genr_cols = c(genr_indep_vars, genr_dep_vars, which(grepl('^PERSON', colnames(mgenr))))
+nhgri_dep_vars = which(grepl('^Nresids_prop', colnames(df)))
+nhgri_indep_vars = which(grepl('^PROFILES', colnames(df)))
+nhgri_cols = c(nhgri_indep_vars, nhgri_dep_vars, which(grepl('^FID', colnames(df))))
+# we'll assume all GenR individuals come from different families so we can run LME
+tmp = mgenr[, genr_cols]
+colnames(tmp) = colnames(df)[nhgri_cols]
+tmp$FID = tmp$FID + 90000  # just to make sure it doesn't interfere with nhgri IDs
+combined = rbind(tmp, df[, nhgri_cols])
+```
+
+Now we run the same LME as before, but using all 715 people:
+
+```{r}
+library(nlme)
+dep_vars = which(grepl('^Nresids_prop', colnames(combined)))
+indep_vars = which(grepl('^PROFILES', colnames(combined)))
+res = as.data.frame(matrix(nrow=length(indep_vars), ncol=(2*length(dep_vars))))
+rownames(res) = colnames(combined)[indep_vars]
+i = 1
+cnt = 1
+while (i < 2*length(dep_vars)) {
+  colnames(res)[i] = sprintf('%s_tstat', colnames(combined)[dep_vars][cnt])
+  colnames(res)[i+1] = sprintf('%s_pval', colnames(combined)[dep_vars][cnt])
+  i = i + 2
+  cnt = cnt + 1
+}
+for (i in 1:length(indep_vars)) {
+  for (j in 1:length(dep_vars)) {
+    y_str = colnames(combined)[dep_vars][j]
+    x_str = colnames(combined)[indep_vars][i]
+    fm_str = sprintf('%s ~ %s', y_str, x_str)
+    fit = try(lme(as.formula(fm_str), random=~1|FID, data=combined, na.action = na.omit))
+    res[x_str, sprintf('%s_tstat', y_str)] = summary(fit)$tTable[x_str,'t-value']
+    res[x_str, sprintf('%s_pval', y_str)] = summary(fit)$tTable[x_str,'p-value']
+  }
+}
+plot_me = which(grepl('_pval$', colnames(res)))
+x = 1:nrow(res)
+for (i in plot_me) {
+  plot(x, res[, i], lty=3, ylab=colnames(res)[i], xlab='profiles')
+}
+write.csv(res, file='~/tmp/gwas_combined_prs.csv')
+```
+
+Does it change if we z-score PRS within sample first?
+
+```{r}
+genr_dep_vars = which(grepl('^pheno_', colnames(mgenr)))
+genr_indep_vars = which(grepl('^pT', colnames(mgenr)))
+genr_cols = c(genr_indep_vars, genr_dep_vars)
+tmp = as.data.frame(scale(mgenr[, genr_cols]))
+tmp = cbind(tmp, mgenr$PERSON)
+tmp[, ncol(tmp)] = tmp[, ncol(tmp)] + 90000  # just to make sure it doesn't interfere with nhgri IDs
+nhgri_dep_vars = which(grepl('^Nresids_prop', colnames(df)))
+nhgri_indep_vars = which(grepl('^PROFILES', colnames(df)))
+nhgri_cols = c(nhgri_indep_vars, nhgri_dep_vars, which(grepl('^FID', colnames(df))))
+# we'll assume all GenR individuals come from different families so we can run LME
+colnames(tmp) = colnames(df)[nhgri_cols]
+combined = rbind(tmp, scale(df[, nhgri_cols]))
+```
+
+```{r}
+library(nlme)
+dep_vars = which(grepl('^Nresids_prop', colnames(combined)))
+indep_vars = which(grepl('^PROFILES', colnames(combined)))
+res = as.data.frame(matrix(nrow=length(indep_vars), ncol=(2*length(dep_vars))))
+rownames(res) = colnames(combined)[indep_vars]
+i = 1
+cnt = 1
+while (i < 2*length(dep_vars)) {
+  colnames(res)[i] = sprintf('%s_tstat', colnames(combined)[dep_vars][cnt])
+  colnames(res)[i+1] = sprintf('%s_pval', colnames(combined)[dep_vars][cnt])
+  i = i + 2
+  cnt = cnt + 1
+}
+for (i in 1:length(indep_vars)) {
+  for (j in 1:length(dep_vars)) {
+    y_str = colnames(combined)[dep_vars][j]
+    x_str = colnames(combined)[indep_vars][i]
+    fm_str = sprintf('%s ~ %s', y_str, x_str)
+    fit = try(lme(as.formula(fm_str), random=~1|FID, data=combined, na.action = na.omit))
+    res[x_str, sprintf('%s_tstat', y_str)] = summary(fit)$tTable[x_str,'t-value']
+    res[x_str, sprintf('%s_pval', y_str)] = summary(fit)$tTable[x_str,'p-value']
+  }
+}
+plot_me = which(grepl('_pval$', colnames(res)))
+x = 1:nrow(res)
+for (i in plot_me) {
+  plot(x, res[, i], lty=3, ylab=colnames(res)[i], xlab='profiles')
+}
+write.csv(res, file='~/tmp/gwas_combined_zprs.csv')
+```
+
+
+
+
+

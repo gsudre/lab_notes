@@ -1,0 +1,835 @@
+---
+title: "Baseline descriptives"
+output: html_notebook
+---
+
+As the first stage for the baseline paper, let's do the predictives to show what the data looks like in a univariate way. We will focus on baseline data predicting 4 different things:
+
+* DX_baseline
+* SX_baseline
+* Latent class
+* Annualized symptom change (possibly adjusted for baseline SX: Phili says dimensional outcome (final-initial/initial symptoms)/age diff)
+
+And we can do that for every possible dataset we have. Shouldn't be that bad, as most of the scripts are done already. 
+
+For the brain, let's do ROI/tract based, but also whole brain. Then we add the other datasets (geospatial, neuropsych, and eventually genetics). As usual, the most annoying step will be plotting everything, but hey-hoo.  
+
+For now, let's focus on the classes first (i.e. DX and outcome), which are a bit easier and we don't have to worry about whether we threshold symptoms, or whether to include NVs in regressions. We can always to them later.
+
+```{r}
+nvVSadhd_test = function(pheno, df, fm_str) {
+  library(compute.es)
+  library(lsr)
+  
+  # some struct variables are bad
+  if (sum(pheno, na.rm=T) == 0) {
+    tstat = NA
+    pval = NA
+    d = NA
+  } else {
+    if (! is.na(fm_str)) {
+      cutoff = .1
+      fm = as.formula(fm_str)
+      
+      fit = lm(fm)
+      # selecting which covariates to use
+      fm = "pheno ~ "
+      # we do this before we add the y variable
+      for (r in 2:nrow(summary(fit)$coefficients)) {
+        if (summary(fit)$coefficients[r, 4] < cutoff) {
+          cname = rownames(summary(fit)$coefficients)[r]
+          cname = gsub("SEXMale", "SEX", cname)
+          fm = sprintf('%s + %s', fm, cname)
+        }
+      }
+      fm = sprintf('%s + y', fm)
+    } else { fm = 'pheno ~ y' }
+    
+    print(fm)
+    y = as.character(df$DX_BASELINE)
+    y[y != 'NV'] = 'ADHD'
+    y = factor(y, levels=c('ADHD', 'NV'))
+    
+    opt_fit = lm(as.formula(fm))
+    mycoef = which(rownames(summary(opt_fit)$coefficients) == 'yNV')
+    tstat <- summary(opt_fit)$coefficients[mycoef, 3]
+    pval <- summary(opt_fit)$coefficients[mycoef, 4]
+    d = tes(tstat, table(y)[1], table(y)[2], verbose=FALSE)$d
+  }
+  res = c(tstat, pval, d)
+  names(res) = c('baseDX_tstat', 'baseDX_pval', 'baseDX_d')
+  return(res)
+}
+
+outcome_test = function(pheno, df, fm_str) {
+  library(lsr)
+  if (sum(pheno, na.rm = T) == 0) {
+    fstat = NA
+    pval = NA
+    fstat2 = NA
+    pval2 = NA
+  } else {
+    # remove NAs
+    keep_me = !is.na(pheno)
+    pheno = pheno[keep_me]
+    df = df[keep_me, ]
+    if (! is.na(fm_str)) {
+      cutoff = .1
+      # NOTE that in R, the covariates you want to remove in aov() should come first in the equation!
+      fm = as.formula(fm_str)
+      
+      fit = lm(fm)
+      # selecting which covariates to use
+      fm = "pheno ~ "
+      # we do this before we add the y variable
+      for (r in 2:nrow(summary(fit)$coefficients)) {
+        if (summary(fit)$coefficients[r, 4] < cutoff) {
+          cname = rownames(summary(fit)$coefficients)[r]
+          cname = gsub("SEXMale", "SEX", cname)
+          fm = sprintf('%s + %s', fm, cname)
+        }
+      }
+      fm = sprintf('%s + y', fm)
+    }
+    else { fm = 'pheno ~ y' }
+    
+    print(fm)
+    y = df$inatt3_named
+    opt_fit = aov(lm(as.formula(fm)))
+    mycoef = nrow(summary(opt_fit)[[1]]) - 1 # last row is residuals
+    fstat <- summary(opt_fit)[[1]][mycoef, 4]
+    pval <- summary(opt_fit)[[1]][mycoef, 5]
+    es = etaSquared(opt_fit)[1]
+    
+    y = df$HI3_named
+    opt_fit = aov(lm(as.formula(fm)))
+    mycoef = nrow(summary(opt_fit)[[1]]) - 1 # last row is residuals
+    fstat2 <- summary(opt_fit)[[1]][mycoef, 4]
+    pval2 <- summary(opt_fit)[[1]][mycoef, 5]
+    es2 = etaSquared(opt_fit)[1]
+  }
+  
+  res = c(fstat, pval, es, fstat2, pval2, es2)
+  names(res) = c('inattOutcome_Fstat', 'inattOutcome_pval', 'inattOutcome_es',
+                 'hiOutcome_Fstat', 'hiOutcome_pval', 'hiOutcome_es')
+  return(res)
+}
+
+
+outcomePairwise_test = function(pheno, df, get_resid=T) {
+  library(lsr)
+  if (sum(pheno, na.rm = T) == 0) {
+    fstat = NA
+    pval = NA
+    fstat2 = NA
+    pval2 = NA
+  } else {
+    if (get_resid) {
+      pheno = get_needed_residuals(pheno, 'y ~ df$age + I(df$age^2) + df$SEX', .1, df)
+    }    
+    y = df$inatt3_named
+    fit = pairwise.t.test(pheno, y, p.adjust.method = 'none')
+    mypairs = list(c('low', 'high'), c('medium', 'high'), c('medium', 'low'))
+    ps = c()
+    ds = c()
+    pnames = c()
+    dnames = c()
+    for (pa in mypairs) {
+      myp = fit$p.value[pa[1], pa[2]]
+      ps = c(ps, myp)
+      ds = c(ds, pes(myp, table(y)[pa[1]], table(y)[pa[2]], verbose=FALSE)$d)
+      pnames = c(pnames, sprintf('inatt_%sVS%s_pval', pa[1], pa[2]))
+      dnames = c(dnames, sprintf('inatt_%sVS%s_es', pa[1], pa[2]))
+    }
+    
+    y = df$HI3_named
+    fit = pairwise.t.test(pheno, y, p.adjust.method = 'none')
+    mypairs = list(c('rapid_improvers', 'never_affected'), c('severe', 'never_affected'),
+                   c('severe', 'rapid_improvers'))
+    ps2 = c()
+    ds2 = c()
+    pnames2 = c()
+    dnames2 = c()
+    for (pa in mypairs) {
+      myp = fit$p.value[pa[1], pa[2]]
+      ps2 = c(ps2, myp)
+      ds2 = c(ds2, pes(myp, table(y)[pa[1]], table(y)[pa[2]], verbose=FALSE)$d)
+      pnames2 = c(pnames2, sprintf('HI_%sVS%s_pval', pa[1], pa[2]))
+      dnames2 = c(dnames2, sprintf('HI_%sVS%s_es', pa[1], pa[2]))
+    }
+  }
+  
+  res = c(ps, ds, ps2, ds2)
+  names(res) = c(pnames, dnames, pnames2, dnames2)
+  return(res)
+}
+
+
+symptom_test = function(pheno, df, fm_str) {
+  library(compute.es)
+  library(lsr)
+  # some struct variables are bad
+  if (sum(pheno, na.rm=T) == 0) {
+    tstat = NA
+    pval = NA
+    d = NA
+  } else {
+    if (! is.na(fm_str)) {
+      cutoff = .1
+      fm = as.formula(fm_str)
+      
+      fit = lm(fm)
+      # selecting which covariates to use
+      fm = "pheno ~ "
+      # we do this before we add the y variable
+      for (r in 2:nrow(summary(fit)$coefficients)) {
+        if (summary(fit)$coefficients[r, 4] < cutoff) {
+          cname = rownames(summary(fit)$coefficients)[r]
+          cname = gsub("SEXMale", "SEX", cname)
+          fm = sprintf('%s + %s', fm, cname)
+        }
+      }
+      fm = sprintf('%s + y', fm)
+    } else { fm = 'pheno ~ y' }
+    
+    y = df$SX_inatt
+    opt_fit = lm(as.formula(fm))
+    mycoef = which(rownames(summary(opt_fit)$coefficients) == 'y')
+    tstat <- summary(opt_fit)$coefficients[mycoef, 3]
+    pval <- summary(opt_fit)$coefficients[mycoef, 4]
+    d = res(cor.test(y, pheno)$estimate, n=length(pheno), verbose=F)$d
+    
+    y = df$SX_HI
+    opt_fit = lm(as.formula(fm))
+    mycoef = which(rownames(summary(opt_fit)$coefficients) == 'y')
+    tstat2 <- summary(opt_fit)$coefficients[mycoef, 3]
+    pval2 <- summary(opt_fit)$coefficients[mycoef, 4]
+    d2 = res(cor.test(y, pheno)$estimate, n=length(pheno), verbose=F)$d
+    
+    res = c(tstat, pval, d, tstat2, pval2, d2)
+    names(res) = c('inattSX_tstat', 'inattSX_pval', 'inattSX_d',
+                   'hiSX_tstat', 'hiSX_pval', 'hiSX_d')
+  }
+  return(res)
+}
+
+get_SX_slope = function (df, ids) {
+  inatt = c()
+  hi = c()
+  mrns = c()
+  for (s in ids) {
+    idx = df$MRN==s
+    # proceed if we have more than one observation in the data
+    if (sum(idx) >= 2) {
+      inatt = c(inatt, lm(SX_inatt ~ age, data=df[idx,])$coefficients[[2]])
+      hi = c(hi, lm(SX_HI ~ age, data=df[idx,])$coefficients[[2]])
+      mrns = c(mrns, s)
+    }
+  }
+  res = cbind(inatt, hi)
+  colnames(res) = c('inatt', 'hi')
+  rownames(res) = mrns
+  return(res)
+}
+
+sx_slope_test = function(pheno, df, fm_str, slopes) {
+  library(compute.es)
+  library(lsr)
+  # some struct variables are bad
+  if (sum(pheno, na.rm=T) == 0) {
+    tstat = NA
+    pval = NA
+    d = NA
+  } else {
+    if (! is.na(fm_str)) {
+      cutoff = .1
+      fm = as.formula(fm_str)
+      
+      fit = lm(fm)
+      # selecting which covariates to use
+      fm = "pheno ~ "
+      # we do this before we add the y variable
+      for (r in 2:nrow(summary(fit)$coefficients)) {
+        if (summary(fit)$coefficients[r, 4] < cutoff) {
+          cname = rownames(summary(fit)$coefficients)[r]
+          cname = gsub("SEXMale", "SEX", cname)
+          fm = sprintf('%s + %s', fm, cname)
+        }
+      }
+      fm = sprintf('%s + y', fm)
+    } else { fm = 'pheno ~ y' }
+    
+    y = slopes[,'inatt']
+    opt_fit = lm(as.formula(fm))
+    mycoef = which(rownames(summary(opt_fit)$coefficients) == 'y')
+    tstat <- summary(opt_fit)$coefficients[mycoef, 3]
+    pval <- summary(opt_fit)$coefficients[mycoef, 4]
+    d = res(cor.test(y, pheno)$estimate, n=length(pheno), verbose=F)$d
+    
+    y = slopes[,'hi']
+    opt_fit = lm(as.formula(fm))
+    mycoef = which(rownames(summary(opt_fit)$coefficients) == 'y')
+    tstat2 <- summary(opt_fit)$coefficients[mycoef, 3]
+    pval2 <- summary(opt_fit)$coefficients[mycoef, 4]
+    d2 = res(cor.test(y, pheno)$estimate, n=length(pheno), verbose=F)$d
+    
+    res = c(tstat, pval, d, tstat2, pval2, d2)
+    names(res) = c('inattSlope_tstat', 'inattSlope_pval', 'inattSlope_d',
+                   'hiSlope_tstat', 'hiSlope_pval', 'hiSlope_d')
+  }
+  return(res)
+}
+```
+
+# DTI
+## Tract-based
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+rm_me = (tract_data$fa_avg < .4 | tract_data$ad_avg < 1.18 | tract_data$rd_avg > .65 | tract_data$rd_avg < .5 |
+         tract_data$norm.trans > .45 | tract_data$norm.rot > .008 | tract_data$goodSlices < 45 | tract_data$goodSlices > 70)
+tract_data = tract_data[!rm_me, ]
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+phen_vars = c(which(grepl("^FA_", colnames(merged))),
+              which(grepl("^AD_", colnames(merged))),
+              which(grepl("^RD_", colnames(merged)))
+              # which(grepl("^MO_", colnames(merged)))
+              )
+X = merged[, phen_vars]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('DTI tracts: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+
+res = sapply(X, nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = sapply(X, outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res3 = sapply(X, symptom_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+slopes = get_SX_slope(gf, merged$MRN)
+res4 = sapply(X, sx_slope_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)', slopes)
+res5 = sapply(X, outcomePairwise_test, merged)
+write.csv(cbind(t(res), t(res2), t(res3), t(res4), t(res5)),
+          file='~/data/baseline_prediction/descriptives/dti_tracts.csv')
+```
+## Voxel-based
+
+### FA
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/fa_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, fa_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('FA voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+```{r}
+ijk = read.table('~/tmp/2021_fa.txt')
+ijk[, 4] = res[1, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res)[1]))
+ijk[, 4] = res[2, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res)[2]))
+ijk[, 4] = p.adjust(res[2,], method='fdr')
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s_FDR.txt',rownames(res)[2]))
+
+ijk[, 4] = res2[1, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res2)[1]))
+ijk[, 4] = res2[2, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res2)[2]))
+ijk[, 4] = p.adjust(res2[2,], method='fdr')
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s_FDR.txt',rownames(res2)[2]))
+ijk[, 4] = res2[3, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res2)[3]))
+ijk[, 4] = res2[4, ]
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s.txt',rownames(res2)[4]))
+ijk[, 4] = p.adjust(res2[4,], method='fdr')
+write.table(ijk, row.names=F, col.names=F, file=sprintf('~/data/baseline_prediction/descriptives/%s_FDR.txt',rownames(res2)[4]))
+```
+Then in bash:
+```
+m=RD
+cat baseDX_tstat.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp1 -overwrite -
+cat baseDX_pval.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp2 -overwrite -
+cat baseDX_pval_FDR.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp3 -overwrite -
+3dbucket -prefix DTI_${m}_baseDX.nii tmp*
+3drefit -sublabel 0 "tstat" -sublabel 1 "pval" -sublabel 2 "fdr" DTI_${m}_baseDX.nii 
+rm tmp*
+
+cat inattOutcome_Fstat.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp1 -overwrite -
+cat inattOutcome_pval.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp2 -overwrite -
+cat inattOutcome_pval_FDR.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp3 -overwrite -
+3dbucket -prefix DTI_${m}_inattOutcome.nii tmp*
+3drefit -sublabel 0 "tstat" -sublabel 1 "pval" -sublabel 2 "fdr" DTI_${m}_inattOutcome.nii
+rm tmp*
+
+cat hiOutcome_Fstat.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp1 -overwrite -
+cat hiOutcome_pval.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp2 -overwrite -
+cat hiOutcome_pval_FDR.txt | 3dUndump -master ~/data/baseline_prediction/dti/mean_fa_skeleton_mask.nii.gz -datum float -prefix tmp3 -overwrite -
+3dbucket -prefix DTI_${m}_hiOutcome.nii tmp*
+3drefit -sublabel 0 "tstat" -sublabel 1 "pval" -sublabel 2 "fdr" DTI_${m}_hiOutcome.nii
+rm tmp*
+
+```
+### AD
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/ad_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, ad_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('AD voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+
+### RD
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+tract_data = read.csv('~/data/baseline_prediction/stripped/dti.csv')
+load('~/data/baseline_prediction/dti/rd_voxelwise.RData')
+dti_vdata = cbind(tract_data$maskid, rd_data)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, tract_data$MRN)
+merged = mergeOnClosestDate(gf_base, tract_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+dti_base_vdata = merge(merged$maskid, dti_vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+
+X = dti_base_vdata[, 2:ncol(dti_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('RD voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+
+# Structural ROIs
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+merged = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+X = merged[, 33:302]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('Freesurfer ROIs: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+
+library(parallel)
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+write.csv(cbind(t(res), t(res2)), file='~/data/baseline_prediction/descriptives/freesurfer_rois.csv')
+```
+# Structural voxelwise
+
+## Area
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_area.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_area[,2:ncol(lh_area)],
+              rh_area[,2:ncol(rh_area)])
+rm(lh_area)
+rm(rh_area)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+mstruct = mstruct[keep_me, ]
+print(sprintf('Area voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+library(parallel)
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+
+```{r}
+res = rbind(res, p.adjust(res[2,], method='fdr'))
+rownames(res)[3] = 'base_DX_pval_FDR'
+res2 = rbind(res2, p.adjust(res2[2,], method='fdr'))
+res2 = rbind(res2, p.adjust(res2[4,], method='fdr'))
+rownames(res2)[5] = 'inattOutcome_pval_FDR'
+rownames(res2)[6] = 'hiOutcome_pval_FDR'
+write.csv(cbind(t(res), t(res2)), file='~/data/baseline_prediction/descriptives/thickness.csv', row.names=F)
+```
+## Thickness
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_thickness.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(struct_data$Mask.ID...Scan,
+              lh_thickness[,2:ncol(lh_thickness)],
+              rh_thickness[,2:ncol(rh_thickness)])
+rm(lh_thickness)
+rm(rh_thickness)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+struct_base_vdata = merge(mstruct$Mask.ID...Scan, vdata, by.x=1, by.y=1, all.y=F, all.x=T)
+rm(vdata)
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+mstruct = mstruct[keep_me, ]
+print(sprintf('Thickness voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+## Volume
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+load('~/data/baseline_prediction/struct_volume.rData')
+# the first column of lh and rh is an index variable
+vdata = cbind(volume_ids,
+              lh_volume[,2:ncol(lh_volume)],
+              rh_volume[,2:ncol(rh_volume)])
+rm(lh_volume)
+rm(rh_volume)
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+mstruct = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(mstruct$dateX.minus.dateY.months) > 12
+mstruct = mstruct[!rm_me, ]
+keep_me = c()
+keep_mstruct = c()
+for (i in 1:nrow(vdata)) {
+  if (vdata[i, 1] %in% mstruct$Mask.ID...Scan) {
+    keep_me = c(keep_me, i)
+    keep_mstruct = c(keep_mstruct, which(mstruct$Mask.ID...Scan == vdata[i, 1]))
+  }
+}
+struct_base_vdata = vdata[keep_me, ]
+mstruct = mstruct[keep_mstruct, ]
+rm(vdata)
+
+X = struct_base_vdata[, 2:ncol(struct_base_vdata)]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = mstruct$age <= 12
+X = X[keep_me, ]
+mstruct = mstruct[keep_me, ]
+print(sprintf('Volume voxels: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+cl <- makeCluster(6)
+res = parSapply(cl, X, nvVSadhd_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, X, outcome_test, mstruct, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+```
+
+# Neuropsych
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf = gf[gf$BASELINE=='BASELINE' & gf$age <= 12, ]
+
+beery_data = read.csv('~/data/baseline_prediction/stripped/beeryVMI.csv')
+my_ids = intersect(gf$MRN, beery_data$Medical.Record...MRN)
+mbeery = mergeOnClosestDate(gf, beery_data, my_ids, y.date='record.date.collected', y.id='Medical.Record...MRN')
+rm_me = abs(mbeery$dateX.minus.dateY.months) > 12
+mbeery = mbeery[!rm_me, ]
+mbeery$dateClinical.minus.dateBeery.months = mbeery$dateX.minus.dateY.months
+mbeery$dateX.minus.dateY.months = NULL
+
+cpt_data = read.csv('~/data/baseline_prediction/stripped/cpt.csv')
+my_ids = intersect(gf$MRN, cpt_data$MRN)
+mcpt = mergeOnClosestDate(gf, cpt_data, my_ids)
+rm_me = abs(mcpt$dateX.minus.dateY.months) > 12
+mcpt = mcpt[!rm_me, ]
+mcpt$dateClinical.minus.dateCPT.months = mcpt$dateX.minus.dateY.months
+mcpt$dateX.minus.dateY.months = NULL
+
+iq_data = read.csv('~/data/baseline_prediction/stripped/iq.csv')
+my_ids = intersect(gf$MRN, iq_data$Medical.Record...MRN)
+miq = mergeOnClosestDate(gf, iq_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(miq$dateX.minus.dateY.months) > 12
+miq = miq[!rm_me, ]
+miq$dateClinical.minus.dateIQ.months = miq$dateX.minus.dateY.months
+miq$dateX.minus.dateY.months = NULL
+
+wisc_data = read.csv('~/data/baseline_prediction/stripped/wisc.csv')
+my_ids = intersect(gf$MRN, wisc_data$Medical.Record...MRN)
+mwisc = mergeOnClosestDate(gf, wisc_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwisc$dateX.minus.dateY.months) > 12
+mwisc = mwisc[!rm_me, ]
+mwisc$dateClinical.minus.dateWISC.months = mwisc$dateX.minus.dateY.months
+mwisc$dateX.minus.dateY.months = NULL
+
+wj_data = read.csv('~/data/baseline_prediction/stripped/wj.csv')
+my_ids = intersect(gf$MRN, wj_data$Medical.Record...MRN)
+mwj = mergeOnClosestDate(gf, wj_data, my_ids, y.id='Medical.Record...MRN', y.date='record.date.collected')
+rm_me = abs(mwj$dateX.minus.dateY.months) > 12
+mwj = mwj[!rm_me, ]
+mwj$dateClinical.minus.dateWJ.months = mwj$dateX.minus.dateY.months
+mwj$dateX.minus.dateY.months = NULL
+
+res = nvVSadhd_test(miq$FSIQ, miq, NA)
+res2 = outcome_test(miq$FSIQ, miq, NA)
+res5 = outcomePairwise_test(miq$FSIQ, miq, F)
+
+phen_vars = c('N_of_omissions', 'N_commissions', 'hit_RT', 'hit_RT_SE', 'variability_of_SE', 'N_perservations',
+              'hit_RT_block_change', 'hit_RT_SE_block_change', 'hit_RT_ISI_change', 'hit_RT_SE_ISI_change')
+keep_me = sapply(phen_vars, function(d) which(colnames(mcpt) == d))
+X = mcpt[, keep_me]
+res = cbind(res, sapply(X, nvVSadhd_test, mcpt, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+colnames(res)[1] = 'FSIQ'
+res2 = cbind(res2, sapply(X, outcome_test, mcpt, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+colnames(res2)[1] = 'FSIQ'
+res5 = cbind(res5, sapply(X, outcomePairwise_test, mcpt))
+colnames(res5)[1] = 'FSIQ'
+
+phen_vars = c('Raw.score..DSF', 'Raw.score..DSB', 'Raw.score..SSF', 'Raw.score..SSB')
+keep_me = sapply(phen_vars, function(d) which(colnames(mwisc) == d))
+X = mwisc[, keep_me]
+res = cbind(res, sapply(X, nvVSadhd_test, mwisc, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+res2 = cbind(res2, sapply(X, outcome_test, mwisc, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+res5 = cbind(res5, sapply(X, outcomePairwise_test, mwisc))
+
+phen_vars = c('Raw.Score..VM', 'Raw.Score..DS')
+keep_me = sapply(phen_vars, function(d) which(colnames(mwj) == d))
+X = mwj[, keep_me]
+res = cbind(res, sapply(X, nvVSadhd_test, mwj, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+res2 = cbind(res2, sapply(X, outcome_test, mwj, 'pheno ~ df$age + df$SEX + I(df$age^2)'))
+res5 = cbind(res5, sapply(X, outcomePairwise_test, mwj))
+
+res = cbind(res, nvVSadhd_test(mwj$PS, mwj, NA))
+res2 = cbind(res2, outcome_test(mwj$PS, mwj, NA))
+res5 = cbind(res5, outcomePairwise_test(mwj$PS, mwj, F))
+colnames(res)[ncol(res)] = 'PS'
+colnames(res2)[ncol(res2)] = 'PS'
+colnames(res5)[ncol(res5)] = 'PS'
+res = cbind(res, nvVSadhd_test(mbeery$Standard.score, mbeery, NA))
+res2 = cbind(res2, outcome_test(mbeery$Standard.score, mbeery, NA))
+res5 = cbind(res5, outcomePairwise_test(mbeery$Standard.score, mbeery, F))
+colnames(res)[ncol(res)] = 'Beery_VM'
+colnames(res2)[ncol(res2)] = 'Beery_VM'
+colnames(res5)[ncol(res5)] = 'Beery_VM'
+
+write.csv(cbind(t(res), t(res2), t(res5)), file='~/data/baseline_prediction/descriptives/neuropsych.csv')
+```
+
+
+# Geospatial
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+geo_data = read.csv('~/data/baseline_prediction/stripped/geospatial.csv')
+merged = merge(gf_base, geo_data, by='MRN')
+# some variables are being read as numeric...
+merged$Home_Price = as.numeric(merged$Home_Price)
+merged$Fam_Income = as.numeric(merged$Fam_Income)
+merged$Crime_Rate = as.numeric(merged$Crime_Rate)
+phen_vars = c('SES', 'Home_Type', 'Home_Price', 'Fam_Income', 'Pop_BPL', 'Fam_BPL', 'Pub_School',
+              'Crime_Rate', 'Green_Space', 'Park_Access', 'Air_Quality', 'Obesity_Rate',
+              'Food_Index', 'Exercise_Access', 'Excessive_Drinking',
+              'poverty_education', 'social_environment', 'physical_health_environment', 
+              'physical_envronment')
+keep_me = c()
+for (v in phen_vars) {
+  keep_me = c(keep_me, which(colnames(merged) == v))
+}
+X = merged[, keep_me]
+print(sprintf('Geospatial: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+res = sapply(X, nvVSadhd_test, merged, 'pheno ~ df$age + df$SEX + I(df$age^2)')
+res2 = sapply(X, outcome_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+res3 = sapply(X, symptom_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+slopes = get_SX_slope(gf, merged$MRN)
+res4 = sapply(X, sx_slope_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)', slopes)
+res5 = sapply(X, outcomePairwise_test, merged)
+write.csv(cbind(t(res), t(res2), t(res3), t(res4), t(res5)),
+          file='~/data/baseline_prediction/descriptives/geospatial.csv')
+```
+# Resting state
+
+# Polygenic risk score
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+prs_data = read.csv('~/data/baseline_prediction/stripped/PRS2017_original_clump_default.csv')
+# # we don't need the extra BASELINE column
+# prs_data = prs_data[, -3]
+merged = merge(gf_base, prs_data, by='MRN')
+X = merged[, 4:ncol(merged)]
+print(sprintf('PRS: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+res = sapply(X, nvVSadhd_test, merged, 'pheno ~ df$age + df$SEX + I(df$age^2)')
+res2 = sapply(X, outcome_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+res3 = sapply(X, symptom_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+slopes = get_SX_slope(gf, merged$MRN)
+res4 = sapply(X, sx_slope_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)', slopes)
+res5 = sapply(X, outcomePairwise_test, merged, get_resid=T)
+write.csv(cbind(t(res), t(res2), t(res3), t(res4), t(res5)),
+          file='~/data/baseline_prediction/descriptives/prs2017.csv')
+```
+
+# Main lobar structures
+```{r}
+gf_fname = '~/data/baseline_prediction/stripped/clinical.csv'
+gf = read.csv(gf_fname)
+gf_base = gf[gf$BASELINE=='BASELINE', ]
+struct_data = read.csv('~/data/baseline_prediction/stripped/structural.csv')
+rm_me = (struct_data$mprage_score > 2)
+struct_data = struct_data[!rm_me, ]
+my_ids = intersect(gf_base$MRN, struct_data$MRN)
+merged = mergeOnClosestDate(gf_base, struct_data, my_ids)
+rm_me = abs(merged$dateX.minus.dateY.months) > 12
+merged = merged[!rm_me, ]
+X = merged[, 33:302]
+rm_me = colSums(is.na(X)) > 0
+X = X[, !rm_me]
+keep_me = merged$age <= 12
+X = X[keep_me, ]
+merged = merged[keep_me, ]
+print(sprintf('Freesurfer ROIs: %d datapoints, %d phenotypes', nrow(X), ncol(X)))
+
+regional = read.csv('~/data/baseline_prediction/REGIONAL_ANALYSES_FREESURFER.csv')
+lobar_regions = unique(regional$lobar)
+# for each region, add or average the columns corresponding to the ROIs
+areaLobar_data = c()
+hdr = c()
+volumeLobar_data = c()
+thicknessLobar_data = c()
+aparcLobar_data = c()
+aparc_hdr = c()
+for (s in lobar_regions) {
+  if (s != "") {
+    idx = which(regional$lobar == s)
+    area = 0
+    volume = 0
+    thickness = 0
+    aparc = 0
+    for (i in idx) {
+      cnt = 0
+      roi_name = sub('_thickness', '', regional[i, 1])
+      if (length(grep('rh_|lh_', roi_name)) > 0) {
+        var_name = quote(sprintf('%s_area', roi_name))
+        area = area + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_volume', roi_name))
+        volume = volume + X[, eval(var_name)]
+        var_name = quote(sprintf('%s_thickness', roi_name))
+        thickness = thickness + X[, eval(var_name)]
+        cnt = cnt + 1
+      }
+      else {
+        var_name = quote(roi_name)
+        aparc = aparc + X[, eval(var_name)]
+      }
+    }
+    if (sum(area) > 0) {
+      hdr = c(hdr, s)
+      areaLobar_data = cbind(areaLobar_data, area)
+      volumeLobar_data = cbind(volumeLobar_data, volume)
+      thicknessLobar_data = cbind(thicknessLobar_data, thickness / cnt)
+    }
+    else {
+      aparc_hdr = c(aparc_hdr, s)
+      aparcLobar_data = cbind(aparcLobar_data, aparc)
+    }
+  }
+}
+colnames(areaLobar_data) = hdr
+colnames(volumeLobar_data) = hdr
+colnames(thicknessLobar_data) = hdr
+colnames(aparcLobar_data) = aparc_hdr
+
+library(parallel)
+cl <- makeCluster(4)
+res = parSapply(cl,as.data.frame(areaLobar_data), nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, as.data.frame(areaLobar_data), outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+write.csv(cbind(t(res), t(res2)), file='~/data/baseline_prediction/descriptives/lobar_area.csv')
+res = parSapply(cl, as.data.frame(volumeLobar_data), nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, as.data.frame(volumeLobar_data), outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res3 = sapply(as.data.frame(volumeLobar_data), symptom_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)')
+slopes = get_SX_slope(gf, merged$MRN)
+res4 = sapply(as.data.frame(volumeLobar_data), sx_slope_test, merged, 'pheno ~ df$age + df$SEX +  + I(df$age^2)', slopes)
+res5 = sapply(as.data.frame(volumeLobar_data), outcomePairwise_test, merged)
+write.csv(cbind(t(res), t(res2), t(res3), t(res4), t(res5)),
+          file='~/data/baseline_prediction/descriptives/lobar_volume.csv')
+res = parSapply(cl, as.data.frame(thicknessLobar_data), nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, as.data.frame(thicknessLobar_data), outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+write.csv(cbind(t(res), t(res2)), file='~/data/baseline_prediction/descriptives/lobar_thickness.csv')
+res = parSapply(cl, as.data.frame(aparcLobar_data), nvVSadhd_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+res2 = parSapply(cl, as.data.frame(aparcLobar_data), outcome_test, merged, 'pheno ~ df$age + I(df$age^2) + df$SEX')
+stopCluster(cl)
+write.csv(cbind(t(res), t(res2)), file='~/data/baseline_prediction/descriptives/lobar_aparc.csv')
+
+```

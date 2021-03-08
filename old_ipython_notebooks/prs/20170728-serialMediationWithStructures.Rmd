@@ -1,0 +1,159 @@
+---
+title: "Trying serial modulation with structures"
+output: html_notebook
+---
+
+First thing is to check when QC starts becoming significant.
+
+```{r}
+gf = read.csv('~/data/prs/clinical_06192017.csv')
+gf = gf[gf$ADHD_current_yes_no!='exclude',]
+gf$ADHD_current_yes_no = factor(gf$ADHD_current_yes_no)
+pgc = read.csv('~/data/prs/PRS2017_original_clump_default.csv')
+df = merge(gf, pgc)
+# remove duplicated MRNs
+df = df[!duplicated(df$MRN),]
+
+struct = read.csv('~/data/prs/struct_07112017.csv')
+```
+
+Let's check how our QC variables look like:
+
+```{r}
+summary(struct[,5:10])  
+```
+
+Remember here that avg_freesurfer_score is an average of int and ext avg, removing NANs. We clearly should use a combination of MPRAGE_QC and avg_freesurfer_score. We'll replace some of the NAs later, especially in the Freesurfer case, but let's play with the current data first.
+
+We test if QC makes a difference for several different structures:
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2) + Sex + MPRAGE_QC', s)), data=mydata))$coefficients['MPRAGE_QC',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+Not good... without QC, 81% of variables are significant. Let's remove QC > 2.5.
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[mydata$MPRAGE_QC < 3, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + MPRAGE_QC', s)), data=mydata))$coefficients['MPRAGE_QC',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+Much better... if we remove the 2.5s?
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[mydata$MPRAGE_QC < 2.5, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + MPRAGE_QC', s)), data=mydata))$coefficients['MPRAGE_QC',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[mydata$MPRAGE_QC < 2, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + MPRAGE_QC', s)), data=mydata))$coefficients['MPRAGE_QC',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+That's not so bad anymore, especially as many of these variables are highly correlated. And we still have about 800 people. Let's do the same analysis for the Freesurfer variable.
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + avg_freesurfer_score', s)),
+                                          data=mydata))$coefficients['avg_freesurfer_score',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+Not good... without QC, 81% of variables are significant. Let's remove QC > 2.5.
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score < 3, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + avg_freesurfer_score', s)),
+                                          data=mydata))$coefficients['avg_freesurfer_score',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+Much better... if we remove the 2.5s?
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score < 2.5, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + avg_freesurfer_score', s)),
+                                          data=mydata))$coefficients['avg_freesurfer_score',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score <= 2, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + avg_freesurfer_score', s)),
+                                          data=mydata))$coefficients['avg_freesurfer_score',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score < 2, ]
+pvals = sapply(Ys, function(s) summary(lm(as.formula(sprintf('%s ~ AGE + I(AGE^2)  + Sex + avg_freesurfer_score', s)),
+                                          data=mydata))$coefficients['avg_freesurfer_score',4])
+sum(pvals < .05)/length(pvals)
+nrow(mydata)
+```
+
+We're in the same ballpark in terms of correlation as the MPRAGE QC. But how many people are left if we include both?
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score <= 2, ]
+mydata = mydata[mydata$MPRAGE_QC <= 2, ]
+nrow(mydata)
+```
+
+```{r}
+mydata = merge(df, struct, by='MRN')
+Ys = colnames(mydata)[42:ncol(mydata)]
+mydata = mydata[!is.na(mydata$avg_freesurfer_score),]
+mydata = mydata[mydata$avg_freesurfer_score <= 2, ]
+mydata = mydata[mydata$MPRAGE_QC < 2, ]
+nrow(mydata)
+```
+
+Let's see what we can get with that then.
+
+# Serial PRS analysis
+
+As Philip suggested, let's run it using ADHD_yes/no as Y first. This way we leverage everyone, regardless of SX. Also, note that we can potentially run a different PRS threshold, if .3 doesn't work quite well.
+
+** batch_model6.R **
+
+
+
+

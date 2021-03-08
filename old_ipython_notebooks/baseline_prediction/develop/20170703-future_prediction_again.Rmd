@@ -1,0 +1,227 @@
+---
+title: "Future prediction (again)"
+output: html_notebook
+---
+
+Let's focus on what we can predict in the future. We can go for:
+
+* persistent vs remission
+* binary symptoms
+* SX slope
+* actual SX
+
+Note that here I'm not making use of the latent classes, because they need to be recomputed now that I have revised the symptom counts while collecting the binary symptom data. I also removed one subject for whom we only had one clinical assessment. Finally, we do all of that only within the ADHD at baseline group, almost like simulating an environment where we diagnosed the person with ADHD, and then try to figure out the chances he/she will change.
+
+For binary symptoms and actual SX we could even add the baseline predictors to the mix to see what we get.
+
+```{r}
+source('~/ncr_notebooks/baseline_prediction/src/aux_functions.R')
+source('~/ncr_notebooks/baseline_prediction/src/load_raw_voting_data.R')
+library(caret)
+adhd_idx = gf_base$DX_BASELINE!='NV'
+```
+
+First let's figure out if the ADHD symptoms for the kid persisted or remitted in their last visit:
+
+```{r}
+out_group = c()
+for (s in gf_base[adhd_idx,]$MRN) {
+  idx = which(gf$MRN==s)
+  subj_sx = gf[idx, c('SX_inatt', 'SX_HI')]
+  last_age = sort(gf[idx,]$age, index.return=T, decreasing=T)
+  last_sx = subj_sx[last_age$ix[1], ]
+  if (last_age$x[1] > 18) {
+    # adult
+    if (last_sx$SX_inatt > 4 || last_sx$SX_HI > 4) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  } else {
+    # child
+    if (last_sx$SX_inatt > 5 || last_sx$SX_HI > 5) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  }
+}
+out_group = factor(out_group, levels=c('remission', 'persistent'))
+```
+
+Now we do some simple prediction using the entire data:
+
+```{r}
+methods = c('rf', 'svmRadial', 'kernelpls')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+for (dtype in c('prs', 'dti_tracts', 'struct_rois', 'geospatial', 'neuropsych')) {
+  print(sprintf('===== TRYING %s =====', dtype))
+  
+  eval(parse(text=sprintf('X = %s[adhd_idx, ]', dtype)))
+  y = out_group
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  index=createResample(y, ntimes)
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    set.seed(myseed)
+    my_control <- trainControl(
+      method="boot632",
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary,
+      sampling = "smote"
+    )
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+
+The results are not great. We could do this within symptom groups as well, so that remission is only based on HI, as inatt doesn't normally change:
+
+```{r}
+out_group = c()
+for (s in gf_base[adhd_idx,]$MRN) {
+  idx = which(gf$MRN==s)
+  subj_sx = gf[idx, c('SX_inatt', 'SX_HI')]
+  last_age = sort(gf[idx,]$age, index.return=T, decreasing=T)
+  last_sx = subj_sx[last_age$ix[1], ]
+  if (last_age$x[1] > 18) {
+    # adult
+    if (last_sx$SX_HI > 4) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  } else {
+    # child
+    if (last_sx$SX_HI > 5) {
+      out_group = c(out_group, 'persistent')
+    } else {
+      out_group = c(out_group, 'remission')
+    }
+  }
+}
+out_group = factor(out_group, levels=c('remission', 'persistent'))
+
+methods = c('rf', 'svmRadial', 'kernelpls')
+
+library(caret)
+library(doMC)
+ncpus <- 2 #detectBatchCPUs()
+registerDoMC(ncpus)
+
+ntimes = 50
+myseed = 1234
+tuneLength = 10
+cpuDiff = 0
+
+for (dtype in c('prs', 'dti_tracts', 'struct_rois', 'geospatial', 'neuropsych')) {
+  print(sprintf('===== TRYING %s =====', dtype))
+  
+  eval(parse(text=sprintf('X = %s[adhd_idx, ]', dtype)))
+  y = out_group
+  
+  # recoding SEX
+  dummies = dummyVars(~SEX, data=X)
+  X = cbind(X, predict(dummies, newdata=X))
+  X$SEX = NULL
+  
+  # removing anyone that is all NaNs for this dataset
+  rm_me = rowSums(is.na(X)) == ncol(X)
+  X = X[!rm_me,]
+  y = y[!rm_me]
+  
+  # do PCA but do not include age and sex variables in it
+  not_include = c(which(grepl("^SEX", colnames(X))), which(grepl("age", colnames(X))))
+  pp = preProcess(X[, -not_include], method=c('medianImpute', 'center', 'scale', 'pca'), thresh=.9)
+  nfeat = ncol(X)
+  Xfilt = predict(pp, X[, -not_include])
+  X = cbind(Xfilt, X[, not_include])
+  print(sprintf('Reduced from %d to %d features', nfeat, ncol(X)))
+  
+  index=createResample(y, ntimes)
+  
+  train_model = function(m) {
+    if (m %in% c('xgbLinear', 'xgbTree', 'avNNet')) {
+      ap = F
+    } else { ap = T }
+    set.seed(myseed)
+    my_control <- trainControl(
+      method="boot632",
+      savePredictions="final",
+      index=index,
+      allowParallel = ap,
+      classProbs = T,
+      summaryFunction = twoClassSummary,
+      sampling = "smote"
+    )
+    mymod = train(X, y, trControl=my_control, method=m, tuneLength=tuneLength,
+                  metric = 'ROC')
+    return(mymod)
+  }
+  
+  trained_models = lapply(methods, train_model)
+  
+  names(trained_models) = methods
+  resamps <- resamples(trained_models)
+  print(summary(resamps))
+}
+```
+
+These results are not terrible, and are somewhat comparable to that Frontiers combination paper. But I'd prefer if we're not overfitting the entire dataset.
+
+Now, we're still having issues with NAs, so we can try the LOOCV voting scheme we devised in the past. Maybe even put a SVM RFE in it. Basically, a modality only gets a vote if the subject has data there, which would avoid the NA issue. We either do that, or go for one of the Ada family classifiers (with RFE?) using the entire dataset, picking a seed. Then, do a blurb on the variability of the dataset, how a seed matters (but penalize all datasets differently), but choose some cross-validation scheme that minimizes the variability in the seed.
+
+Of course, imputation is always an option, but given that the most common scenario is a subject missing all variables of any given modality, I'm a bit unconfortable doing imputation based on other modalities. That, and using the median imputation is not great. 
+
+To be honest, I'd need to dive into how the Ada algorithms deal with NAs, because they might as well be doing something similarly nonsensical. 
+
+
+
+
+
+
+
+
+
