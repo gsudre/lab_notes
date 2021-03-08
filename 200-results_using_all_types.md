@@ -342,7 +342,7 @@ for (prs in prs_names) {
 
 save(dtePRS_acc_lnc, dtePRS_acc_pc, dtePRS_acc_pg,
      dtePRS_cau_lnc, dtePRS_cau_pc, dtePRS_cau_pg,
-     dtePRS_acc_all, dtePRS_cau_all,
+     dtePRS_acc_all, #dtePRS_cau_all,
      file='~/data/post_mortem/DTE_PRS_03082021.RData')
 ```
 
@@ -577,10 +577,22 @@ out_fname = '~/data/post_mortem/allDTE_upDown_overlap_results_03082021.csv'
 write.csv(all_res, file=out_fname, row.names=F)
 ```
 
+
+
+
+
+
+
+
+
+
+
+And now we go for PRS results:
+
 ```r
 library(GeneOverlap)
-load('~/data/post_mortem/DGE_PRS_03082021.RData')
-load('~/data/post_mortem/DGE_03022021.RData')
+load('~/data/post_mortem/DTE_PRS_03082021.RData')
+load('~/data/post_mortem/DTE_03082021.RData')
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
@@ -588,12 +600,12 @@ prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
 all_res = c()
 subtypes = list(all='all', pc='protein_coding', lnc='lncRNA', pg='pseudogene')
 for (st in c('all', 'pc', 'lnc', 'pg')) {
-    # res.dx = dge_cau[[subtypes[[st]]]]$res
-    res.dx = dge_acc[[subtypes[[st]]]]$res
+    # res.dx = dte_cau[[subtypes[[st]]]]$res
+    res.dx = dte_acc[[subtypes[[st]]]]$res
     for (p in prs_names) {
         cat(st, p, '\n')
-        # res_str = sprintf('res.prs = dgePRS_cau_%s[["%s"]]', st, p)
-        res_str = sprintf('res.prs = dgePRS_acc_%s[["%s"]]', st, p)
+        # res_str = sprintf('res.prs = dtePRS_cau_%s[["%s"]]', st, p)
+        res_str = sprintf('res.prs = dtePRS_acc_%s[["%s"]]', st, p)
         eval(parse(text=res_str))
 
         both_res = merge(as.data.frame(res.dx), as.data.frame(res.prs), by=0,
@@ -654,8 +666,8 @@ for (st in c('all', 'pc', 'lnc', 'pg')) {
 colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
                       'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
                       'pvalDirOnly')
-# out_fname = '~/data/post_mortem/allDGE_caudateUpDown_prs_overlap_results_03082021.csv'
-out_fname = '~/data/post_mortem/allDGE_accUpDown_prs_overlap_results_03082021.csv'
+# out_fname = '~/data/post_mortem/allDTE_caudateUpDown_prs_overlap_results_03082021.csv'
+out_fname = '~/data/post_mortem/allDTE_accUpDown_prs_overlap_results_03082021.csv'
 write.csv(all_res, file=out_fname, row.names=F)
 ```
 

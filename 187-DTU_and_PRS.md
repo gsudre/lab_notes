@@ -4,7 +4,7 @@ I'l repeat a similar analysis we ran for DTE and PRS, but this will take
 muuuuuch longer because that's how the DTU analysis goes.
 
 ```r
-run_DTU_PRS = function(count_matrix, tx_meta, data, subtype, prs, alpha) {
+run_DTU_PRS = function(count_matrix, tx_meta, data, subtype, prs, alpha, ncores=NA) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
     if (is.na(subtype)) {
         keep_me = rep(TRUE, nrow(count_matrix))
@@ -116,9 +116,16 @@ run_DTU_PRS = function(count_matrix, tx_meta, data, subtype, prs, alpha) {
 
     set.seed(42)
     system.time({
-        d <- dmPrecision(d, design = design)
-        d <- dmFit(d, design = design)
-        d <- dmTest(d, coef = prs)     
+        if (is.na(ncores)) {
+            d <- dmPrecision(d, design = design)
+            d <- dmFit(d, design = design)
+            d <- dmTest(d, coef = prs)
+        } else {
+            multicoreParam <- BiocParallel::MulticoreParam(workers = ncores)
+            d <- dmPrecision(d, design = design, BPPARAM=multicoreParam)
+            d <- dmFit(d, design = design, BPPARAM=multicoreParam)
+            d <- dmTest(d, coef = prs, BPPARAM=multicoreParam)
+        }
     })
     res.g = DRIMSeq::results(d)
 
@@ -248,23 +255,26 @@ We just decided to go without splitting by subtypes... since this takes forever
 to run, let's just run all:
 
 ```r
+ncores=31
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
                    function(x) sprintf('PRS%f', x))
 dtuPRS_acc = list()
 for (prs in prs_names) {
-    dtuPRS_acc[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05)
+    dtuPRS_acc[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05,
+                                    ncores=ncores)
 }
 
 dtuPRS_cau = list()
 for (prs in prs_names) {
-    dtuPRS_cau[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05)
+    dtuPRS_cau[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data, NA, prs, .05,
+                                    ncores=ncores)
 }
 
 save(dtuPRS_acc, dtuPRS_cau, file='~/data/post_mortem/DTU_PRS_03082021.RData')
 ```
 
-
+Maybe it will take less time now that I implemented the parallelization.
 
 
 

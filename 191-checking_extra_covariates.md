@@ -1177,7 +1177,7 @@ smallProportionSD <- function(d, filter = 0.1) {
         propSD < filter
 }
 
-run_DTU = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
+run_DTU = function(count_matrix, samples, tx_meta, subtype, alpha, ncores=NA) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
     if (is.na(subtype)) {
         keep_me = rep(TRUE, nrow(count_matrix))
@@ -1278,9 +1278,17 @@ run_DTU = function(count_matrix, samples, tx_meta, myregion, subtype, alpha) {
 
     set.seed(42)
     system.time({
-        d <- dmPrecision(d, design = design)
-        d <- dmFit(d, design = design)
-        d <- dmTest(d, coef = "groupCase")     
+        if (is.na(ncores)) {
+            d <- dmPrecision(d, design = design)
+            d <- dmFit(d, design = design)
+            d <- dmTest(d, coef = "groupCase")
+        } else {
+            multicoreParam <- MulticoreParam(workers = ncores)
+            d <- dmPrecision(d, design = design, BPPARAM=multicoreParam)
+            d <- dmFit(d, design = design, BPPARAM=multicoreParam)
+            d <- dmTest(d, coef = "groupCase", BPPARAM=multicoreParam)
+        }
+
     })
     res.g = DRIMSeq::results(d)
     res.t = DRIMSeq::results(d, level = "feature")
