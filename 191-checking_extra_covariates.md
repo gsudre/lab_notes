@@ -1283,7 +1283,7 @@ run_DTU = function(count_matrix, samples, tx_meta, subtype, alpha, ncores=NA) {
             d <- dmFit(d, design = design)
             d <- dmTest(d, coef = "groupCase")
         } else {
-            multicoreParam <- MulticoreParam(workers = ncores)
+            multicoreParam <- BiocParallel::MulticoreParam(workers = ncores)
             d <- dmPrecision(d, design = design, BPPARAM=multicoreParam)
             d <- dmFit(d, design = design, BPPARAM=multicoreParam)
             d <- dmTest(d, coef = "groupCase", BPPARAM=multicoreParam)
@@ -1462,12 +1462,12 @@ takes a long time and those two subtypes usually don't have anything to them:
 ```r
 dtu_acc = list() 
 st = 'lncRNA' #...
-dtu_acc[[st]] = run_DTU(count_matrix, samples, tx_meta, myregion, st, .05)
+dtu_acc[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05)
 
 
 dtu_cau = list() 
 st = 'lncRNA' # ...
-dtu_cau[[st]] = run_DTU(count_matrix, samples, tx_meta, myregion, st, .05)
+dtu_cau[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05)
 ```
 
 Saved it to ~/data/post_mortem/DTU_02112021.RData.
