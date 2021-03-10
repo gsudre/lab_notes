@@ -1372,12 +1372,12 @@ run_DTU = function(count_matrix, samples, tx_meta, subtype, alpha, ncores=NA) {
     library(ggpubr)
     gene_ids = unique(drim.padj[order(drim.padj$transcript, drim.padj$gene),]$gene_id.1)
     myplots = list()
-    for (g in 1:length(gene_ids)) {
-        cat(gene_ids[g], '\n')
-        myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
-    }
-    quartz()
-    print(ggarrange(plotlist=myplots))
+    # for (g in 1:length(gene_ids)) {
+    #     cat(gene_ids[g], '\n')
+    #     myplots[[g]] = plotProportion(drim.prop3, gene_ids[g], samples)
+    # }
+    # quartz()
+    # print(ggarrange(plotlist=myplots))
 
     my_res = list(res.g=res.g, res.t=res.t, res.t.filt = res.t.filt,
                   dds=d, fm_str=fm_str, drim.padj = drim.padj,
@@ -1462,12 +1462,12 @@ takes a long time and those two subtypes usually don't have anything to them:
 ```r
 dtu_acc = list() 
 st = 'lncRNA' #...
-dtu_acc[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05)
+dtu_acc[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05, ncores=3)
 
 
 dtu_cau = list() 
 st = 'lncRNA' # ...
-dtu_cau[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05)
+dtu_cau[[st]] = run_DTU(count_matrix, samples, tx_meta, st, .05, ncores=3)
 ```
 
 Saved it to ~/data/post_mortem/DTU_02112021.RData.
