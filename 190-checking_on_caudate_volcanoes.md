@@ -213,3 +213,47 @@ ggarrange(plotlist=myplots)
 
 ![](images/2021-02-05-12-39-31.png)
 
+# 2021-03-11 11:18:07
+
+Let's make a separate plots for each:
+
+```r
+library(ggpubr)
+load('~/data/post_mortem/DGE_03022021.RData')
+library(EnhancedVolcano)
+
+FCcutoff = 1.0
+
+quartz()
+res = as.data.frame(dge_acc[['protein_coding']]$resIHW)
+res = res[order(res$padj),]
+res$padjBH <- p.adjust(res$pvalue, method = "fdr")
+pCutoff = 6.5e-06
+ymax = ceiling(max(-log10(res$pvalue)))
+p = EnhancedVolcano(data.frame(res), lab=rownames(res),
+                    x = 'log2FoldChange',
+                    y = 'pvalue', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~italic(P)),
+                    title = 'DGE ACC protein_coding',
+                    ylim = c(0, ymax),
+                    pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 1.0, subtitle=NULL,
+                    axisLabSize = 12,
+                    caption = NULL, legendPosition = 'none')
+print(p)
+
+res = as.data.frame(dge_cau[['protein_coding']]$resIHW)
+res = res[order(res$padj),]
+res$padjBH <- p.adjust(res$pvalue, method = "fdr")
+p = EnhancedVolcano(data.frame(res), lab=rownames(res),
+                    x = 'log2FoldChange',
+                    y = 'pvalue', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~italic(P)),
+                    title = 'DGE Caudate protein_coding',
+                    ylim = c(0, ymax),
+                    pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 1.0, subtitle=NULL,
+                    axisLabSize = 12,
+                    caption = NULL, legendPosition = 'none')
+p
+```

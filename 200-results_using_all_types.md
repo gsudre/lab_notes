@@ -881,7 +881,7 @@ write.csv(all_res, file=out_fname, row.names=F)
 
 ## Making supplemental tables
 
-Let's extract our "all" results into a table, adding gene names and subtype:
+Let's extract our all results into a table, adding gene names and subtype:
 
 ```r
 load('~/data/post_mortem/DGE_03022021.RData')
@@ -897,53 +897,71 @@ bt_slim = bt[, c('gene_id', 'gene_biotype')]
 bt_slim = bt_slim[!duplicated(bt_slim),]
 
 for (r in c('acc', 'cau')) {
-    res_str = sprintf('res = dge_%s[["all"]]', r)
-    eval(parse(text=res_str))
-    fname = sprintf('%s/DGE_%s_all_annot_03082021.csv', mydir, r)
+    for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
+        res_str = sprintf('res = dge_%s[["%s"]]', r, st)
+        eval(parse(text=res_str))
+        fname = sprintf('%s/DGE_%s_%s_annot_03112021.csv', mydir, r, st)
 
-    df = as.data.frame(res$res)
-    df$GENEID = substr(rownames(df), 1, 15)
-    df2 = merge(df, mart, sort=F,
-                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
-    df2 = merge(df2, bt_slim, sort=F,
-                by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
-    df2 = df2[order(df2$pvalue), ]
-    write.csv(df2, row.names=F, file=fname)
+        df = as.data.frame(res$res)
+        colnames(df)[ncol(df)] = 'padj.FDR'
+        df$GENEID = substr(rownames(df), 1, 15)
+        df2 = merge(df, mart, sort=F,
+                    by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+        df2 = merge(df2, bt_slim, sort=F,
+                    by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
+        df2 = df2[order(df2$pvalue), ]
+        df3 = as.data.frame(res$resIHW)
+        df3$GENEID = substr(rownames(df3), 1, 15)
+        df2 = merge(df2, df3[, c('GENEID', 'padj')], sort=F, by='GENEID',
+                    all.x=T, all.y=F)
+        colnames(df2)[ncol(df2)] = 'padj.IHW'
+        write.csv(df2, row.names=F, file=fname)
+    }
 }
 
-load('~/data/post_mortem/DTE_03082021.RData') 
+load('~/data/post_mortem/DTE_03082021.RData')
 for (r in c('acc', 'cau')) {
-    res_str = sprintf('res = dte_%s[["all"]]', r)
-    eval(parse(text=res_str))
-    fname = sprintf('%s/DTE_%s_all_annot_03082021.csv', mydir, r)
+    for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
+        res_str = sprintf('res = dte_%s[["%s"]]', r, st)
+        eval(parse(text=res_str))
+        fname = sprintf('%s/DTE_%s_%s_annot_03112021.csv', mydir, r, st)
 
-    df = res$res
-    df$TXNAME = substr(rownames(df), 1, 15)
-    tx2gene = stageR::getTx2gene(res$stageRObj)
-    df2 = merge(as.data.frame(df), tx2gene, sort=F,
-                by.x='TXNAME', all.x=T, all.y=F)
-    df2 = merge(df2, mart, sort=F,
-                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
-    df2 = merge(df2, bt_slim, sort=F,
-                by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
-    df2 = df2[order(df2$pvalue), ]
-    write.csv(df2, row.names=F, file=fname)
+        df = res$res
+        colnames(df)[ncol(df)] = 'padj.FDR'
+        df$TXNAME = substr(rownames(df), 1, 15)
+        tx2gene = stageR::getTx2gene(res$stageRObj)
+        df2 = merge(as.data.frame(df), tx2gene, sort=F,
+                    by.x='TXNAME', all.x=T, all.y=F)
+        df2 = merge(df2, mart, sort=F,
+                    by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+        df2 = merge(df2, bt_slim, sort=F,
+                    by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
+        df2 = df2[order(df2$pvalue), ]
+        df3 = as.data.frame(res$resIHW)
+        df3$TXNAME = substr(rownames(df3), 1, 15)
+        df2 = merge(df2, df3[, c('TXNAME', 'padj')], sort=F, by='TXNAME',
+                    all.x=T, all.y=F)
+        colnames(df2)[ncol(df2)] = 'padj.IHW'
+        write.csv(df2, row.names=F, file=fname)
+    }
 }
 
 load('~/data/post_mortem/DTU_03082021.RData')
 for (r in c('acc', 'cau')) {
-    res_str = sprintf('res = dtu_%s[["all"]]', r)
-    eval(parse(text=res_str))
-    fname = sprintf('%s/DTU_%s_all_annot_03082021.csv', mydir, r)
+    for (st in c('all', 'protein_coding', 'lncRNA')) {
+        res_str = sprintf('res = dtu_%s[["%s"]]', r, st)
+        eval(parse(text=res_str))
+        fname = sprintf('%s/DTU_%s_%s_annot_03112021.csv', mydir, r, st)
 
-    df = stageR::getAdjustedPValues(res$stageRObj,
-                                    onlySignificantGenes=FALSE, order=TRUE)
-    colnames(df)[3:4] = c('padj_gene', 'padj_transcript')
-    df2 = merge(df, mart, sort=F,
-                by.x='geneID', by.y='ensembl_gene_id', all.x=T, all.y=F)
-    df2 = merge(df2, bt_slim, sort=F,
-                by.x='geneID', by.y='gene_id', all.x=T, all.y=F)
-    write.csv(df2, row.names=F, file=fname)
+        df = stageR::getAdjustedPValues(res$stageRObj,
+                                        onlySignificantGenes=FALSE, order=TRUE)
+        colnames(df)[3:4] = c('padj_gene', 'padj_transcript')
+        df2 = merge(df, mart, sort=F,
+                    by.x='geneID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+        df2 = merge(df2, bt_slim, sort=F,
+                    by.x='geneID', by.y='gene_id', all.x=T, all.y=F)
+        write.csv(df2, row.names=F, file=fname)
+    }
 }
 ```
 

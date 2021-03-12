@@ -170,13 +170,14 @@ more_covars = more_covars[more_covars$Region == 'ACC',]
 samples2 = merge(samples, more_covars[, c('hbcc_brain_id', "Sentrix_ID",
                                           "Sentrix_Position", 'Kit',
                                           colnames(more_covars)[26:42])],
-                by='hbcc_brain_id', all.x=T, all.y=F)
+                by='hbcc_brain_id', all.x=T, all.y=F, sort=F)
 
 res = run_methyl(mVals, samples2, 'all', ann450kSub)
 ```
 
 Hum... so, it does change things, because different PCs were picked... let's see
-what changes in the results.
+what changes in the results. Note that I realized that the 031020201 results are
+bad... I forgot to unsort the samples matrix. Re-running it all now:
 
 ```r
 res_acc = list()
@@ -196,7 +197,7 @@ idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
        grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
        grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
 res_acc[['promoter2']] = run_methyl(mVals[idx,], samples2, 'all', ann450kSub[idx,])
-save(res_acc, file='~/data/methylation_post_mortem/res_ACC_03102021.RData')
+save(res_acc, file='~/data/methylation_post_mortem/res_ACC_03122021.RData')
 ```
 
 Now, let's repeat the same stuff for the Caudate:
@@ -219,7 +220,7 @@ more_covars = more_covars[more_covars$Region == 'Caudate',]
 samples2 = merge(samples, more_covars[, c('hbcc_brain_id', "Sentrix_ID",
                                           "Sentrix_Position", 'Kit',
                                           colnames(more_covars)[26:42])],
-                by='hbcc_brain_id', all.x=T, all.y=F)
+                by='hbcc_brain_id', all.x=T, all.y=F, sort=F)
 
 res_cau = list()
 for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea')) {
@@ -238,7 +239,28 @@ idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
        grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
        grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
 res_cau[['promoter2']] = run_methyl(mVals[idx,], samples2, 'all', ann450kSub[idx,])
-save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_03102021.RData')
+save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_03122021.RData')
+```
+
+Finally, let's write out our methylation results.
+
+```r
+mydir = '~/data/methylation_post_mortem/'
+for (r in c('acc', 'cau')) {
+    region = ifelse(r=='acc', 'ACC', 'Caudate')
+    load(sprintf('~/data/methylation_post_mortem/res_%s_03102021.RData',
+                 region))
+    for (st in c("all", "Island", "Shelf", "Shore", "Sea", "enhancer", "body",
+                 "promoter1", "promoter2")) {
+        res_str = sprintf('res = res_%s[["%s"]]', r, st)
+        eval(parse(text=res_str))
+        fname = sprintf('%s/methylDMP_%s_%s_annot_03102021.csv', mydir, r, st)
+
+        df = as.data.frame(res$DMPs)
+        df2 = df[order(df$P.Value), ]
+        write.csv(df2, row.names=F, file=fname)
+    }
+}
 ```
 
 ## PRS
@@ -406,21 +428,21 @@ for (prs in prs_names) {
     }
     idx = ann450kSub$Enhancer == "TRUE"
     st_res[['enhancer']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="Body") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon"))
     st_res[['body']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                      ann450kSub[idx,])
+                                      ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200"))
     st_res[['promoter1']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
     st_res[['promoter2']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     all_res[[prs]] = st_res
 }
 save(all_res, prs_names,
@@ -479,25 +501,115 @@ for (prs in prs_names) {
     }
     idx = ann450kSub$Enhancer == "TRUE"
     st_res[['enhancer']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="Body") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon"))
     st_res[['body']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                      ann450kSub[idx,])
+                                      ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200"))
     st_res[['promoter1']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
         grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
     st_res[['promoter2']] = run_methyl_PRS(mVals.prs[idx,], samples2, 'all',
-                                          ann450kSub[idx,])
+                                          ann450kSub[idx,], prs)
     all_res[[prs]] = st_res
 }
 save(all_res, prs_names,
      file='~/data/methylation_post_mortem/res_Caudate_PRS_03102021.RData')
+```
+
+Let's compute the PRS and DX overlaps:
+
+```r
+library(GeneOverlap)
+
+for (r in c('ACC', 'Caudate')) {
+    load(sprintf('~/data/methylation_post_mortem/res_%s_PRS_03102021.RData',
+                 r))
+    prs_res = all_res
+    load(sprintf('~/data/methylation_post_mortem/res_%s_03102021.RData', r))
+    res_str = ifelse(myregion=='ACC', 'dx_res = res_acc',
+                     'dx_res = res_cau')
+    eval(parse(text=res_str))
+
+    prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                        .5, .4, .3, .2),
+                    function(x) sprintf('PRS%f', x))
+    all_res = c()
+    for (st in c('all', 'Island', 'Shelf', 'Shore', 'Sea', 'enhancer', 'body',
+                 'promoter1', 'promoter2')) {
+        res.dx = as.data.frame(dx_res[[st]]$DMPs)
+        for (p in prs_names) {
+            cat(st, p, '\n')
+            res_str = sprintf('res.prs = prs_res[["%s"]][["%s"]]$DMPs', p, st)
+            eval(parse(text=res_str))
+            res.prs = as.data.frame(res.prs)
+
+            both_res = merge(res.dx, res.prs, by=0,
+                            all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
+            for (t in c(.05, .01, .005, .001)) {
+                prs_genes = both_res[both_res$P.Value.prs < t & both_res$t.prs > 0,
+                                    'Row.names']
+                dx_genes = both_res[both_res$P.Value.dx < t & both_res$t.dx > 0,
+                                    'Row.names']
+                go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                        genome.size=nrow(both_res))
+                go.obj <- testGeneOverlap(go.obj)
+                inter = intersect(prs_genes, dx_genes)
+                pval1 = getPval(go.obj)
+                allUp = union(both_res[both_res$t.prs > 0, 'Row.names'],
+                            both_res[both_res$t.dx > 0, 'Row.names'])
+                go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+                go.obj <- testGeneOverlap(go.obj)
+                pval2 = getPval(go.obj)
+                this_res = c(st, p, t, 'up', length(prs_genes),
+                            length(dx_genes), length(inter), pval1, pval2)
+                all_res = rbind(all_res, this_res)
+            }
+            for (t in c(.05, .01, .005, .001)) {
+                prs_genes = both_res[both_res$P.Value.prs < t & both_res$t.prs < 0,
+                                    'Row.names']
+                dx_genes = both_res[both_res$P.Value.dx < t & both_res$t.dx < 0,
+                                    'Row.names']
+                go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                        genome.size=nrow(both_res))
+                go.obj <- testGeneOverlap(go.obj)
+                inter = intersect(prs_genes, dx_genes)
+                pval1 = getPval(go.obj)
+                allDown = union(both_res[both_res$t.prs < 0, 'Row.names'],
+                                both_res[both_res$t.dx < 0, 'Row.names'])
+                go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+                go.obj <- testGeneOverlap(go.obj)
+                pval2 = getPval(go.obj)
+                this_res = c(st, p, t, 'down', length(prs_genes),
+                            length(dx_genes), length(inter), pval1, pval2)
+                all_res = rbind(all_res, this_res)
+            }
+            for (t in c(.05, .01, .005, .001)) {
+                prs_genes = both_res[both_res$P.Value.prs < t, 'Row.names']
+                dx_genes = both_res[both_res$P.Value.dx < t, 'Row.names']
+                go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                        genome.size=nrow(both_res))
+                go.obj <- testGeneOverlap(go.obj)
+                inter = intersect(prs_genes, dx_genes)
+                pval1 = getPval(go.obj)
+                pval2 = NA
+                this_res = c(st, p, t, 'abs', length(prs_genes),
+                            length(dx_genes), length(inter), pval1, pval2)
+                all_res = rbind(all_res, this_res)
+            }
+        }
+    }
+    colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
+                        'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
+                        'pvalDirOnly')
+    out_fname = sprintf('~/data/methylation_post_mortem/res_%s_upDown_prs_overlap_03112021.csv', r)
+    write.csv(all_res, file=out_fname, row.names=F)
+}
 ```
 
 ## GSEA
@@ -522,7 +634,7 @@ for (gs in c('GO', 'KEGG', 'Reactome')) {
         cat(gs, g, '\n')
         res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
                     maxsize = 500, GS.type = gs, parallel=F)
-        fname = sprintf('%s/%s_%s_DMP_glm_%s.csv', outidr, myregion, g, gs)
+        fname = sprintf('%s/%s_%s_DMP_glm_%s.csv', outdir, myregion, g, gs)
         write.csv(res, row.names=F, file=fname)
     }
 }
@@ -625,19 +737,19 @@ for (db in DBs) {
     names(ranks) = rownames(res$DMPs)
     for (g in c('all', 'body', 'promoter1', 'promoter2')) {
         cat(g, db, '\n')
-        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+        res2 = methylglm(cpg.pval = ranks, minsize = 3, group=g,
                     maxsize = 500, GS.list = sets, parallel=F,
                     GS.idtype='ENTREZID')
         fname = sprintf('%s/%s_%s_DMP_glm_%s.csv', outdir, myregion, g, db)
-        write.csv(res, row.names=F, file=fname)
+        write.csv(res2, row.names=F, file=fname)
     }
     for (g in c('all', 'body', 'promoter1', 'promoter2')) {
         cat(g, db, '\n')
-        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+        res2 = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
                     maxsize = 500, GS.list = sets, method='GSEA',
                     GS.idtype='ENTREZID')
         fname = sprintf('%s/%s_%s_DMP_RRA_%s.csv', outdir, myregion, g, db)
-        write.csv(res, row.names=F, file=fname)
+        write.csv(res2, row.names=F, file=fname)
     }
 }
 
@@ -654,213 +766,28 @@ for (db in DBs) {
     names(ranks) = res$topDV$Row.names
     for (g in c('all', 'body', 'promoter1', 'promoter2')) {
         cat(g, db, '\n')
-        res = methylglm(cpg.pval = ranks, minsize = 3, group=g,
+        res2 = methylglm(cpg.pval = ranks, minsize = 3, group=g,
                     maxsize = 500, GS.list = sets, parallel=F,
                     GS.idtype='ENTREZID')
         fname = sprintf('%s/%s_%s_topVar_glm_%s.csv', outdir, myregion, g, db)
-        write.csv(res, row.names=F, file=fname)
+        write.csv(res2, row.names=F, file=fname)
     }
     for (g in c('all', 'body', 'promoter1', 'promoter2')) {
         cat(g, db, '\n')
-        res = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
+        res2 = methylRRA(cpg.pval = ranks, minsize = 3, group=g,
                     maxsize = 500, GS.list = sets, method='GSEA',
                     GS.idtype='ENTREZID')
-        fname = sprintf('%s/%s_%s_topVar_RRA_%s.csv', myregion, g, db)
-        write.csv(res, row.names=F, file=fname)
+        fname = sprintf('%s/%s_%s_topVar_RRA_%s.csv', outdir, myregion, g, db)
+        write.csv(res2, row.names=F, file=fname)
     }
 }
 ```
-
-# TODO
-* PRS
-* GSEA
-* spit out results
-
-
-
-
-
-
-
-
-
-
-
-Like the ACC analysis, let's run GSEA:
-
-
-Let's see if there is anything interesting here. Starting with our own sets:
-
- * GWAS at 0.038961039 for promoter1_DMP_RRA and 0.016987381 for
-   promoter1_DMP_glm, somewhat confirmatory. Both nominal though.
- * Not much interesting stuff happening though. adult dev at .009 for
-   all_topVar_glm, carried by body at .016 all nominally, somewhat unlikely to
-   survive correction without TWAS and GWAS. The body result is confirmed by
-   topVar_RRA at 0.002016416 nominally, which could potentially survive. It's
-   topVar though...
-
-Biological Functions: (q < .05)
- * only hits at all_DMP_RRA: cell-cell adhesion mediated by cadherin.
-   promoter2_DMP_RRA also had a couple hits, but not an intersection:
-   columnar/cuboidal epithelial cell differentiation, and response to estradiol.
-
-Cellular Components: (q<.05)
- * all_DMP_RRA: non-motile cilium
- * everything else was for topVar: all_topVar_RRA got axon, body_topVar_RRA got
-   cell-substrate junction and receptor complex, while its glm counterpart got
-   myelin sheath. It's interesting, but topVar and a single hit for FDR q < .05.
-
-Molecular Processes: (q < .05)
- * all_DMP_glm got oxidoreductase activity, acting on single donors with incorporation of molecular oxygen
- * all_topVar_RRA got bHLH transcription factor binding
- * nothing that interesting...
-
-KEGG: (q < .05)
- * all_DMP_RRA got Prostate cancer
- * body_DMP_RRA got Notch signaling pathway
- * body_topVar_glm got Leukocyte transendothelial migration and Fat digestion and absorption
- * again, nothing great
-
-Reactome: (q < .05)
- * multiple hits here... let's see
- * all_DMP_glm:
-Acyl chain remodelling of PI
-Homo sapiens: Keratinization
-Homo sapiens: Classical Kir channels
-Homo sapiens: Acyl chain remodelling of PS
-Homo sapiens: Formation of the cornified envelope
- * all_DMP_RRA:
-Homo sapiens: Signaling by Type 1 Insulin-like Growth Factor 1 Receptor (IGF1R)
-Homo sapiens: FRS-mediated FGFR4 signaling
-Homo sapiens: Myogenesis
-Homo sapiens: Parasite infection
-Homo sapiens: Leishmania phagocytosis
-Homo sapiens: FCGR3A-mediated phagocytosis
-Homo sapiens: IGF1R signaling cascade
-Homo sapiens: PI-3K cascade:FGFR3
-Homo sapiens: Formation of Senescence-Associated Heterochromatin Foci (SAHF)
-Homo sapiens: FRS-mediated FGFR3 signaling
-Homo sapiens: PI-3K cascade:FGFR4
-Homo sapiens: Pre-NOTCH Processing in Golgi
-Homo sapiens: Adherens junctions interactions
-Homo sapiens: SHC-mediated cascade:FGFR3
-Homo sapiens: FGFR4 ligand binding and activation
-Homo sapiens: IRS-related events triggered by IGF1R
-Homo sapiens: Integration of provirus
-Homo sapiens: SHC-mediated cascade:FGFR4
- * body_DMP_glm: Homo sapiens: Keratinization
- * body_DMP_RRA:
-Homo sapiens: FRS-mediated FGFR4 signaling
-Homo sapiens: Downstream signaling of activated FGFR3
-Homo sapiens: Downstream signaling of activated FGFR4
-Homo sapiens: Signaling by FGFR3 in disease
-Homo sapiens: Signaling by FGFR3 point mutants in cancer
-Homo sapiens: PI-3K cascade:FGFR4
-Homo sapiens: FRS-mediated FGFR3 signaling
-Homo sapiens: Uptake and function of anthrax toxins
-Homo sapiens: Regulation of RUNX1 Expression and Activity
-Homo sapiens: SHC-mediated cascade:FGFR4
-Homo sapiens: Reduction of cytosolic Ca++ levels
-Homo sapiens: PI-3K cascade:FGFR3
-Homo sapiens: Signaling by FGFR3
-Homo sapiens: FRS-mediated FGFR2 signaling
-Homo sapiens: Netrin-1 signaling
-Homo sapiens: Signaling by FGFR4
-Homo sapiens: Phospholipase C-mediated cascade; FGFR4
-Homo sapiens: Downstream signaling of activated FGFR2
- * promoter2_DMP_glm:
-Homo sapiens: Classical Kir channels
-Homo sapiens: Hydrolysis of LPC
-Homo sapiens: Acyl chain remodelling of PI
- * all_topVar_glm:
-Homo sapiens: GLI proteins bind promoters of Hh responsive genes to promote transcription
-Homo sapiens: RUNX1 regulates transcription of genes involved in BCR signaling
- * body_topVar_glm: Homo sapiens: Proton-coupled monocarboxylate transport
- * body_topVar_RRA:
-Homo sapiens: HDMs demethylate histones
-Homo sapiens: Interleukin-23 signaling
-Homo sapiens: Lysosomal oligosaccharide catabolism
-Homo sapiens: Presynaptic depolarization and calcium channel opening
- * promoter1_topVar_glm: Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
- * promoter2_topVar_glm: Homo sapiens: RUNX1 regulates transcription of genes involved in interleukin signaling
-
-FGF3 is fibroblast growth factor receptor 3. These proteins play a role in
-several important cellular processes, including regulation of cell growth and
-division (proliferation), determination of cell type, formation of blood vessels
-(angiogenesis), wound healing, and embryo development.
-(https://medlineplus.gov/genetics/gene/fgfr3/#conditions). FGFR4 does something
-similar. 
-
-# Maybe overall story?
-
-I think we can take the DMP_RRA results and make a story out of it. For example,
-in ACC we get GWAS in all (p = 0.045954046), driven by body (p=0.02997003) and promoter1
-(p=0.046953047). In cellular ocmponents, DMP_all_RRA: euchromatin, and DMP_promoter2_RRA I
-get transcription repressor complex, exon-exon junction complex, and
-transcription regulator complex. This is interesting as it relates to the
-changes we're seeing in the transcriptome? Then, for molecular, we get
-promoter2_DMP_RRA: transcription corepressor activity. And all_DMP_RRA: steroid hormone receptor activity, ligand-activated
-transcription factor activity, SNAP receptor activity, repressing transcription
-factor binding. Still in ACC, for KEGG all_DMP_RRA has SNARE interactions in
-vesicular transport (q = .0507), but it does make a parallel to the all_DMP_RRA
-finding in molecular function ontology. Not much in the reactome though. Only 
-Homo sapiens: Nuclear Receptor transcription pathway and Homo sapiens:
-Interferon Signaling for all_DMP_RRA.
-
-Turning to the Caudate, there is GWAS at 0.038961039 for promoter1_DMP_RRA.
-Cellular componets gets all_DMP_RRA: non-motile cilium. And the Reactome has all
-that stuff about FGFR3 and 4.
-
-There isn't anything in a single probe resolution, and my on-going efforts to
-boost the FDr aren't doing anything. The per-region analysis also didn't come up
-with anything.
-
-If we go for topVar we get more stuff, and possible a different/stronger story.
-If anything, we have a few single probe hits, and possibly even for the whole
-region. GSEA results are very different too. But maybe we don't need to rely on
-that.
-
-# 2021-02-26 14:50:10
-
-Let's do the same subdivisions we just did for ACC, but now for Caudate:
-
-```r
-library(minfi)
-load('~/data/methylation_post_mortem/filt_Caudate_02222021.RData')
-mVals <- getM(mSetSqFlt)
-
-library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
-ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
-# get the table of results for the first contrast (naive - rTreg)
-ann450kSub <- ann450k[match(rownames(mVals),ann450k$Name),
-                      c(1:4,12:19,24:ncol(ann450k))]
-
-load('~/data/methylation_post_mortem/res_Caudate_02222021.RData')
-idx = ann450kSub$Enhancer == "TRUE"
-res_cau[['enhancer']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
-idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="Body") |
-       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon"))
-res_cau[['body']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
-idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
-       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200"))
-res_cau[['promoter1']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
-idx = (grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS1500") |
-       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="TSS200") |
-       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="1stExon") |
-       grepl(x=ann450kSub$UCSC_RefGene_Group, pattern="5\'UTR") )
-res_cau[['promoter2']] = run_methyl(mVals[idx,], samples, 'all', ann450kSub[idx,])
-save(res_cau, file='~/data/methylation_post_mortem/res_Caudate_02262021.RData')
-```
-
-Still, nothing of significance.
-
-# 2021-03-05 10:10:18
 
 Let's add some annotations to the GO sets results:
 
 ```r
 library(WebGestaltR)
-mydir = '~/data/methylation_post_mortem/'
+mydir = '~/data/methylation_post_mortem/more_covs/'
 DBs = c('Biological_Process', 'Cellular_Component', 'Molecular_Function')
 for (db in DBs) {
     enrich_db = sprintf('geneontology_%s_noRedundant', db)
@@ -888,3 +815,113 @@ for (db in DBs) {
     }
 }
 ```
+
+Do we still have a story? Starting with our own set:
+
+ * ACC: only possible interesting stuff is infant at body_DMP_RRA (0.004945072).
+   Maybe prenatal for promoter2_DMP_RRA (0.027972028) but not after adjustment.
+   There is infant at promoter1_topVAR_RRA (0.014871034), but not significant.
+   This new correction seems to have wiped out our GWAS previous hits.
+ * Caudate: both child and prenatal (0.038961039) for promoter1_DMP_RRA, but not
+   significant after adjustment (NSAA); prenatal (0.029516459) for body_DMP_glm
+   NSAA; adult and prenatal for body_DMP_RRA NSAA.
+
+So, nothing here developmentally. Even the GWAS results went away. Let's look at
+our noRedundant GO sets:
+
+ * ACC: nothing made much sense in DMP for either of the 3 categories, under q <
+   .05. A handful of hits, but nothing exciting.
+
+# 2021-03-11 22:12:43
+
+Let's make some volcano plots:
+
+```r
+load('~/data/methylation_post_mortem/res_ACC_03102021.RData') 
+load('~/data/methylation_post_mortem/res_Caudate_03102021.RData') 
+
+library(EnhancedVolcano)
+
+FCcutoff = 1.0
+
+quartz()
+res = as.data.frame(res_cau[['enhancer']]$DMPs)
+res = res[order(res$P.Value),]
+pCutoff = 1e-5
+ymax = ceiling(max(-log10(res$P.Value)))
+p = EnhancedVolcano(data.frame(res), lab=rownames(res),
+                    x = 'logFC',
+                    y = 'P.Value',
+                    xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~italic(P)["non-adjusted"]),
+                    title = 'DMP all',
+                    ylim = c(0, ymax),
+                    pCutoff = pCutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 1.0, subtitle=NULL,
+                    axisLabSize = 12,
+                    caption = NULL, legendPosition = 'none')
+print(p)
+
+# some histograms
+res = as.data.frame(res_cau[['all']]$DMPs)
+res = res[order(res$P.Value),]
+hist(res$P.Value, breaks=200,
+     main="Differential methylation p-values (Caudate)", xlab="p-value")
+
+res = as.data.frame(res_acc[['all']]$DMPs)
+res = res[order(res$P.Value),]
+hist(res$P.Value, breaks=200,
+     main="Differential methylation p-values (ACC)", xlab="p-value")
+```
+
+![](images/2021-03-12-10-31-34.png)
+
+This looks quite funky... is there anything wrong with the analysis?
+
+For now, let's just make some plots for the top probes:
+
+```r
+library(ggbeeswarm)
+quartz()
+load('~/data/methylation_post_mortem/filt_Caudate_02222021.RData') 
+library(minfi)
+bVals <- getBeta(mSetSqFlt)
+
+load('~/data/methylation_post_mortem/res_Caudate_03102021.RData') 
+res = as.data.frame(res_cau[['all']]$DMPs)
+res = res[order(res$P.Value),]
+
+clrs = c("green3", "red")
+g = 'cg15055101'
+d = data.frame(B=bVals[g,], Diagnosis=samples$Diagnosis)
+p = (ggplot(d, aes(x=Diagnosis, y=B, color = Diagnosis,
+                    fill = Diagnosis)) + 
+        scale_y_log10() +
+        geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8,
+                    lwd = 0.5) +
+        stat_summary(fun = mean, geom = "point", color = "black",
+                    shape = 5, size = 3,
+                    position=position_dodge(width = 0.8)) +
+        scale_color_manual(values = clrs) +
+        scale_fill_manual(values = clrs) +
+        geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) +
+        theme_bw() + #theme(legend.position = "none") + 
+        ggtitle(g))
+print(p)
+```
+
+
+# TODO
+* PRS
+* GSEA
+
+
+
+
+
+
+
+
+
+# 2021-03-05 10:10:18
+

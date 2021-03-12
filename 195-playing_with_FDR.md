@@ -243,3 +243,29 @@ res <- adapt_glmnet(as.matrix(x), pvals)
 ```
 
 alpha = 0.17: FDPhat 0.1667, Number of Rej. 6
+
+# 2021-03-11 11:42:20
+
+Let's try it with the DGE results. IHW uses baseMean... let's double-check:
+
+```r
+load('~/data/post_mortem/DGE_03022021.RData')
+res = as.data.frame(dge_acc[['protein_coding']]$resIHW)
+library("IHW")
+res = res[order(res$pvalue),]
+res$ihwRes <- adj_pvalues(ihw(pvalue ~ baseMean,  alpha = 0.05, data=res))
+res$padjBH <- p.adjust(res$pvalue, method = "BH")
+```
+
+How about adaptMT?
+
+```r
+library("adaptMT")
+library("splines")
+x <- data.frame(x = res$baseMean)
+formulas <- paste0("ns(x, df = ", 6:10, ")")
+res_glm <- adapt_glm(x = x, pvals = res$pvalue, pi_formulas = formulas,
+                    mu_formulas = formulas)
+```
+
+Nothing.

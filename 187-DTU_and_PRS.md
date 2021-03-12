@@ -274,90 +274,76 @@ for (prs in prs_names) {
 save(dtuPRS_acc, dtuPRS_cau, file='~/data/post_mortem/DTU_PRS_03082021.RData')
 ```
 
-Maybe it will take less time now that I implemented the parallelization.
+Let's also run it for pc and lnc:
 
+```r
+ncores=31
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+dtuPRS_acc_pc = list()
+for (prs in prs_names) {
+    dtuPRS_acc_pc[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data,
+                                       'protein_coding', prs, .05,
+                                       ncores=ncores)
+}
+save(dtuPRS_acc_pc, file='~/data/tmp/acc_pc.RData')
 
+dtuPRS_cau_pc = list()
+for (prs in prs_names) {
+    dtuPRS_cau_pc[[prs]] = run_DTU_PRS(count_matrix, tx_meta, data,
+                                       'protein_coding', prs, .05,
+                                       ncores=ncores)
+}
+save(dtuPRS_cau_pc, file='~/data/tmp/cau_pc.RData')
+```
 
-
-
+And I saved the results for all, lnc, and pc to
+~/data/post_mortem/DTU_PRS_03112021.RData. Recall that pseudogenes never leave
+anything for analysis after the filters.
 
 Let's then compute the PRS and DX overlaps:
 
 ```r
 library(GeneOverlap)
-load('~/data/post_mortem/DTU_PRS_02032021.RData')
-load('~/data/post_mortem/DTU_02032021.RData')
+load('~/data/post_mortem/DTU_PRS_03112021.RData')
+load('~/data/post_mortem/DTU_03082021.RData')
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
                    function(x) sprintf('PRS%f', x))
 all_res = c()
-subtypes = list(pc='protein_coding', lnc='lncRNA', pg='pseudogene')
-for (st in c('pc', 'lnc', 'pg')) {
-    res.dx = as.data.frame(dte_cau[[subtypes[[st]]]])
+subtypes = list(all='all', pc='protein_coding', lnc='lncRNA')
+for (st in c('all', 'pc', 'lnc')) {
+    # res.dx = dtu_cau[[subtypes[[st]]]]$res.g
+    res.dx = dtu_acc[[subtypes[[st]]]]$res.g
     for (p in prs_names) {
         cat(st, p, '\n')
-        res_str = sprintf('res.prs = as.data.frame(dtePRS_cau_%s[["%s"]])', st, p)
+        # res_str = sprintf('res.prs = dtuPRS_cau_%s[["%s"]]', st, p)
+        res_str = sprintf('res.prs = dtuPRS_acc_%s[["%s"]]', st, p)
         eval(parse(text=res_str))
 
-        both_res = merge(as.data.frame(res.dx), as.data.frame(res.prs), by=0,
-                         all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
+        both_res = merge(res.dx, res.prs, by='gene_id',
+                            all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
         for (t in c(.05, .01, .005, .001)) {
-            prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs > 0,
-                                 'Row.names']
-            dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx > 0,
-                                'Row.names']
+            prs_genes = both_res[both_res$pvalue.prs < t, 'gene_id']
+            dx_genes = both_res[both_res$pvalue.dx < t, 'gene_id']
             go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                     genome.size=nrow(both_res))
-            go.obj <- testGeneOverlap(go.obj)
-            inter = intersect(prs_genes, dx_genes)
-            pval1 = getPval(go.obj)
-            allUp = union(both_res[both_res$stat.prs > 0, 'Row.names'],
-                          both_res[both_res$stat.dx > 0, 'Row.names'])
-            go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
-            go.obj <- testGeneOverlap(go.obj)
-            pval2 = getPval(go.obj)
-            this_res = c(subtypes[[st]], p, t, 'up', length(prs_genes),
-                         length(dx_genes), length(inter), pval1, pval2)
-            all_res = rbind(all_res, this_res)
-        }
-        for (t in c(.05, .01, .005, .001)) {
-            prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs < 0,
-                                 'Row.names']
-            dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx < 0,
-                                'Row.names']
-            go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                     genome.size=nrow(both_res))
-            go.obj <- testGeneOverlap(go.obj)
-            inter = intersect(prs_genes, dx_genes)
-            pval1 = getPval(go.obj)
-            allDown = union(both_res[both_res$stat.prs < 0, 'Row.names'],
-                            both_res[both_res$stat.dx < 0, 'Row.names'])
-            go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
-            go.obj <- testGeneOverlap(go.obj)
-            pval2 = getPval(go.obj)
-            this_res = c(subtypes[[st]], p, t, 'down', length(prs_genes),
-                         length(dx_genes), length(inter), pval1, pval2)
-            all_res = rbind(all_res, this_res)
-        }
-        for (t in c(.05, .01, .005, .001)) {
-            prs_genes = both_res[both_res$pvalue.prs < t, 'Row.names']
-            dx_genes = both_res[both_res$pvalue.dx < t, 'Row.names']
-            go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                     genome.size=nrow(both_res))
+                                        genome.size=nrow(both_res))
             go.obj <- testGeneOverlap(go.obj)
             inter = intersect(prs_genes, dx_genes)
             pval1 = getPval(go.obj)
             pval2 = NA
             this_res = c(subtypes[[st]], p, t, 'abs', length(prs_genes),
-                         length(dx_genes), length(inter), pval1, pval2)
+                            length(dx_genes), length(inter), pval1, pval2)
             all_res = rbind(all_res, this_res)
         }
     }
+    colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
+                        'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
+                        'pvalDirOnly')
+    # out_fname = '~/data/post_mortem/allDTU_caudateUpDown_prs_overlap_results_03112021.csv'
+    out_fname = '~/data/post_mortem/allDTU_accUpDown_prs_overlap_results_03112021.csv'
+    write.csv(all_res, file=out_fname, row.names=F)
 }
-colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
-                      'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
-                      'pvalDirOnly')
-out_fname = '~/data/post_mortem/allDTE_caudateUpDown_prs_overlap_results_02032021.csv'
-write.csv(all_res, file=out_fname, row.names=F)
 ```
