@@ -415,7 +415,7 @@ more_covars = more_covars[more_covars$Region == 'ACC',]
 samples2 = merge(data.prs, more_covars[, c('hbcc_brain_id', "Sentrix_ID",
                                           "Sentrix_Position", 'Kit',
                                           colnames(more_covars)[26:42])],
-                 by='hbcc_brain_id', all.x=T, all.y=F)
+                 by='hbcc_brain_id', all.x=T, all.y=F, sort=F)
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
@@ -446,7 +446,7 @@ for (prs in prs_names) {
     all_res[[prs]] = st_res
 }
 save(all_res, prs_names,
-     file='~/data/methylation_post_mortem/res_ACC_PRS_03102021.RData')
+     file='~/data/methylation_post_mortem/res_ACC_PRS_03122021.RData')
 ```
 
 As usual, repeat it for the caudate:
@@ -488,7 +488,7 @@ more_covars = more_covars[more_covars$Region == 'Caudate',]
 samples2 = merge(data.prs, more_covars[, c('hbcc_brain_id', "Sentrix_ID",
                                           "Sentrix_Position", 'Kit',
                                           colnames(more_covars)[26:42])],
-                 by='hbcc_brain_id', all.x=T, all.y=F)
+                 by='hbcc_brain_id', all.x=T, all.y=F, sort=F)
 
 prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2),
@@ -519,7 +519,7 @@ for (prs in prs_names) {
     all_res[[prs]] = st_res
 }
 save(all_res, prs_names,
-     file='~/data/methylation_post_mortem/res_Caudate_PRS_03102021.RData')
+     file='~/data/methylation_post_mortem/res_Caudate_PRS_03122021.RData')
 ```
 
 Let's compute the PRS and DX overlaps:
