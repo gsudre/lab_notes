@@ -108,6 +108,57 @@ signed_rank                    14830    -0.0127    -0.0242    0.00523     0.0151
 unsigned_rank                  14830   -0.00566   -0.00874    0.00712       0.4264
 ```
 
-# TODO
-* all different subtypes
-* Caudate
+# 2021-03-16 06:01:55
+
+Let's run this for all our subtypes:
+
+```r
+load('~/data/post_mortem//DGE_03022021.RData')
+library(biomaRt)
+library(dplyr)
+        
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+for (r in c('acc', 'cau')) {
+    for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
+        cat(r, st, '\n')
+        res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
+        eval(parse(text=res_str))
+
+        res$GENEID = substr(rownames(res), 1, 15)
+        G_list0 <- getBM(filters= "ensembl_gene_id",
+                         attributes= c("ensembl_gene_id", "entrezgene_id"),values=res$GENEID, mart= mart)
+        G_list <- G_list0[!is.na(G_list0$ensembl_gene_id),]
+        G_list = G_list[G_list$ensembl_gene_id!='',]
+        G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+        imnamed = res$GENEID %in% G_list$ensembl_gene_id
+        res = res[imnamed, ]
+        res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
+                     by.y='ensembl_gene_id')
+        ranks = res2 %>% group_by(entrezgene_id) %>% slice_min(n=1, pvalue, with_ties=F)
+        myres = data.frame(gene=ranks$entrezgene_id,
+                           signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
+                           unsigned_rank=-log(ranks$pvalue))
+        out_fname = sprintf('~/data/post_mortem/MAGMA_dge_%s_%s.tab', r, st)
+        write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
+    }
+}
+```
+
+Then, for MAGMA we only need to run the last command:
+
+```bash
+cd ~/data/tmp
+for r in 'acc' 'cau'; do
+    for st in 'all' 'protein_coding' 'lncRNA' 'pseudogene'; do
+        echo $r $st;
+        magma --gene-results genes_BW.genes.raw \
+            --gene-covar ~/data/post_mortem/MAGMA_dge_${r}_${st}.tab \
+            --out ~/data/post_mortem/MAGMA_gc_BW_dge_${r}_${st};
+    done;
+done
+```
+
+Here's a table I sent to Philip in Teams:
+
+![](images/2021-03-16-06-18-33.png)
+
