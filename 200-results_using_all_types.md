@@ -373,6 +373,94 @@ for (myregion in c('caudate', 'acc')) {
 }
 ```
 
+We also need to run those for protein_coding only:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=5
+
+load('~/data/post_mortem/DTU_03082021.RData')
+
+for (myregion in c('caudate', 'acc')) {
+    res_str = ifelse(myregion == 'acc', 'res = dtu_acc[["protein_coding"]]',
+                     'res = dtu_cau[["protein_coding"]]')
+    eval(parse(text=res_str))
+
+    df = stageR::getAdjustedPValues(res$stageRObj, 
+                                    onlySignificantGenes=FALSE, order=TRUE)
+    df2 = df[, c('geneID', 'gene')]
+    df3 = df2[!duplicated(df2$geneID), ]
+ 
+    tmp2 = data.frame(geneid=df3$geneID, rank=-log(df3$gene))
+    tmp2 = tmp2[order(tmp2$rank, decreasing=T),]
+
+    res_str = sprintf('DTUstageR_pc_%s', myregion)
+    DBs = c(sprintf('my_%s_sets', myregion))
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        project_name = sprintf('WG9_%s_%s_10K', res_str, db)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            sigMethod="top", topThr=20,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=800))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG9_%s_%s_10K.csv', data_dir, res_str, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+
+    DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('WG9_%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", topThr=20,
+                                    outputDirectory = data_dir,
+                                    minNum=5, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000))
+        if (class(enrichResult) != "try-error") {
+            out_fname = sprintf('%s/WG9_%s_%s_10K.csv', data_dir, res_str, db)
+            write.csv(enrichResult, file=out_fname, row.names=F)
+        }
+    }
+
+    DBs = c('KEGG', 'Panther', 'Reactome', 'Wikipathway')
+    for (db in DBs) {
+        cat(myregion, db, '\n')
+        project_name = sprintf('WGP3stageR_pc_%s_%s_10K', myregion, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=sprintf('pathway_%s', db),
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", minNum=3,
+                                    outputDirectory = data_dir,
+                                    projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, topThr=20, perNum=10000))
+    }
+}
+```
+
 ## PRS
 
 Time to re-run all the PRS analysis with the all data (instead of subtypes). I'm
