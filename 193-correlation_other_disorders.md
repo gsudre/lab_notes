@@ -281,3 +281,220 @@ Neelroop pval =  0
 
 Both highly significant. The Neelroop paper has more subjects, it's in Nature,
 and has frontal and temporal cortex in it. 
+
+# 2021-03-17 20:36:17
+
+Let's create a big matrix we can use to make all boxplots at once.
+
+```r
+do_boot_corrs = function(both_res, log2FC_col, method) {
+    corrs = c()
+    nperms = 10000
+    set.seed(42)
+    options(warn=-1)  # remove annoying spearman warnings
+    for (p in 1:nperms) {
+        idx = sample(nrow(both_res), replace = T)
+        corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange'],
+                                  both_res[idx, log2FC_col],
+                                  method=method)$estimate)
+    }
+    return(corrs)
+}
+
+meta = readRDS('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1_micro.rds')
+
+st = 'protein_coding'
+met = 'spearman'
+load('~/data/post_mortem/DGE_03022021.RData')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
+
+corrs = list()
+disorders = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'IBD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.beta_log2FC', d), met)
+}
+all_corrs = c()
+for (d in disorders) {
+    cat(d, '\n')
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_micro'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
+corrs = list()
+disorders = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'IBD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.beta_log2FC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'Caudate'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_micro'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+saveRDS(all_corrs, file='~/tmp/all_corrs.rds')
+
+library(gdata)
+meta = read.xls('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1.xlsx',
+                'RNAseq SCZ&BD MetaAnalysis DGE')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+disorders = c('SCZ', 'BD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.logFC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_RNAseq'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+disorders = c('SCZ', 'BD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.logFC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'Caudate'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_RNAseq'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+meta = read.xls('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1.xlsx',
+                'RNAseq ASD-pancortical DGE')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'Frontal.logFC', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Gandal_RNAseq'
+all_corrs = rbind(all_corrs, junk)
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'Frontal.logFC', met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Gandal_RNAseq'
+all_corrs = rbind(all_corrs, junk)
+
+# moving on to other papers: Akula
+meta = readRDS('~/data/post_mortem/ACC_other_disorders.rds')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='Ensemble.gene.ID',
+                 all.x=F, all.y=F)
+corrs = list()
+disorders = c('BD', 'SCZ', 'MDD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('log2FoldChange.%s', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Akula'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+d = 'SCZ'
+dge = merge(dge, mart, by='ensembl_gene_id', all.x=T, all.y=F)
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+meta$gencodeID = substr(meta$gencodeID, 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='gencodeID',
+                 all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.SCZ'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Benjamin'
+all_corrs = rbind(all_corrs, junk)
+
+d = 'BD'
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='gencodeID',
+                 all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.BD'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Pacifico'
+all_corrs = rbind(all_corrs, junk)
+
+d = 'OCD'
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+both_res = merge(dge, meta, by='hgnc_symbol', all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.OCD'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Piantadosi'
+all_corrs = rbind(all_corrs, junk)
+
+# last 2 ASD papers
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Wright')
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=T, all.y=F)
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'log2FC', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Wright_DLPFC'
+all_corrs = rbind(all_corrs, junk)
+
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Neelroop')
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='ENSEMBL.ID',
+                 all.x=T, all.y=F)
+junk = data.frame(corr=do_boot_corrs(both_res, 'log2FoldChange', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Neelroop_FrontalTemporal'
+all_corrs = rbind(all_corrs, junk)
+
+saveRDS(all_corrs, file='~/data/post_mortem/all_corrs.rds')
+```
