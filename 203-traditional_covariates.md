@@ -635,7 +635,7 @@ library(WebGestaltR)
 data_dir = '~/data/post_mortem/'
 ncpu=31
 
-load('~/data/post_mortem/DGE_03222021_SV1.RData')
+load('~/data/post_mortem/DGE_03222021_BBB_SV2.RData')
 
 for (region in c('acc', 'caudate')) {
     for (st in c('all', 'protein_coding')) {
@@ -655,7 +655,7 @@ for (region in c('acc', 'caudate')) {
         for (db in DBs) {
             cat(res_str, db, '\n')
             db_file = sprintf('~/data/post_mortem/%s.gmt', db)
-            project_name = sprintf('WG12_SV1_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                 organism="hsapiens",
                                 enrichDatabaseFile=db_file,
@@ -674,7 +674,7 @@ for (region in c('acc', 'caudate')) {
                 'geneontology_Molecular_Function_noRedundant')
         for (db in DBs) {
             cat(res_str, db, '\n')
-            project_name = sprintf('WG12_SV1_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
 
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",
@@ -690,7 +690,7 @@ for (region in c('acc', 'caudate')) {
 
         for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
             cat(res_str, db, '\n')
-            project_name = sprintf('WG12_SV1_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
 
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",

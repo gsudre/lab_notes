@@ -591,41 +591,6 @@ for (region in c('acc', 'caudate')) {
                             isOutput=T, isParallel=T,
                             nThreads=ncpu, perNum=10000, maxNum=800))
     }
-
-    DBs = c('geneontology_Biological_Process_noRedundant',
-            'geneontology_Cellular_Component_noRedundant',
-            'geneontology_Molecular_Function_noRedundant')
-    for (db in DBs) {
-        cat(res_str, db, '\n')
-        project_name = sprintf('WG13_%s_%s_10K', res_str, db)
-
-        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
-                                    organism="hsapiens",
-                                    enrichDatabase=db,
-                                    interestGene=tmp2,
-                                    interestGeneType="ensembl_gene_id",
-                                    sigMethod="top", topThr=20,
-                                    outputDirectory = data_dir,
-                                    minNum=5, projectName=project_name,
-                                    isOutput=T, isParallel=T,
-                                    nThreads=ncpu, perNum=10000))
-    }
-
-    for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
-        cat(res_str, db, '\n')
-        project_name = sprintf('WG13_%s_%s_10K', res_str, db)
-
-        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
-                                    organism="hsapiens",
-                                    enrichDatabase=sprintf('pathway_%s', db),
-                                    interestGene=tmp2,
-                                    interestGeneType="ensembl_gene_id",
-                                    sigMethod="top", minNum=3,
-                                    outputDirectory = data_dir,
-                                    projectName=project_name,
-                                    isOutput=T, isParallel=T,
-                                    nThreads=ncpu, topThr=20, perNum=10000))
-    }
 }
 ```
 
@@ -682,7 +647,7 @@ algorithm, but I should try to keep the class ratio the same:
 ```r
 library(caret)
 nperms = 300
-nSV = 4
+nSV = 6
 ncpu = 2
 perms = createMultiFolds(data$Diagnosis, k=2, times=nperms)
 
@@ -701,3 +666,232 @@ l <- foreach(r=1:nperms) %dopar% {
     return(c(res$estimate, res$p.value))
 }
 ```
+
+Let's put together the ones we have already run:
+
+```r
+rhos = c()
+for (nSV in 1:4) {
+    load(sprintf('~/data/post_mortem/l%d.rdata', nSV))
+    df = as.data.frame(t(as.data.frame(l)))
+    colnames(df) = c('rho', 'pval')
+    rownames(df) = 1:nrow(df)
+    df$nSV = nSV
+    rhos = rbind(rhos, df)
+}
+boxplot(rhos$rho ~ rhos$nSV)
+```
+
+![](images/2021-03-23-06-46-53.png)
+
+I'll finish running a couple more, but this is a good indication that a single
+SV could do the trick. If that's the case, let's see how it behaves with a
+single SV:
+
+```r
+dge_cau = run_DGE_SVA(count_matrix, data, tx_meta, myregion, NA, .05, nSV=1)
+```
+
+Saved both to ~/data/post_mortem/DGE_SV1_03232021.RData
+
+```
+#ACC
+Found 0 outliers.
+FDR q < 0.05
+
+out of 29357 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 1, 0.0034%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 1)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+
+Attaching package: ‘IHW’
+
+The following object is masked from ‘package:ggplot2’:
+
+    alpha
+
+IHW q < 0.05
+
+out of 29357 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+# Caudate
+FDR q < 0.05
+
+out of 29005 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+low counts [2]     : 0, 0%
+(mean count < 0)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+IHW q < 0.05
+
+out of 29005 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+```
+
+Let's look back at GSEA and MAGMA:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=3
+
+load('~/data/post_mortem/DGE_SV1_03232021.RData')
+
+for (region in c('acc', 'caudate')) {
+    res_str = ifelse(region == 'acc', 'dge_acc$res', 'dge_cau$res')
+    ranks_str = sprintf('ranks = -log(%s$pvalue) * sign(%s$log2FoldChange)',
+                        res_str, res_str)
+    gid_str = sprintf('geneid=substring(rownames(%s), 1, 15)', res_str)
+    
+    eval(parse(text=ranks_str))
+    eval(parse(text=gid_str))
+
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    DBs = c(sprintf('my_%s_sets', region))
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+        project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            sigMethod="top", topThr=20,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=800))
+    }
+
+    DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", topThr=20,
+                                    outputDirectory = data_dir,
+                                    minNum=5, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000))
+    }
+
+    for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=sprintf('pathway_%s', db),
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", minNum=3,
+                                    outputDirectory = data_dir,
+                                    projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, topThr=20, perNum=10000))
+    }
+}
+```
+
+Results were a bit more satisfying for the developmental sets. Let's try MAGMA
+before we keep going with the rest of the GSEA:
+
+```r
+library(biomaRt)
+library(dplyr)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+
+load('~/data/post_mortem//DGE_SV1_03232021.RData')
+for (r in c('acc', 'cau')) {
+    res_str = sprintf('res = as.data.frame(dge_%s$res)', r)
+    eval(parse(text=res_str))
+
+    res$GENEID = substr(rownames(res), 1, 15)
+    G_list0 <- getBM(filters= "ensembl_gene_id",
+                    attributes= c("ensembl_gene_id", "entrezgene_id"),values=res$GENEID, mart= mart)
+    G_list <- G_list0[!is.na(G_list0$ensembl_gene_id),]
+    G_list = G_list[G_list$ensembl_gene_id!='',]
+    G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+    imnamed = res$GENEID %in% G_list$ensembl_gene_id
+    res = res[imnamed, ]
+    res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
+                by.y='ensembl_gene_id')
+    ranks = res2 %>% group_by(entrezgene_id) %>% slice_min(n=1, pvalue, with_ties=F)
+    myres = data.frame(gene=ranks$entrezgene_id,
+                    signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
+                    unsigned_rank=-log(ranks$pvalue))
+    out_fname = sprintf('~/data/post_mortem/MAGMA_dge_SV1_%s.tab', r)
+    write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
+}
+```
+
+Then, for MAGMA we only need to run the last command:
+
+```bash
+module load MAGMA
+cd ~/data/tmp
+for r in 'acc' 'cau'; do
+    magma --gene-results genes_BW.genes.raw \
+        --gene-covar ~/data/post_mortem/MAGMA_dge_SV1_${r}.tab \
+        --out ~/data/post_mortem/MAGMA_gc_BW_dge_SV1_${r};
+done
+```
+
+OK, now we're back in the game. Let's see if the rest of the GSEA holds then:
+
+```
+[sudregp@cn3235 tmp]$ cat ~/data/post_mortem/MAGMA_gc_BW_dge_SV1_acc.gcov.out # MEAN_SAMPLE_SIZE = 55374# TOTAL_GENES = 15487
+# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
+COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
+signed_rank                    15487    -0.0112    -0.0232    0.00468     0.016948
+unsigned_rank                  15487   -0.00301   -0.00496    0.00663      0.64915
+[sudregp@cn3235 tmp]$ cat ~/data/post_mortem/MAGMA_gc_BW_dge_SV1_cau.gcov.out 
+# MEAN_SAMPLE_SIZE = 55374
+# TOTAL_GENES = 15363
+# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
+COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
+signed_rank                    15363   -0.00652    -0.0119    0.00537      0.22492
+unsigned_rank                  15363   -0.00579   -0.00846    0.00742      0.43514
+```
+
+I'm starting to think that all we need here is 1 SV and we're good. We could put
+the other more traditional covariates there just for peace of mind, because they
+don't influence the results at all (still pending on all the GSEA results for
+note 203 though). It's almost like this first SV captures everything that needs
+to be captured, and everything else we put in the model is just fluff.
