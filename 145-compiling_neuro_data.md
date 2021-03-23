@@ -100,3 +100,32 @@ for m in `cat ~/tmp/ids1`; do
     rm -rf rois.nii mask.nii;
 done
 ```
+
+# 2021-03-22 10:50:56
+
+Let's also add a mean_fa, mean_ad, and mean_rd column:
+
+```bash
+#ncrshell01
+mydir=/mnt/shaw/sudregp/dtitk_processing/tortoise_dtitk_crossSec_agingTemplate
+weighted_tracts=mean_tracts_1831.csv;
+cd $mydir
+row="id";
+for m in fa ad rd; do
+    row=${row}','mean_${m};
+done
+echo $row > $weighted_tracts;
+for m in `cat ~/tmp/ids1`; do
+    echo ${m}
+    row="${m}";
+    # not skeletonizing, just simple threshold
+    3dcalc -a ./${m}_tensor_diffeo_fa.nii.gz -prefix mask.nii -overwrite \
+        -expr "step(a-.2)" 2>/dev/null &&
+    fa=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_fa.nii 2>/dev/null`;
+    ad=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_ad.nii 2>/dev/null`;
+    rd=`3dmaskave -q -mask mask.nii ${m}_tensor_diffeo_rd.nii 2>/dev/null`;
+    row=${row}','${fa}','${ad}','${rd};
+    echo $row >> $weighted_tracts;
+    rm -rf mask.nii;
+done
+```

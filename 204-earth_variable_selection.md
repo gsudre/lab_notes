@@ -164,7 +164,37 @@ for (p in 1:ncol(dat2)) {
 }
 ```
 
+# 2021-03-22 10:13:51
 
+Let's parallelize this. I'm also not including the squared terms, because I
+think it might be a bit too much, and removing POP_CODE, as it's superfluous:
 
+```r
+library(MASS)
+mydat = cbind(dat2, covars)
 
+library(doMC)
+registerDoMC(31)
+ngenes = 64 #ncol(dat2)
+l <- foreach(p=1:ngenes) %dopar% { 
+    fm_str = sprintf('%s ~ %s', colnames(dat2)[p],
+                     paste0(colnames(covars), collapse='+'))
+    res.lm <- lm(as.formula(fm_str), data = mydat)
+    step <- stepAIC(res.lm, direction = "both", trace = F)
+    selected_vars = as.character(attr(terms(step), 'variables'))
+    # remove list and gene name
+    selected_vars = selected_vars[3:length(selected_vars)]
+    return(selected_vars)
+}
+
+for (p in 1:ncol(dat2)) {
+    if (p %% 100 == 0) {
+        cat(p, '\n')
+    }
     
+    scores[selected_vars] = scores[selected_vars] + 1
+}
+```
+
+This code somewhat works, but it might be a bit of overkill. Let's try the more
+conventional models first.
