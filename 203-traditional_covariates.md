@@ -1401,7 +1401,7 @@ do_boot_corrs = function(both_res) {
     return(corrs)
 }
 
-st = 'pseudogene'
+st = 'protein_coding'
 load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
 all_corrs = c()
 st2 = ifelse(st == 'all', NA, st)
@@ -1411,8 +1411,8 @@ for (cov in c('comorbid_group', 'pcnt_optical_duplicates', 'clusters',
               'evidence_level')) {
     cat(cov, '\n')
     dge = run_DGE_noPCA_SVs(count_matrix, data, tx_meta, myregion, st2, .05,
-                            BBB=T, nSV=1, add_cov=c(cov))
-    both_res = merge(as.data.frame(dge_acc[[st]]$res),
+                            BBB=F, nSV=1, add_cov=c(cov))
+    both_res = merge(as.data.frame(dge_cau[[st]]$res),
                     as.data.frame(dge$res), by=0, all.x=F, all.y=F)
     junk = data.frame(corr=do_boot_corrs(both_res))
     junk$region = myregion
@@ -1424,6 +1424,69 @@ for (cov in c('comorbid_group', 'pcnt_optical_duplicates', 'clusters',
 out_fname = sprintf('~/data/post_mortem/cov_corrs_%s_%s_BBB_SV1.RData',
                     myregion, st)
 saveRDS(all_corrs, file=out_fname)
+```
+
+OK, let's plot the results to see if there are any trends:
+
+```r
+st = 'all'
+myregion = 'Caudate'
+fname = sprintf('cov_corrs_%s_%s_BBB_SV1', myregion, st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.RData', fname))
+corrs$covar = 'BBB'
+all_corrs = corrs
+fname = sprintf('cov_corrs_%s_%s_SV1', myregion, st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.RData', fname))
+corrs$covar = 'batch'
+all_corrs = rbind(all_corrs, corrs)
+library(ggplot2)
+p <- (ggplot(all_corrs, aes(x = factor(cov), y = corr, fill=covar)) +
+      coord_flip() + geom_boxplot() +
+      theme(axis.text.y = element_text(angle = 0)) + 
+      ggtitle(sprintf('%s %s', myregion, st))) #+
+    #   geom_hline(yintercept=0, linetype="dotted", color = "red", size=1))
+p
+```
+
+![](images/2021-03-24-14-57-12.png)
+
+There's barely any difference. Maybe batch is slightly better, but there is an
+argument for using BBB just because we can incorporate the brain bank.
+
+![](images/2021-03-24-14-59-17.png)
+
+![](images/2021-03-24-14-59-59.png)
+
+![](images/2021-03-24-15-01-23.png)
+
+![](images/2021-03-24-15-15-24.png)
+
+![](images/2021-03-24-15-04-34.png)
+
+![](images/2021-03-24-15-03-56.png)
+
+![](images/2021-03-24-15-03-31.png)
+
+Just out of curiosity, let's establish some permutation runs just to see what
+our floor actually is:
+
+```r
+load('~/data/post_mortem/DGE_03222021_SV1.RData')
+corrs = c()
+nperms = 100
+set.seed(42)
+options(warn=-1)  # remove annoying spearman warnings
+for (p in 1:nperms) {
+    cat(p, '\n')
+    idx = sample(nrow(data), replace = T)
+    dge = run_DGE_noPCA_SVs(count_matrix[, idx], data, tx_meta, 'Caudate', NA,
+                            .05, BBB=F, nSV=1)
+    both_res = merge(as.data.frame(dge_cau[['all']]$res),
+                     as.data.frame(dge$res), by=0, all.x=F, all.y=F)
+    corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange.x'],
+                              both_res[idx, 'log2FoldChange.y'],
+                              method='spearman')$estimate)
+}
 ```
 
 # TODO
