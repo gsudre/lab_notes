@@ -481,7 +481,7 @@ Let's try each one also including 1 and 2 SVs, just for kicks:
 
 ```r
 run_DGE_noPCA_SVs = function(count_matrix, samples, tx_meta, myregion, subtype,
-                             alpha, BBB = FALSE, nSV = 1) {
+                             alpha, BBB = FALSE, nSV = 1, add_cov=NA) {
     cat('Starting with', nrow(tx_meta), 'variables\n')
     if (is.na(subtype)) {
         keep_me = rep(TRUE, nrow(count_matrix))
@@ -521,6 +521,11 @@ run_DGE_noPCA_SVs = function(count_matrix, samples, tx_meta, myregion, subtype,
         use_pcs = c('BBB', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI')
     } else {
         use_pcs = c('batch', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI')
+    }
+
+    # add more covariates for robustness testing
+    if (! is.na(add_cov)) {
+        use_pcs = c(use_pcs, add_cov)
     }
 
     fm_str = sprintf('~ Diagnosis + %s', paste0(use_pcs, collapse = ' + '))
@@ -571,11 +576,13 @@ run_DGE_noPCA_SVs = function(count_matrix, samples, tx_meta, myregion, subtype,
         myCounts = round(myCounts)[keep_me, ]
     }
 
+    # let's calculate SVs only afterwards, so outlier genes don't influence them
     if (nSV > 0) {
         # I get the same value whether I do this after DESeq or just estimateSizeFactors
         dat  <- counts(dds, normalized = TRUE)
 
         library(sva)
+        set.seed(42)
         mod  <- model.matrix(~ Diagnosis, colData(dds))
         mod0 <- model.matrix(~   1, colData(dds))
         svseq <- svaseq(dat, mod, mod0, n.sv = nSV)
@@ -612,14 +619,14 @@ dge_acc = list()
 for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dge_acc[[st]] = run_DGE_noPCA_SVs(count_matrix, data, tx_meta,
-                                      myregion, st2, .05, BBB=T, nSV=2)
+                                      myregion, st2, .05, BBB=T, nSV=1)
 }
 ###
 dge_cau = list()
 for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dge_cau[[st]] = run_DGE_noPCA_SVs(count_matrix, data, tx_meta,
-                                      myregion, st2, .05, BBB=T, nSV=2)
+                                      myregion, st2, .05, BBB=T, nSV=1)
 }
 save(dge_acc, dge_cau, file='~/data/post_mortem/DGE_03222021.RData')
 ```
@@ -1374,6 +1381,50 @@ p + ggtitle('BBB') + geom_hline(yintercept=0, linetype="dotted",
 
 No major differences either.
 
+# 2021-03-24 10:41:54
+
+It looks like we might need ot decide this based on the relationship with the
+other covariates. 
+
+```r
+do_boot_corrs = function(both_res) {
+    corrs = c()
+    nperms = 10000
+    set.seed(42)
+    options(warn=-1)  # remove annoying spearman warnings
+    for (p in 1:nperms) {
+        idx = sample(nrow(both_res), replace = T)
+        corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange.x'],
+                                  both_res[idx, 'log2FoldChange.y'],
+                                  method='spearman')$estimate)
+    }
+    return(corrs)
+}
+
+st = 'pseudogene'
+load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
+all_corrs = c()
+st2 = ifelse(st == 'all', NA, st)
+
+for (cov in c('comorbid_group', 'pcnt_optical_duplicates', 'clusters',
+              'C4', 'C5', 'MoD', 'substance_group', 'POP_CODE',
+              'evidence_level')) {
+    cat(cov, '\n')
+    dge = run_DGE_noPCA_SVs(count_matrix, data, tx_meta, myregion, st2, .05,
+                            BBB=T, nSV=1, add_cov=c(cov))
+    both_res = merge(as.data.frame(dge_acc[[st]]$res),
+                    as.data.frame(dge$res), by=0, all.x=F, all.y=F)
+    junk = data.frame(corr=do_boot_corrs(both_res))
+    junk$region = myregion
+    junk$cov = cov
+    junk$gene_overlap = nrow(both_res)
+    junk$subtype = st
+    all_corrs = rbind(all_corrs, junk)
+}
+out_fname = sprintf('~/data/post_mortem/cov_corrs_%s_%s_BBB_SV1.RData',
+                    myregion, st)
+saveRDS(all_corrs, file=out_fname)
+```
 
 # TODO
  * run individual clinical covariates and measure correlation
