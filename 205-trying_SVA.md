@@ -671,7 +671,7 @@ Let's put together the ones we have already run:
 
 ```r
 rhos = c()
-for (nSV in 1:4) {
+for (nSV in 1:6) {
     load(sprintf('~/data/post_mortem/l%d.rdata', nSV))
     df = as.data.frame(t(as.data.frame(l)))
     colnames(df) = c('rho', 'pval')
@@ -763,7 +763,7 @@ ncpu=3
 load('~/data/post_mortem/DGE_SV1_03232021.RData')
 
 for (region in c('acc', 'caudate')) {
-    res_str = ifelse(region == 'acc', 'dge_acc$res', 'dge_cau$res')
+    res_str = ifelse(region == 'acc', 'dge_acc$all$res', 'dge_cau$all$res')
     ranks_str = sprintf('ranks = -log(%s$pvalue) * sign(%s$log2FoldChange)',
                         res_str, res_str)
     gid_str = sprintf('geneid=substring(rownames(%s), 1, 15)', res_str)
@@ -791,41 +791,6 @@ for (region in c('acc', 'caudate')) {
                             isOutput=T, isParallel=T,
                             nThreads=ncpu, perNum=10000, maxNum=800))
     }
-
-    DBs = c('geneontology_Biological_Process_noRedundant',
-            'geneontology_Cellular_Component_noRedundant',
-            'geneontology_Molecular_Function_noRedundant')
-    for (db in DBs) {
-        cat(res_str, db, '\n')
-        project_name = sprintf('WG14_%s_%s_10K', res_str, db)
-
-        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
-                                    organism="hsapiens",
-                                    enrichDatabase=db,
-                                    interestGene=tmp2,
-                                    interestGeneType="ensembl_gene_id",
-                                    sigMethod="top", topThr=20,
-                                    outputDirectory = data_dir,
-                                    minNum=5, projectName=project_name,
-                                    isOutput=T, isParallel=T,
-                                    nThreads=ncpu, perNum=10000))
-    }
-
-    for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
-        cat(res_str, db, '\n')
-        project_name = sprintf('WG14_%s_%s_10K', res_str, db)
-
-        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
-                                    organism="hsapiens",
-                                    enrichDatabase=sprintf('pathway_%s', db),
-                                    interestGene=tmp2,
-                                    interestGeneType="ensembl_gene_id",
-                                    sigMethod="top", minNum=3,
-                                    outputDirectory = data_dir,
-                                    projectName=project_name,
-                                    isOutput=T, isParallel=T,
-                                    nThreads=ncpu, topThr=20, perNum=10000))
-    }
 }
 ```
 
@@ -839,7 +804,7 @@ mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
 
 load('~/data/post_mortem//DGE_SV1_03232021.RData')
 for (r in c('acc', 'cau')) {
-    res_str = sprintf('res = as.data.frame(dge_%s$res)', r)
+    res_str = sprintf('res = as.data.frame(dge_%s$all$res)', r)
     eval(parse(text=res_str))
 
     res$GENEID = substr(rownames(res), 1, 15)
@@ -895,3 +860,132 @@ the other more traditional covariates there just for peace of mind, because they
 don't influence the results at all (still pending on all the GSEA results for
 note 203 though). It's almost like this first SV captures everything that needs
 to be captured, and everything else we put in the model is just fluff.
+
+But for a proper comparison, let me run the different subtypes for SV1:
+
+```r
+dge_acc = list()
+for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
+    st2 = ifelse(st == 'all', NA, st)
+    dge_acc[[st]] = run_DGE_SVA(count_matrix, data, tx_meta, myregion, st2,
+                                .05, nSV=1)
+}
+###
+dge_cau = list()
+for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
+    st2 = ifelse(st == 'all', NA, st)
+    dge_cau[[st]] = run_DGE_SVA(count_matrix, data, tx_meta, myregion, st2,
+                                .05, nSV=1)
+}
+save(dge_acc, dge_cau, file='~/data/post_mortem/DGE_SV1_03232021.RData')
+```
+
+And now we can do GSEA for both subtypes:
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=4
+
+load('~/data/post_mortem/DGE_SV1_03232021.RData')
+
+for (region in c('acc', 'caudate')) {
+    for (st in c('all', 'protein_coding')) {
+        res_str = ifelse(region == 'acc', sprintf('dge_acc[["%s"]]$res', st),
+                         sprintf('dge_cau[["%s"]]$res', st))
+        ranks_str = sprintf('ranks = -log(%s$pvalue) * sign(%s$log2FoldChange)',
+                            res_str, res_str)
+        gid_str = sprintf('geneid=substring(rownames(%s), 1, 15)', res_str)
+        
+        eval(parse(text=ranks_str))
+        eval(parse(text=gid_str))
+
+        tmp2 = data.frame(geneid=geneid, rank=ranks)
+        tmp2 = tmp2[order(ranks, decreasing=T),]
+
+        DBs = c(sprintf('my_%s_sets', region))
+        for (db in DBs) {
+            cat(res_str, db, '\n')
+            db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+            project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                organism="hsapiens",
+                                enrichDatabaseFile=db_file,
+                                enrichDatabaseType="genesymbol",
+                                interestGene=tmp2,
+                                outputDirectory = data_dir,
+                                interestGeneType="ensembl_gene_id",
+                                sigMethod="top", topThr=20,
+                                minNum=3, projectName=project_name,
+                                isOutput=T, isParallel=T,
+                                nThreads=ncpu, perNum=10000, maxNum=800))
+        }
+
+        DBs = c('geneontology_Biological_Process_noRedundant',
+                'geneontology_Cellular_Component_noRedundant',
+                'geneontology_Molecular_Function_noRedundant')
+        for (db in DBs) {
+            cat(res_str, db, '\n')
+            project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                        organism="hsapiens",
+                                        enrichDatabase=db,
+                                        interestGene=tmp2,
+                                        interestGeneType="ensembl_gene_id",
+                                        sigMethod="top", topThr=20,
+                                        outputDirectory = data_dir,
+                                        minNum=5, projectName=project_name,
+                                        isOutput=T, isParallel=T,
+                                        nThreads=ncpu, perNum=10000))
+        }
+
+        for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
+            cat(res_str, db, '\n')
+            project_name = sprintf('WG14_%s_%s_10K', res_str, db)
+
+            enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                        organism="hsapiens",
+                                        enrichDatabase=sprintf('pathway_%s', db),
+                                        interestGene=tmp2,
+                                        interestGeneType="ensembl_gene_id",
+                                        sigMethod="top", minNum=3,
+                                        outputDirectory = data_dir,
+                                        projectName=project_name,
+                                        isOutput=T, isParallel=T,
+                                        nThreads=ncpu, topThr=20, perNum=10000))
+        }
+    }
+}
+```
+
+# 2021-03-23 19:24:00
+
+![](images/2021-03-23-19-24-01.png)
+
+Well, this was unexpected. I didn't think it was going to start increasing after
+l4. Let's run it all the way to 10.
+
+```r
+library(caret)
+nperms = 300
+nSV = 8
+ncpu = 32
+perms = createMultiFolds(data$Diagnosis, k=2, times=nperms)
+
+library(doMC)
+registerDoMC(ncpu)
+l <- foreach(r=1:nperms) %dopar% { 
+    idx = perms[[sprintf('Fold1.Rep%03d', r)]]
+    dge1 = run_DGE_SVA(count_matrix[, idx], data[idx,], tx_meta, myregion, NA,
+                    .05, nSV)
+    idx = perms[[sprintf('Fold2.Rep%03d', r)]]
+    dge2 = run_DGE_SVA(count_matrix[, idx], data[idx,], tx_meta, myregion, NA,
+                    .05, nSV)
+    m = merge(as.data.frame(dge1$res), as.data.frame(dge2$res), by=0,
+            all.x=F, all.y=F)
+    res = cor.test(m$log2FoldChange.x, m$log2FoldChange.y, method='spearman')
+    return(c(res$estimate, res$p.value))
+}
+```

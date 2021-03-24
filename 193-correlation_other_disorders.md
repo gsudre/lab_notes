@@ -489,7 +489,7 @@ all_corrs = rbind(all_corrs, junk)
 meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Neelroop')
 both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='ENSEMBL.ID',
                  all.x=T, all.y=F)
-junk = data.frame(corr=do_boot_corrs(both_res, 'log2FoldChange', met))
+junk = data.frame(corr=do_boot_corrs(both_res, 'log2.FC..ASD.vs.CTL', met))
 junk$region = 'ACC'
 junk$disorder = d
 junk$gene_overlap = nrow(both_res)

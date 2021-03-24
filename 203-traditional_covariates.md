@@ -951,5 +951,429 @@ unsigned_rank                  14970    0.00278    0.00533    0.00568      0.624
 
 Same, thing, all non-significant.
 
+# 2021-03-23 13:12:01
+
+Based on the MAGMA results, we seem to be doing slightly better with the BBB
+results compared to batch results only looking at SV1 models based on our
+experiments with SVA. How about the developmental sets?
+
+I have dev1 and overlap for ACC_all_BBB, same for ACC_all_batch. For
+protein_coding, I get dev1, overlap, and dev5 in BBB, but no dev5 for batch. For
+Caudate, we get dev1 and dev2 for all_BBB, and only dev1 for batch. If we look
+at protein_coding only, we get dev2 only for BBB, and dev1 and dev2 for batch.
+So, seems like BBB is doing slightly better here too, but batch can be useful if
+we want to get dev1 and dev2 in the caudate.
+
+Let's turn to the biological set now. BBB_all_acc seems safe, and protein_coding
+is even more significant. Not much difference to batch_pc_acc, or using all.
+Caudate results seem much more robust now, with lots of mitochondrial stuff, and
+some transcription. We can probably pick any of them there.
+
+Maybe looking at pathways might help decide this? Lots of results there... hard
+to use for filtering though. 
+
+Maybe we can do it based on significance of single genes? Or correlation to
+other disorders?
+
+```r
+library(IHW)
+for (s in c('_SV1', '_BBB_SV1')) {
+    load(sprintf('~/data/post_mortem//DGE_03222021%s.RData', s))
+    for (r in c('acc', 'cau')) {
+        for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
+            res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
+            eval(parse(text=res_str))
+            ngood = sum(res$padj < .05)
+            cat(s, r, st, 'FDR .05', ngood, '\n')
+            ngood = sum(res$padj < .1)
+            cat(s, r, st, 'FDR .1', ngood, '\n')
+            # redoing IHW because of using different Qs
+            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.05))
+            ngood = sum(p2 < .05)
+            cat(s, r, st, 'IHW .05', ngood, '\n')
+            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.1))
+            ngood = sum(p2 < .1)
+            cat(s, r, st, 'IHW .1', ngood, '\n')
+        }
+    }
+}
+```
+
+```
+_SV1 acc all FDR .05 0 
+_SV1 acc all FDR .1 0 
+_SV1 acc all IHW .05 0 
+_SV1 acc all IHW .1 0 
+_SV1 acc protein_coding FDR .05 0 
+_SV1 acc protein_coding FDR .1 0 
+_SV1 acc protein_coding IHW .05 0 
+_SV1 acc protein_coding IHW .1 0 
+_SV1 acc lncRNA FDR .05 0 
+_SV1 acc lncRNA FDR .1 2 
+_SV1 acc lncRNA IHW .05 0 
+_SV1 acc lncRNA IHW .1 2 
+_SV1 acc pseudogene FDR .05 0 
+_SV1 acc pseudogene FDR .1 0 
+_SV1 acc pseudogene IHW .05 0 
+_SV1 acc pseudogene IHW .1 0 
+_SV1 cau all FDR .05 1 
+_SV1 cau all FDR .1 10 
+_SV1 cau all IHW .05 1 
+_SV1 cau all IHW .1 4 
+_SV1 cau protein_coding FDR .05 0 
+_SV1 cau protein_coding FDR .1 17 
+_SV1 cau protein_coding IHW .05 0 
+_SV1 cau protein_coding IHW .1 11 
+_SV1 cau lncRNA FDR .05 0 
+_SV1 cau lncRNA FDR .1 0 
+_SV1 cau lncRNA IHW .05 0 
+_SV1 cau lncRNA IHW .1 0 
+_SV1 cau pseudogene FDR .05 1 
+_SV1 cau pseudogene FDR .1 1 
+_SV1 cau pseudogene IHW .05 1 
+_SV1 cau pseudogene IHW .1 1 
+
+_BBB_SV1 acc all FDR .05 0 
+_BBB_SV1 acc all FDR .1 0 
+_BBB_SV1 acc all IHW .05 0 
+_BBB_SV1 acc all IHW .1 0 
+_BBB_SV1 acc protein_coding FDR .05 0 
+_BBB_SV1 acc protein_coding FDR .1 0 
+_BBB_SV1 acc protein_coding IHW .05 0 
+_BBB_SV1 acc protein_coding IHW .1 0 
+_BBB_SV1 acc lncRNA FDR .05 1 
+_BBB_SV1 acc lncRNA FDR .1 2 
+_BBB_SV1 acc lncRNA IHW .05 1 
+_BBB_SV1 acc lncRNA IHW .1 2 
+_BBB_SV1 acc pseudogene FDR .05 0 
+_BBB_SV1 acc pseudogene FDR .1 0 
+_BBB_SV1 acc pseudogene IHW .05 0 
+_BBB_SV1 acc pseudogene IHW .1 0 
+_BBB_SV1 cau all FDR .05 0 
+_BBB_SV1 cau all FDR .1 0 
+_BBB_SV1 cau all IHW .05 0 
+_BBB_SV1 cau all IHW .1 0 
+_BBB_SV1 cau protein_coding FDR .05 0 
+_BBB_SV1 cau protein_coding FDR .1 0 
+_BBB_SV1 cau protein_coding IHW .05 0 
+_BBB_SV1 cau protein_coding IHW .1 0 
+_BBB_SV1 cau lncRNA FDR .05 0 
+_BBB_SV1 cau lncRNA FDR .1 0 
+_BBB_SV1 cau lncRNA IHW .05 0 
+_BBB_SV1 cau lncRNA IHW .1 0 
+_BBB_SV1 cau pseudogene FDR .05 0 
+_BBB_SV1 cau pseudogene FDR .1 0 
+_BBB_SV1 cau pseudogene IHW .05 0 
+_BBB_SV1 cau pseudogene IHW .1 0 
+```
+
+It seems like to maximize the single hits we should go with batch instead of
+BBB. Let's look at correlation to other disorders:
+
+```r
+do_boot_corrs = function(both_res, log2FC_col, method) {
+    corrs = c()
+    nperms = 10000
+    set.seed(42)
+    options(warn=-1)  # remove annoying spearman warnings
+    for (p in 1:nperms) {
+        idx = sample(nrow(both_res), replace = T)
+        corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange'],
+                                  both_res[idx, log2FC_col],
+                                  method=method)$estimate)
+    }
+    return(corrs)
+}
+
+meta = readRDS('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1_micro.rds')
+
+st = 'all'
+met = 'spearman'
+load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
+
+corrs = list()
+disorders = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'IBD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.beta_log2FC', d), met)
+}
+all_corrs = c()
+for (d in disorders) {
+    cat(d, '\n')
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_micro'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
+corrs = list()
+disorders = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'IBD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.beta_log2FC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'Caudate'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_micro'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+library(gdata)
+meta = read.xls('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1.xlsx',
+                'RNAseq SCZ&BD MetaAnalysis DGE')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+disorders = c('SCZ', 'BD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.logFC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_RNAseq'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+disorders = c('SCZ', 'BD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('%s.logFC', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'Caudate'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Gandal_RNAseq'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+meta = read.xls('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1.xlsx',
+                'RNAseq ASD-pancortical DGE')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'Frontal.logFC', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Gandal_RNAseq'
+all_corrs = rbind(all_corrs, junk)
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='X', all.x=F, all.y=F)
+corrs = list()
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'Frontal.logFC', met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Gandal_RNAseq'
+all_corrs = rbind(all_corrs, junk)
+
+# moving on to other papers: Akula
+meta = readRDS('~/data/post_mortem/ACC_other_disorders.rds')
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='Ensemble.gene.ID',
+                 all.x=F, all.y=F)
+corrs = list()
+disorders = c('BD', 'SCZ', 'MDD')
+for (d in disorders) {
+    cat(d, '\n')
+    corrs[[d]] = do_boot_corrs(both_res, sprintf('log2FoldChange.%s', d), met)
+}
+for (d in disorders) {
+    junk = data.frame(corr=corrs[[d]])
+    junk$region = 'ACC'
+    junk$disorder = d
+    junk$gene_overlap = nrow(both_res)
+    junk$source = 'Akula'
+    all_corrs = rbind(all_corrs, junk)
+}
+
+dge = as.data.frame(dge_cau[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+d = 'SCZ'
+dge = merge(dge, mart, by='ensembl_gene_id', all.x=T, all.y=F)
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+meta$gencodeID = substr(meta$gencodeID, 1, 15)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='gencodeID',
+                 all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.SCZ'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Benjamin'
+all_corrs = rbind(all_corrs, junk)
+
+d = 'BD'
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='gencodeID',
+                 all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.BD'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Pacifico'
+all_corrs = rbind(all_corrs, junk)
+
+d = 'OCD'
+meta = read.xls('~/data/post_mortem/caudate_others.xlsx', d)
+both_res = merge(dge, meta, by='hgnc_symbol', all.x=T, all.y=F)
+colnames(both_res)[ncol(both_res)] = 'log2FC.OCD'
+junk = data.frame(corr=do_boot_corrs(both_res, sprintf('log2FC.%s', d), met))
+junk$region = 'Caudate'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Piantadosi'
+all_corrs = rbind(all_corrs, junk)
+
+# last 2 ASD papers
+dge = as.data.frame(dge_acc[[st]][['res']])
+dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Wright')
+both_res = merge(dge, meta, by='ensembl_gene_id', all.x=T, all.y=F)
+d = 'ASD'
+junk = data.frame(corr=do_boot_corrs(both_res, 'log2FC', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Wright_DLPFC'
+all_corrs = rbind(all_corrs, junk)
+
+meta = read.xls('~/data/post_mortem/ASD_only.xlsx', 'Neelroop')
+both_res = merge(dge, meta, by.x='ensembl_gene_id', by.y='ENSEMBL.ID',
+                 all.x=T, all.y=F)
+junk = data.frame(corr=do_boot_corrs(both_res, 'log2.FC..ASD.vs.CTL', met))
+junk$region = 'ACC'
+junk$disorder = d
+junk$gene_overlap = nrow(both_res)
+junk$source = 'Neelroop_FrontalTemporal'
+all_corrs = rbind(all_corrs, junk)
+
+out_fname = sprintf('~/data/post_mortem/%s_corrs_BBB_SV1.rds', st)
+saveRDS(all_corrs, file=out_fname)
+```
+
+And I ran the same thing for _SV1. Let's plot them now:
+
+```r
+fname = 'protein_coding_corrs_SV1'
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$id = sapply(1:nrow(corrs),
+                  function(i) sprintf('%s_%s_%s',
+                                      corrs[i, 'region'],
+                                      corrs[i, 'disorder'],
+                                      corrs[i, 'source']))
+library(ggplot2)
+p <- ggplot(corrs, aes(x = factor(id), y = corr)) + coord_flip() +
+  geom_boxplot() + theme(axis.text.y = element_text(angle = 0))
+p + ggtitle(fname) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1)
+```
+
+![](images/2021-03-23-15-30-57.png)
+
+![](images/2021-03-23-15-32-12.png)
+
+Actually, it makes sense to do a grouped bar plot here:
+
+```r
+st = 'all'
+fname = sprintf('%s_corrs_SV1', st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$id = sapply(1:nrow(corrs),
+                  function(i) sprintf('%s_%s_%s',
+                                      corrs[i, 'region'],
+                                      corrs[i, 'disorder'],
+                                      corrs[i, 'source']))
+corrs$cov = 'batch'
+all_corrs = corrs
+fname = sprintf('%s_corrs_BBB_SV1', st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$id = sapply(1:nrow(corrs),
+                  function(i) sprintf('%s_%s_%s',
+                                      corrs[i, 'region'],
+                                      corrs[i, 'disorder'],
+                                      corrs[i, 'source']))
+corrs$cov = 'BBB'
+all_corrs = rbind(all_corrs, corrs)
+library(ggplot2)
+p <- ggplot(all_corrs, aes(x = factor(id), y = corr, fill=cov)) + coord_flip() +
+  geom_boxplot() + theme(axis.text.y = element_text(angle = 0))
+p + ggtitle(st) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1)
+```
+
+![](images/2021-03-23-16-10-35.png)
+
+Not much difference here. Is there a difference if we use all genes?
+
+![](images/2021-03-23-20-17-21.png)
+
+Not much change either. How about all against protein_coding comparison?
+
+```r
+st = 'all'
+fname = sprintf('%s_corrs_BBB_SV1', st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$id = sapply(1:nrow(corrs),
+                  function(i) sprintf('%s_%s_%s',
+                                      corrs[i, 'region'],
+                                      corrs[i, 'disorder'],
+                                      corrs[i, 'source']))
+corrs$cov = st
+all_corrs = corrs
+st = 'protein_coding'
+fname = sprintf('%s_corrs_BBB_SV1', st)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$id = sapply(1:nrow(corrs),
+                  function(i) sprintf('%s_%s_%s',
+                                      corrs[i, 'region'],
+                                      corrs[i, 'disorder'],
+                                      corrs[i, 'source']))
+corrs$cov = st
+all_corrs = rbind(all_corrs, corrs)
+library(ggplot2)
+p <- ggplot(all_corrs, aes(x = factor(id), y = corr, fill=cov)) + coord_flip() +
+  geom_boxplot() + theme(axis.text.y = element_text(angle = 0))
+p + ggtitle('BBB') + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1)
+```
+
+![](images/2021-03-23-20-19-29.png)
+
+![](images/2021-03-23-20-20-39.png)
+
+No major differences either.
+
+
 # TODO
- * do I create the SV model with the other covariates in it or just DX?
+ * run individual clinical covariates and measure correlation
