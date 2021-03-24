@@ -671,7 +671,7 @@ Let's put together the ones we have already run:
 
 ```r
 rhos = c()
-for (nSV in 1:6) {
+for (nSV in 1:10) {
     load(sprintf('~/data/post_mortem/l%d.rdata', nSV))
     df = as.data.frame(t(as.data.frame(l)))
     colnames(df) = c('rho', 'pval')
@@ -970,8 +970,8 @@ l4. Let's run it all the way to 10.
 ```r
 library(caret)
 nperms = 300
-nSV = 8
-ncpu = 32
+nSV = 9
+ncpu = 30
 perms = createMultiFolds(data$Diagnosis, k=2, times=nperms)
 
 library(doMC)
@@ -989,3 +989,7 @@ l <- foreach(r=1:nperms) %dopar% {
     return(c(res$estimate, res$p.value))
 }
 ```
+
+![](images/2021-03-24-00-41-44.png)
+
+Well, it started going down again, so I'll leave it as is with SV 1.
