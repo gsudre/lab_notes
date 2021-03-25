@@ -1476,23 +1476,46 @@ corrs = c()
 nperms = 100
 set.seed(42)
 options(warn=-1)  # remove annoying spearman warnings
+# i'm setting the seed inside the function, so I need to create idx first
+idx = list()
+for (p in 1:nperms) {
+    idx[[p]] = sample(nrow(data), replace = F)
+}
 for (p in 1:nperms) {
     cat(p, '\n')
-    idx = sample(nrow(data), replace = T)
-    dge = run_DGE_noPCA_SVs(count_matrix[, idx], data, tx_meta, 'Caudate', NA,
-                            .05, BBB=F, nSV=1)
+    dge = run_DGE_noPCA_SVs(count_matrix[, idx[[p]]], data, tx_meta,
+                            'Caudate', NA, .05, BBB=F, nSV=1)
     both_res = merge(as.data.frame(dge_cau[['all']]$res),
                      as.data.frame(dge$res), by=0, all.x=F, all.y=F)
-    corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange.x'],
-                              both_res[idx, 'log2FoldChange.y'],
+    corrs = c(corrs, cor.test(both_res[, 'log2FoldChange.x'],
+                              both_res[, 'log2FoldChange.y'],
                               method='spearman')$estimate)
 }
+saveRDS(corrs, file='~/data/post_mortem/random_corrs.rds')
 ```
 
+![](images/2021-03-25-11-54-37.png)
+
+That makes sense.
+
 So, which one do we go with? Maybe using Bonferroni for selection would work?
+For the 6 developmental periods, we'd be looking at .0083 in Bonferoni.
+    
+ * BBB_SV1_all: ACC dev1 and overlap, Caudate dev1, dev2
+ * BBB_SV1_pc: ACC dev1, dev5 and overlap, Caudate dev1, dev2
+ * SV1_all: ACC dev1 and overlap, Caudate dev1
+ * SV1_pc: ACC dev1 and overlap, Caudate dev1, dev2
 
-
+Based on this, BBB_SV1_pc seems to be the way to go. But if we want to show
+single gene results, then batch might be better if we're willing to go to .1. I
+wonder if DTE and DTU can help with that decision though.
 
 
 # TODO
  * run individual clinical covariates and measure correlation
+
+# Useful links
+ * https://www.sciencedirect.com/science/article/pii/S0888754318303148
+ * https://pubmed.ncbi.nlm.nih.gov/28129774/
+ * https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1878-x
+ * https://bioconductor.org/packages/release/bioc/vignettes/bacon/inst/doc/bacon.html
