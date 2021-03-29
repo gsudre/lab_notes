@@ -331,38 +331,13 @@ run_DTE_SVA = function(count_matrix, samples, tx_meta, myregion, subtype,
                     filterFun=ihw)
     cat(sprintf('IHW q < %.2f\n', alpha))
     print(summary(resIHW))
-    
-    # stage-wise testing
-    library(stageR)
-    library(dplyr)
-    pConfirmation <- matrix(res$pvalue, ncol=1)
-    dimnames(pConfirmation) <- list(substr(rownames(res), 1, 15),
-                                    c("transcript"))
-    # select one qval per gene (min over transcripts)
-    junk = as.data.frame(res)
-    junk$TXNAME = substr(rownames(junk), 1, 15)
-    m = merge(junk, metaExpr, by='TXNAME')
-    qvals = m %>% group_by(GENEID) %>% slice_min(n=1, padj, with_ties=F)
-    pScreen = qvals$padj
-    names(pScreen) = qvals$GENEID
 
-    stageRObj = stageRTx(pScreen=pScreen, pConfirmation=pConfirmation,
-                        pScreenAdjusted=TRUE, tx2gene=metaExpr[, 1:2],
-                        allowNA=TRUE)
-    stageRObj = stageWiseAdjustment(stageRObj, method="dte", alpha=alpha,
-                                    allowNA=TRUE)
-    cat(sprintf('stageR q < %.2f\n', alpha))
-    gene_ids = getSignificantGenes(stageRObj)
-    tx_ids = getSignificantTx(stageRObj)
-    if (nrow(tx_ids) > 0) {
-        print(gene_ids)
-        print(tx_ids)
-    }
-
-    my_res = list(res=res, resIHW=resIHW, dds=dds, stageRObj=stageRObj)
+    my_res = list(res=res, resIHW=resIHW, dds=dds)
     return(my_res)
 }
 ```
+
+I cut the stageR portion because I was getting lots of errors because of that.
 
 And now we permute the halves:
 
@@ -374,8 +349,9 @@ perms = createMultiFolds(data$Diagnosis, k=2, times=nperms)
 
 library(doMC)
 registerDoMC(ncpu)
-for (nSV in seq(2, 10, 2)) {
+for (nSV in seq(7, 10, 2)) {
     l <- foreach(r=1:nperms) %dopar% { 
+        cat('iteration SV', nSV, '-', r, '\n')
         idx = perms[[sprintf('Fold1.Rep%03d', r)]]
         dte1 = run_DTE_SVA(count_matrix[, idx], samples[idx,], tx_meta,
                            myregion, NA, .05, nSV=nSV)

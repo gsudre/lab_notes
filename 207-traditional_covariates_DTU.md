@@ -163,63 +163,65 @@ run_DTU_noPCA = function(count_matrix, samples, tx_meta, subtype, alpha,
     cat('Transcripts surviving SD filtering and FDR q<', alpha, ':',
         sum(res.t.filt$adj_pvalue < alpha, na.rm=T), '\n')
 
-    strp <- function(x) substr(x, 1, 15)
-    # Construct a vector of per-gene p-values for the screening stage
-    pScreen = res.g$pvalue
-    names(pScreen) = strp(res.g$gene_id)
-    # Construct a one column matrix of the per-transcript confirmation p-values
-    pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
-    dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
-    # res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
-    tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
-                        res.t[,c("feature_id", "gene_id")])
-    # remove version from gene name
-    for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+    # strp <- function(x) substr(x, 1, 15)
+    # # Construct a vector of per-gene p-values for the screening stage
+    # pScreen = res.g$pvalue
+    # names(pScreen) = strp(res.g$gene_id)
+    # # Construct a one column matrix of the per-transcript confirmation p-values
+    # pConfirmation = matrix(res.t.filt$pvalue, ncol = 1)
+    # dimnames(pConfirmation) = list(strp(res.t.filt$feature_id), "transcript")
+    # # res.t is used twice to construct a 4-column data.frame that contain both original IDs and IDs without version numbers
+    # tx2gene = data.frame(res.t[,c("feature_id", "gene_id")], 
+    #                     res.t[,c("feature_id", "gene_id")])
+    # # remove version from gene name
+    # for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
 
-    library(stageR)
-    stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
-                        pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
-    stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = alpha)
+    # library(stageR)
+    # stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+    #                     pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+    # stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = alpha)
 
-    drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
-                                onlySignificantGenes = TRUE)
-    # this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
-    drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
-                    by.y = c("geneID","txID"))
+    # drim.padj = getAdjustedPValues(stageRObj, order = FALSE,
+    #                             onlySignificantGenes = TRUE)
+    # # this summarizes the adjusted p-values from the two-stage analysis. Only genes that passed the filter are included in the table.
+    # drim.padj = merge(tx2gene, drim.padj, by.x = c("gene_id","feature_id"),
+    #                 by.y = c("geneID","txID"))
 
-    cat('Screened genes at FDR q<', alpha, ':',
-        length(unique(drim.padj[drim.padj$gene < alpha,]$gene_id)), '\n')
-    cat('Transcripts passing OFDR:', sum(drim.padj$transcript < alpha), '\n')
+    # cat('Screened genes at FDR q<', alpha, ':',
+    #     length(unique(drim.padj[drim.padj$gene < alpha,]$gene_id)), '\n')
+    # cat('Transcripts passing OFDR:', sum(drim.padj$transcript < alpha), '\n')
 
-    cat('stageR q <', alpha, '\n')
-    gene_ids = getSignificantGenes(stageRObj)
-    tx_ids = getSignificantTx(stageRObj)
-    if (nrow(tx_ids) > 0) {
-        print(gene_ids)
-        print(tx_ids)
-    }
-    cat('Genes where expression switches among isoforms:',
-        length(unique(drim.padj[drim.padj$transcript < alpha, 'gene_id'])), '\n')
+    # cat('stageR q <', alpha, '\n')
+    # gene_ids = getSignificantGenes(stageRObj)
+    # tx_ids = getSignificantTx(stageRObj)
+    # if (nrow(tx_ids) > 0) {
+    #     print(gene_ids)
+    #     print(tx_ids)
+    # }
+    # cat('Genes where expression switches among isoforms:',
+    #     length(unique(drim.padj[drim.padj$transcript < alpha, 'gene_id'])), '\n')
 
-    # condensing the counts to be converted to proportions
-    drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
-    drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
-                        drim.prop$feature_id),]
-    # Calculate proportions from counts
-    library(dplyr)
-    library(ggplot2)
-    library(ggbeeswarm)
-    drim.prop2 = drim.prop %>%
-            group_by(gene_id, variable) %>%
-            mutate(total = sum(value)) %>%
-            group_by(variable, add=TRUE) %>%
-            mutate(prop = value/total)
-    drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
-                                gene_id + feature_id ~ variable)
+    # # condensing the counts to be converted to proportions
+    # drim.prop = reshape2::melt(counts[counts$feature_id %in% proportions(d)$feature_id,], id = c("gene_id", "feature_id"))
+    # drim.prop = drim.prop[order(drim.prop$gene_id, drim.prop$variable,
+    #                     drim.prop$feature_id),]
+    # # Calculate proportions from counts
+    # library(dplyr)
+    # library(ggplot2)
+    # library(ggbeeswarm)
+    # drim.prop2 = drim.prop %>%
+    #         group_by(gene_id, variable) %>%
+    #         mutate(total = sum(value)) %>%
+    #         group_by(variable, add=TRUE) %>%
+    #         mutate(prop = value/total)
+    # drim.prop3 = reshape2::dcast(drim.prop2[,c(1,2,3,6)],
+    #                             gene_id + feature_id ~ variable)
 
+    # my_res = list(res.g=res.g, res.t=res.t, res.t.filt = res.t.filt,
+    #               dds=d, fm_str=fm_str, drim.padj = drim.padj,
+    #               stageRObj=stageRObj, drim.prop=drim.prop3)
     my_res = list(res.g=res.g, res.t=res.t, res.t.filt = res.t.filt,
-                  dds=d, fm_str=fm_str, drim.padj = drim.padj,
-                  stageRObj=stageRObj, drim.prop=drim.prop3)
+                  dds=d, fm_str=fm_str)
     return(my_res)
 }
 ```
@@ -293,6 +295,9 @@ At this point, no filtering has been done, except for keeping only autosomes.
 And I added all annotations I wanted. Now, it's just a matter of running the
 rest of the analysis.
 
+I had to remove the stageR bit because I was getting some weird errors. I can
+always recalculate it later.
+
 Let's run both combinations. First, no BBB:
 
 ```r
@@ -300,14 +305,123 @@ dtu_acc = list()
 for (st in c('lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dtu_acc[[st]] = run_DTU_noPCA(count_matrix, samples, tx_meta,
-                                  st2, .05, BBB=F, ncores=6)
+                                  st2, .05, BBB=T, ncores=7)
 }
 ###
 dtu_cau = list()
 for (st in c('lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dtu_cau[[st]] = run_DTU_noPCA(count_matrix, samples, tx_meta,
-                                  st2, .05, BBB=F, ncores=6)
+                                  st2, .05, BBB=T, ncores=7)
 }
 save(dtu_acc, dtu_cau, file='~/data/post_mortem/DTU_03252021_noPCA.RData')
 ```
+
+I didn't get any genes after filtering for pseudogenes.
+
+# 2021-03-26 16:53:05
+
+I ended up not running stageR because I was getting lots of errors, but I can
+always run it posthoc. For now, let's check if the numbers of individual genes
+or transcripts varies by our different iterations:
+
+```r
+for (s in c('_noPCA', '_BBB_noPCA')) {
+    load(sprintf('~/data/post_mortem/DTU_03252021%s.RData', s))
+    for (r in c('acc', 'cau')) {
+        for (st in c('all', 'protein_coding')) {
+            cat('====', s, r, st, '====\n')
+            res_str = sprintf('res.g = as.data.frame(dtu_%s$%s$res.g)', r, st)
+            eval(parse(text=res_str))
+            res_str = sprintf('res.t = as.data.frame(dtu_%s$%s$res.t)', r, st)
+            eval(parse(text=res_str))
+            res_str = sprintf('res.t.filt = as.data.frame(dtu_%s$%s$res.t.filt)',
+                              r, st)
+            eval(parse(text=res_str))
+
+            for (alpha in c(.05, .1)) {
+                cat('Genes surviving FDR q <', alpha, ':',
+                    sum(res.g$adj_pvalue < alpha, na.rm=T), '\n')
+                cat('Transcripts surviving FDR q<', alpha, ':',
+                    sum(res.t$adj_pvalue < alpha, na.rm=T), '\n')
+                cat('Transcripts surviving SD filtering and FDR q<', alpha, ':',
+                    sum(res.t.filt$adj_pvalue < alpha, na.rm=T), '\n')
+            }
+        }
+    }
+}
+```
+
+```
+==== _noPCA acc all ====
+Genes surviving FDR q < 0.05 : 0 
+Transcripts surviving FDR q< 0.05 : 2 
+Transcripts surviving SD filtering and FDR q< 0.05 : 2 
+Genes surviving FDR q < 0.1 : 0 
+Transcripts surviving FDR q< 0.1 : 2 
+Transcripts surviving SD filtering and FDR q< 0.1 : 2 
+
+==== _noPCA acc protein_coding ====
+Genes surviving FDR q < 0.05 : 0 
+Transcripts surviving FDR q< 0.05 : 2 
+Transcripts surviving SD filtering and FDR q< 0.05 : 2 
+Genes surviving FDR q < 0.1 : 1 
+Transcripts surviving FDR q< 0.1 : 3 
+Transcripts surviving SD filtering and FDR q< 0.1 : 2 
+
+==== _noPCA cau all ====
+Genes surviving FDR q < 0.05 : 27 
+Transcripts surviving FDR q< 0.05 : 32 
+Transcripts surviving SD filtering and FDR q< 0.05 : 27 
+Genes surviving FDR q < 0.1 : 45 
+Transcripts surviving FDR q< 0.1 : 65 
+Transcripts surviving SD filtering and FDR q< 0.1 : 55 
+
+==== _noPCA cau protein_coding ====
+Genes surviving FDR q < 0.05 : 18 
+Transcripts surviving FDR q< 0.05 : 20 
+Transcripts surviving SD filtering and FDR q< 0.05 : 19 
+Genes surviving FDR q < 0.1 : 23 
+Transcripts surviving FDR q< 0.1 : 28 
+Transcripts surviving SD filtering and FDR q< 0.1 : 27 
+
+==== _BBB_noPCA acc all ====
+Genes surviving FDR q < 0.05 : 0 
+Transcripts surviving FDR q< 0.05 : 2 
+Transcripts surviving SD filtering and FDR q< 0.05 : 2 
+Genes surviving FDR q < 0.1 : 0 
+Transcripts surviving FDR q< 0.1 : 2 
+Transcripts surviving SD filtering and FDR q< 0.1 : 2 
+
+==== _BBB_noPCA acc protein_coding ====
+Genes surviving FDR q < 0.05 : 0 
+Transcripts surviving FDR q< 0.05 : 3 
+Transcripts surviving SD filtering and FDR q< 0.05 : 2 
+Genes surviving FDR q < 0.1 : 4 
+Transcripts surviving FDR q< 0.1 : 3 
+Transcripts surviving SD filtering and FDR q< 0.1 : 2 
+
+==== _BBB_noPCA cau all ====
+Genes surviving FDR q < 0.05 : 7 
+Transcripts surviving FDR q< 0.05 : 11 
+Transcripts surviving SD filtering and FDR q< 0.05 : 8 
+Genes surviving FDR q < 0.1 : 25 
+Transcripts surviving FDR q< 0.1 : 29 
+Transcripts surviving SD filtering and FDR q< 0.1 : 17 
+
+==== _BBB_noPCA cau protein_coding ====
+Genes surviving FDR q < 0.05 : 5 
+Transcripts surviving FDR q< 0.05 : 6 
+Transcripts surviving SD filtering and FDR q< 0.05 : 6 
+Genes surviving FDR q < 0.1 : 7 
+Transcripts surviving FDR q< 0.1 : 12 
+Transcripts surviving SD filtering and FDR q< 0.1 : 7 
+```
+
+Potential advantage for protein_coding in ACC, but the other way around for
+Caudate. Small advantage for BBB in ACC, big advantage for batch in Caudate! So,
+not much here either... I'll just have to pick one and go with it.
+
+## Overall
+
+It seems that BBB was better for ACC in DTE and DTU. 
