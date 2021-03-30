@@ -1388,8 +1388,8 @@ prs_names = sapply(sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                       .5, .4, .3, .2)),
                    function(x) sprintf('PRS%f', x))
 for (prs in prs_names) {
-    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3'
-    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_root = 'Diagnosis ~ %s Sex + Age'# + C1 + C2 + C3'
+    # fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
     fm_str = sprintf(fm_root, '')
     mod.baseline = glm(as.formula(fm_str), family=binomial, data=mydata)
     fm_str = sprintf(fm_root, sprintf('%s +', prs))
