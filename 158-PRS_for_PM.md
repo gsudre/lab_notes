@@ -1324,5 +1324,113 @@ for (p in sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05, .5, .4, .3,
 So, in the 3 thresholds where PRS mattered, it's a positive Z, meaning that the
 higher class (Case) has higher PRS.
 
+# 2021-03-29 20:06:54
+
+I want to make sure these results hold with just the 3 components, which is what
+I've been using in the more traditional analysis:
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[!duplicated(data$hbcc_brain_id),]
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+fname = '~/data/post_mortem/genotyping/1KG/merged_PM_1KG_PRS_12032020.csv'
+prs = read.csv(fname)
+prs$hbcc_brain_id = sapply(prs$IID,
+                          function(x) {
+                              br = strsplit(x, '_')[[1]][2];
+                              as.numeric(gsub(br, pattern='BR',
+                                              replacement=''))})
+imWNH = data$C1 > 0 & data$C2 < -.075
+wnh_brains = data[which(imWNH),]$hbcc_brain_id
+
+# using whole population PRS
+m = merge(data, prs, by='hbcc_brain_id')
+prs_eur = which(grepl(colnames(m), pattern='^ADHDeur_PRS'))
+m = m[, -prs_eur]
+prs_whole = which(grepl(colnames(m), pattern='^ADHD_PRS'))
+colnames(m)[prs_whole] = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('PRS%f', x))
+data_whole = m
+
+# WNH samples only
+m = merge(data, prs, by='hbcc_brain_id')
+prs_whole = which(grepl(colnames(m), pattern='^ADHD_PRS'))
+m = m[, -prs_whole]
+prs_eur = which(grepl(colnames(m), pattern='^ADHDeur_PRS'))
+colnames(m)[prs_eur] = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('PRS%f', x))
+keep_me = m$hbcc_brain_id %in% wnh_brains
+data_wnh = m[keep_me, ]
+
+# using the most appropriate PRS
+m = merge(data, prs, by='hbcc_brain_id')
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+m[, prs_names] = NA
+keep_me = m$hbcc_brain_id %in% wnh_brains
+prs_whole = which(grepl(colnames(m), pattern='^ADHD_PRS'))
+prs_eur = which(grepl(colnames(m), pattern='^ADHDeur_PRS'))
+m[keep_me, prs_names] = m[keep_me, prs_eur]
+m[!keep_me, prs_names] = m[!keep_me, prs_whole]
+data_app = m[, -c(prs_eur, prs_whole)]
+
+mydata = data_app
+
+library(fmsb)
+library(lmtest)
+prs_names = sapply(sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2)),
+                   function(x) sprintf('PRS%f', x))
+for (prs in prs_names) {
+    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3'
+    fm_root = 'Diagnosis ~ %s Sex + Age + C1 + C2 + C3 + C4 + C5'
+    fm_str = sprintf(fm_root, '')
+    mod.baseline = glm(as.formula(fm_str), family=binomial, data=mydata)
+    fm_str = sprintf(fm_root, sprintf('%s +', prs))
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
+    adjustedR2 = NagelkerkeR2(mod.full)$R2 - NagelkerkeR2(mod.baseline)$R2
+    prs.significance = lrtest(mod.baseline, mod.full)
+    myp = prs.significance$"Pr(>Chisq)"[2] 
+    cat(sprintf('%s: pval = %.3f, R2=%.3f\n', fm_str, myp, adjustedR2))
+}
+```
+
+```
+Diagnosis ~ PRS0.000050 + Sex + Age + C1 + C2 + C3: pval = 0.957, R2=0.000
+Diagnosis ~ PRS0.000100 + Sex + Age + C1 + C2 + C3: pval = 0.716, R2=0.002
+Diagnosis ~ PRS0.000500 + Sex + Age + C1 + C2 + C3: pval = 0.698, R2=0.003
+Diagnosis ~ PRS0.001000 + Sex + Age + C1 + C2 + C3: pval = 0.773, R2=0.002
+Diagnosis ~ PRS0.005000 + Sex + Age + C1 + C2 + C3: pval = 0.298, R2=0.020
+Diagnosis ~ PRS0.010000 + Sex + Age + C1 + C2 + C3: pval = 0.485, R2=0.009
+Diagnosis ~ PRS0.050000 + Sex + Age + C1 + C2 + C3: pval = 0.444, R2=0.011
+Diagnosis ~ PRS0.100000 + Sex + Age + C1 + C2 + C3: pval = 0.226, R2=0.027
+Diagnosis ~ PRS0.200000 + Sex + Age + C1 + C2 + C3: pval = 0.194, R2=0.031
+Diagnosis ~ PRS0.300000 + Sex + Age + C1 + C2 + C3: pval = 0.108, R2=0.047
+Diagnosis ~ PRS0.400000 + Sex + Age + C1 + C2 + C3: pval = 0.044, R2=0.073
+Diagnosis ~ PRS0.500000 + Sex + Age + C1 + C2 + C3: pval = 0.030, R2=0.084
+```
+
+```r
+for (p in sort(c(.0001, .001, .01, .1, .00005, .0005, .005, .05, .5, .4, .3,
+                .2))) {
+    prs_str = sprintf('PRS%f', p)
+    fm_str = sprintf('Diagnosis ~ %s + Sex + Age + C1 + C2 + C3',
+                     prs_str)
+    mod.full = glm(as.formula(fm_str), family=binomial, data=mydata)
+    print(prs_str)
+    print(summary(mod.full)$coefficients[prs_str,])
+}
+```
+
+```
+
+```
+
 # TODO
   * 

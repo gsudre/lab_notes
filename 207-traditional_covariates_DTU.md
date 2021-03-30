@@ -658,9 +658,8 @@ dtuPRS_cau = all_res
 
 
 
-save(dtuPRS_acc_lnc, dtuPRS_acc_pc, dtuPRS_acc_pg,
-     dtuPRS_cau_lnc, dtuPRS_cau_pc, dtuPRS_cau_pg,
-     file='~/data/post_mortem/DTU_PRS_02032021.RData')
+save(dtuPRS_acc, dtuPRS_cau,
+     file='~/data/post_mortem/DTU_PRS_03302021_BBB_noPCA.RData')
 ```
 
 Let's start summarizing the results:
@@ -771,7 +770,7 @@ I also have to run GSEA for DTU:
 library(WebGestaltR)
 
 data_dir = '~/data/post_mortem/'
-ncpu=2
+ncpu=32
 
 load('~/data/post_mortem/DTU_03252021_BBB_noPCA.RData')
 
@@ -845,3 +844,94 @@ for (st in c('protein_coding', 'all')) {
 
 I won't bother running the stageR GSEA because the adjusted pvalues screw up the
 ranks.
+
+Now, the single gene results:
+
+```r
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+mydir = '~/data/post_mortem/'
+
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+
+library(stageR)
+load('~/data/post_mortem/DTU_03252021_BBB_noPCA.RData')
+for (r in c('acc', 'cau')) {
+    for (st in c('all', 'protein_coding', 'lncRNA')) {
+        res_str = sprintf('res = dtu_%s[["%s"]]', r, st)
+        eval(parse(text=res_str))
+        fname = sprintf('%s/DTU_%s_%s_BBB_annot_03112021.csv', mydir, r, st)
+
+        strp <- function(x) substr(x, 1, 15)
+        pScreen = res$res.g$pvalue
+        names(pScreen) = strp(res$res.g$gene_id)
+        pConfirmation = matrix(res$res.t.filt$pvalue, ncol = 1)
+        dimnames(pConfirmation) = list(strp(res$res.t.filt$feature_id),
+                                    "transcript")
+        tx2gene = data.frame(res$res.t[,c("feature_id", "gene_id")], 
+                            res$res.t[,c("feature_id", "gene_id")])
+        for (i in 1:2) tx2gene[,i] = strp(tx2gene[,i])
+        stageRObj = stageRTx(pScreen = pScreen, pConfirmation = pConfirmation, 
+                            pScreenAdjusted = FALSE, tx2gene = tx2gene[,1:2])
+        stageRObj = stageWiseAdjustment(stageRObj, method = "dtu", alpha = .05)
+        df = getAdjustedPValues(stageRObj, onlySignificantGenes=FALSE, order=TRUE)
+        
+        colnames(df)[3:4] = c('padj_gene', 'padj_transcript')
+        df2 = merge(df, mart, sort=F,
+                    by.x='geneID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+        df2 = merge(df2, bt_slim, sort=F,
+                    by.x='geneID', by.y='gene_id', all.x=T, all.y=F)
+        write.csv(df2, row.names=F, file=fname)
+    }
+}
+```
+
+Table of overlap between PRS and DTU:
+
+```r
+library(GeneOverlap)
+load('~/data/post_mortem/DTU_PRS_03302021_BBB_noPCA.RData')
+load('~/data/post_mortem/DTU_03252021_BBB_noPCA.RData')
+
+prs_names = sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                      .5, .4, .3, .2),
+                   function(x) sprintf('PRS%f', x))
+all_res = c()
+subtypes = list(all='all', pc='protein_coding', lnc='lncRNA', pg='pseudogene')
+st = 'all'
+res.dx = dtu_cau[[subtypes[[st]]]]$res.g
+# res.dx = dtu_acc[[subtypes[[st]]]]$res.g
+for (p in prs_names) {
+    cat(st, p, '\n')
+    res_str = sprintf('res.prs = dtuPRS_cau$%s$%s', subtypes[st], p)
+    # res_str = sprintf('res.prs = dtuPRS_acc$%s$%s', subtypes[st], p)
+    eval(parse(text=res_str))
+
+    both_res = merge(res.dx, res.prs, by='gene_id',
+                        all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = both_res[both_res$pvalue.prs < t, 'gene_id']
+        dx_genes = both_res[both_res$pvalue.dx < t, 'gene_id']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                    genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        pval2 = NA
+        this_res = c(subtypes[[st]], p, t, 'abs', length(prs_genes),
+                        length(dx_genes), length(inter), pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('subtype', 'PRS', 'nomPvalThresh', 'direction',
+                      'PRSgenes', 'PMgenes', 'overlap', 'pvalWhole',
+                      'pvalDirOnly')
+out_fname = '~/data/post_mortem/DTU_cauUpDown_prs_overlap_results_03302021.csv'
+# out_fname = '~/data/post_mortem/DTU_accUpDown_prs_overlap_results_03302021.csv'
+write.csv(all_res, file=out_fname, row.names=F)
+```
