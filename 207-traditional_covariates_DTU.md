@@ -865,7 +865,7 @@ for (r in c('acc', 'cau')) {
     for (st in c('all', 'protein_coding', 'lncRNA')) {
         res_str = sprintf('res = dtu_%s[["%s"]]', r, st)
         eval(parse(text=res_str))
-        fname = sprintf('%s/DTU_%s_%s_BBB_annot_03112021.csv', mydir, r, st)
+        fname = sprintf('%s/DTU_%s_%s_BBB_annot_03292021.csv', mydir, r, st)
 
         strp <- function(x) substr(x, 1, 15)
         pScreen = res$res.g$pvalue

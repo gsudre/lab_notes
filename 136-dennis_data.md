@@ -194,3 +194,93 @@ Once I get the age ranges I can make sure all our NVs have something similar to
 this, and generate distributions for each voxel in the corpus callosum, or even
 a distribution from the mean, and then see how often the cases here are outside
 the normal distribution.
+
+# 2021-04-05 11:45:30
+
+I decided to re-run this using TORTOISE just so we can better compare them with
+our database. I'll run it in Biowulf to match the versions.
+
+I created a folder TORTOISE under ~/data/dennis and copied the raw .nii files,
+converted for the previous analysis, to each subject's directory. That's what
+I'm importing in TORTOISE.
+
+Actually, I cannot find T2 for the scans. Maybe I can get by if I grab any
+anatomicals, but maybe it would just be easier if I compare it to PNC or UKBB,
+which might have had a similar pipeline?
+
+I decided to do Freesurfer on the T1s, which were scan 10 in 24 and 27, and the
+one labeled T1 in 26 (there were 2 derived T1s and one original, so I used the
+original). Freesurfer does have a CC segmentation, so we can play with that as
+well.
+
+So let's establish some distributions based on our data. 24 was 25 y.o. at the
+time of scan, and 26 was 34. We don't have data on 27, but as they were siblings
+let's assume he is on the same age range (they're all males). Just to get some
+more data out of our own dataset, let's expand the age range a bit:
+
+```
+r$> df = read.csv('~/tmp/all_freesurfer_12042020.csv') 
+r$> sum(df$age_scan >= 25 & df$age_scan <= 34 & df$sex == 'Male')  
+[1] 78
+r$> sum(df$age_scan >= 21 & df$age_scan <= 40 & df$sex == 'Male')
+ [1] 165
+```
+
+OK, so now let's plot the values for the 3 subjects against our population. 
+
+Note that oru population includes NV and ADHD. Since we've never found a
+difference between the two groups in CC, it should be OK. If we reduce it to
+only NVs our numbers will go down a lot. I could use maybe UKBiobank data, but
+let's play with our stuff first.
+
+```bash
+# bw
+export SUBJECTS_DIR=/data/sudregp/dennis/freesurfer
+python2 $FREESURFER_HOME/bin/asegstats2table --subjectsfile=subjects_file.txt \
+    --tablefile subcortical.txt
+```
+
+```r
+data = read.table('/Volumes/Shaw/dennis/subcortical.txt', header=1)
+
+library(ggplot2)
+CC = c('CC_Posterior', 'CC_Mid_Posterior', 'CC_Central', 'CC_Mid_Anterior',
+       'CC_Anterior')
+df$allCC = rowSums(df[, CC])
+data$allCC = rowSums(data[, CC])
+
+CC = c(CC, 'allCC')
+idx = which(df$age_scan >= 21 & df$age_scan <= 40 & df$sex == 'Male')
+library(ggpubr)
+quartz()
+myplots = list()
+for (g in 1:length(CC)) {
+    mydata = data.frame(volume=df[idx, CC[g]])
+    myvals = data.frame(Patient=factor(data$Measure.volume),
+                        volume=data[,CC[g]])
+    p = (ggplot(mydata, aes(x=volume)) + 
+         geom_histogram(aes(y=..density..), colour="black", fill="white") +
+         geom_density(alpha=.2, fill="yellow") +
+         geom_vline(data=myvals, aes(xintercept=volume, color=Patient),
+                    linetype="dashed", size=1) +
+         ggtitle(CC[g]) + 
+                 theme(axis.title.y = element_blank(),
+                       axis.ticks.y = element_blank(),
+                       axis.text.y = element_blank()))
+    myplots[[g]] = p
+}
+p = ggarrange(plotlist=myplots)
+print(p)
+```
+
+![](images/2021-04-05-20-31-49.png)
+
+# TODO
+- understand what they mean by affected. Some documents say different people are
+  affected, which is different than the pedigree. Is affected only based on
+  genetics, or the phenotype?
+- find another dataset (maybe UKBB) to plot the data against
+- show actual MR images of CC for the scans
+
+
+
