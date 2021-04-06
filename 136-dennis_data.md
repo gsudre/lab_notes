@@ -275,6 +275,120 @@ print(p)
 
 ![](images/2021-04-05-20-31-49.png)
 
+# 2021-04-06 09:26:26
+
+Philip suggested I redid the plots, taking ICV into consideration:
+
+```r
+data = read.table('/Volumes/Shaw/dennis/subcortical.txt', header=1)
+
+library(ggplot2)
+CC = c('CC_Posterior', 'CC_Mid_Posterior', 'CC_Central', 'CC_Mid_Anterior',
+       'CC_Anterior')
+df$allCC = rowSums(df[, CC])
+data$allCC = rowSums(data[, CC])
+
+CC = c(CC, 'allCC')
+idx = which(df$age_scan >= 21 & df$age_scan <= 40 & df$sex == 'Male')
+library(ggpubr)
+quartz()
+myplots = list()
+for (g in 1:length(CC)) {
+    mydata = data.frame(volume=df[idx, CC[g]],
+                        icv=df[idx, 'EstimatedTotalIntraCranialVol'])
+    myvals = data.frame(Patient=factor(data$Measure.volume),
+                        volume=data[,CC[g]],
+                        icv=data[, 'EstimatedTotalIntraCranialVol'])
+    myjitter = ifelse(CC[g] == 'allCC', 1000, 1)
+    myvals$plot_me = jitter(myvals$volume/myvals$icv, myjitter)
+    p = (ggplot(mydata, aes(x=volume/icv)) + 
+         geom_histogram(aes(y=..density..), colour="black", fill="white") +
+         geom_density(alpha=.2, fill="yellow") +
+         geom_vline(data=myvals, aes(xintercept=plot_me,
+                                     color=Patient),
+                    linetype="dashed", size=1) +
+         ggtitle(CC[g]) + 
+         theme(axis.title.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank()) + 
+         xlab('adjusted volume'))
+    myplots[[g]] = p
+}
+p = ggarrange(plotlist=myplots)
+print(p)
+```
+
+![](images/2021-04-06-10-52-53.png)
+
+Let's also make sure those images are not particularly noisy, and make a few
+plots of the actual corpus callosum:
+
+```bash
+#bw
+cd ~/data/dennis/freesurfer
+mri_convert 27/mri/nu.mgz 27_nu.nii.gz
+# repeat for other 3 subjects
+res_file=./euler_numbers.csv
+echo subjid,euler_LH,euler_RH,mean_euler > $res_file;
+for s in `cat ../subjects_file.txt`; do
+    euler_lh=`grep -A 1 "Computing euler" ./${s}/scripts/recon-all.log | tail -1 | awk '{ print $4 }' | sed "s/,//"`;
+    euler_rh=`grep -A 1 "Computing euler" ./${s}/scripts/recon-all.log | tail -1 | awk '{ print $7 }' | sed "s/,//"`;
+    mean_euler=`echo "( $euler_lh + $euler_rh ) / 2" | bc`;
+    echo $s,$euler_lh,$euler_rh,$mean_euler >> $res_file;
+done
+```
+
+And I need to get Euler for our own subjects:
+
+```r
+maskids = sapply(df[idx, 'maskid'], function(x) sprintf('%04d', x))
+write.table(maskids, file='~/tmp/myids.txt', row.names=F, col.names=F, quote=F)
+```
+
+```bash
+#local
+res_file=./ncr_euler_numbers.csv
+echo subjid,euler_LH,euler_RH,mean_euler > $res_file;
+for s in `cat ~/tmp/myids.txt`; do
+    euler_lh=`grep -A 1 "Computing euler" /Volumes/NCR/freesurfer5.3_subjects/${s}/scripts/recon-all.log | tail -1 | awk '{ print $4 }' | sed "s/,//"`;
+    euler_rh=`grep -A 1 "Computing euler" /Volumes/NCR/freesurfer5.3_subjects/${s}/scripts/recon-all.log | tail -1 | awk '{ print $7 }' | sed "s/,//"`;
+    mean_euler=`echo "( $euler_lh + $euler_rh ) / 2" | bc`;
+    echo $s,$euler_lh,$euler_rh,$mean_euler >> $res_file;
+done
+```
+
+And now we just plot them:
+
+```r
+ncr_euler = read.csv('/Volumes/Shaw/dennis/ncr_euler_numbers.csv')
+dennis_euler = read.csv('/Volumes/Shaw/dennis/freesurfer/euler_numbers.csv')
+
+library(ggplot2)
+quartz()
+mydata = data.frame(euler=ncr_euler[, 'mean_euler'])
+myvals = data.frame(Patient=factor(data$Measure.volume),
+                    euler=dennis_euler[, 'mean_euler'])
+myvals$plot_me = jitter(myvals$euler, 1)
+p = (ggplot(mydata, aes(x=euler)) + 
+     geom_histogram(aes(y=..density..), colour="black", fill="white") +
+     geom_density(alpha=.2, fill="yellow") +
+     geom_vline(data=myvals, aes(xintercept=plot_me,
+                                 color=Patient),
+                linetype="dashed", size=1) +
+     ggtitle('Euler number') + 
+     theme(axis.title.y = element_blank(),
+           axis.ticks.y = element_blank(),
+           axis.text.y = element_blank()) + 
+     xlab('More negative = worse'))
+print(p)
+```
+
+![](images/2021-04-06-11-29-02.png)
+
+This is not good... maybe it's an issue with Freesurfer versions? Let's run
+version 5.3 on Dennis' subjects then, like ours.
+
+
 # TODO
 - understand what they mean by affected. Some documents say different people are
   affected, which is different than the pedigree. Is affected only based on
