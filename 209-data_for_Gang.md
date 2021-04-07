@@ -65,3 +65,87 @@ for (s in unique(df$SID)) {
 }
 write.csv(df2, row.names=F, file='~/data/data_for_gang_simple.csv')
 ```
+
+# 2021-04-07 11:18:47
+
+We had a nice chat with Gang yesterday. He'll send me his code to test some
+easier cases, like the effects of removing outliers (he doesn't think it's
+needed), and checking the effects of using a different atlas, or doing only kids
+or only adults. I should also check how it handles predicting continuous variables.
+
+He'll take care of harder cases, like longitudinal data and familiar
+relationships. I'll start by sending him some longitudinal data. Again, I'll
+keep it to only one per family. I'll choose the person with the most scans. If
+it's a tie, the one with highest average age with hopes that yields better
+scans.
+
+```r
+df = read.csv('/Volumes/NCR/brain_data_compiled/all_DTI_tracts_03222021.csv')
+df = df[, 1:55]
+# removing 1090 for now because I need to reprocess her scan
+df = df[df$maskid != 1090, ]
+df2 = df[1, c(1:3, 8:9, 18:19, 22)]
+df2$FA = NA
+df2$AD = NA
+df2$RD = NA
+df2$tract = NA
+df2 = df2[, c(1, 2, 12, 3:11)]
+tracts = sapply(colnames(df)[23:ncol(df)],
+                function(x) { res = strsplit(x, '_')[[1]];
+                              paste0(res[2:length(res)], collapse='_') })
+tracts = unique(tracts)
+# variables to be repeated
+var_repeat = colnames(df2)[c(1, 4:9)]
+cnt = 1
+for (f in unique(df$famID)) {
+    fam_rows = which(df$famID == f)
+    ftable = table(df[fam_rows,'SID'])
+    max_scans = max(ftable)
+    # if one subject with the most scans
+    if (sum(ftable == max_scans) == 1) {
+        s = names(which.max(ftable))
+    } else { # resolve tie by overall oldest scans
+        max_subjs = names(ftable[ftable == max_scans])
+        ages = c()
+        for (s in max_subjs) {
+            subj_rows = which(df$SID == as.numeric(s))
+            ages = c(ages, mean(df[subj_rows, 'age_scan']))
+        }
+        s = max_subjs[which.max(ages)]
+    }
+
+    # now that we have the subject for the family, grab all their scans
+    subj_rows = which(df$SID == s)
+    for (subj_row in subj_rows) {
+        for (t in tracts) {
+            df2[cnt, 'tract'] = t
+            df2[cnt, 'SID'] = s
+            df2[cnt, var_repeat] = df[subj_row, var_repeat]
+            for (m in c('FA', 'AD', 'RD')) {
+                df2[cnt, m] = df[subj_row, sprintf('%s_%s', m, t)]
+            }
+            cnt = cnt + 1
+        }
+    }
+}
+
+# now I'll add the everADHD field as the single group metric
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('/Volumes/NCR/clinical_data_compiled/augmented_anon_clinical_02222021.csv')
+clin = clin[clin$age_clin != 'child', ]
+clin$age_clin = as.numeric(clin$age_clin)
+m = mergeOnClosestAge(df2, clin[, c('SID', 'age_clin', 'everADHD_dsm')],
+                      unique(df2$SID), x.id='SID',
+                      x.age = 'age_scan', y.id='SID', y.age='age_clin')
+# shuffling some variables around
+m = m[, c(1, 2, 4:9, 14, 3, 10:12)]
+colnames(m)[9] = 'group'
+m$group = ifelse(m$group == 'yes', 'ADHD', 'NV')
+write.csv(m, row.names=F, file='~/data/long_data_for_gang.csv')
+```
+
+And just so I'm not looking this up all the time, here are the upload
+instructions:
+
+![](images/2021-04-07-12-03-34.png)
+

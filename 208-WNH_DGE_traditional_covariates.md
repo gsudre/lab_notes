@@ -15,7 +15,10 @@ imWNH = data$C1 > 0 & data$C2 < -.075
 
 quartz()
 library(ggplot2)
-ggplot(data, aes(x=C1, y=C2, color=POP_CODE)) + geom_point() 
+ggplot(data, aes(x=C1, y=C2, color=POP_CODE)) + geom_point() +
+    geom_vline(aes(xintercept=0), color='red', linetype='dashed') +
+    geom_hline(aes(yintercept=-.075), color='red', linetype='dashed') +
+    labs(color='Groups')
 ```
 
 ![](images/2021-03-30-11-40-14.png)
