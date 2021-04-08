@@ -137,35 +137,251 @@ run_DGE_noPCA_SVs = function(count_matrix, samples, tx_meta, subtype,
 Then just run the multiple iterations:
 
 ```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# data only contains sample metadata, and count_matrix has actual counts
+
+# cleaning up some variables
+data$POP_CODE = as.character(data$POP_CODE)
+data[data$POP_CODE=='WNH', 'POP_CODE'] = 'W'
+data[data$POP_CODE=='WH', 'POP_CODE'] = 'W'
+data$POP_CODE = factor(data$POP_CODE)
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+data$substance_group = factor(data$substance_group)
+data$comorbid_group = factor(data$comorbid_group_update)
+data$evidence_level = factor(data$evidence_level)
+data$brainbank = factor(data$bainbank)
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = count_matrix[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+```r
 dge_acc = list()
 for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dge_acc[[st]] = run_DGE_noPCA_SVs(count_matrix, data, tx_meta,
-                                      st2, .05, BBB=T, nSV=1)
+                                      st2, .05, BBB=F, nSV=1)
 }
 ###
 dge_cau = list()
 for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
     st2 = ifelse(st == 'all', NA, st)
     dge_cau[[st]] = run_DGE_noPCA_SVs(count_matrix, data, tx_meta,
-                                      st2, .05, BBB=T, nSV=1)
+                                      st2, .05, BBB=F, nSV=1)
 }
 
-save(dge_acc, dge_cau, file='~/data/post_mortem/DGE_03222021.RData')
+save(dge_acc, dge_cau, file='~/data/post_mortem/DGE_04082021_SV2.RData')
 ```
 
 I also ran versions with BBB, and SV up to 2.
 
+Looking at the results, they don't change much. Just after a few of the decimal
+places, but that's because the DGE results didn't have any outliers. It's still
+safe to re-run it, just to be consistent.
 
+First, let's see if the single gene results help us decide, as I'm sure the GSEA
+results will stay the same:
 
+```r
+library(IHW)
+for (s in c('_SV1', '_BBB_SV1', '_SV2', '_BBB_SV2')) {
+    load(sprintf('~/data/post_mortem//DGE_04082021%s.RData', s))
+    for (r in c('acc', 'cau')) {
+        for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
+            res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
+            eval(parse(text=res_str))
+            ngood = sum(res$padj < .05)
+            cat(s, r, st, 'FDR .05', ngood, '\n')
+            ngood = sum(res$padj < .1)
+            cat(s, r, st, 'FDR .1', ngood, '\n')
+            # redoing IHW because of using different Qs
+            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.05))
+            ngood = sum(p2 < .05)
+            cat(s, r, st, 'IHW .05', ngood, '\n')
+            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.1))
+            ngood = sum(p2 < .1)
+            cat(s, r, st, 'IHW .1', ngood, '\n')
+        }
+    }
+}
+```
 
+```
+_SV1 acc all FDR .05 0                                           
+_SV1 acc all FDR .1 0                                                      
+_SV1 acc all IHW .05 0                                             
+_SV1 acc all IHW .1 0                                            
+_SV1 acc protein_coding FDR .05 0
+_SV1 acc protein_coding FDR .1 0
+_SV1 acc protein_coding IHW .05 0
+_SV1 acc protein_coding IHW .1 0
+_SV1 acc lncRNA FDR .05 0
+_SV1 acc lncRNA FDR .1 2
+_SV1 acc lncRNA IHW .05 0
+_SV1 acc lncRNA IHW .1 2
+_SV1 acc pseudogene FDR .05 0
+_SV1 acc pseudogene FDR .1 0
+_SV1 acc pseudogene IHW .05 0
+_SV1 acc pseudogene IHW .1 0
+_SV1 cau all FDR .05 1
+_SV1 cau all FDR .1 10
+_SV1 cau all IHW .05 1
+_SV1 cau all IHW .1 2
+_SV1 cau protein_coding FDR .05 0
+_SV1 cau protein_coding FDR .1 17
+_SV1 cau protein_coding IHW .05 0
+_SV1 cau protein_coding IHW .1 11
+_SV1 cau lncRNA FDR .05 0
+_SV1 cau lncRNA FDR .1 0
+_SV1 cau lncRNA IHW .05 0
+_SV1 cau lncRNA IHW .1 0
+_SV1 cau pseudogene FDR .05 1
+_SV1 cau pseudogene FDR .1 1
+_SV1 cau pseudogene IHW .05 1
+_SV1 cau pseudogene IHW .1 1 
+_SV1 cau pseudogene IHW .1 1
+_BBB_SV1 acc all FDR .05 0
+_BBB_SV1 acc all FDR .1 0 
+_BBB_SV1 acc all IHW .05 0 
+_BBB_SV1 acc all IHW .1 0 
+_BBB_SV1 acc protein_coding FDR .05 0 
+_BBB_SV1 acc protein_coding FDR .1 0 
+_BBB_SV1 acc protein_coding IHW .05 0 
+_BBB_SV1 acc protein_coding IHW .1 0 
+_BBB_SV1 acc lncRNA FDR .05 1 
+_BBB_SV1 acc lncRNA FDR .1 2 
+_BBB_SV1 acc lncRNA IHW .05 1 
+_BBB_SV1 acc lncRNA IHW .1 2 
+_BBB_SV1 acc pseudogene FDR .05 0 
+_BBB_SV1 acc pseudogene FDR .1 0 
+_BBB_SV1 acc pseudogene IHW .05 0 
+_BBB_SV1 acc pseudogene IHW .1 0 
+_BBB_SV1 cau all FDR .05 0 
+_BBB_SV1 cau all FDR .1 0 
+_BBB_SV1 cau all IHW .05 0 
+_BBB_SV1 cau all IHW .1 0 
+_BBB_SV1 cau protein_coding FDR .05 0 
+_BBB_SV1 cau protein_coding FDR .1 0 
+_BBB_SV1 cau protein_coding IHW .05 0 
+_BBB_SV1 cau protein_coding IHW .1 5 
+_BBB_SV1 cau lncRNA FDR .05 0 
+_BBB_SV1 cau lncRNA FDR .1 0 
+_BBB_SV1 cau lncRNA IHW .05 0 
+_BBB_SV1 cau lncRNA IHW .1 0 
+_BBB_SV1 cau pseudogene FDR .05 0 
+_BBB_SV1 cau pseudogene FDR .1 0 
+_BBB_SV1 cau pseudogene IHW .05 0 
+_BBB_SV1 cau pseudogene IHW .1 0 
+_SV2 acc all FDR .05 0 
+_SV2 acc all FDR .1 0 
+_SV2 acc all IHW .05 0 
+_SV2 acc all IHW .1 0 
+_SV2 acc protein_coding FDR .05 0 
+_SV2 acc protein_coding FDR .1 0 
+_SV2 acc protein_coding IHW .05 0 
+_SV2 acc protein_coding IHW .1 0 
+_SV2 acc lncRNA FDR .05 0 
+_SV2 acc lncRNA FDR .1 1 
+_SV2 acc lncRNA IHW .05 0 
+_SV2 acc lncRNA IHW .1 1 
+_SV2 acc pseudogene FDR .05 0 
+_SV2 acc pseudogene FDR .1 0 
+_SV2 acc pseudogene IHW .05 0 
+_SV2 acc pseudogene IHW .1 0 
+_SV2 cau all FDR .05 3 
+_SV2 cau all FDR .1 13 
+_SV2 cau all IHW .05 0 
+_SV2 cau all IHW .1 1 
+_SV2 cau protein_coding FDR .05 5 
+_SV2 cau protein_coding FDR .1 20 
+_SV2 cau protein_coding IHW .05 4 
+_SV2 cau protein_coding IHW .1 18 
+_SV2 cau lncRNA FDR .05 0 
+_SV2 cau lncRNA FDR .1 1 
+_SV2 cau lncRNA IHW .05 0 
+_SV2 cau lncRNA IHW .1 1 
+_SV2 cau pseudogene FDR .05 1 
+_SV2 cau pseudogene FDR .1 1 
+_SV2 cau pseudogene IHW .05 1 
+_SV2 cau pseudogene IHW .1 1 
+_BBB_SV2 acc all FDR .05 0 
+_BBB_SV2 acc all FDR .1 0 
+_BBB_SV2 acc all IHW .05 0 
+_BBB_SV2 acc all IHW .1 0 
+_BBB_SV2 acc protein_coding FDR .05 0 
+_BBB_SV2 acc protein_coding FDR .1 0 
+_BBB_SV2 acc protein_coding IHW .05 0 
+_BBB_SV2 acc protein_coding IHW .1 0 
+_BBB_SV2 acc lncRNA FDR .05 1 
+_BBB_SV2 acc lncRNA FDR .1 1 
+_BBB_SV2 acc lncRNA IHW .05 1 
+_BBB_SV2 acc lncRNA IHW .1 1 
+_BBB_SV2 acc pseudogene FDR .05 0 
+_BBB_SV2 acc pseudogene FDR .1 0 
+_BBB_SV2 acc pseudogene IHW .05 0 
+_BBB_SV2 acc pseudogene IHW .1 0 
+_BBB_SV2 cau all FDR .05 0 
+_BBB_SV2 cau all FDR .1 0 
+_BBB_SV2 cau all IHW .05 0 
+_BBB_SV2 cau all IHW .1 0 
+_BBB_SV2 cau protein_coding FDR .05 1 
+_BBB_SV2 cau protein_coding FDR .1 5 
+_BBB_SV2 cau protein_coding IHW .05 1 
+_BBB_SV2 cau protein_coding IHW .1 4 
+_BBB_SV2 cau lncRNA FDR .05 0 
+_BBB_SV2 cau lncRNA FDR .1 1 
+_BBB_SV2 cau lncRNA IHW .05 0 
+_BBB_SV2 cau lncRNA IHW .1 1 
+_BBB_SV2 cau pseudogene FDR .05 0 
+_BBB_SV2 cau pseudogene FDR .1 0 
+_BBB_SV2 cau pseudogene IHW .05 0 
+_BBB_SV2 cau pseudogene IHW .1 0 
+```
 
+For ACC ac/pc/pg it doesn't make much difference. If we look at lncRNA, BBB_SV1
+is slightly better. For Caudate all and pc, we get SV2 as best. But all those
+results are going away when I add BBB, so it makes me wonder if they're not just
+a factor of brain_bank. I'll stick with BBB_SV1 then, and check if our GSEA
+stays the same:
 
-
-
-
-
-Now we just need to run GSEA on everything. I'm naming it WG12 and the iteration
+Now we just need to run GSEA on everything. I'm naming it WG19 and the iteration
 prefix.
 
 ```r
@@ -174,7 +390,7 @@ library(WebGestaltR)
 data_dir = '~/data/post_mortem/'
 ncpu=31
 
-load('~/data/post_mortem/DGE_03222021_BBB_SV2.RData')
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
 
 for (region in c('acc', 'caudate')) {
     for (st in c('all', 'protein_coding')) {
@@ -194,7 +410,7 @@ for (region in c('acc', 'caudate')) {
         for (db in DBs) {
             cat(res_str, db, '\n')
             db_file = sprintf('~/data/post_mortem/%s.gmt', db)
-            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG19_BBB_SV1_%s_%s_10K', res_str, db)
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                 organism="hsapiens",
                                 enrichDatabaseFile=db_file,
@@ -213,7 +429,7 @@ for (region in c('acc', 'caudate')) {
                 'geneontology_Molecular_Function_noRedundant')
         for (db in DBs) {
             cat(res_str, db, '\n')
-            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG19_BBB_SV1_%s_%s_10K', res_str, db)
 
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",
@@ -229,7 +445,7 @@ for (region in c('acc', 'caudate')) {
 
         for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
             cat(res_str, db, '\n')
-            project_name = sprintf('WG12_BBB_SV2_%s_%s_10K', res_str, db)
+            project_name = sprintf('WG19_BBB_SV1_%s_%s_10K', res_str, db)
 
             enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
                                         organism="hsapiens",
@@ -245,6 +461,14 @@ for (region in c('acc', 'caudate')) {
     }
 }
 ```
+
+
+
+
+
+
+
+
 
 While all this stuff is running, let's do some MAGMA, which might as well serve
 as some of the cut-off too.
@@ -514,29 +738,6 @@ to use for filtering though.
 Maybe we can do it based on significance of single genes? Or correlation to
 other disorders?
 
-```r
-library(IHW)
-for (s in c('_SV1', '_BBB_SV1')) {
-    load(sprintf('~/data/post_mortem//DGE_03222021%s.RData', s))
-    for (r in c('acc', 'cau')) {
-        for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
-            res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
-            eval(parse(text=res_str))
-            ngood = sum(res$padj < .05)
-            cat(s, r, st, 'FDR .05', ngood, '\n')
-            ngood = sum(res$padj < .1)
-            cat(s, r, st, 'FDR .1', ngood, '\n')
-            # redoing IHW because of using different Qs
-            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.05))
-            ngood = sum(p2 < .05)
-            cat(s, r, st, 'IHW .05', ngood, '\n')
-            p2 = adj_pvalues(ihw(pvalue ~ baseMean,  data = res, alpha = 0.1))
-            ngood = sum(p2 < .1)
-            cat(s, r, st, 'IHW .1', ngood, '\n')
-        }
-    }
-}
-```
 
 ```
 _SV1 acc all FDR .05 0 
