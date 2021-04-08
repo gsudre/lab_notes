@@ -379,7 +379,7 @@ For ACC ac/pc/pg it doesn't make much difference. If we look at lncRNA, BBB_SV1
 is slightly better. For Caudate all and pc, we get SV2 as best. But all those
 results are going away when I add BBB, so it makes me wonder if they're not just
 a factor of brain_bank. I'll stick with BBB_SV1 then, and check if our GSEA
-stays the same:
+stays the same.
 
 Now we just need to run GSEA on everything. I'm naming it WG19 and the iteration
 prefix.
@@ -462,49 +462,41 @@ for (region in c('acc', 'caudate')) {
 }
 ```
 
+Now the tiny difference we had before between protein_coding and all is not
+there anymore. Maybe it makes more sense to just go with the all, and not have
+to partition everything?
 
-
-
-
-
-
-
-
-While all this stuff is running, let's do some MAGMA, which might as well serve
-as some of the cut-off too.
+Let's do some MAGMA:
 
 ```r
 library(biomaRt)
 library(dplyr)
 mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
 
-for (s in c('', '_BBB', '_SV1', '_SV2', '_BBB_SV1', '_BBB_SV2')) {
-    load(sprintf('~/data/post_mortem//DGE_03222021%s.RData', s))
-    for (r in c('acc', 'cau')) {
-        for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
-            cat(s, r, st, '\n')
-            res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
-            eval(parse(text=res_str))
+load('~/data/post_mortem//DGE_04082021_BBB_SV1.RData')
+for (r in c('acc', 'cau')) {
+    st = 'all'
+    cat(r, st, '\n')
+    res_str = sprintf('res = as.data.frame(dge_%s$%s$res)', r, st)
+    eval(parse(text=res_str))
 
-            res$GENEID = substr(rownames(res), 1, 15)
-            G_list0 <- getBM(filters= "ensembl_gene_id",
-                            attributes= c("ensembl_gene_id", "entrezgene_id"),values=res$GENEID, mart= mart)
-            G_list <- G_list0[!is.na(G_list0$ensembl_gene_id),]
-            G_list = G_list[G_list$ensembl_gene_id!='',]
-            G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
-            imnamed = res$GENEID %in% G_list$ensembl_gene_id
-            res = res[imnamed, ]
-            res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
-                        by.y='ensembl_gene_id')
-            ranks = res2 %>% group_by(entrezgene_id) %>% slice_min(n=1, pvalue, with_ties=F)
-            myres = data.frame(gene=ranks$entrezgene_id,
-                            signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
-                            unsigned_rank=-log(ranks$pvalue))
-            out_fname = sprintf('~/data/post_mortem/MAGMA_dge%s_%s_%s.tab',
-                                s, r, st)
-            write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
-        }
-    }
+    res$GENEID = substr(rownames(res), 1, 15)
+    G_list0 <- getBM(filters= "ensembl_gene_id",
+                    attributes= c("ensembl_gene_id", "entrezgene_id"),values=res$GENEID, mart= mart)
+    G_list <- G_list0[!is.na(G_list0$ensembl_gene_id),]
+    G_list = G_list[G_list$ensembl_gene_id!='',]
+    G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+    imnamed = res$GENEID %in% G_list$ensembl_gene_id
+    res = res[imnamed, ]
+    res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
+                by.y='ensembl_gene_id')
+    ranks = res2 %>% group_by(entrezgene_id) %>% slice_min(n=1, pvalue, with_ties=F)
+    myres = data.frame(gene=ranks$entrezgene_id,
+                    signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
+                    unsigned_rank=-log(ranks$pvalue))
+    out_fname = sprintf('~/data/post_mortem/MAGMA2_dge_%s_%s.tab',
+                        r, st)
+    write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
 }
 ```
 
@@ -513,302 +505,33 @@ Then, for MAGMA we only need to run the last command:
 ```bash
 module load MAGMA
 cd ~/data/tmp
-for s in '' '_BBB' '_SV1' '_SV2' '_BBB_SV1' '_BBB_SV2'; do
-    for r in 'acc' 'cau'; do
-        for st in 'all' 'protein_coding' 'lncRNA' 'pseudogene'; do
-            echo $r $st;
-            magma --gene-results genes_BW.genes.raw \
-                --gene-covar ~/data/post_mortem/MAGMA_dge${s}_${r}_${st}.tab \
-                --out ~/data/post_mortem/MAGMA_gc_BW_dge${s}_${r}_${st};
-        done;
-    done;
-done
+for r in 'acc' 'cau'; do
+    st='all';
+    magma --gene-results genes_BW.genes.raw \
+        --gene-covar ~/data/post_mortem/MAGMA2_dge_${r}_${st}.tab \
+                --out ~/data/post_mortem/MAGMA2_gc_BW_dge_${r}_${st};
+done;
 ```
 
 ```
-[sudregp@cn3235 post_mortem]$ for f in `ls MAGMA_gc_BW_dge*acc*all.gcov.out`; do echo $f; cat $f; done
-MAGMA_gc_BW_dge_acc_all.gcov.out
+[sudregp@cn0869 post_mortem]$ for f in `ls MAGMA2_gc_BW_dge*all.gcov.out`; do echo $f; cat $f; done
+MAGMA2_gc_BW_dge_acc_all.gcov.out
 # MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15096
+# TOTAL_GENES = 15112
 # CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
 COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15096     -0.017    -0.0263    0.00639    0.0078607
-unsigned_rank                  15096   0.000615   0.000773    0.00871      0.94366
-MAGMA_gc_BW_dge_BBB_acc_all.gcov.out
+signed_rank                    15112    -0.0158    -0.0242    0.00643     0.014216
+unsigned_rank                  15112    0.00262    0.00327    0.00877      0.76548
+MAGMA2_gc_BW_dge_cau_all.gcov.out
 # MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15113
+# TOTAL_GENES = 15042
 # CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
 COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15113    -0.0169    -0.0261     0.0064    0.0082997
-unsigned_rank                  15113   2.43e-05   3.06e-05     0.0087      0.99777
-MAGMA_gc_BW_dge_BBB_SV1_acc_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15113
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15113    -0.0158    -0.0242    0.00643     0.014069
-unsigned_rank                  15113    0.00282    0.00353    0.00877      0.74766
-MAGMA_gc_BW_dge_BBB_SV2_acc_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15113
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15113    -0.0133    -0.0213    0.00615     0.031164
-unsigned_rank                  15113    -0.0011   -0.00144    0.00835      0.89548
-MAGMA_gc_BW_dge_SV1_acc_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15096
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15096    -0.0156    -0.0241     0.0064     0.014578
-unsigned_rank                  15096    0.00311     0.0039    0.00874      0.72168
-MAGMA_gc_BW_dge_SV2_acc_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15096
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15096    -0.0131    -0.0209    0.00616     0.034061
-unsigned_rank                  15096  -0.000939   -0.00123    0.00836      0.91062
+signed_rank                    15042   -0.00201   -0.00384     0.0052      0.69939
+unsigned_rank                  15042  -5.31e-05  -8.56e-05    0.00679      0.99376
 ```
 
-Using all genes, we seem to do better without adding SVs, but they're all still
-good.
-
-```
-MAGMA_gc_BW_dge_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15027
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15027    -0.0161    -0.0251    0.00635     0.011291
-unsigned_rank                  15027   -0.00171   -0.00218    0.00861       0.8425
-MAGMA_gc_BW_dge_BBB_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15044
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15044    -0.0164    -0.0257    0.00635    0.0097007
-unsigned_rank                  15044   -0.00202   -0.00257     0.0086      0.81427
-MAGMA_gc_BW_dge_BBB_SV1_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15044
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15044    -0.0149    -0.0239    0.00618     0.016029
-unsigned_rank                  15044   0.000234   0.000304    0.00848      0.97795
-MAGMA_gc_BW_dge_BBB_SV2_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15044
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15044    -0.0128    -0.0205    0.00619      0.03825
-unsigned_rank                  15044   -0.00301   -0.00394    0.00837      0.71902
-MAGMA_gc_BW_dge_SV1_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15027
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15027    -0.0143     -0.023    0.00617     0.020138
-unsigned_rank                  15027   1.27e-05   1.65e-05    0.00844       0.9988
-MAGMA_gc_BW_dge_SV2_acc_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15027
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15027    -0.0123    -0.0195    0.00621      0.04838
-unsigned_rank                  15027   -0.00296   -0.00387    0.00837      0.72333
-```
-
-Same for protein_coding. What's the deal with caudate though?
-
-```
-MAGMA_gc_BW_dge_BBB_cau_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15041
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15041     0.0033    0.00645     0.0051      0.51692
-unsigned_rank                  15041     0.0041    0.00675    0.00665      0.53726
-MAGMA_gc_BW_dge_BBB_SV1_cau_all.gcov.out# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15041
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15041   -0.00202   -0.00385     0.0052      0.69817
-unsigned_rank                  15041   -4.2e-05  -6.77e-05    0.00679      0.99506
-MAGMA_gc_BW_dge_BBB_SV2_cau_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15113
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15113    -0.0133    -0.0213    0.00615     0.031164
-unsigned_rank                  15113    -0.0011   -0.00144    0.00835      0.89548
-MAGMA_gc_BW_dge_cau_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15020
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15020    0.00122    0.00244    0.00495      0.80617
-unsigned_rank                  15020    0.00347    0.00589    0.00644      0.58966
-MAGMA_gc_BW_dge_SV1_cau_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15020
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15020   -0.00349   -0.00707    0.00491      0.47742
-unsigned_rank                  15020    0.00016   0.000272    0.00643       0.9802
-MAGMA_gc_BW_dge_SV2_cau_all.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15020
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15020   -0.00235   -0.00508    0.00461      0.60945
-unsigned_rank                  15020    0.00158     0.0029      0.006      0.79198
-```
-
-OK, still nothing there.
-
-```
-MAGMA_gc_BW_dge_BBB_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 14988
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    14988    0.00337    0.00669    0.00501      0.50184
-unsigned_rank                  14988    0.00378    0.00633    0.00653      0.56223
-MAGMA_gc_BW_dge_BBB_SV1_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 14988
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    14988     0.0003   0.000609    0.00491      0.95131
-unsigned_rank                  14988    0.00133    0.00229    0.00637      0.83413
-MAGMA_gc_BW_dge_BBB_SV2_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 15044
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    15044    -0.0128    -0.0205    0.00619      0.03825
-unsigned_rank                  15044   -0.00301   -0.00394    0.00837      0.71902
-MAGMA_gc_BW_dge_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 14970
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    14970    0.00197    0.00401    0.00489      0.68749
-unsigned_rank                  14970    0.00351    0.00604    0.00634      0.57976
-MAGMA_gc_BW_dge_SV1_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 14970
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    14970  -0.000348  -0.000746    0.00466      0.94039
-unsigned_rank                  14970    0.00182    0.00328    0.00605       0.7636
-MAGMA_gc_BW_dge_SV2_cau_protein_coding.gcov.out
-# MEAN_SAMPLE_SIZE = 55374
-# TOTAL_GENES = 14970
-# CONDITIONED_INTERNAL = genesize, log_genesize, genedensity, log_genedensity, inverse_mac, log_inverse_mac
-COVAR                      OBS_GENES       BETA   BETA_STD         SE            P
-signed_rank                    14970   5.02e-05   0.000114    0.00439      0.99087
-unsigned_rank                  14970    0.00278    0.00533    0.00568      0.62462
-```
-
-Same, thing, all non-significant.
-
-# 2021-03-23 13:12:01
-
-Based on the MAGMA results, we seem to be doing slightly better with the BBB
-results compared to batch results only looking at SV1 models based on our
-experiments with SVA. How about the developmental sets?
-
-I have dev1 and overlap for ACC_all_BBB, same for ACC_all_batch. For
-protein_coding, I get dev1, overlap, and dev5 in BBB, but no dev5 for batch. For
-Caudate, we get dev1 and dev2 for all_BBB, and only dev1 for batch. If we look
-at protein_coding only, we get dev2 only for BBB, and dev1 and dev2 for batch.
-So, seems like BBB is doing slightly better here too, but batch can be useful if
-we want to get dev1 and dev2 in the caudate.
-
-Let's turn to the biological set now. BBB_all_acc seems safe, and protein_coding
-is even more significant. Not much difference to batch_pc_acc, or using all.
-Caudate results seem much more robust now, with lots of mitochondrial stuff, and
-some transcription. We can probably pick any of them there.
-
-Maybe looking at pathways might help decide this? Lots of results there... hard
-to use for filtering though. 
-
-Maybe we can do it based on significance of single genes? Or correlation to
-other disorders?
-
-
-```
-_SV1 acc all FDR .05 0 
-_SV1 acc all FDR .1 0 
-_SV1 acc all IHW .05 0 
-_SV1 acc all IHW .1 0 
-_SV1 acc protein_coding FDR .05 0 
-_SV1 acc protein_coding FDR .1 0 
-_SV1 acc protein_coding IHW .05 0 
-_SV1 acc protein_coding IHW .1 0 
-_SV1 acc lncRNA FDR .05 0 
-_SV1 acc lncRNA FDR .1 2 
-_SV1 acc lncRNA IHW .05 0 
-_SV1 acc lncRNA IHW .1 2 
-_SV1 acc pseudogene FDR .05 0 
-_SV1 acc pseudogene FDR .1 0 
-_SV1 acc pseudogene IHW .05 0 
-_SV1 acc pseudogene IHW .1 0 
-_SV1 cau all FDR .05 1 
-_SV1 cau all FDR .1 10 
-_SV1 cau all IHW .05 1 
-_SV1 cau all IHW .1 4 
-_SV1 cau protein_coding FDR .05 0 
-_SV1 cau protein_coding FDR .1 17 
-_SV1 cau protein_coding IHW .05 0 
-_SV1 cau protein_coding IHW .1 11 
-_SV1 cau lncRNA FDR .05 0 
-_SV1 cau lncRNA FDR .1 0 
-_SV1 cau lncRNA IHW .05 0 
-_SV1 cau lncRNA IHW .1 0 
-_SV1 cau pseudogene FDR .05 1 
-_SV1 cau pseudogene FDR .1 1 
-_SV1 cau pseudogene IHW .05 1 
-_SV1 cau pseudogene IHW .1 1 
-
-_BBB_SV1 acc all FDR .05 0 
-_BBB_SV1 acc all FDR .1 0 
-_BBB_SV1 acc all IHW .05 0 
-_BBB_SV1 acc all IHW .1 0 
-_BBB_SV1 acc protein_coding FDR .05 0 
-_BBB_SV1 acc protein_coding FDR .1 0 
-_BBB_SV1 acc protein_coding IHW .05 0 
-_BBB_SV1 acc protein_coding IHW .1 0 
-_BBB_SV1 acc lncRNA FDR .05 1 
-_BBB_SV1 acc lncRNA FDR .1 2 
-_BBB_SV1 acc lncRNA IHW .05 1 
-_BBB_SV1 acc lncRNA IHW .1 2 
-_BBB_SV1 acc pseudogene FDR .05 0 
-_BBB_SV1 acc pseudogene FDR .1 0 
-_BBB_SV1 acc pseudogene IHW .05 0 
-_BBB_SV1 acc pseudogene IHW .1 0 
-_BBB_SV1 cau all FDR .05 0 
-_BBB_SV1 cau all FDR .1 0 
-_BBB_SV1 cau all IHW .05 0 
-_BBB_SV1 cau all IHW .1 0 
-_BBB_SV1 cau protein_coding FDR .05 0 
-_BBB_SV1 cau protein_coding FDR .1 0 
-_BBB_SV1 cau protein_coding IHW .05 0 
-_BBB_SV1 cau protein_coding IHW .1 0 
-_BBB_SV1 cau lncRNA FDR .05 0 
-_BBB_SV1 cau lncRNA FDR .1 0 
-_BBB_SV1 cau lncRNA IHW .05 0 
-_BBB_SV1 cau lncRNA IHW .1 0 
-_BBB_SV1 cau pseudogene FDR .05 0 
-_BBB_SV1 cau pseudogene FDR .1 0 
-_BBB_SV1 cau pseudogene IHW .05 0 
-_BBB_SV1 cau pseudogene IHW .1 0 
-```
-
-It seems like to maximize the single hits we should go with batch instead of
-BBB. Let's look at correlation to other disorders:
+Now we check back on the correlations:
 
 ```r
 do_boot_corrs = function(both_res, log2FC_col, method) {
@@ -829,7 +552,7 @@ meta = readRDS('~/data/post_mortem/aad6469_Gandal_SM_Data-Table-S1_micro.rds')
 
 st = 'all'
 met = 'spearman'
-load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
 dge = as.data.frame(dge_acc[[st]][['res']])
 dge$ensembl_gene_id = substr(rownames(dge), 1, 15)
 both_res = merge(dge, meta, by='ensembl_gene_id', all.x=F, all.y=F)
@@ -1018,14 +741,14 @@ junk$gene_overlap = nrow(both_res)
 junk$source = 'Neelroop_FrontalTemporal'
 all_corrs = rbind(all_corrs, junk)
 
-out_fname = sprintf('~/data/post_mortem/%s_corrs_BBB_SV1.rds', st)
+out_fname = sprintf('~/data/post_mortem/%s_corrs_BBB_SV1_04082021.rds', st)
 saveRDS(all_corrs, file=out_fname)
 ```
 
-And I ran the same thing for _SV1. Let's plot them now:
+Let's plot them now:
 
 ```r
-fname = 'protein_coding_corrs_SV1'
+fname = 'all_corrs_BBB_SV1_04082021'
 corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
 corrs$id = sapply(1:nrow(corrs),
                   function(i) sprintf('%s_%s_%s',
@@ -1039,85 +762,9 @@ p + ggtitle(fname) + geom_hline(yintercept=0, linetype="dotted",
                                 color = "red", size=1)
 ```
 
-![](images/2021-03-23-15-30-57.png)
+![](images/2021-04-08-15-30-04.png)
 
-![](images/2021-03-23-15-32-12.png)
-
-Actually, it makes sense to do a grouped bar plot here:
-
-```r
-st = 'all'
-fname = sprintf('%s_corrs_SV1', st)
-corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
-corrs$id = sapply(1:nrow(corrs),
-                  function(i) sprintf('%s_%s_%s',
-                                      corrs[i, 'region'],
-                                      corrs[i, 'disorder'],
-                                      corrs[i, 'source']))
-corrs$cov = 'batch'
-all_corrs = corrs
-fname = sprintf('%s_corrs_BBB_SV1', st)
-corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
-corrs$id = sapply(1:nrow(corrs),
-                  function(i) sprintf('%s_%s_%s',
-                                      corrs[i, 'region'],
-                                      corrs[i, 'disorder'],
-                                      corrs[i, 'source']))
-corrs$cov = 'BBB'
-all_corrs = rbind(all_corrs, corrs)
-library(ggplot2)
-p <- ggplot(all_corrs, aes(x = factor(id), y = corr, fill=cov)) + coord_flip() +
-  geom_boxplot() + theme(axis.text.y = element_text(angle = 0))
-p + ggtitle(st) + geom_hline(yintercept=0, linetype="dotted",
-                                color = "red", size=1)
-```
-
-![](images/2021-03-23-16-10-35.png)
-
-Not much difference here. Is there a difference if we use all genes?
-
-![](images/2021-03-23-20-17-21.png)
-
-Not much change either. How about all against protein_coding comparison?
-
-```r
-st = 'all'
-fname = sprintf('%s_corrs_BBB_SV1', st)
-corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
-corrs$id = sapply(1:nrow(corrs),
-                  function(i) sprintf('%s_%s_%s',
-                                      corrs[i, 'region'],
-                                      corrs[i, 'disorder'],
-                                      corrs[i, 'source']))
-corrs$cov = st
-all_corrs = corrs
-st = 'protein_coding'
-fname = sprintf('%s_corrs_BBB_SV1', st)
-corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
-corrs$id = sapply(1:nrow(corrs),
-                  function(i) sprintf('%s_%s_%s',
-                                      corrs[i, 'region'],
-                                      corrs[i, 'disorder'],
-                                      corrs[i, 'source']))
-corrs$cov = st
-all_corrs = rbind(all_corrs, corrs)
-library(ggplot2)
-p <- ggplot(all_corrs, aes(x = factor(id), y = corr, fill=cov)) + coord_flip() +
-  geom_boxplot() + theme(axis.text.y = element_text(angle = 0))
-p + ggtitle('BBB') + geom_hline(yintercept=0, linetype="dotted",
-                                color = "red", size=1)
-```
-
-![](images/2021-03-23-20-19-29.png)
-
-![](images/2021-03-23-20-20-39.png)
-
-No major differences either.
-
-# 2021-03-24 10:41:54
-
-It looks like we might need ot decide this based on the relationship with the
-other covariates. 
+Let's also run the relationship to other covariates:
 
 ```r
 do_boot_corrs = function(both_res) {
@@ -1134,8 +781,8 @@ do_boot_corrs = function(both_res) {
     return(corrs)
 }
 
-st = 'protein_coding'
-load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
+st = 'all'
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
 all_corrs = c()
 st2 = ifelse(st == 'all', NA, st)
 
@@ -1143,8 +790,8 @@ for (cov in c('comorbid_group', 'pcnt_optical_duplicates', 'clusters',
               'C4', 'C5', 'MoD', 'substance_group', 'POP_CODE',
               'evidence_level')) {
     cat(cov, '\n')
-    dge = run_DGE_noPCA_SVs(count_matrix, data, tx_meta, myregion, st2, .05,
-                            BBB=F, nSV=1, add_cov=c(cov))
+    dge = run_DGE_noPCA_SVs(count_matrix, data, tx_meta, st2, .05,
+                            BBB=T, nSV=1, add_cov=c(cov))
     both_res = merge(as.data.frame(dge_cau[[st]]$res),
                     as.data.frame(dge$res), by=0, all.x=F, all.y=F)
     junk = data.frame(corr=do_boot_corrs(both_res))
@@ -1154,17 +801,23 @@ for (cov in c('comorbid_group', 'pcnt_optical_duplicates', 'clusters',
     junk$subtype = st
     all_corrs = rbind(all_corrs, junk)
 }
-out_fname = sprintf('~/data/post_mortem/cov_corrs_%s_%s_BBB_SV1.RData',
+out_fname = sprintf('~/data/post_mortem/cov_corrs_04082021_%s_%s_BBB_SV1.RData',
                     myregion, st)
 saveRDS(all_corrs, file=out_fname)
 ```
 
 OK, let's plot the results to see if there are any trends:
 
+
+
+
+
+
+
 ```r
 st = 'all'
 myregion = 'Caudate'
-fname = sprintf('cov_corrs_%s_%s_BBB_SV1', myregion, st)
+fname = sprintf('cov_corrs_04082021_%s_%s_BBB_SV1', myregion, st)
 corrs = readRDS(sprintf('~/data/post_mortem/%s.RData', fname))
 corrs$covar = 'BBB'
 all_corrs = corrs

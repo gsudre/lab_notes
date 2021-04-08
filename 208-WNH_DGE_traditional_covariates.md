@@ -663,5 +663,126 @@ for (r in c('acc', 'cau')) {
 }
 ```
 
+# 2021-04-08 15:33:36
+
+I'll re-run this analysis with the code from note 210:
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# data only contains sample metadata, and count_matrix has actual counts
+
+# cleaning up some variables
+
+data$Individual = factor(data$hbcc_brain_id)
+data[data$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+data[data$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+data$MoD = factor(data$Manner.of.Death)
+data$batch = factor(as.numeric(data$run_date))
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+data$substance_group = factor(data$substance_group)
+data$comorbid_group = factor(data$comorbid_group_update)
+data$evidence_level = factor(data$evidence_level)
+data$brainbank = factor(data$bainbank)
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = count_matrix[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+Then just run the multiple iterations:
+
+```r
+imWNH = which(data$C1 > 0 & data$C2 < -.075)
+dge_acc = list()
+for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
+    st2 = ifelse(st == 'all', NA, st)
+    dge_acc[[st]] = run_DGE_noPCA_SVs(count_matrix[, imWNH], data[imWNH, ],
+                                      tx_meta, st2, .05, BBB=T, nSV=1)
+}
+###
+dge_cau = list()
+for (st in c('pseudogene', 'lncRNA', 'protein_coding', 'all')) {
+    st2 = ifelse(st == 'all', NA, st)
+    dge_cau[[st]] = run_DGE_noPCA_SVs(count_matrix[, imWNH], data[imWNH, ],
+                                      tx_meta, st2, .05, BBB=T, nSV=1)
+}
+save(dge_acc, dge_cau, file='~/data/post_mortem/DGE_WNH_BBB_SV1_04082021.RData')
+```
+
+Now I have to re-run everything, or just do the bootstrap analysis. Let's go
+with the latter:
+
+```r
+do_boot_corrs = function(both_res, log2FC_col, method) {
+    corrs = c()
+    nperms = 10000
+    set.seed(42)
+    options(warn=-1)  # remove annoying spearman warnings
+    for (p in 1:nperms) {
+        idx = sample(nrow(both_res), replace = T)
+        corrs = c(corrs, cor.test(both_res[idx, 'log2FoldChange'],
+                                  both_res[idx, log2FC_col],
+                                  method=method)$estimate)
+    }
+    return(corrs)
+}
+
+st = 'all'
+met = 'spearman'
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
+dge_all = as.data.frame(dge_cau[[st]][['res']])
+load('~/data/post_mortem/DGE_WNH_BBB_SV1_04082021.RData')
+dge_wnh = as.data.frame(dge_cau[[st]][['res']])
+
+both_res = merge(dge_all, dge_wnh, by=0, all.x=F, all.y=F)
+colnames(both_res)[3] = 'log2FoldChange'
+corrs = do_boot_corrs(both_res, 'log2FoldChange.y', met)
+```
+
+And here's the summary():
+
+```
+# acc
+r$> summary(corrs)                                                                             
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.5301  0.5476  0.5513  0.5513  0.5550  0.5717 
+
+# caudate
+r$> summary(corrs)                                                                             
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.5663  0.5895  0.5928  0.5928  0.5963  0.6094 
+```
+
 
 # TODO
