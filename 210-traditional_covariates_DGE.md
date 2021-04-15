@@ -853,6 +853,7 @@ OK, let's plot the results to see if there are any trends:
 ```r
 quartz()
 st = 'all'
+myregion='ACC'
 fname = sprintf('cov_corrs_04092021_%s_%s_BBB_SV1', myregion, st)
 corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
 library(ggplot2)
@@ -864,10 +865,13 @@ p <- (ggplot(corrs, aes(x = factor(cov), y = corr)) +
 p
 ```
 
+![](images/2021-04-09-11-36-23.png)
+
+
 Outputing single gene results:
 
 ```r
-load('~/data/post_mortem/DGE_03222021_BBB_SV1.RData')
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
 mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
 mydir = '~/data/post_mortem/'
 
@@ -883,7 +887,7 @@ for (r in c('acc', 'cau')) {
     for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
         res_str = sprintf('res = dge_%s[["%s"]]', r, st)
         eval(parse(text=res_str))
-        fname = sprintf('%s/DGE_%s_%s_BBB_SV1_annot_03292021.csv', mydir, r, st)
+        fname = sprintf('%s/DGE_%s_%s_BBB_SV1_annot_04092021.csv', mydir, r, st)
 
         df = as.data.frame(res$res)
         colnames(df)[ncol(df)] = 'padj.FDR'
@@ -902,6 +906,96 @@ for (r in c('acc', 'cau')) {
     }
 }
 ```
+
+I tried checking the nominal pvalue of genes mentioned in the GWAS, but only one
+was good out of 22, so not much to go off there.
+
+Now, Caudate and ACC overlap:
+
+```r
+library(GeneOverlap)
+load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
+
+all_res = c()
+subtypes = list(all='all', pc='protein_coding', lnc='lncRNA', pg='pseudogene')
+for (st in c('all', 'pc', 'lnc', 'pg')) {
+    res.acc = dge_acc[[subtypes[[st]]]]$res
+    res.cau = dge_cau[[subtypes[[st]]]]$res
+    
+    both_res = merge(as.data.frame(res.acc), as.data.frame(res.cau), by=0,
+                        all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs > 0,
+                                'Row.names']
+        dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx > 0,
+                            'Row.names']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                    genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allUp = union(both_res[both_res$stat.prs > 0, 'Row.names'],
+                        both_res[both_res$stat.dx > 0, 'Row.names'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(subtypes[[st]], t, 'up', length(prs_genes),
+                        length(dx_genes), length(inter), pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs < 0,
+                                'Row.names']
+        dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx < 0,
+                            'Row.names']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                    genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        allDown = union(both_res[both_res$stat.prs < 0, 'Row.names'],
+                        both_res[both_res$stat.dx < 0, 'Row.names'])
+        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
+        go.obj <- testGeneOverlap(go.obj)
+        pval2 = getPval(go.obj)
+        this_res = c(subtypes[[st]], t, 'down', length(prs_genes),
+                        length(dx_genes), length(inter), pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+    for (t in c(.05, .01, .005, .001)) {
+        prs_genes = both_res[both_res$pvalue.prs < t, 'Row.names']
+        dx_genes = both_res[both_res$pvalue.dx < t, 'Row.names']
+        go.obj <- newGeneOverlap(prs_genes, dx_genes,
+                                    genome.size=nrow(both_res))
+        go.obj <- testGeneOverlap(go.obj)
+        inter = intersect(prs_genes, dx_genes)
+        pval1 = getPval(go.obj)
+        pval2 = NA
+        this_res = c(subtypes[[st]], t, 'abs', length(prs_genes),
+                        length(dx_genes), length(inter), pval1, pval2)
+        all_res = rbind(all_res, this_res)
+    }
+}
+colnames(all_res) = c('subtype', 'nomPvalThresh', 'direction',
+                      'caudateGenes', 'accGenes', 'overlap', 'pvalWhole',
+                      'pvalDirOnly')
+out_fname = '~/data/post_mortem/DGE_upDown_overlap_results_04092021.csv'
+write.csv(all_res, file=out_fname, row.names=F)
+```
+
+I'm reading a bit more about DESeq2:
+
+http://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#indfilt
+
+Maybe I missed something that might improve our single gene results, but still
+keep the other ones there?
+
+Likelihood ratio test? No filtering? Only the Diagnosis and then slowly add
+terms? Maybe just DX and SV1? More plots to see what samples to keep? Check the
+tools they describe for additional diagnostic plots. Read more about outlier
+counting and independent filtering. For example, we might not need to remove the
+zeros, as apparently it doesn't affect DESeq2 as much. And it puts NAs where it
+needs to in the results.
 
 # TODO
  * re-run SVA split experiment!

@@ -1426,3 +1426,6 @@ for (r in c('acc', 'cau')) {
     }
 }
 ```
+
+I tried checking the nominal pvalue of genes mentioned in the GWAS, but only one
+was good out of 22, so not much to go off there.

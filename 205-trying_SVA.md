@@ -993,3 +993,264 @@ l <- foreach(r=1:nperms) %dopar% {
 ![](images/2021-03-24-00-41-44.png)
 
 Well, it started going down again, so I'll leave it as is with SV 1.
+
+# 2021-04-09 15:11:50
+
+Does the new rounding first thing change the auto-SVA results?
+
+```r
+myregion = 'ACC'
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+# remove obvious outlier (that's NOT caudate) labeled as ACC
+rm_me = rownames(data) %in% c('68080')
+data = data[!rm_me, ]
+data = data[data$Region==myregion, ]
+library(gdata)
+more = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+more = more[!duplicated(more$hbcc_brain_id),]
+data = merge(data, more[, c('hbcc_brain_id', 'comorbid_group_update',
+                            'substance_group', 'evidence_level')],
+             by='hbcc_brain_id', all.x=T, all.y=F)
+
+# at this point we have 55 samples for ACC
+grex_vars = colnames(data)[grepl(colnames(data), pattern='^ENS')]
+count_matrix = t(data[, grex_vars])
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+# data only contains sample metadata, and count_matrix has actual counts
+
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(count_matrix), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+count_matrix = count_matrix[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+```
+
+```r
+run_DGE_SVA = function(count_matrix, data.pm, tx_meta, subtype,
+                       alpha, nSV = NULL) {
+    cat('Starting with', nrow(tx_meta), 'variables\n')
+    if (is.na(subtype)) {
+        keep_me = rep(TRUE, nrow(count_matrix))
+    } else {
+        keep_me = grepl(tx_meta$gene_biotype, pattern=sprintf('%s$', subtype))
+    }
+    cat('Keeping', sum(keep_me), subtype, 'variables\n')
+    my_count_matrix = round(count_matrix)
+
+    # removing variables where more than half of the subjects have zero counts
+    keep_me = rowSums(my_count_matrix==0) < .25*ncol(my_count_matrix)
+    my_count_matrix = my_count_matrix[keep_me, ]
+    cat('Keeping', nrow(my_count_matrix), 'after zero removal\n')
+
+    # removing variables with zero or near-zero variance
+    library(caret)
+    pp_order = c('zv', 'nzv')
+    pp = preProcess(t(my_count_matrix), method = pp_order)
+    X = t(predict(pp, t(my_count_matrix)))
+    cat('Keeping', nrow(X), 'after NZ and NZV filtering\n')
+
+    # removing variables with low expression
+    countsExpr = X
+    metaExpr = data.frame(GENEID = substr(rownames(countsExpr), 1, 15))
+    metaExpr = merge(metaExpr, tx_meta, by='GENEID', sort=F)
+    
+    # preparing DESeqData and running main analysis
+    countdata = round(countsExpr)
+    colnames(countdata) = rownames(data.pm)
+    library(DESeq2)
+    
+    # from https://biodatascience.github.io/compbio/dist/sva.html
+    dds <- DESeqDataSetFromMatrix(countData = countdata,
+                                    colData = data.pm,
+                                    design = ~Diagnosis)
+    dds <- estimateSizeFactors(dds)
+    # I get the same value whether I do this after DESeq or just estimateSizeFactors
+    dat  <- counts(dds, normalized = TRUE)
+
+    library(sva)
+    mod  <- model.matrix(~ Diagnosis, colData(dds))
+    mod0 <- model.matrix(~   1, colData(dds))
+    set.seed(42)
+    svseq <- svaseq(dat, mod, mod0, n.sv = nSV)
+    # svseq <- svaseq(dat, mod, mod0, n.sv = NULL, numSVmethod = "leek")
+
+    fm_str = '~ Diagnosis'
+    for (s in 1:ncol(svseq$sv)) {
+        eval(parse(text=sprintf('data.pm$SV%d <- svseq$sv[,%d]', s, s)))
+        fm_str = sprintf('%s + SV%d', fm_str, s)
+    }
+
+    # because DESeq doesn't remove outliers if there are continuous variables
+    # in the formula, we need to do this iteratively
+    nOutliers = Inf
+    myCounts = round(countsExpr)
+    while (nOutliers > 0) {
+        dds <- DESeqDataSetFromMatrix(countData = myCounts,
+                                    colData = data.pm,
+                                    design = as.formula(fm_str))
+        cat('Processing', nrow(dds), 'variables.\n')
+        dds <- DESeq(dds)
+        maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
+        # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+        # p the number of parameters including the intercept and m number of
+        # samples).
+        m <- ncol(dds)
+        # number or parameters (PCs + Diagnosis + intercept)
+        p <- ncol(svseq$sv) + 2
+        co = qf(.99, p, m - p)
+        keep_me = which(maxCooks < co)
+        nOutliers = nrow(myCounts) - length(keep_me)
+        cat('Found', nOutliers, 'outliers.\n')
+        myCounts = round(myCounts)[keep_me, ]
+    }
+    res <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = alpha)
+    cat(sprintf('FDR q < %.2f\n', alpha))
+    print(summary(res))
+    
+    library(IHW)
+    resIHW <- results(dds, name = "Diagnosis_Case_vs_Control", alpha = alpha,
+                    filterFun=ihw)
+    cat(sprintf('IHW q < %.2f\n', alpha))
+    print(summary(resIHW))
+    
+    my_res = list(res=res, resIHW=resIHW, dds=dds)
+    return(my_res)
+}
+```
+
+```r
+dge_acc = run_DGE_SVA(count_matrix, data, tx_meta, NA, .05)
+```
+
+Still using 11 SVs for ACC. 
+
+```
+# ACC
+FDR q < 0.05
+
+out of 29327 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 9, 0.031%
+LFC < 0 (down)     : 12, 0.041%
+outliers [1]       : 0, 0%
+low counts [2]     : 14783, 50%
+(mean count < 73)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+NULL
+
+Attaching package: ‘IHW’
+
+The following object is masked from ‘package:ggplot2’:
+
+    alpha
+
+IHW q < 0.05
+
+out of 29327 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 4, 0.014%
+LFC < 0 (down)     : 7, 0.024%
+outliers [1]       : 0, 0%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+NULL
+```
+
+What happens if we do GSEA on it?
+
+```r
+library(WebGestaltR)
+
+data_dir = '~/data/post_mortem/'
+ncpu=6
+
+region = 'acc'
+res_str = ifelse(region == 'acc', 'dge_acc$res', 'dge_cau$res')
+ranks_str = sprintf('ranks = -log(%s$pvalue) * sign(%s$log2FoldChange)',
+                    res_str, res_str)
+gid_str = sprintf('geneid=substring(rownames(%s), 1, 15)', res_str)
+
+eval(parse(text=ranks_str))
+eval(parse(text=gid_str))
+
+tmp2 = data.frame(geneid=geneid, rank=ranks)
+tmp2 = tmp2[order(ranks, decreasing=T),]
+
+DBs = c(sprintf('my_%s_sets', region))
+for (db in DBs) {
+    cat(res_str, db, '\n')
+    db_file = sprintf('~/data/post_mortem/%s.gmt', db)
+    project_name = sprintf('WG13_%s_%s_10K', res_str, db)
+    enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                        organism="hsapiens",
+                        enrichDatabaseFile=db_file,
+                        enrichDatabaseType="genesymbol",
+                        interestGene=tmp2,
+                        outputDirectory = data_dir,
+                        interestGeneType="ensembl_gene_id",
+                        sigMethod="top", topThr=20,
+                        minNum=3, projectName=project_name,
+                        isOutput=T, isParallel=T,
+                        nThreads=ncpu, perNum=10000, maxNum=800))
+}
+```
+
+Let's look into MAGMA as well:
+
+```r
+library(biomaRt)
+library(dplyr)
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+
+r = 'acc'
+res_str = sprintf('res = as.data.frame(dge_%s$res)', r)
+eval(parse(text=res_str))
+
+res$GENEID = substr(rownames(res), 1, 15)
+G_list0 <- getBM(filters= "ensembl_gene_id",
+                attributes= c("ensembl_gene_id", "entrezgene_id"),values=res$GENEID, mart= mart)
+G_list <- G_list0[!is.na(G_list0$ensembl_gene_id),]
+G_list = G_list[G_list$ensembl_gene_id!='',]
+G_list <- G_list[!duplicated(G_list$ensembl_gene_id),]
+imnamed = res$GENEID %in% G_list$ensembl_gene_id
+res = res[imnamed, ]
+res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
+            by.y='ensembl_gene_id')
+ranks = res2 %>% group_by(entrezgene_id) %>% slice_min(n=1, pvalue, with_ties=F)
+myres = data.frame(gene=ranks$entrezgene_id,
+                signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
+                unsigned_rank=-log(ranks$pvalue))
+out_fname = sprintf('~/data/post_mortem/MAGMA_dge_SVtry_%s.tab', r)
+write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
+```
+
+Then, for MAGMA we only need to run the last command:
+
+```bash
+module load MAGMA
+cd ~/data/tmp
+r='acc';
+magma --gene-results genes_BW.genes.raw \
+    --gene-covar ~/data/post_mortem/MAGMA_dge_SVtry_${r}.tab \
+    --out ~/data/post_mortem/MAGMA_gc_BW_dge_SVtry_${r};
+```
+
+No, I'm at .4. Probably something related to the large amount of genes with low counts...
