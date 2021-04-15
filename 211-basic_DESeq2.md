@@ -107,6 +107,130 @@ report <- DESeq2Report(dds, project = 'DESeq2 HTML report',
     output = 'index', theme = theme_bw())
 ```
 
+That showed some histograms of the pvalues, which could be useful, but in terms
+of data exploration I'd still go with pcaExplorer. 
+
+Let's finish cleaning up the dataset and try it again. First, there's only one
+sample per brain, which is good. Now, let's keep only the autosomal genes, and
+see what we get in the PCA:
+
+```r
+# I'm running all these in RStudio because it makes graphics much easier
+data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+rownames(data) = data[,1]
+data[,1] = NULL
+data = round(data)
+sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+colnames(data) = sub_name
+
+library(gdata)
+df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+data = data[, colnames(data) %in% df$submitted_name]
+df = df[df$submitted_name %in% colnames(data), ]
+df = df[order(df$submitted_name), ]
+data = data[, order(df$submitted_name)]
+df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+
+# removing everything but autosomes
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+# store gene names in geneCounts without version in end of name
+tx_meta = data.frame(GENEID = substr(rownames(data), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+data = data[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+
+# make sure we only have 
+library("DESeq2")
+idx = df$Region=='ACC'
+dds <- DESeqDataSetFromMatrix(countData = data[, idx],
+                              colData = df[idx, ],
+                              design = ~ Diagnosis)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds = DESeq(dds)
+library(pcaExplorer)
+pcaExplorer(dds = dds)
+```
+
+![](images/2021-04-15-17-11-55.png)
+
+That's good that there's no visual separation anymore after we remove the sex
+chromosomes. And there's the usual sample we normally, remove, so let's get rid
+of it too before we try to find any other factors to remove:
+
+```r
+data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+rownames(data) = data[,1]
+data[,1] = NULL
+data = round(data)
+sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+colnames(data) = sub_name
+data = data[, ! colnames(data) %in% c('68080')]
+
+library(gdata)
+df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+data = data[, colnames(data) %in% df$submitted_name]
+df = df[df$submitted_name %in% colnames(data), ]
+df = df[order(df$submitted_name), ]
+data = data[, order(df$submitted_name)]
+df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+                                             
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+tx_meta = data.frame(GENEID = substr(rownames(data), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                   tx_meta$TXCHROM != 'Y' &
+                   tx_meta$TXCHROM != 'MT')
+data = data[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+
+library("DESeq2")
+idx = df$Region=='ACC'
+dds <- DESeqDataSetFromMatrix(countData = data[, idx],
+                              colData = df[idx, ],
+                              design = ~ Diagnosis)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds = DESeq(dds)
+library(pcaExplorer)
+pcaExplorer(dds = dds)
+```
+
+![](images/2021-04-15-17-19-02.png)
+
+So, do I want to remove batch right away, or just go ahead and calculate an SV
+and check how it correlates with batch? First, let's look at BBB and how it
+looks in our PCA plot:
+
+![](images/2021-04-15-17-22-50.png)
+
+It's not as clean. But brain bank by itself does seem to reveal some structure:
+
+![](images/2021-04-15-17-24-11.png)
+
+The issue here is that I cannot do both because the model doesn't run, as I
+don't have data in all groups. Is there a way to deal with that in DESeq2? Or
+should I just do SV and check how it relates to brain bank and batch?
+
+
+
 # TODO
  * make sure we only have one sample for each brain
  * make sure all variables are of correct type
