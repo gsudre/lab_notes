@@ -475,8 +475,254 @@ route.
 That's the plot_expression for res_diff... there's still some zero corruption. I
 probably need to go back to the old filtering based on percentage of the data.
 
+# 2021-04-20 06:13:33
+
+Let's take a step back, and do pcaexplorer on the whole dataset. Is it true that
+Region and batch drive the variance?
+
+```r
+data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+rownames(data) = data[,1]
+data[,1] = NULL
+data = round(data)
+sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+colnames(data) = sub_name
+# this is a ACC outlier
+data = data[, ! colnames(data) %in% c('68080')]
+# this is a repeat for Caudate hbcc 2877, but has more genes with zeros than
+# its other replicate
+data = data[, ! colnames(data) %in% c('66552')]
+
+library(gdata)
+df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+data = data[, colnames(data) %in% df$submitted_name]
+df = df[df$submitted_name %in% colnames(data), ]
+df = df[order(df$submitted_name), ]
+data = data[, order(df$submitted_name)]
+
+# cleaning up some variables
+df$Individual = factor(df$hbcc_brain_id)
+df[df$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+df[df$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+df$MoD = factor(df$Manner.of.Death)
+df$Sex = factor(df$Sex)
+df$batch = factor(df$batch)
+df$run_date = factor(gsub(df$run_date, pattern='-', replacement=''))
+df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+df$Region = factor(df$Region, levels=c('Caudate', 'ACC'))
+df$substance_group = factor(df$substance_group)
+df$comorbid_group = factor(df$comorbid_group_update)
+df$evidence_level = factor(df$evidence_level)
+df$brainbank = factor(df$bainbank)
+# replace the one subject missing population PCs by the median of their
+# self-declared race and ethnicity
+idx = (df$Race.x=='White' & df$Ethnicity.x=='Non-Hispanic' & !is.na(df$C1))
+pop_pcs = c('C1', 'C2', 'C3', 'C4', 'C5')
+med_pop = apply(df[idx, pop_pcs], 2, median)
+df[which(is.na(df$C1)), pop_pcs] = med_pop
+df$BBB = factor(sapply(1:nrow(df),
+                        function(x) sprintf('%s_%s',
+                                    as.character(df[x,'brainbank']),
+                                    as.character(df[x, 'batch']))))
+                                            
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+            "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+tx_meta = data.frame(GENEID = substr(rownames(data), 1, 15))
+tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+imautosome = which(tx_meta$TXCHROM != 'X' &
+                tx_meta$TXCHROM != 'Y' &
+                tx_meta$TXCHROM != 'MT')
+data = data[imautosome, ]
+tx_meta = tx_meta[imautosome, ]
+
+library("DESeq2")
+dds <- DESeqDataSetFromMatrix(countData = data,
+                            colData = df,
+                            design = ~ Diagnosis)
+# don't allow genes with more zeros than the subjects in smallest group
+min_subjs = min(table(df$Diagnosis, df$Region))
+keep <- rowSums(counts(dds) == 0) <= min_subjs
+dds <- dds[keep,]
+dds = DESeq(dds)
+
+library(pcaExplorer)
+pcaExplorer(dds = dds)
+```
+
+![](images/2021-04-20-06-21-33.png)
+
+I'm actually gonna change the code to do the min of the table with Region in it.
+Does it change the plot?
+
+![](images/2021-04-20-06-24-11.png)
+
+It doesn't, which makes sense as the plot only takes the 300 most variant genes.
+But let's remove those samples that look like outliers:
+
+```r
+# outliers based on PCA plots
+outliers = c('68096', '68108', '68084', '68082')
+data = data[, ! colnames(data) %in% outliers]
+df = df[df$submitted_name %in% colnames(data), ]
+dds <- DESeqDataSetFromMatrix(countData = data,
+                            colData = df,
+                            design = ~ Diagnosis)
+min_subjs = min(table(df$Diagnosis, df$Region))
+keep <- rowSums(counts(dds) == 0) <= min_subjs
+dds <- dds[keep,]
+dds = DESeq(dds)
+pcaExplorer(dds = dds)
+```
+
+![](images/2021-04-20-06-33-54.png)
+
+![](images/2021-04-20-06-37-13.png)
+
+Batch 3 has clearly more reads across samples.
+
+Knowing that PC1 is clearly Region, let's plot PC2 and PC3 instead:
+
+![](images/2021-04-20-06-42-05.png)
+
+![](images/2021-04-20-06-43-19.png)
+
+Maybe the best approach here is to just run batch, as we can see its clear
+influence on reads, and then see if adding any other covariates makes a
+difference.
+
+OK, let's try for the nested model. Following their example, group is Diagnosis,
+ind is hbcc_brain_id, and cnd is Region. I'l also add batch to it, based on our
+plots above. But actually that won't work too well, because I can only get
+group-specific condition effects. In other words, I can only get the condition
+ACC vs Caudate effect for group ADHD samples, and likewise for group Control
+samples. Or I could test if the condition ACC vs Caudate effect is different
+across groups. But I couldn't test anything else. Based on this:
+https://support.bioconductor.org/p/118077/, I cannot estimate the treatment
+(group) effect and simultaneously control for Region (condition), because those
+are directly confounded. I'd have to use the duplicateCorrelation approach to also
+perform that comparison.
+
+Let's for now ignore that and see if we can have some interesting results
+without taking into account the nested aspect:
+
+```r
+library("DESeq2")
+outliers = c('68096', '68108', '68084', '68082')
+data = data[, ! colnames(data) %in% outliers]
+df = df[df$submitted_name %in% colnames(data), ]
+fm_str = '~ batch + Region + Diagnosis + Region:Diagnosis'
+dds <- DESeqDataSetFromMatrix(countData = data,
+                              colData = df,
+                              design = as.formula(fm_str))
+# don't allow genes with more zeros than the subjects in smallest group
+min_subjs = min(table(df$Diagnosis, df$Region))
+keep <- rowSums(counts(dds) == 0) <= min_subjs
+dds <- dds[keep,]
+dds = DESeq(dds)
+```
+
+Let's try it without edgeR filtering first:
+
+```r
+res_cau = results(dds, contrast=c("Diagnosis","Case","Control"))
+res_acc = results(dds, list(c("Diagnosis_Case_vs_Control",
+                                  "RegionACC.DiagnosisCase")))
+res_diff = results(dds, name="RegionACC.DiagnosisCase")
+plot_volcano(res_acc, 'ACC fixed', pCutoff = 0.1)
+plot_volcano(res_cau, 'Caudate fixed', pCutoff = 0.1)
+plot_volcano(res_diff, 'Diff fixed', pCutoff = 0.1)
+
+library(IHW)
+res_cauIHW = results(dds, contrast=c("Diagnosis","Case","Control"),
+                     filterFun=ihw)
+res_accIHW = results(dds, list(c("Diagnosis_Case_vs_Control",
+                                     "RegionACC.DiagnosisCase")), filterFun=ihw)
+res_diffIHW = results(dds, name="RegionACC.DiagnosisCase", filterFun=ihw)
+```
+
+We got 3, 5, and 0 for FDR q < .1, and 10, 4, and 0 for IHW. Are zeros
+corrupting this?
+
+```r
+res = res_acc
+res = res[order(res$pvalue),]
+my_genes = rownames(res)[which(res$padj < .1)]
+plot_expression(my_genes, dds, 'DGE ACC FDR .1')
+```
+
+![](images/2021-04-20-07-17-43.png)
+
+![](images/2021-04-20-07-19-19.png)
+
+We're still seeing more contributions from low-counting genes than I'd like to.
+I'll have to either using edgeR filtering and/or increase my threshold for
+allowing zeros.
+
+
+
+
+
+
+
+
+
+
+
+library(edgeR)
+design = model.matrix(as.formula(fm_str), data=colData(dds))
+isexpr <- filterByExpr(dds, design=design)
+ddsexpr = dds[isexpr,]
+
+nOutliers = Inf
+mydds = ddsexpr
+while (nOutliers > 0) {
+    cat('Processing', nrow(mydds), 'variables.\n')
+    mydds <- DESeq(mydds)
+    maxCooks <- apply(assays(mydds)[["cooks"]], 1, max)
+    # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
+    # p the number of parameters including the intercept and m number of
+    # samples).
+    m <- ncol(mydds)
+    # number or parameters (SVs + Diagnosis + intercept)
+    p <- ncol(design)
+    co = qf(.99, p, m - p)
+    keep_me = which(maxCooks < co)
+    nOutliers = nrow(mydds) - length(keep_me)
+    cat('Found', nOutliers, 'outliers.\n')
+    mydds = mydds[keep_me, ]
+}
+dds_fixed = mydds
+```
+
+```r
+res_cau = results(dds_fixed, contrast=c("Diagnosis","Case","Control"))
+res_acc = results(dds_fixed, list(c("Diagnosis_Case_vs_Control",
+                                  "RegionACC.DiagnosisCase")))
+res_diff = results(dds_fixed, name="RegionACC.DiagnosisCase")
+plot_volcano(res_acc, 'ACC fixed', pCutoff = 0.1)
+plot_volcano(res_cau, 'Caudate fixed', pCutoff = 0.1)
+plot_volcano(res_diff, 'Diff fixed', pCutoff = 0.1)
+
+library(IHW)
+res_cauIHW = results(dds_fixed, contrast=c("Diagnosis","Case","Control"),
+                     filterFun=ihw)
+res_accIHW = results(dds_fixed, list(c("Diagnosis_Case_vs_Control",
+                                     "RegionACC.DiagnosisCase")), filterFun=ihw)
+res_diffIHW = results(dds_fixed, name="RegionACC.DiagnosisCase", filterFun=ihw)
+```
+
+
 
 # TODO
+ * Go back to limma?
+ * if we get good results without nesting subjects, maybe we could just run the
+   same code within brain region and check the similarity of results?
  * maybe blend SV approach with correlations? Keeping up to last SV that's
    correlated with one of our metrics? +1 in case we didn't measure something?
  * add our usual covariates?
@@ -487,3 +733,6 @@ probably need to go back to the old filtering based on percentage of the data.
  * check what the SVs are measuring
  * split gene types?
  * re-run 2sv model correcting the calculation of parameters for outliers
+
+# USeful links
+ * https://academic.oup.com/biostatistics/article/17/1/29/1744261
