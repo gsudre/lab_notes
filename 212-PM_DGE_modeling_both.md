@@ -664,62 +664,47 @@ We're still seeing more contributions from low-counting genes than I'd like to.
 I'll have to either using edgeR filtering and/or increase my threshold for
 allowing zeros.
 
-
-
-
-
-
-
-
-
-
-
+```r
 library(edgeR)
 design = model.matrix(as.formula(fm_str), data=colData(dds))
 isexpr <- filterByExpr(dds, design=design)
 ddsexpr = dds[isexpr,]
+ddsexpr = DESeq(ddsexpr)
 
-nOutliers = Inf
-mydds = ddsexpr
-while (nOutliers > 0) {
-    cat('Processing', nrow(mydds), 'variables.\n')
-    mydds <- DESeq(mydds)
-    maxCooks <- apply(assays(mydds)[["cooks"]], 1, max)
-    # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
-    # p the number of parameters including the intercept and m number of
-    # samples).
-    m <- ncol(mydds)
-    # number or parameters (SVs + Diagnosis + intercept)
-    p <- ncol(design)
-    co = qf(.99, p, m - p)
-    keep_me = which(maxCooks < co)
-    nOutliers = nrow(mydds) - length(keep_me)
-    cat('Found', nOutliers, 'outliers.\n')
-    mydds = mydds[keep_me, ]
-}
-dds_fixed = mydds
-```
-
-```r
-res_cau = results(dds_fixed, contrast=c("Diagnosis","Case","Control"))
-res_acc = results(dds_fixed, list(c("Diagnosis_Case_vs_Control",
+res_cau = results(ddsexpr, contrast=c("Diagnosis","Case","Control"))
+res_acc = results(ddsexpr, list(c("Diagnosis_Case_vs_Control",
                                   "RegionACC.DiagnosisCase")))
-res_diff = results(dds_fixed, name="RegionACC.DiagnosisCase")
+res_diff = results(ddsexpr, name="RegionACC.DiagnosisCase")
 plot_volcano(res_acc, 'ACC fixed', pCutoff = 0.1)
 plot_volcano(res_cau, 'Caudate fixed', pCutoff = 0.1)
 plot_volcano(res_diff, 'Diff fixed', pCutoff = 0.1)
-
-library(IHW)
-res_cauIHW = results(dds_fixed, contrast=c("Diagnosis","Case","Control"),
+res_cauIHW = results(ddsexpr, contrast=c("Diagnosis","Case","Control"),
                      filterFun=ihw)
-res_accIHW = results(dds_fixed, list(c("Diagnosis_Case_vs_Control",
+res_accIHW = results(ddsexpr, list(c("Diagnosis_Case_vs_Control",
                                      "RegionACC.DiagnosisCase")), filterFun=ihw)
-res_diffIHW = results(dds_fixed, name="RegionACC.DiagnosisCase", filterFun=ihw)
+res_diffIHW = results(ddsexpr, name="RegionACC.DiagnosisCase", filterFun=ihw)
 ```
 
+Now we have 3, 8, and 0 for FDR q < .1, and 10, 8, and 0 for IHW. Are zeros
+corrupting this now?
+
+```r
+res = res_acc
+res = res[order(res$pvalue),]
+my_genes = rownames(res)[which(res$padj < .1)]
+plot_expression(my_genes, dds, 'DGE ACC FDR .1')
+```
+
+![](images/2021-04-20-10-59-53.png)
+
+![](images/2021-04-20-11-00-59.png)
+
+Yeah, that seems to be true for a few instances of Caudate. I might need to look
+into the densities here.
 
 
 # TODO
+ * plot densities again?
  * Go back to limma?
  * if we get good results without nesting subjects, maybe we could just run the
    same code within brain region and check the similarity of results?
