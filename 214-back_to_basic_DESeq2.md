@@ -951,20 +951,14 @@ The overall shape is the same, but there are some subtle changes. And of course,
 the count axis changed.
 
 
-
-
-
-
-
-
-
-
-
+# 2021-04-21 06:53:48
 
 Outputing single gene results:
 
 ```r
-load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
+library(DESeq2)
+library(IHW)
+load('~/data/post_mortem/basic_DGE_04202021.RData')
 mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
 mydir = '~/data/post_mortem/'
 
@@ -976,105 +970,93 @@ bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
 bt_slim = bt[, c('gene_id', 'gene_biotype')]
 bt_slim = bt_slim[!duplicated(bt_slim),]
 
-for (r in c('acc', 'cau')) {
-    for (st in c('all', 'protein_coding', 'lncRNA', 'pseudogene')) {
-        res_str = sprintf('res = dge_%s[["%s"]]', r, st)
-        eval(parse(text=res_str))
-        fname = sprintf('%s/DGE_%s_%s_BBB_SV1_annot_04092021.csv', mydir, r, st)
+for (r in c('ACC', 'Caudate')) {
+    res_str = sprintf('res = results(dds.%s, name = "Diagnosis_Case_vs_Control", alpha=.05)',
+                      r)
+    eval(parse(text=res_str))
+    fname = sprintf('%s/DGE_%s_BBB2_annot_04212021.csv', mydir, r)
 
-        df = as.data.frame(res$res)
-        colnames(df)[ncol(df)] = 'padj.FDR'
-        df$GENEID = substr(rownames(df), 1, 15)
-        df2 = merge(df, mart, sort=F,
-                    by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
-        df2 = merge(df2, bt_slim, sort=F,
-                    by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
-        df2 = df2[order(df2$pvalue), ]
-        df3 = as.data.frame(res$resIHW)
-        df3$GENEID = substr(rownames(df3), 1, 15)
-        df2 = merge(df2, df3[, c('GENEID', 'padj')], sort=F, by='GENEID',
-                    all.x=T, all.y=F)
-        colnames(df2)[ncol(df2)] = 'padj.IHW'
-        write.csv(df2, row.names=F, file=fname)
-    }
+    df = as.data.frame(res)
+    colnames(df)[ncol(df)] = 'padj.FDR'
+    df$GENEID = substr(rownames(df), 1, 15)
+    df2 = merge(df, mart, sort=F,
+                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+    df2 = merge(df2, bt_slim, sort=F,
+                by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
+    df2 = df2[order(df2$pvalue), ]
+
+    df2$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df2, alpha=0.05))
+    
+    write.csv(df2, row.names=F, file=fname)
 }
 ```
 
-I tried checking the nominal pvalue of genes mentioned in the GWAS, but only one
-was good out of 22, so not much to go off there.
+Let's investigate those 7 hits:
 
-Now, Caudate and ACC overlap:
+* ENSG00000103995: CEP152: involved with centrosome function. Mutations in this gene have been associated with primary microcephaly
+* ENSG00000135245: HILPDA: ncreases intracellular lipid accumulation. Enhances cell growth and proliferation
+* ENSG00000167772: ANGPTL4: regulates glucose homeostasis, lipid metabolism, and insulin sensitivity.
+* ENSG00000196136: SERPINA3: inhibit serine proteases. This gene is one in a cluster of serpin genes located on the q arm of chromosome 14. Tissue specific and influence protease targeting, implicated in Alzheimer's disease.
+* ENSG00000240758: (lncRNA) related to HILPDA
+* ENSG00000258890: CEP95: centrosomal protein 95
+* ENSG00000268100: ZNF725P (pseudogene): zinc finger protein
+
+Even though there isn't anything significant in Caudate, there's a whole bunch
+of stuff if we run IHW in ACC. Let's check the overlap of that with nominal
+significance in Caudate:
 
 ```r
-library(GeneOverlap)
-load('~/data/post_mortem/DGE_04082021_BBB_SV1.RData')
-
-all_res = c()
-subtypes = list(all='all', pc='protein_coding', lnc='lncRNA', pg='pseudogene')
-for (st in c('all', 'pc', 'lnc', 'pg')) {
-    res.acc = dge_acc[[subtypes[[st]]]]$res
-    res.cau = dge_cau[[subtypes[[st]]]]$res
-    
-    both_res = merge(as.data.frame(res.acc), as.data.frame(res.cau), by=0,
-                        all.x=F, all.y=F, suffixes = c('.dx', '.prs'))
-    for (t in c(.05, .01, .005, .001)) {
-        prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs > 0,
-                                'Row.names']
-        dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx > 0,
-                            'Row.names']
-        go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                    genome.size=nrow(both_res))
-        go.obj <- testGeneOverlap(go.obj)
-        inter = intersect(prs_genes, dx_genes)
-        pval1 = getPval(go.obj)
-        allUp = union(both_res[both_res$stat.prs > 0, 'Row.names'],
-                        both_res[both_res$stat.dx > 0, 'Row.names'])
-        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allUp))
-        go.obj <- testGeneOverlap(go.obj)
-        pval2 = getPval(go.obj)
-        this_res = c(subtypes[[st]], t, 'up', length(prs_genes),
-                        length(dx_genes), length(inter), pval1, pval2)
-        all_res = rbind(all_res, this_res)
-    }
-    for (t in c(.05, .01, .005, .001)) {
-        prs_genes = both_res[both_res$pvalue.prs < t & both_res$stat.prs < 0,
-                                'Row.names']
-        dx_genes = both_res[both_res$pvalue.dx < t & both_res$stat.dx < 0,
-                            'Row.names']
-        go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                    genome.size=nrow(both_res))
-        go.obj <- testGeneOverlap(go.obj)
-        inter = intersect(prs_genes, dx_genes)
-        pval1 = getPval(go.obj)
-        allDown = union(both_res[both_res$stat.prs < 0, 'Row.names'],
-                        both_res[both_res$stat.dx < 0, 'Row.names'])
-        go.obj <- newGeneOverlap(prs_genes, dx_genes, genome.size=length(allDown))
-        go.obj <- testGeneOverlap(go.obj)
-        pval2 = getPval(go.obj)
-        this_res = c(subtypes[[st]], t, 'down', length(prs_genes),
-                        length(dx_genes), length(inter), pval1, pval2)
-        all_res = rbind(all_res, this_res)
-    }
-    for (t in c(.05, .01, .005, .001)) {
-        prs_genes = both_res[both_res$pvalue.prs < t, 'Row.names']
-        dx_genes = both_res[both_res$pvalue.dx < t, 'Row.names']
-        go.obj <- newGeneOverlap(prs_genes, dx_genes,
-                                    genome.size=nrow(both_res))
-        go.obj <- testGeneOverlap(go.obj)
-        inter = intersect(prs_genes, dx_genes)
-        pval1 = getPval(go.obj)
-        pval2 = NA
-        this_res = c(subtypes[[st]], t, 'abs', length(prs_genes),
-                        length(dx_genes), length(inter), pval1, pval2)
-        all_res = rbind(all_res, this_res)
-    }
-}
-colnames(all_res) = c('subtype', 'nomPvalThresh', 'direction',
-                      'caudateGenes', 'accGenes', 'overlap', 'pvalWhole',
-                      'pvalDirOnly')
-out_fname = '~/data/post_mortem/DGE_upDown_overlap_results_04092021.csv'
-write.csv(all_res, file=out_fname, row.names=F)
+acc = read.csv('~/data/post_mortem/DGE_ACC_BBB2_annot_04212021.csv')
+cau = read.csv('~/data/post_mortem/DGE_Caudate_BBB2_annot_04212021.csv')
+m = merge(acc, cau, by='GENEID', suffix=c('.acc', '.cau'), all.x=T, all.y=T)
 ```
+
+```
+r$> sum(m$padj.IHW.acc < .05, na.rm=T)                                                  
+[1] 40
+r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .05, na.rm=T)                           
+[1] 7
+r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .1, na.rm=T)                            
+[1] 40
+r$> sum(m$padj.IHW.acc < .05 & m$pvalue.cau < .05, na.rm=T)                             
+[1] 14
+r$> m[which(m$padj.IHW.acc < .05 & m$pvalue.cau < .05), c('GENEID', 'hgnc_symbol.cau')] 
+               GENEID hgnc_symbol.cau
+324   ENSG00000018280         SLC11A1
+1257  ENSG00000078401            EDN1
+1994  ENSG00000100292           HMOX1
+5756  ENSG00000133048          CHI3L1
+6017  ENSG00000135063        FAM189A2
+6479  ENSG00000137752           CASP1
+6728  ENSG00000139211          AMIGO2
+7888  ENSG00000148926             ADM
+13892 ENSG00000196584           XRCC2
+14515 ENSG00000203747          FCGR3A
+18131 ENSG00000240758                
+19044 ENSG00000250483         PPM1AP1
+19589 ENSG00000254995    STX16-NPEPL1
+23764 ENSG00000282508       LINC01002
+```
+
+So, let's see what else we have here:
+
+* ENSG00000018280, SLC11A1: encodes a multi-pass membrane protein. The protein functions as a divalent transition metal (iron and manganese) transporter involved in iron metabolism and host resistance to certain pathogens
+* ENSG00000078401, EDN1: This peptide is a potent vasoconstrictor and its cognate receptors are therapeutic targets in the treatment of pulmonary arterial hypertension.
+* ENSG00000100292, HMOX1:  Heme oxygenase activity is induced by its substrate heme and by various nonheme substances
+* ENSG00000133048, CHI3L1: This gene encodes a glycoprotein member of the glycosyl hydrolase 18 family. The protein lacks chitinase activity and is secreted by activated macrophages, chondrocytes, neutrophils and synovial cells. The protein is thought to play a role in the process of inflammation and tissue remodeling.
+* ENSG00000135063, FAM189A2:  Diseases associated with FAM189A2 include Friedreich Ataxia
+* ENSG00000137752, CASP1: Sequential activation of caspases plays a central role in the execution-phase of cell apoptosis.
+* ENSG00000139211, AMIGO2: Diseases associated with AMIGO2 include Parkinson
+  Disease 8, Autosomal Dominant and Gastric Adenocarcinoma. Required for
+  depolarization-dependent survival of cultured cerebellar granule neurons.
+* ENSG00000148926, ADM: vasodilation, regulation of hormone secretion, promotion of angiogenesis, and antimicrobial activity
+* ENSG00000196584, XRCC2: maintain chromosome stability and repair DNA damage
+* ENSG00000203747, FCGR3A: nvolved in the removal of antigen-antibody complexes from the circulation, as well as other responses, including antibody dependent cellular mediated cytotoxicity and antibody dependent enhancement of virus infections
+* ENSG00000240758: (lncRNA, same as above)
+* ENSG00000250483, PPM1AP1: (pseudogene) Protein Phosphatase
+* ENSG00000254995, STX16-NPEPL1: lncRNA
+* ENSG00000282508, LINC01002: lcRNA: 
+
 
 
 # TODO
