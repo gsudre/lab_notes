@@ -777,34 +777,55 @@ out_fname = sprintf('~/data/post_mortem/cov_corrs_BBB2_04202021_%s.rds',
 saveRDS(all_corrs, file=out_fname)
 ```
 
-
-
-
-
 OK, let's plot the results to see if there are any trends:
 
 ```r
 quartz()
-st = 'all'
-myregion='ACC'
-fname = sprintf('cov_corrs_04092021_%s_%s_BBB_SV1', myregion, st)
+myregion='Caudate'
+fname = sprintf('cov_corrs_BBB2_04202021_%s', myregion)
 corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
 library(ggplot2)
 p <- (ggplot(corrs, aes(x = factor(cov), y = corr)) +
       coord_flip() + geom_boxplot() +
       theme(axis.text.y = element_text(angle = 0)) + 
-      ggtitle(sprintf('%s %s', myregion, st))) #+
-    #   geom_hline(yintercept=0, linetype="dotted", color = "red", size=1))
+      ggtitle(sprintf('%s', myregion)))
 p
 ```
 
-![](images/2021-04-09-11-36-23.png)
+![](images/2021-04-20-21-46-31.png)
 
+![](images/2021-04-20-21-46-58.png)
 
+I should definitely check the effect of the strongest covariates on the top
+hits, and also the p-value for the top results. But I wonder how much of those
+effects is just an unbalanced group, that would do better by removing the small
+group?
 
+```
+r$> table(dds.ACC$comorbid_group)                                                       
 
+ no yes 
+ 44   9 
 
+r$> table(dds.Caudate$comorbid_group)                                                   
 
+ no yes 
+ 46  10 
+
+r$> table(dds.ACC$substance_group)                                                      
+
+ 0  1  2 
+42  7  4 
+
+r$> table(dds.Caudate$substance_group)                                                  
+
+ 0  1  2 
+45  6  5 
+```
+
+Yeah, I should try running the clean sets only just to see if the correlation is
+that small. Note that it's not even that small: it's still .75 and .8. It's just
+a bit smaller than the other ones. Icing on the cake, though.
 
 Let's make a few volcano and expression plots:
 
@@ -878,17 +899,56 @@ r$> res[which(res$padj < .05), c('ensembl_gene_id', 'log2FoldChange', 'pvalue', 
 More importantly, can we plot their expression after accounting for BBB2?
 
 ```r
+# from http://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#why-after-vst-are-there-still-batches-in-the-pca-plot
 vsd <- vst(dds.ACC, blind=FALSE)
 norm.cts <- assay(vsd)
 mat <- limma::removeBatchEffect(norm.cts, vsd$BBB2)
+res = results(dds.ACC, name = "Diagnosis_Case_vs_Control", alpha=alpha)
+gene_list = rownames(res)[which(res$padj < .05)]
+resid_expr = reshape2::melt(mat[gene_list,])
+colnames(resid_expr) = c('gene', 'submitted_name', 'normCount')
+junk = colData(vsd)[, c('Diagnosis', 'submitted_name')]
+resid_expr = merge(resid_expr, junk, by='submitted_name')
 
+library(ggpubr)
+library(ggbeeswarm)
+quartz()
+myplots = list()
+clrs = c("green3", "red")
+for (g in 1:length(gene_list)) {
+    cat(gene_list[g], '\n')
+    d = as.data.frame(resid_expr[resid_expr$gene == gene_list[g],])
+    p = (ggplot(d, aes(x=Diagnosis, y=normCount, color = Diagnosis,
+                    fill = Diagnosis)) + 
+        scale_y_log10() +
+        geom_boxplot(alpha = 0.4, outlier.shape = NA, width = 0.8,
+                    lwd = 0.5) +
+        stat_summary(fun = mean, geom = "point", color = "black",
+                    shape = 5, size = 3,
+                    position=position_dodge(width = 0.8)) +
+        scale_color_manual(values = clrs) +
+        scale_fill_manual(values = clrs) +
+        geom_quasirandom(color = "black", size = 1, dodge.width = 0.8) +
+        theme_bw() +
+        ggtitle(gene_list[g]))
+    myplots[[g]] = p
+}
+p = ggarrange(plotlist=myplots)
+print(annotate_figure(p, t_str))
+```
 
+![](images/2021-04-20-21-38-19.png)
 
+How does that compare to the uncorrected version?
 
+```r
+plot_expression(gene_list, dds.ACC, 'DGE ACC .05')
+```
 
+![](images/2021-04-20-21-40-50.png)
 
-
-
+The overall shape is the same, but there are some subtle changes. And of course,
+the count axis changed.
 
 
 
@@ -1017,28 +1077,9 @@ write.csv(all_res, file=out_fname, row.names=F)
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Hum... the ACC results look nice, stronger if anything. But the Caudate dev
-results got all messed up. Let's plot the single gene results just to see if
-everything is OK there:
-
-
 # TODO
- * make expression plots after removing batch: http://www.bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#why-after-vst-are-there-still-batches-in-the-pca-plot
- * check individual covariates by correlation, and then what happens to our main
-   results (e.g. pvalues, GSEA, etc) as we add them
- * run all results, including MAGMA
+ * run WNH only
+ * what are those individual hits for ACC?
+ * separate results
+ * check what happens to our main
+   results (e.g. pvalues, GSEA, etc) as we add the strongest covariates
