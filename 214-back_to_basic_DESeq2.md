@@ -880,6 +880,8 @@ plot_volcano(res2, 'DGE ACC', pCutoff=alpha)
 
 ![](images/2021-04-20-21-10-03.png)
 
+![](images/2021-04-21-15-58-26.png)
+
 I might have to do this figure manually, because one name is not showing, and
 one of the 7 hits doesn't have HGNC symbol. They should actually be:
 
@@ -1060,8 +1062,5 @@ So, let's see what else we have here:
 
 
 # TODO
- * run WNH only
- * what are those individual hits for ACC?
- * separate results
  * check what happens to our main
    results (e.g. pvalues, GSEA, etc) as we add the strongest covariates
