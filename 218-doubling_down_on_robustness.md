@@ -161,9 +161,18 @@ mycov = c('clusters', 'RINe', 'pcnt_optical_duplicates')
 dds = basic_DGE(myregion, add_cov=mycov)
 adjusted[['tech']] = dds
 
-out_fname = sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s.RData',
-                    myregion)
-save(adjusted, file=out_fname)
+# splitting it into smaller files
+covs = c('clusters', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI',
+         'comorbid_group', 'pcnt_optical_duplicates',
+         'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
+         'demo3', 'demo5', 'clin', 'tech')
+for (mycov in covs) {
+    cat(mycov, '\n')
+    out_fname = sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_%s.RData',
+                    myregion, mycov)
+    dds = adjusted[[mycov]]
+    save(dds, file=out_fname)
+}
 ```
 
 We will also need to code running GSEA for each of them. I'll just do
@@ -181,12 +190,10 @@ covs = c('clusters', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI',
          'comorbid_group', 'pcnt_optical_duplicates',
          'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
          'demo3', 'demo5', 'clin', 'tech')
-load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s.RData', region))
 
 for (mycov in covs) {
-    res_str = sprintf('dds = adjusted$%s', mycov)
-    eval(parse(text=res_str))
-
+    load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_%s.RData',
+                 region, mycov))
     res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
     
     ranks = -log(res$pvalue) * sign(res$log2FoldChange)
@@ -195,7 +202,7 @@ for (mycov in covs) {
     tmp2 = data.frame(geneid=geneid, rank=ranks)
     tmp2 = tmp2[order(ranks, decreasing=T),]
 
-    res_str = sprintf('ROB01_DGE_%s_%s_BBB2', region, mycov)
+    res_str = sprintf('ROB1_DGE_%s_%s_BBB2', region, mycov)
     DBs = c(sprintf('%s_developmental', tolower(region)))
     for (db in DBs) {
         cat(res_str, db, '\n')
@@ -213,6 +220,140 @@ for (mycov in covs) {
                             isOutput=T, isParallel=T,
                             nThreads=ncpu, perNum=10000, maxNum=800))
     }
+}
+```
+
+And the same thing for the other DBs:
+
+```r
+for (mycov in covs) {
+    load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_%s.RData',
+                 region, mycov))
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+    
+    ranks = -log(res$pvalue) * sign(res$log2FoldChange)
+    geneid = substring(rownames(res), 1, 15)
+    
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    res_str = sprintf('ROB1_DGE_%s_%s_BBB2', region, mycov)
+    DBs = c('geneontology_Biological_Process_noRedundant',
+            'geneontology_Cellular_Component_noRedundant',
+            'geneontology_Molecular_Function_noRedundant')
+    for (db in DBs) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=db,
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", topThr=20,
+                                    outputDirectory = data_dir,
+                                    minNum=5, projectName=project_name,
+                                    isOutput=T, isParallel=T,
+                                    nThreads=ncpu, perNum=10000))
+    }
+}
+```
+
+OK, so let's generate something akin to that table Philip suggested
+
+```r
+covs = c('clusters', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI',
+         'comorbid_group', 'pcnt_optical_duplicates',
+         'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
+         'demo3', 'demo5', 'clin', 'tech')
+covs = c('clusters', 'Age')
+
+library(DESeq2)
+load('~/data/post_mortem/basic_DGE_04202021.RData')
+res.acc = as.data.frame(results(dds.ACC, name = "Diagnosis_Case_vs_Control",
+                                alpha=.05))
+library(IHW)
+acc.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=res.acc, alpha=0.05))
+
+library(GeneOverlap)
+resmat = data.frame()
+# store all the metrics in a list
+metrics = list()
+ACC_IHW_p05 = rownames(res.acc)[which(acc.IHW < .05)]
+metrics$ACC_IHW_p05 = length(ACC_IHW_p05)
+ACC_FDR_p05 = rownames(res.acc)[which(res.acc$padj < .05)]
+metrics$ACC_FDR_p05 = length(ACC_FDR_p05)
+ACC_p00001 = rownames(res.acc)[which(res.acc$pvalue < .00001)]
+metrics$ACC_p00001 = length(ACC_p00001)
+metrics$baseIHWOverlap = NA
+metrics$IHWOverlapPval = NA
+metrics$baseFDROverlap = NA
+metrics$FDROverlapPval = NA
+metrics$baseP00001Overlap = NA
+metrics$P00001OverlapPval = NA
+r = 'ACC'
+df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_developmental_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_developmental_10K.txt',
+                          r, tolower(r), r, tolower(r)),
+                  header=1, sep='\t')[, 1:6]
+metrics$ACC_panDev_adjPval = df[df$link=='overlap', 'FDR']
+metrics$ACC_adult_adjPval = df[df$link=='adult (>19 yrs)', 'FDR']
+r = 'Caudate'
+df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_developmental_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_developmental_10K.txt',
+                          r, tolower(r), r, tolower(r)),
+                  header=1, sep='\t')[, 1:6]
+metrics$Caudate_infant_adjPval = df[df$link=='infant (0-2 yrs)', 'FDR']
+
+# grab all significant gene sets for ACC, and just check later the adjusted
+# pvalues for other conditions bind each covariate iteration as a row
+
+
+resmat = rbind(resmat, metrics)
+rownames(resmat)[nrow(resmat)] = 'base'
+for (mycov in covs) {
+    cat(mycov, '\n')
+    load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_ACC_%s.RData',
+                 mycov))
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+
+    # store all the metrics in a list
+    metrics = list()
+    res.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=res, alpha=0.05))
+    res_IHW_p05 = rownames(res)[which(res.IHW < .05)]
+    metrics$ACC_IHW_p05 = length(res_IHW_p05)
+    res_FDR_p05 = rownames(res)[which(res$padj < .05)]
+    metrics$ACC_FDR_p05 = length(res_FDR_p05)
+    res_p00001 = rownames(res)[which(res$pvalue < .00001)]
+    metrics$ACC_p00001 = length(ACC_p00001)
+
+    gsize = length(intersect(rownames(res), rownames(res.acc)))
+    metrics$baseIHWOverlap = length(intersect(ACC_IHW_p05, res_IHW_p05))
+    go.obj <- newGeneOverlap(ACC_IHW_p05, res_IHW_p05, genome.size=gsize)
+    go.obj <- testGeneOverlap(go.obj)
+    metrics$IHWOverlapPval = getPval(go.obj)
+    metrics$baseFDROverlap = length(intersect(ACC_FDR_p05, res_FDR_p05))
+    go.obj <- newGeneOverlap(ACC_FDR_p05, res_FDR_p05, genome.size=gsize)
+    go.obj <- testGeneOverlap(go.obj)
+    metrics$FDROverlapPval = getPval(go.obj)
+    metrics$baseP00001Overlap = length(intersect(ACC_p00001, res_p00001))
+    go.obj <- newGeneOverlap(ACC_p00001, res_p00001, genome.size=gsize)
+    go.obj <- testGeneOverlap(go.obj)
+    metrics$P00001OverlapPval = getPval(go.obj)
+
+    r = 'ACC'
+    df = read.table(sprintf('~/data/post_mortem/Project_ROB1_DGE_%s_%s_BBB2_%s_developmental_10K/enrichment_results_ROB1_DGE_%s_%s_BBB2_%s_developmental_10K.txt',
+                            r, mycov, tolower(r), r, mycov, tolower(r)),
+                    header=1, sep='\t')[, 1:6]
+    metrics$ACC_panDev_adjPval = df[df$link=='overlap', 'FDR']
+    metrics$ACC_adult_adjPval = df[df$link=='adult (>19 yrs)', 'FDR']
+    r = 'Caudate'
+    df = read.table(sprintf('~/data/post_mortem/Project_ROB1_DGE_%s_%s_BBB2_%s_developmental_10K/enrichment_results_ROB1_DGE_%s_%s_BBB2_%s_developmental_10K.txt',
+                            r, mycov, tolower(r), r, mycov, tolower(r)),
+                    header=1, sep='\t')[, 1:6]
+    metrics$Caudate_infant_adjPval = df[df$link=='infant (0-2 yrs)', 'FDR']
+  
+    # bind each covariate iteration as a row
+    resmat = rbind(resmat, metrics)
+    rownames(resmat)[nrow(resmat)] = mycov
 }
 ```
 

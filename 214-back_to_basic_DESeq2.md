@@ -976,10 +976,12 @@ for (r in c('ACC', 'Caudate')) {
     res_str = sprintf('res = results(dds.%s, name = "Diagnosis_Case_vs_Control", alpha=.05)',
                       r)
     eval(parse(text=res_str))
-    fname = sprintf('%s/DGE_%s_BBB2_annot_04212021.csv', mydir, r)
+    fname = sprintf('%s/DGE_%s_BBB2_annot_04222021.csv', mydir, r)
 
     df = as.data.frame(res)
     colnames(df)[ncol(df)] = 'padj.FDR'
+    df$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df, alpha=0.05))
+
     df$GENEID = substr(rownames(df), 1, 15)
     df2 = merge(df, mart, sort=F,
                 by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
@@ -987,10 +989,47 @@ for (r in c('ACC', 'Caudate')) {
                 by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
     df2 = df2[order(df2$pvalue), ]
 
-    df2$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df2, alpha=0.05))
-    
     write.csv(df2, row.names=F, file=fname)
 }
+```
+
+Note that I had to make a change to the code above, producing the set of results
+on 04/22 instead of 04/21, because some duplicate genes were screwing up IHWI I
+should run IHW before I add the names to avoid that! It only changed the number
+of IHW q < .05, from 40 to 31. And of course the overlap with Caudate (see below).
+
+Even though there isn't anything significant in Caudate, there's a whole bunch
+of stuff if we run IHW in ACC. Let's check the overlap of that with nominal
+significance in Caudate:
+
+```r
+acc = read.csv('~/data/post_mortem/DGE_ACC_BBB2_annot_04222021.csv')
+cau = read.csv('~/data/post_mortem/DGE_Caudate_BBB2_annot_04222021.csv')
+m = merge(acc, cau, by='GENEID', suffix=c('.acc', '.cau'), all.x=T, all.y=T)
+```
+
+```
+r$> sum(m$padj.IHW.acc < .05, na.rm=T)                                                  
+[1] 31
+r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .05, na.rm=T)                           
+[1] 7
+r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .1, na.rm=T)                            
+[1] 31
+r$> sum(m$padj.IHW.acc < .05 & m$pvalue.cau < .05, na.rm=T)                             
+[1] 11
+r$> m[which(m$padj.IHW.acc < .05 & m$pvalue.cau < .05), c('GENEID', 'hgnc_symbol.cau')] 
+               GENEID hgnc_symbol.cau
+324   ENSG00000018280         SLC11A1
+1257  ENSG00000078401            EDN1
+1994  ENSG00000100292           HMOX1
+5756  ENSG00000133048          CHI3L1
+6017  ENSG00000135063        FAM189A2
+6479  ENSG00000137752           CASP1
+7888  ENSG00000148926             ADM
+13892 ENSG00000196584           XRCC2
+14515 ENSG00000203747          FCGR3A
+18131 ENSG00000240758                
+19044 ENSG00000250483         PPM1AP1
 ```
 
 Let's investigate those 7 hits:
@@ -1003,44 +1042,7 @@ Let's investigate those 7 hits:
 * ENSG00000258890: CEP95: centrosomal protein 95
 * ENSG00000268100: ZNF725P (pseudogene): zinc finger protein
 
-Even though there isn't anything significant in Caudate, there's a whole bunch
-of stuff if we run IHW in ACC. Let's check the overlap of that with nominal
-significance in Caudate:
-
-```r
-acc = read.csv('~/data/post_mortem/DGE_ACC_BBB2_annot_04212021.csv')
-cau = read.csv('~/data/post_mortem/DGE_Caudate_BBB2_annot_04212021.csv')
-m = merge(acc, cau, by='GENEID', suffix=c('.acc', '.cau'), all.x=T, all.y=T)
-```
-
-```
-r$> sum(m$padj.IHW.acc < .05, na.rm=T)                                                  
-[1] 40
-r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .05, na.rm=T)                           
-[1] 7
-r$> sum(m$padj.IHW.acc < .05 & m$padj.FDR.acc < .1, na.rm=T)                            
-[1] 40
-r$> sum(m$padj.IHW.acc < .05 & m$pvalue.cau < .05, na.rm=T)                             
-[1] 14
-r$> m[which(m$padj.IHW.acc < .05 & m$pvalue.cau < .05), c('GENEID', 'hgnc_symbol.cau')] 
-               GENEID hgnc_symbol.cau
-324   ENSG00000018280         SLC11A1
-1257  ENSG00000078401            EDN1
-1994  ENSG00000100292           HMOX1
-5756  ENSG00000133048          CHI3L1
-6017  ENSG00000135063        FAM189A2
-6479  ENSG00000137752           CASP1
-6728  ENSG00000139211          AMIGO2
-7888  ENSG00000148926             ADM
-13892 ENSG00000196584           XRCC2
-14515 ENSG00000203747          FCGR3A
-18131 ENSG00000240758                
-19044 ENSG00000250483         PPM1AP1
-19589 ENSG00000254995    STX16-NPEPL1
-23764 ENSG00000282508       LINC01002
-```
-
-So, let's see what else we have here:
+And this is the overlap with Caudate:
 
 * ENSG00000018280, SLC11A1: encodes a multi-pass membrane protein. The protein functions as a divalent transition metal (iron and manganese) transporter involved in iron metabolism and host resistance to certain pathogens
 * ENSG00000078401, EDN1: This peptide is a potent vasoconstrictor and its cognate receptors are therapeutic targets in the treatment of pulmonary arterial hypertension.
@@ -1048,17 +1050,11 @@ So, let's see what else we have here:
 * ENSG00000133048, CHI3L1: This gene encodes a glycoprotein member of the glycosyl hydrolase 18 family. The protein lacks chitinase activity and is secreted by activated macrophages, chondrocytes, neutrophils and synovial cells. The protein is thought to play a role in the process of inflammation and tissue remodeling.
 * ENSG00000135063, FAM189A2:  Diseases associated with FAM189A2 include Friedreich Ataxia
 * ENSG00000137752, CASP1: Sequential activation of caspases plays a central role in the execution-phase of cell apoptosis.
-* ENSG00000139211, AMIGO2: Diseases associated with AMIGO2 include Parkinson
-  Disease 8, Autosomal Dominant and Gastric Adenocarcinoma. Required for
-  depolarization-dependent survival of cultured cerebellar granule neurons.
 * ENSG00000148926, ADM: vasodilation, regulation of hormone secretion, promotion of angiogenesis, and antimicrobial activity
 * ENSG00000196584, XRCC2: maintain chromosome stability and repair DNA damage
 * ENSG00000203747, FCGR3A: nvolved in the removal of antigen-antibody complexes from the circulation, as well as other responses, including antibody dependent cellular mediated cytotoxicity and antibody dependent enhancement of virus infections
 * ENSG00000240758: (lncRNA, same as above)
 * ENSG00000250483, PPM1AP1: (pseudogene) Protein Phosphatase
-* ENSG00000254995, STX16-NPEPL1: lncRNA
-* ENSG00000282508, LINC01002: lcRNA: 
-
 
 
 # TODO

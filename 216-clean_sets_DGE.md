@@ -241,18 +241,17 @@ for (g in c('substance', 'comorbid')) {
         res_str = sprintf('res = results(dds.%s, name = "Diagnosis_Case_vs_Control", alpha=.05)',
                         r)
         eval(parse(text=res_str))
-        fname = sprintf('%s/DGE_%s_BBB2_%s_annot_04212021.csv', mydir, r, g)
+        fname = sprintf('%s/DGE_%s_BBB2_%s_annot_04222021.csv', mydir, r, g)
 
         df = as.data.frame(res)
         colnames(df)[ncol(df)] = 'padj.FDR'
+        df$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df, alpha=0.05))
         df$GENEID = substr(rownames(df), 1, 15)
         df2 = merge(df, mart, sort=F,
                     by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
         df2 = merge(df2, bt_slim, sort=F,
                     by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
         df2 = df2[order(df2$pvalue), ]
-
-        df2$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df2, alpha=0.05))
         
         write.csv(df2, row.names=F, file=fname)
     }

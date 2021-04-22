@@ -521,22 +521,28 @@ for (r in c('ACC', 'Caudate')) {
     res_str = sprintf('res = results(dds.%s, name = "Diagnosis_Case_vs_Control", alpha=.05)',
                       r)
     eval(parse(text=res_str))
-    fname = sprintf('%s/DGE_%s_BBB2_WNH_annot_04212021.csv', mydir, r)
+    fname = sprintf('%s/DGE_%s_BBB2_WNH_annot_04222021.csv', mydir, r)
 
     df = as.data.frame(res)
     colnames(df)[ncol(df)] = 'padj.FDR'
+    df$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df, alpha=0.05))
+
     df$GENEID = substr(rownames(df), 1, 15)
     df2 = merge(df, mart, sort=F,
                 by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
     df2 = merge(df2, bt_slim, sort=F,
                 by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
     df2 = df2[order(df2$pvalue), ]
-
-    df2$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df2, alpha=0.05))
     
     write.csv(df2, row.names=F, file=fname)
 }
 ```
+
+Note that I had to make a change to the code above, producing the set of results
+on 04/22 instead of 04/21, because some duplicate genes were screwing up IHWI I
+should run IHW before I add the names to avoid that! It only changed the number
+of IHW q < .05, from 40 to 31. And of course the overlap with Caudate (see
+below).
 
 Even better, let's compare it to the main results:
 
@@ -567,7 +573,8 @@ p
 
 ![](images/2021-04-21-21-23-34.png)
 
-Let's make other plots comparing main to WNH results:
+Let's make other plots comparing main to WNH results. I need to re-run these
+plots to include only the 31 hits though, instead of 40.
 
 ```r
 orig = read.csv('~/data/post_mortem/DGE_ACC_BBB2_annot_04212021.csv')
