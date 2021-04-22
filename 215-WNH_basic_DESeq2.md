@@ -478,17 +478,10 @@ out_fname = '~/data/post_mortem/disorders_corrs_BBB2_WNH_04212021.rds'
 saveRDS(all_corrs, file=out_fname)
 ```
 
-
-
-
-
-
-
-
 Let's plot them now:
 
 ```r
-fname = 'disorders_corrs_BBB2_04202021'
+fname = 'disorders_corrs_BBB2_WNH_04212021'
 corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
 corrs$id = sapply(1:nrow(corrs),
                   function(i) sprintf('%s_%s_%s',
@@ -503,7 +496,168 @@ p + ggtitle(fname) + geom_hline(yintercept=0, linetype="dotted",
                                 color = "red", size=1)
 ```
 
+![](images/2021-04-21-11-03-17.png)
+
+# 2021-04-21 17:26:04
+
+Outputting single gene results:
+
+```r
+library(DESeq2)
+library(IHW)
+load('~/data/post_mortem/basic_DGE_WNH_04212021.RData')
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+mydir = '~/data/post_mortem/'
+
+library(GenomicFeatures)
+txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+               "GENEID")
+bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+bt_slim = bt[, c('gene_id', 'gene_biotype')]
+bt_slim = bt_slim[!duplicated(bt_slim),]
+
+for (r in c('ACC', 'Caudate')) {
+    res_str = sprintf('res = results(dds.%s, name = "Diagnosis_Case_vs_Control", alpha=.05)',
+                      r)
+    eval(parse(text=res_str))
+    fname = sprintf('%s/DGE_%s_BBB2_WNH_annot_04212021.csv', mydir, r)
+
+    df = as.data.frame(res)
+    colnames(df)[ncol(df)] = 'padj.FDR'
+    df$GENEID = substr(rownames(df), 1, 15)
+    df2 = merge(df, mart, sort=F,
+                by.x='GENEID', by.y='ensembl_gene_id', all.x=T, all.y=F)
+    df2 = merge(df2, bt_slim, sort=F,
+                by.x='GENEID', by.y='gene_id', all.x=T, all.y=F)
+    df2 = df2[order(df2$pvalue), ]
+
+    df2$padj.IHW = adj_pvalues(ihw(pvalue ~ baseMean,  data=df2, alpha=0.05))
+    
+    write.csv(df2, row.names=F, file=fname)
+}
+```
+
+Even better, let's compare it to the main results:
+
+```r
+fname = 'disorders_corrs_BBB2_04202021'
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$covar = 'main'
+all_corrs = corrs
+g = 'WNH'
+fname = sprintf('disorders_corrs_BBB2_%s_04212021', g)
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$covar = g
+all_corrs = rbind(all_corrs, corrs)
+
+all_corrs$id = sapply(1:nrow(all_corrs),
+                     function(i) sprintf('%s_%s_%s',
+                                      all_corrs[i, 'region'],
+                                      all_corrs[i, 'disorder'],
+                                      all_corrs[i, 'source']))
+library(ggplot2)
+quartz()
+p <- (ggplot(all_corrs, aes(x = factor(id), y = corr, fill=covar)) +
+      coord_flip() + geom_boxplot() +
+      theme(axis.text.y = element_text(angle = 0)) + 
+      geom_hline(yintercept=0, linetype="dotted", color = "red", size=1))
+p
+```
+
+![](images/2021-04-21-21-23-34.png)
+
+Let's make other plots comparing main to WNH results:
+
+```r
+orig = read.csv('~/data/post_mortem/DGE_ACC_BBB2_annot_04212021.csv')
+wnh = read.csv('~/data/post_mortem/DGE_ACC_BBB2_WNH_annot_04212021.csv')
+m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+
+imgood = which(m$padj.IHW.orig < .05) 
+df = m[imgood, c('GENEID', 'pvalue.orig', 'pvalue.wnh')] 
+colnames(df) = c('GENEID', 'main', 'WNH-only')
+plot_df = reshape2::melt(df)
+
+library(ggplot2)
+quartz()
+ggplot(data=plot_df, aes(x=GENEID, y=-log10(value), fill=variable)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle('ACC genes IHW q < .05') + 
+    ylab(bquote(~-Log[10]~italic(P))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+```
+
+![](images/2021-04-21-21-28-19.png)
+
+Let's do a similar plot, but this time for the developmental gene sets:
+
+```r
+r = 'Caudate'
+
+orig = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_developmental_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_developmental_10K.txt',
+                          r, tolower(r), r, tolower(r)),
+                  header=1, sep='\t')[, 1:6]
+wnh = read.table(sprintf('~/data/post_mortem/Project_WG27_DGE_%s_WNH_BBB2_%s_developmental_10K/enrichment_results_WG27_DGE_%s_WNH_BBB2_%s_developmental_10K.txt',
+                         r, tolower(r), r, tolower(r)),
+                 header=1, sep='\t')[, 1:6]
+m = merge(orig, wnh, by='link', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+
+imgood = 1:nrow(m) 
+df = m[imgood, c('link', 'FDR.orig', 'FDR.wnh')] 
+colnames(df) = c('GeneSet', 'main', 'WNH-only')
+plot_df = reshape2::melt(df)
+
+library(ggplot2)
+quartz()
+ggplot(data=plot_df, aes(x=GeneSet, y=-log10(value), fill=variable)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(sprintf('%s developmental sets', r)) + 
+    ylab(bquote(~-Log[10]~italic(P[adjusted]))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+```
+
+![](images/2021-04-21-21-31-08.png)
+
+![](images/2021-04-21-21-32-11.png)
+
+And for some of the ontologies:
+
+```r
+r = 'ACC'
+db = 'geneontology_Cellular_Component_noRedundant'
+my_categs = c('GABA-ergic synapse', 'mitochondrial protein complex',
+              'presynapse', 'neuronal cell body', 'synaptic membrane')
+
+orig = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_10K.txt',
+                          r, db, r, db),
+                  header=1, sep='\t')[, 1:7]
+wnh = read.table(sprintf('~/data/post_mortem/Project_WG27_DGE_%s_WNH_BBB2_%s_10K/enrichment_results_WG27_DGE_%s_WNH_BBB2_%s_10K.txt',
+                         r, db, r, db),
+                 header=1, sep='\t')[, 1:7]
+m = merge(orig, wnh, by='description', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
 
 
+imgood = which(m$description %in% my_categs) 
+df = m[imgood, c('description', 'FDR.orig', 'FDR.wnh')] 
+colnames(df) = c('GeneSet', 'main', 'WNH-only')
+plot_df = reshape2::melt(df)
+
+library(ggplot2)
+quartz()
+ggplot(data=plot_df, aes(x=GeneSet, y=-log10(value), fill=variable)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(sprintf('%s %s', r, db)) + 
+    ylab(bquote(~-Log[10]~italic(P[adjusted]))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+```
+
+![](images/2021-04-21-21-36-43.png)
 
 # TODO
