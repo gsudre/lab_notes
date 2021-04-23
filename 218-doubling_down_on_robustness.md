@@ -264,6 +264,42 @@ for (mycov in covs) {
         write.csv(enrichResult, file=out_fname, row.names=F, quote=T)
     }
 }
+
+# note that we're starting from C1 here because the others have already run!
+covs = c('C1', 'C2', 'C3', 'RINe', 'PMI',
+         'comorbid_group', 'pcnt_optical_duplicates',
+         'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
+         'demo3', 'demo5', 'clin', 'tech', 'SV1', 'SV2', 'SV3')
+for (mycov in covs) {
+    load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_%s.RData',
+                 region, mycov))
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+    
+    ranks = -log(res$pvalue) * sign(res$log2FoldChange)
+    geneid = substring(rownames(res), 1, 15)
+    
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    res_str = sprintf('ROB1_DGE_%s_%s_BBB2', region, mycov)
+    for (db in c('KEGG', 'Panther', 'Reactome', 'Wikipathway')) {
+        cat(res_str, db, '\n')
+        project_name = sprintf('%s_%s_10K', res_str, db)
+
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                                    organism="hsapiens",
+                                    enrichDatabase=sprintf('pathway_%s', db),
+                                    interestGene=tmp2,
+                                    interestGeneType="ensembl_gene_id",
+                                    sigMethod="top", minNum=3, 
+                                    outputDirectory = data_dir,
+                                    projectName=project_name,
+                                    isOutput=F, isParallel=T,
+                                    nThreads=ncpu, topThr=150000, perNum=10000))
+        out_fname = sprintf('%s/%s.csv', data_dir, project_name)
+        write.csv(enrichResult, file=out_fname, row.names=F, quote=T)
+    }
+}
 ```
 
 We can also run the correlation for the different disorders:
@@ -497,7 +533,7 @@ OK, so let's generate something akin to that table Philip suggested:
 covs = c('clusters', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI',
          'comorbid_group', 'pcnt_optical_duplicates',
          'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
-         'demo3', 'demo5', 'clin', 'tech')
+         'demo3', 'demo5', 'clin', 'tech', 'SV1', 'SV2', 'SV3')
 covs = c('clusters', 'Age')
 
 library(DESeq2)
@@ -523,6 +559,9 @@ metrics$baseFDROverlap = NA
 metrics$FDROverlapPval = NA
 metrics$baseP00001Overlap = NA
 metrics$P00001OverlapPval = NA
+# how many of baseFDR or baseIHW are p < .05
+metrics$baseFDRp05 = NA
+metrics$baseIHWp05 = NA
 r = 'ACC'
 df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_developmental_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_developmental_10K.txt',
                           r, tolower(r), r, tolower(r)),
@@ -535,24 +574,24 @@ df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_developm
                   header=1, sep='\t')[, 1:6]
 metrics$Caudate_infant_adjPval = df[df$link=='infant (0-2 yrs)', 'FDR']
 
-# grab all significant gene sets for ACC, and just check later the adjusted
-# pvalues for other conditions
-r = 'ACC'
-DBs = c('geneontology_Biological_Process_noRedundant',
-            'geneontology_Cellular_Component_noRedundant',
-            'geneontology_Molecular_Function_noRedundant')
-good_sets = list()
-for (db in DBs) {
-    df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_10K.txt',
-                          r, db, r, db),
-                  header=1, sep='\t')[, 1:7]
-    df = df[df$FDR < .05, c('description', 'FDR')]
-    for (i in 1:nrow(df)) {
-        mname = sprintf('%s (%s)', df[i, 'description'], db)
-        metrics[[mname]] = df[i, 'FDR']
-    }
-    good_sets[[db]] = df$description
-}
+# # grab all significant gene sets for ACC, and just check later the adjusted
+# # pvalues for other conditions
+# r = 'ACC'
+# DBs = c('geneontology_Biological_Process_noRedundant',
+#             'geneontology_Cellular_Component_noRedundant',
+#             'geneontology_Molecular_Function_noRedundant')
+# good_sets = list()
+# for (db in DBs) {
+#     df = read.table(sprintf('~/data/post_mortem/Project_WG26_DGE_%s_BBB2_%s_10K/enrichment_results_WG26_DGE_%s_BBB2_%s_10K.txt',
+#                           r, db, r, db),
+#                   header=1, sep='\t')[, 1:7]
+#     df = df[df$FDR < .05, c('description', 'FDR')]
+#     for (i in 1:nrow(df)) {
+#         mname = sprintf('%s (%s)', df[i, 'description'], db)
+#         metrics[[mname]] = df[i, 'FDR']
+#     }
+#     good_sets[[db]] = df$description
+# }
 
 #bind each covariate iteration as a row
 resmat = rbind(resmat, metrics)
@@ -573,6 +612,9 @@ for (mycov in covs) {
     metrics$ACC_FDR_p05 = length(res_FDR_p05)
     res_p00001 = rownames(res)[which(res$pvalue < .00001)]
     metrics$ACC_p00001 = length(ACC_p00001)
+    res_p05 = rownames(res)[which(res$pvalue < .05)]
+    metrics$baseFDRp05 = length(intersect(ACC_FDR_p05, res_p05))
+    metrics$baseIHWp05 = length(intersect(ACC_IHW_p05, res_p05))
 
     gsize = length(intersect(rownames(res), rownames(res.acc)))
     metrics$baseIHWOverlap = length(intersect(ACC_IHW_p05, res_IHW_p05))
@@ -600,15 +642,15 @@ for (mycov in covs) {
                     header=1, sep='\t')[, 1:6]
     metrics$Caudate_infant_adjPval = df[df$link=='infant (0-2 yrs)', 'FDR']
   
-    r = 'ACC'
-    for (db in names(good_sets)) {
-        df = read.csv(sprintf('~/data/post_mortem/ROB1_DGE_%s_%s_BBB2_%s_10K.csv',
-                              r, mycov, db))[, 1:7]
-        for (i in good_sets[[db]]) {
-            mname = sprintf('%s (%s)', i, db)
-            metrics[[mname]] = df[df$description == i, 'FDR']
-        }
-    }
+    # r = 'ACC'
+    # for (db in names(good_sets)) {
+    #     df = read.csv(sprintf('~/data/post_mortem/ROB1_DGE_%s_%s_BBB2_%s_10K.csv',
+    #                           r, mycov, db))[, 1:7]
+    #     for (i in good_sets[[db]]) {
+    #         mname = sprintf('%s (%s)', i, db)
+    #         metrics[[mname]] = df[df$description == i, 'FDR']
+    #     }
+    # }
 
     # bind each covariate iteration as a row
     resmat = rbind(resmat, metrics)
@@ -616,8 +658,188 @@ for (mycov in covs) {
 }
 ```
 
+# 2021-04-23 06:45:37
+
+Let's prepare the files for MAGMA:
+
+```r
+library(org.Hs.eg.db)
+library(GenomicFeatures)
+G_list0 = select(org.Hs.eg.db, keys(org.Hs.eg.db, 'ENSEMBL'),
+                 columns=c('ENSEMBL', 'ENTREZID', 'SYMBOL'), 'ENSEMBL')
+library(dplyr)
+library(DESeq2)
+covs = c('clusters', 'Age', 'Sex', 'C1', 'C2', 'C3', 'RINe', 'PMI',
+         'comorbid_group', 'pcnt_optical_duplicates',
+         'C4', 'C5', 'MoD', 'substance_group', 'evidence_level',
+         'demo3', 'demo5', 'clin', 'tech')
+for (g in covs) {
+    for (r in c('ACC', 'Caudate')) {
+        cat(g, r, '\n')
+        load(sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_%s.RData',
+                     r, g))
+        res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+
+        res$GENEID = substr(rownames(res), 1, 15)
+        G_list <- G_list0[!is.na(G_list0$ENSEMBL),]
+        G_list = G_list[G_list$ENSEMBL!='',]
+        G_list <- G_list[!duplicated(G_list$ENSEMBL),]
+        imnamed = res$GENEID %in% G_list$ENSEMBL
+        res = res[imnamed, ]
+        res2 = merge(res, G_list, sort=F, all.x=F, all.y=F, by.x='GENEID',
+                    by.y='ENSEMBL')
+        ranks = res2 %>% group_by(ENTREZID) %>% slice_min(n=1, pvalue, with_ties=F)
+        myres = data.frame(gene=ranks$ENTREZID,
+                        signed_rank=sign(ranks$log2FoldChange)*-log(ranks$pvalue),
+                        unsigned_rank=-log(ranks$pvalue))
+        out_fname = sprintf('~/data/post_mortem/MAGMA_BBB2_ROB_%s_dge_%s.tab',
+                            g, r)
+        write.table(myres, row.names=F, sep='\t', file=out_fname, quote=F)
+    }
+}
+```
+
+Then we just run it in BW:
+
+```bash
+module load MAGMA
+cd ~/data/tmp
+for g in 'clusters' 'Age' 'Sex' 'C1' 'C2' 'C3' 'RINe' 'PMI' \
+         'comorbid_group' 'pcnt_optical_duplicates' \
+         'C4' 'C5' 'MoD' 'substance_group' 'evidence_level' \
+         'demo3' 'demo5' 'clin' 'tech'; do
+    for r in 'ACC' 'Caudate'; do
+        magma --gene-results genes_BW.genes.raw \
+            --gene-covar ~/data/post_mortem/MAGMA_BBB2_ROB_${g}_dge_${r}.tab \
+                    --out ~/data/post_mortem/MAGMA_BBB2_ROB_gc_${g}_dge_${r};
+    done;
+done
+```
+
+I'll also make a version of the function that derives SVs:
+
+```r
+basic_DGE_SVs = function(myregion, nSV=1) {
+    data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+    rownames(data) = data[,1]
+    data[,1] = NULL
+    data = round(data)
+    sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+    colnames(data) = sub_name
+    # this is a repeat for Caudate hbcc 2877, but has more genes with zeros than
+    # its other replicate
+    data = data[, ! colnames(data) %in% c('66552')]
+    # outliers based on PCA plots
+    outliers = c('68080','68096', '68108', '68084', '68082')
+    data = data[, ! colnames(data) %in% outliers]
+
+    library(gdata)
+    df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+    data = data[, colnames(data) %in% df$submitted_name]
+    df = df[df$submitted_name %in% colnames(data), ]
+    df = df[order(df$submitted_name), ]
+    data = data[, order(df$submitted_name)]
+
+    # cleaning up some variables
+    df$Individual = factor(df$hbcc_brain_id)
+    df[df$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+    df[df$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+    df$MoD = factor(df$Manner.of.Death)
+    df$Sex = factor(df$Sex)
+    df$batch = factor(df$batch)
+    df$run_date = factor(gsub(df$run_date, pattern='-', replacement=''))
+    df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+    df$Region = factor(df$Region, levels=c('Caudate', 'ACC'))
+    df$substance_group = factor(df$substance_group)
+    df$comorbid_group = factor(df$comorbid_group_update)
+    df$evidence_level = factor(df$evidence_level)
+    df$brainbank = factor(df$bainbank)
+    # replace the one subject missing population PCs by the median of their
+    # self-declared race and ethnicity
+    idx = (df$Race.x=='White' & df$Ethnicity.x=='Non-Hispanic' & !is.na(df$C1))
+    pop_pcs = c('C1', 'C2', 'C3', 'C4', 'C5')
+    med_pop = apply(df[idx, pop_pcs], 2, median)
+    df[which(is.na(df$C1)), pop_pcs] = med_pop
+    df$BBB = factor(sapply(1:nrow(df),
+                            function(x) sprintf('%s_%s',
+                                        as.character(df[x,'brainbank']),
+                                        as.character(df[x, 'batch']))))
+    df$BBB2 = NA                                                                        
+    df[df$brainbank=='nimh_hbcc', 'BBB2'] = 1                                           
+    df[df$batch==3, 'BBB2'] = 2                                                         
+    df[df$batch==4, 'BBB2'] = 3      
+    df$BBB2 = factor(df$BBB2)                                                   
+                        
+    library(GenomicFeatures)
+    txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+    txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+                "GENEID")
+    bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+    bt_slim = bt[, c('gene_id', 'gene_biotype')]
+    bt_slim = bt_slim[!duplicated(bt_slim),]
+    txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+    tx_meta = data.frame(GENEID = substr(rownames(data), 1, 15))
+    tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+    imautosome = which(tx_meta$TXCHROM != 'X' &
+                    tx_meta$TXCHROM != 'Y' &
+                    tx_meta$TXCHROM != 'MT')
+    data = data[imautosome, ]
+    tx_meta = tx_meta[imautosome, ]
+
+    library("DESeq2")
+    fm_str = '~ BBB2 + Diagnosis'
+    dds <- DESeqDataSetFromMatrix(countData = data,
+                                  colData = df,
+                                  design = as.formula(fm_str))
+    keep_me = colData(dds)$Region == myregion
+    dds = dds[, keep_me]
+    dds = DESeq(dds)
+    df2 = colData(dds)
+
+    dat  <- counts(dds, normalized = TRUE)
+    library(sva)
+    mod  <- model.matrix(as.formula(fm_str), colData(dds))
+    mod0 <- model.matrix(~   1, colData(dds))
+    dat2 <- dat[rowSums(dat) > 0,]
+    svseq <- svaseq(dat2, mod, mod0, n.sv = nSV)
+    for (s in 1:ncol(svseq$sv)) {
+        eval(parse(text=sprintf('df2$SV%d <- svseq$sv[,%d]', s, s)))
+        fm_str = sprintf('%s + SV%d', fm_str, s)
+    }
+    
+    dds <- DESeqDataSetFromMatrix(countData = counts(dds),
+                                  colData = df2,
+                                  design = as.formula(fm_str))
+    design = model.matrix(as.formula(fm_str), data=colData(dds))
+    cat('Running', fm_str, '\n')
+    dds = DESeq(dds)
+
+    library(edgeR)
+    isexpr <- filterByExpr(counts(dds), design=design)
+    ddsExpr = dds[isexpr, ]
+    ddsExpr = DESeq(ddsExpr)
+
+    return(ddsExpr)
+}
+```
+
+```r
+myregion = 'ACC'
+for (nSV in 1:3) {
+    cat(myregion, nSV, '\n')
+    out_fname = sprintf('~/data/post_mortem/cov_dds_BBB2_04222021_%s_SV%d.RData',
+                        myregion, nSV)
+    dds = basic_DGE_SVs(myregion, nSV=nSV)
+    save(dds, file=out_fname)
+}
+```
+
+And now we have to rerun all the code above, but using the covariates SV1, SV2,
+and SV3. I kept 0422 just so I wouldn't have to change all scripts.
+
+
 # TODO
  * maybe always remove the same outliers as detected by the main model, instead
    of leaving it up to DESeq2 every time?
- * combine covariates as Philip mentioned
- * run SV as well  
+ * add correlation to disorders to the table
+ * Add MAGMA, WNH, and number if good genes under nominal pvalue

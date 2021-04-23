@@ -352,12 +352,16 @@ Let's run the complete GSEA under WG26:
 
 ```r
 library(WebGestaltR)
+library(DESeq2)
 
 data_dir = '~/data/post_mortem/'
 ncpu=7
 
+load('~/data/post_mortem/basic_DGE_04202021.RData')
 for (region in c('ACC', 'Caudate')) {
-    res = results(basic_DGE(region), name = "Diagnosis_Case_vs_Control")
+    res_str = sprintf('dds = dds.%s', region)
+    eval(parse(text=res_str))
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
     
     ranks = -log(res$pvalue) * sign(res$log2FoldChange)
     geneid = substring(rownames(res), 1, 15)
@@ -396,7 +400,7 @@ for (region in c('ACC', 'Caudate')) {
                                     enrichDatabase=db,
                                     interestGene=tmp2,
                                     interestGeneType="ensembl_gene_id",
-                                    sigMethod="top", topThr=20,
+                                    sigMethod="top", topThr=150000,
                                     outputDirectory = data_dir,
                                     minNum=5, projectName=project_name,
                                     isOutput=T, isParallel=T,
