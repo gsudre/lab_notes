@@ -186,7 +186,7 @@ r$> sum(padj.IHW < .1)
 ```
 
 Could these be outliers? Yes, the top one was much larger l2FC than everyone
-else. Let's try the iterative filtering.
+else. Let's try the iterative filtering...
 
 ## PCA approach
 
@@ -215,6 +215,10 @@ data = data[, colnames(data) %in% df$submitted_name]
 df = df[df$submitted_name %in% colnames(data), ]
 df = df[order(df$submitted_name), ]
 data = data[, order(df$submitted_name)]
+
+keep_me = df$Region == myregion
+data = data[, keep_me]
+df = df[keep_me, ]
 
 # cleaning up some variables
 df$Individual = factor(df$hbcc_brain_id)
@@ -250,6 +254,7 @@ df$POP_BIN = 'other'
 df[imWNH, 'POP_BIN'] = 'WNH'
 df$POP_BIN = factor(df$POP_BIN)        
 # df$RINc = cut(df$RINe, breaks = 4)  
+# bining so DESeq2 can do its own filyering automatically
 breaks = quantile(df$RINe, probs = seq(0, 1, by = 0.25))
 df$RINc = cut(df$RINe, breaks=breaks, labels=c('q1', 'q2', 'q3', 'q4'),
               include.lowest=T)
@@ -269,10 +274,6 @@ imautosome = which(tx_meta$TXCHROM != 'X' &
                 tx_meta$TXCHROM != 'MT')
 data = data[imautosome, ]
 tx_meta = tx_meta[imautosome, ]
-
-keep_me = df$Region == myregion
-data = data[, keep_me]
-df = df[keep_me, ]
 
 # remove constant genes (including zeros) as it breaks PCA
 const_genes = apply(data, 1, sd) == 0
@@ -320,108 +321,212 @@ for (x in categ_vars) {
         categ_pvals[x, y] = res$p.value
     }
 }
-use_pcs = unique(c(which(num_pvals < .01, arr.ind = T)[, 'col'],
-                   which(categ_pvals < .01, arr.ind = T)[, 'col']))
-# only use the ones not related to Diagnosis
-keep_me = c()
-for (pc in use_pcs) {
-    keep_me = c(keep_me, categ_pvals['Diagnosis', pc] > .05)
-}
-use_pcs = use_pcs[keep_me]
-    
-    fm_str = sprintf('~ Diagnosis + %s', paste0(pc_vars[use_pcs],
-                                                collapse = ' + '))
-    cat('Found', length(use_pcs), 'PCs p < .01\n')
-    cat('Using formula:', fm_str, '\n')
+mypvals = rbind(categ_pvals, num_pvals)
+print(which(mypvals < .01/(ncol(mypvals)*nrow(mypvals)), arr.ind = T) )
+print(which(mypvals < .05/(ncol(mypvals)*nrow(mypvals)), arr.ind = T) )
+```
 
-    # scaling PCs to assure convergence
-    for (var in pc_vars[use_pcs]) {
-        data.pm[, var] = scale(data.pm[, var])
+For ACC we have 7 PCs:
+
+```
+     row col
+BBB2   1   1
+RINc   4   2
+BBB2   1   3
+     row col
+BBB2   1   1
+RINc   4   2
+BBB2   1   3
+```
+
+and for Caudate we have 8 PCs:
+
+```
+     row col
+BBB2   1   1
+BBB2   1   2
+     row col
+BBB2   1   1
+BBB2   1   2
+```
+
+So, let's run a function:
+
+```r
+pca_DGE = function(myregion, fm_str) {
+    data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+    rownames(data) = data[,1]
+    data[,1] = NULL
+    data = round(data)
+    sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+    colnames(data) = sub_name
+    # this is a repeat for Caudate hbcc 2877, but has more genes with zeros than
+    # its other replicate
+    data = data[, ! colnames(data) %in% c('66552')]
+    # outliers based on PCA plots
+    outliers = c('68080','68096', '68108', '68084', '68082')
+    data = data[, ! colnames(data) %in% outliers]
+
+    library(gdata)
+    df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+    data = data[, colnames(data) %in% df$submitted_name]
+    df = df[df$submitted_name %in% colnames(data), ]
+    df = df[order(df$submitted_name), ]
+    data = data[, order(df$submitted_name)]
+
+    keep_me = df$Region == myregion
+    data = data[, keep_me]
+    df = df[keep_me, ]
+
+    # cleaning up some variables
+    df$Individual = factor(df$hbcc_brain_id)
+    df[df$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+    df[df$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+    df$MoD = factor(df$Manner.of.Death)
+    df$Sex = factor(df$Sex)
+    df$batch = factor(df$batch)
+    df$run_date = factor(gsub(df$run_date, pattern='-', replacement=''))
+    df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+    df$Region = factor(df$Region, levels=c('Caudate', 'ACC'))
+    df$substance_group = factor(df$substance_group)
+    df$comorbid_group = factor(df$comorbid_group_update)
+    df$evidence_level = factor(df$evidence_level)
+    df$brainbank = factor(df$bainbank)
+    # replace the one subject missing population PCs by the median of their
+    # self-declared race and ethnicity
+    idx = (df$Race.x=='White' & df$Ethnicity.x=='Non-Hispanic' & !is.na(df$C1))
+    pop_pcs = c('C1', 'C2', 'C3', 'C4', 'C5')
+    med_pop = apply(df[idx, pop_pcs], 2, median)
+    df[which(is.na(df$C1)), pop_pcs] = med_pop
+    df$BBB = factor(sapply(1:nrow(df),
+                            function(x) sprintf('%s_%s',
+                                        as.character(df[x,'brainbank']),
+                                        as.character(df[x, 'batch']))))
+    df$BBB2 = NA                                                                        
+    df[df$brainbank=='nimh_hbcc', 'BBB2'] = 1                                           
+    df[df$batch==3, 'BBB2'] = 2                                                         
+    df[df$batch==4, 'BBB2'] = 3      
+    df$BBB2 = factor(df$BBB2)
+    imWNH = which(df$C1 > 0 & df$C2 < -.075)
+    df$POP_BIN = 'other'
+    df[imWNH, 'POP_BIN'] = 'WNH'
+    df$POP_BIN = factor(df$POP_BIN)        
+    # df$RINc = cut(df$RINe, breaks = 4)  
+    # bining so DESeq2 can do its own filyering automatically
+    breaks = quantile(df$RINe, probs = seq(0, 1, by = 0.25))
+    df$RINc = cut(df$RINe, breaks=breaks, labels=c('q1', 'q2', 'q3', 'q4'),
+                include.lowest=T)
+
+    library(GenomicFeatures)
+    txdb <- loadDb('~/data/post_mortem/Homo_sapies.GRCh38.97.sqlite')
+    txdf <- select(txdb, keys(txdb, "GENEID"), columns=c('GENEID','TXCHROM'),
+                "GENEID")
+    bt = read.csv('~/data/post_mortem/Homo_sapiens.GRCh38.97_biotypes.csv')
+    bt_slim = bt[, c('gene_id', 'gene_biotype')]
+    bt_slim = bt_slim[!duplicated(bt_slim),]
+    txdf = merge(txdf, bt_slim, by.x='GENEID', by.y='gene_id')
+    tx_meta = data.frame(GENEID = substr(rownames(data), 1, 15))
+    tx_meta = merge(tx_meta, txdf, by='GENEID', sort=F)
+    imautosome = which(tx_meta$TXCHROM != 'X' &
+                    tx_meta$TXCHROM != 'Y' &
+                    tx_meta$TXCHROM != 'MT')
+    data = data[imautosome, ]
+    tx_meta = tx_meta[imautosome, ]
+
+    # remove constant genes (including zeros) as it breaks PCA
+    const_genes = apply(data, 1, sd) == 0
+    data = data[!const_genes, ]
+
+    library("DESeq2")
+    # making sure any numeric covariates are scaled
+    num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
+            'C1', 'C2', 'C3', 'C4', 'C5')
+    for (var in num_vars) {
+        df[, var] = scale(df[, var])
     }
 
+    cat('Running', fm_str, '\n')
+    dds <- DESeqDataSetFromMatrix(countData = data,
+                                  colData = df,
+                                  design = as.formula(fm_str))
+    dds <- dds[keep,]
+    dds = DESeq(dds)
 
+    library(edgeR)
+    design = model.matrix(as.formula(fm_str), data=colData(dds))
+    isexpr <- filterByExpr(counts(dds), design=design)
+    ddsExpr = dds[isexpr, ]
+    ddsExpr = DESeq(ddsExpr)
 
-
-
-
-library("DESeq2")
-if (is.na(add_cov)) {
-    fm_str = '~ Age + Sex + PMI + RINe + POP_BIN + BBB2 + Diagnosis'
-} else {
-    cov_str = paste0(add_cov, collapse = ' + ')
-    fm_str = sprintf('~ %s + Age + Sex + PMI + RINe + POP_BIN + BBB2 + Diagnosis',
-                        cov_str)
+    return(ddsExpr)
 }
-# making sure any numeric covariates are scaled
-num_vars = c('pcnt_optical_duplicates', 'clusters', 'Age', 'RINe', 'PMI',
-        'C1', 'C2', 'C3', 'C4', 'C5')
-for (var in num_vars) {
-    df[, var] = scale(df[, var])
-}
+```
 
-cat('Running', fm_str, '\n')
-dds <- DESeqDataSetFromMatrix(countData = data,
-                                colData = df,
-                                design = as.formula(fm_str))
+```r
+dds.ACC = pca_DGE('ACC', '~ RINc + BBB2 + Diagnosis')
+dds.Caudate = pca_DGE('Caudate', '~ BBB2 + Diagnosis')
+save(dds.ACC, dds.Caudate, file='~/data/post_mortem/pca_DGE_04262021.RData')
+```
 
+Let's check out our results then:
 
-design = model.matrix(as.formula(fm_str), data=colData(dds))
-dds = DESeq(dds)
+```
+r$> library(IHW)                                                                        
 
-library(edgeR)
-isexpr <- filterByExpr(counts(dds), design=design)
-ddsExpr = dds[isexpr, ]
-ddsExpr = DESeq(ddsExpr)
+r$> summary(results(dds.ACC, name = "Diagnosis_Case_vs_Control", alpha=.05))            
 
-# because DESeq doesn't remove outliers if there are continuous variables
-# in the formula, we need to do this iteratively
-nOutliers = Inf
-myCounts = round(counts(ddsExpr))
-while (nOutliers > 0) {
-    dds <- DESeqDataSetFromMatrix(countData = myCounts,
-                                    colData = colData(dds),
-                                    design = as.formula(fm_str))
-    cat('Processing', nrow(dds), 'variables.\n')
-    dds <- DESeq(dds)
-    maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
-    # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
-    # p the number of parameters including the intercept and m number of
-    # samples).
-    m <- ncol(dds)
-    # number or parameters
-    p <- ncol(design)
-    co = qf(.99, p, m - p)
-    keep_me = which(maxCooks < co)
-    nOutliers = nrow(myCounts) - length(keep_me)
-    cat('Found', nOutliers, 'outliers.\n')
-    myCounts = round(myCounts)[keep_me, ]
-}
+out of 24387 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 60, 0.25%
+LFC < 0 (down)     : 5, 0.021%
+outliers [1]       : 13, 0.053%
+low counts [2]     : 946, 3.9%
+(mean count < 7)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
 
 
+r$> summary(results(dds.ACC, name = "Diagnosis_Case_vs_Control", alpha=.05, filterFun=ih
+    w))                                                                                 
 
-# because DESeq doesn't remove outliers if there are continuous variables
-    # in the formula, we need to do this iteratively
-    nOutliers = Inf
-    myCounts = round(countsExpr)
-    while (nOutliers > 0) {
-        dds <- DESeqDataSetFromMatrix(countData = myCounts,
-                                    colData = data.pm,
-                                    design = as.formula(fm_str))
-        cat('Processing', nrow(dds), 'variables.\n')
-        dds <- DESeq(dds)
-        maxCooks <- apply(assays(dds)[["cooks"]], 1, max)
-        # outlier cut-off uses the 99% quantile of the F(p,m-p) distribution (with 
-        # p the number of parameters including the intercept and m number of
-        # samples).
-        m <- ncol(dds)
-        # number or parameters (PCs + Diagnosis + intercept)
-        p <- length(use_pcs) + 2
-        co = qf(.99, p, m - p)
-        keep_me = which(maxCooks < co)
-        nOutliers = nrow(myCounts) - length(keep_me)
-        cat('Found', nOutliers, 'outliers.\n')
-        myCounts = round(myCounts)[keep_me, ]
-    }
+out of 24387 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 71, 0.29%
+LFC < 0 (down)     : 6, 0.025%
+outliers [1]       : 13, 0.053%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+
+r$> summary(results(dds.Caudate, name = "Diagnosis_Case_vs_Control", alpha=.05))        
+
+out of 24059 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 23, 0.096%
+low counts [2]     : 0, 0%
+(mean count < 3)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+
+r$> summary(results(dds.Caudate, name = "Diagnosis_Case_vs_Control", alpha=.05, filterFu
+    n=ihw))                                                                             
+
+out of 24059 with nonzero total read count
+adjusted p-value < 0.05
+LFC > 0 (up)       : 0, 0%
+LFC < 0 (down)     : 0, 0%
+outliers [1]       : 23, 0.096%
+[1] see 'cooksCutoff' argument of ?results
+see metadata(res)$ihwResult on hypothesis weighting
+```
+
+A bit too much? Outliers?
+
+
+
+
 
 
 vsd <- vst(dds, blind=FALSE)
@@ -470,6 +575,7 @@ print(p)
 ```
 
 # TODO
+ * does DESeq2 have recommendations for binarizing?
  * figure out best way to bin RINe, and also when to do it. I think we need to
    split by region before creating first dds model to estimate everything
    properly...
