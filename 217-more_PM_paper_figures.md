@@ -595,6 +595,7 @@ corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim))
 Let's make some stylistic changes to the correlation plot:
 
 ```r
+library(corrplot)
 keep_me = c("dev1_c0.950_devSpec", "dev2_c0.950_devSpec", "dev3_c0.950_devSpec",
             "dev4_c0.950_devSpec", "dev5_c0.950_devSpec", "overlap_c0.950")
 
@@ -609,31 +610,24 @@ file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
 res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
 res = res[res$geneSet %in% keep_me, ]
 res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-dev = res
-dev$Region = r
+res[res$pValue == 0, 'pValue'] = 1e-5
+df_plot = t(as.matrix(sign(res$normalizedEnrichmentScore) * -log(res$pValue)))
+colnames(df_plot) = res$link
+rownames(df_plot) = r
+colnames(df_plot)[ncol(df_plot)] = 'pan-developmental'
+mylim = max(abs(df_plot))
+pvals = t(as.matrix(res$pValue))
+colnames(pvals) = colnames(df_plot)
+rownames(pvals) = rownames(df_plot)
 
-df = matrix(nrow = 1, ncol = 6, dimnames=list(r, res$link))
-pvals = df
-for (i in 1:nrow(df)) {
-    for (j in 1:ncol(df)) {
-        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-        if (dev[idx, 'pValue'] == 0) {
-            dev[idx, 'pValue'] = 1e-5
-        }
-        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                    -log(dev[idx, 'pValue']))
-        pvals[i, j] = dev[idx, 'pValue'] / ncomps
-    }
-}
-colnames(df)[ncol(df)] = 'pan-developmental'
-mylim = max(abs(df))
 # just to get color for the overlap
-corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals,
+quartz()
+corrplot(df_plot, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
+         p.mat=pvals,
          insig = "label_sig", pch.col = "white",
          sig.level=.01/ncomps)
-# ACC
-quartz()
-plot_matrix = t(as.matrix(df[, 1:5]))
+# ACC plot without overlap
+plot_matrix = t(as.matrix(df_plot[, 1:5]))
 pvals_matrix = t(as.matrix(pvals[, 1:5]))
 rownames(plot_matrix) = r
 rownames(pvals_matrix) = r
@@ -650,37 +644,40 @@ file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
 res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
 res = res[res$geneSet %in% keep_me, ]
 res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-res$Region = r
-dev = res
+res[res$pValue == 0, 'pValue'] = 1e-5
+df_plot = t(as.matrix(sign(res$normalizedEnrichmentScore) * -log(res$pValue)))
+colnames(df_plot) = res$link
+rownames(df_plot) = r
+colnames(df_plot)[ncol(df_plot)] = 'pan-developmental'
+pvals = t(as.matrix(res$pValue))
+colnames(pvals) = colnames(df_plot)
+rownames(pvals) = rownames(df_plot)
 
-df = matrix(nrow = 1, ncol = 6, dimnames=list(r, res$link))
-pvals = df
-for (i in 1:nrow(df)) {
-    for (j in 1:ncol(df)) {
-        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-        if (dev[idx, 'pValue'] == 0) {
-            dev[idx, 'pValue'] = 1e-5
-        }
-        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                    -log(dev[idx, 'pValue']))
-        pvals[i, j] = dev[idx, 'pValue'] / ncomps
-    }
-}
-colnames(df)[ncol(df)] = 'pan-developmental'
 quartz()
 # just to get color for the overlap
-corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals,
-         insig = "label_sig", pch.col = "white",
-         sig.level=.01/ncomps)
+if (!any(pvals < .01/ncomps)) {
+    # getting some plotting errors when nothing was significant
+    corrplot(df_plot, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black')
+} else {
+    corrplot(df_plot, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals,
+            insig = "label_sig", pch.col = "white",
+            sig.level=.01/ncomps)
+}
 # Caudate
 quartz()
-plot_matrix = t(as.matrix(df[, 1:5]))
+plot_matrix = t(as.matrix(df_plot[, 1:5]))
 pvals_matrix = t(as.matrix(pvals[, 1:5]))
 rownames(plot_matrix) = r
 rownames(pvals_matrix) = r
-corrplot(plot_matrix, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
-         p.mat=pvals_matrix, insig = "label_sig", pch.col = "white",
-         sig.level=.01/ncomps)
+if (!any(pvals_matrix < .01/ncomps)) {
+    # getting some plotting errors when nothing was significant
+    corrplot(plot_matrix, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black')
+} else {
+    corrplot(plot_matrix, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
+            p.mat=pvals_matrix,
+            insig = "label_sig", pch.col = "white",
+            sig.level=.01/ncomps)
+}
 ```
 
 Now we make the correlation to other disorder plots again:
@@ -973,28 +970,36 @@ And also the developmental one:
 
 ```r
 r = 'ACC'
+keep_me = c("dev1_c0.950_devSpec", "dev2_c0.950_devSpec",
+            "dev3_c0.950_devSpec", "dev4_c0.950_devSpec",
+            "dev5_c0.950_devSpec", "overlap_c0.950")
 
-orig = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_0900_10K/enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_0900_10K.txt',
+orig = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_950_10K/enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_950_10K.txt',
                           r, tolower(r), r, tolower(r)),
                   header=1, sep='\t')[, 1:6]
-com = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_comorbid_RINe_BBB2_%s_manySets_co0_0900_10K/enrichment_results_WG30_DGE_%s_comorbid_RINe_BBB2_%s_manySets_co0_0900_10K.txt',
+com = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_comorbidClean_RINe_BBB2_%s_manySets_co0_950_10K/enrichment_results_WG30_DGE_%s_comorbidClean_RINe_BBB2_%s_manySets_co0_950_10K.txt',
                   r, tolower(r), r, tolower(r)),
                  header=1, sep='\t')[, 1:6]
-subs = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_substance_RINe_BBB2_%s_developmental_10K/enrichment_results_WG30_DGE_%s_substance_RINe_BBB2_%s_developmental_10K.txt',
+sub = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_substanceClean_RINe_BBB2_%s_manySets_co0_950_10K/enrichment_results_WG30_DGE_%s_substanceClean_RINe_BBB2_%s_manySets_co0_950_10K.txt',
                   r, tolower(r), r, tolower(r)),
                  header=1, sep='\t')[, 1:6]
-wnh = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_WNH_RINe_BBB2_%s_developmental_10K/enrichment_results_WG30_DGE_%s_WNH_RINe_BBB2_%s_developmental_10K.txt',
+wnh = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_WNH_RINe_BBB2_%s_manySets_co0_950_10K/enrichment_results_WG30_DGE_%s_WNH_RINe_BBB2_%s_manySets_co0_950_10K.txt',
                   r, tolower(r), r, tolower(r)),
                  header=1, sep='\t')[, 1:6]
-m1 = merge(orig, com, by='GENEID', suffix=c('.orig', '.com'), all.x=T, all.y=T)
-m2 = merge(subs, wnh, by='GENEID', suffix=c('.subs', '.wnh'), all.x=T, all.y=T)
-m = merge(m1, m2, by='GENEID', all.x=T, all.y=T)
 
-imgood = 1:nrow(m) 
-# df = m[imgood, c('link', 'pValue.orig', 'pValue.com', 'pValue')] 
-df = m[imgood, c('link', 'FDR.orig', 'FDR.com', 'FDR')] 
-colnames(df) = c('GeneSet', 'main', 'comorbidity', 'substance')
+m1 = merge(orig, com, by='geneSet', suffix=c('.orig', '.com'), all.x=T, all.y=T)
+m2 = merge(sub, wnh, by='geneSet', suffix=c('.sub', '.wnh'), all.x=T, all.y=T)
+m = merge(m1, m2, by='geneSet', all.x=T, all.y=T)
+
+df = m[m$geneSet %in% keep_me,
+       c('link.orig', 'pValue.orig', 'pValue.com', 'pValue.sub', 'pValue.wnh')] 
+colnames(df) = c('GeneSet', 'main', 'comorbidity', 'substance', 'WNH')
+df[df$GeneSet == 'overlap', 'GeneSet'] = 'pan-developmental'
 plot_df = reshape2::melt(df)
+plot_df[plot_df$value == 0, 'value'] = 1e-5
+my_order = c("prenatal", "infant (0-2 yrs)", "child (3-11 yrs)",
+             "adolescent (12-19 yrs)", "adult (>19 yrs)", "pan-developmental")
+plot_df$GeneSet = factor(plot_df$GeneSet, levels=my_order)
 
 library(ggplot2)
 quartz()
@@ -1002,7 +1007,7 @@ ggplot(data=plot_df, aes(x=GeneSet, y=-log10(value), fill=variable)) +
     geom_bar(stat="identity", position=position_dodge()) +
     theme(axis.text.x = element_text(angle = 90)) +
     ggtitle(sprintf('%s developmental sets', r)) + 
-    ylab(bquote(~-Log[10]~italic(P[adjusted]))) +
+    ylab(bquote(~-Log[10]~italic(P))) +
     geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
     geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
 ```
@@ -1165,4 +1170,46 @@ p + theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
     scale_fill_manual(breaks = all_disorders, values = my_colors) +
     ggtitle(r) + 
     scale_x_discrete(labels=my_labels) + ylab('Transcriptome correlation (rho)')
+```
+
+And finally for the gene ontologies:
+
+```r
+mytop = 20
+mydir = '~/data/post_mortem/'
+fname = 'WG30_DGE_ACC%s_RINe_BBB2_geneontology_Cellular_Component_noRedundant'
+df = read.csv(sprintf('%s/%s_10K.csv', mydir, sprintf(fname, '')))
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df = df[1:mytop, ]
+my_levels = df$description[sort(df$FDR, index.return=T, decreasing=T)$ix]
+df$description = factor(df$description, levels=my_levels)
+df$variable = 'main'
+all_df = df
+
+mycovs = c('comorbid', 'substance', 'WNH')
+fname = 'ROB2_DGE_ACC_%s_RINe_BBB2_geneontology_Cellular_Component_noRedundant'
+for (cv in mycovs) {
+    df = read.csv(sprintf('%s/%s_10K.csv', mydir, sprintf(fname, cv)))
+    df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+    df$Behavior = 'Upregulated'
+    df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+    df = df[df$description %in% my_levels, ]
+    df$description = factor(df$description, levels=my_levels)
+    df$variable = cv
+    all_df = rbind(all_df, df)
+}
+all_df$Analysis = factor(all_df$variable, levels=c('main', mycovs))
+
+p <- ggplot(all_df,
+            aes(y=-log10(FDR), x=description, color=Behavior)) +
+  geom_pointrange(aes(ymin=-log10(FDR), ymax=-log10(FDR), shape=Analysis),
+                        position='jitter') + coord_flip() +
+  geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + 
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + 
+    theme(legend.position="right")
+p + ylab(bquote(~-Log[10]~italic(P[adjusted])))
 ```
