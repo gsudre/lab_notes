@@ -1965,7 +1965,7 @@ for (region in c('ACC', 'Caudate')) {
 
     res_str = sprintf('WG30_DGE_%s_RINe_BBB2', region)
 
-    DBs = c('%s_manySets_co0.900', '%s_manySets_co0.950', '%s_manySets_co0.990')
+    DBs = c('%s_manySets_co0.900', '%s_manySets_co0.950')#, '%s_manySets_co0.990')
     for (db in DBs) {
         db2 = sprintf(db, tolower(region))
         cat(res_str, db2, '\n')
@@ -2052,5 +2052,56 @@ we could go with .9 here and .95 for non-region specific. Or just go with .9
 total, if we're keeping both results, as this one kinda makes the point about
 dev.5 already. I can make all plots too (.9 and .95)
 
+# 2021-04-28 21:22:03
+
+We need to run this for robustness as well:
+
+```r
+library(WebGestaltR)
+library(DESeq2)
+
+data_dir = '~/data/post_mortem/'
+ncpu=7
+
+region = 'ACC'
+
+covs = c('WNH', 'comorbid', 'substance')
+
+for (mycov in covs) {
+    load(sprintf('~/data/post_mortem/pca_DGE_RINe_%s_04262021.RData', mycov))
+
+    res_str = sprintf('dds = dds.%s', region)
+    eval(parse(text=res_str))
+
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+    
+    ranks = -log(res$pvalue) * sign(res$log2FoldChange)
+    geneid = substring(rownames(res), 1, 15)
+    
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    res_str = sprintf('WG30_DGE_%s_%s_RINe_BBB2', region, mycov)
+
+    DBs = c('%s_manySets_co0.900', '%s_manySets_co0.950')
+    for (db in DBs) {
+        db2 = sprintf(db, tolower(region))
+        cat(res_str, db2, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db2)
+        project_name = sprintf('%s_%s_10K', res_str, db2)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            sigMethod="top", topThr=50,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=2000))
+    }
+}
+```
 
 # TODO

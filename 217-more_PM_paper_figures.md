@@ -974,10 +974,12 @@ And also the developmental one:
 ```r
 r = 'ACC'
 
-orig = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_developmental_10K/enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_developmental_10K.txt',
+orig = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_0900_10K/enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_manySets_co0_0900_10K.txt',
                           r, tolower(r), r, tolower(r)),
                   header=1, sep='\t')[, 1:6]
-com = read.csv(sprintf('~/data/post_mortem/ROB2_DGE_%s_comorbid_RINe_BBB2_%s_developmental_10K.csv', r, tolower(r)))[, 1:6]
+com = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_comorbid_RINe_BBB2_%s_manySets_co0_0900_10K/enrichment_results_WG30_DGE_%s_comorbid_RINe_BBB2_%s_manySets_co0_0900_10K.txt',
+                  r, tolower(r), r, tolower(r)),
+                 header=1, sep='\t')[, 1:6]
 subs = read.table(sprintf('~/data/post_mortem/Project_WG30_DGE_%s_substance_RINe_BBB2_%s_developmental_10K/enrichment_results_WG30_DGE_%s_substance_RINe_BBB2_%s_developmental_10K.txt',
                   r, tolower(r), r, tolower(r)),
                  header=1, sep='\t')[, 1:6]
