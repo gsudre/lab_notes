@@ -1041,7 +1041,7 @@ for (st in unique(mycorrs$id)) {
 df$Disorder = factor(df$dis, level=levels(corrs$disorder))
 all_df = df
 
-mycovs = c('comorbid', 'substance', 'WNH')
+mycovs = c('comorbidClean', 'substanceClean', 'WNH')
 for (cv in mycovs) {
     fname = sprintf('disorders_corrs_RINe_BBB2_%s_04262021', cv)
     corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
