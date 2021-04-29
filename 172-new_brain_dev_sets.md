@@ -163,8 +163,11 @@ don't. So, basically:
 
 ```r
 library(ActivePathways)
+library(ABAEnrichment)
+
 dev_names = c('prenatal', 'infant (0-2 yrs)', 'child (3-11 yrs)',
               'adolescent (12-19 yrs)', 'adult (>19 yrs)')
+# just getting a template for GMT
 gmt = read.GMT('~/data/post_mortem/hsapiens_disease_Disgenet_entrezgene.gmt')
 
 r = 'acc'

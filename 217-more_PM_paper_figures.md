@@ -339,3 +339,479 @@ print(p)
 ```
 
 ![](images/2021-04-21-18-12-07.png)
+
+# 2021-04-26 20:15:32
+
+Let's put the two volcano plots in the same axis:
+
+```r
+quartz()
+
+library(ggpubr)
+library(EnhancedVolcano)
+FCcutoff = 1.0
+pCutoff = .05
+
+myplots = list()
+res = read.csv('~/data/post_mortem/DGE_ACC_RINe_BBB2_annot_04262021.csv')
+res = res[order(res$pvalue), ]
+sigPs = sum(res$padj.FDR <= pCutoff, na.rm=T)
+ps = -log10(res$pvalue)
+nomPcutoff = ps[sigPs + 1] + (ps[sigPs] - ps[sigPs + 1]) / 2
+nomPcutoff = 10 ** (-nomPcutoff)
+ymax = ceiling(max(-log10(res$pvalue), na.rm=T))
+p = EnhancedVolcano(data.frame(res), lab=res$hgnc_symbol,
+                    x = 'log2FoldChange',
+                    y = 'pvalue', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~italic(P)),
+                    title = 'ACC',
+                    ylim = c(0, ymax),
+                    pCutoff = nomPcutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 2.0, subtitle=NULL,
+                    axisLabSize = 12,
+                    caption = NULL, legendPosition = 'none')
+myplots[[1]] = p
+
+res = read.csv('~/data/post_mortem/DGE_Caudate_RINe_BBB2_annot_04262021.csv')
+sigPs = sum(res$padj.FDR <= pCutoff, na.rm=T)
+ps = -log10(res$pvalue)
+nomPcutoff = ps[sigPs + 1] + (ps[sigPs] - ps[sigPs + 1]) / 2
+nomPcutoff = 10 ** (-nomPcutoff)
+p = EnhancedVolcano(data.frame(res), lab=res$hgnc_symbol,
+                    x = 'log2FoldChange',
+                    y = 'pvalue', xlab = bquote(~Log[2]~ 'fold change'),
+                    ylab = bquote(~-Log[10]~italic(P)),
+                    title = 'Caudate',
+                    ylim = c(0, ymax),
+                    pCutoff = nomPcutoff, FCcutoff = FCcutoff, pointSize = 1.0,
+                    labSize = 2.0, subtitle=NULL,
+                    axisLabSize = 12,
+                    caption = NULL, legendPosition = 'none')
+myplots[[2]] = p
+ggarrange(plotlist=myplots)
+```
+
+![](images/2021-04-26-20-31-21.png)
+
+## Ellyptical plot for developmental results
+
+```r
+res = read.csv('~/data/post_mortem/WG30_DGE_ACC_RINe_BBB2_acc_developmental_10K.csv')
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue', 'FDR')]
+
+dev = res
+dev$Region = 'ACC'
+res = read.csv('~/data/post_mortem/WG30_DGE_Caudate_RINe_BBB2_caudate_developmental_10K.csv')
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue', 'FDR')]
+res$Region = 'Caudate'
+dev = rbind(dev, res)
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              res$link))
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+    }
+}
+
+library(corrplot)
+mylim = max(abs(df))
+quartz()
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim))
+```
+
+![](images/2021-04-26-20-57-23.png)
+
+# 2021-04-27 14:48:28
+
+I ran the different sets, so maybe this will be better:
+
+```r
+keep_me = c("dev1_c0.950_devSpec", "dev2_c0.950_devSpec", "dev3_c0.950_devSpec",
+            "dev4_c0.950_devSpec", "dev5_c0.950_devSpec", "overlap_c0.950")
+
+db = 'manySets_co0_950'
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = rbind(dev, res)
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              res$link))
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+    }
+}
+
+colnames(df)[ncol(df)] = 'pan-developmental'
+library(corrplot)
+mylim = max(abs(df))
+quartz()
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim))
+```
+
+![](images/2021-04-27-14-59-58.png)
+
+Now, let's make the same plot using the .9 threshold:
+
+```r
+keep_me = c("dev1_c0.900_devSpec", "dev2_c0.900_devSpec", "dev3_c0.900_devSpec",
+            "dev4_c0.900_devSpec", "dev5_c0.900_devSpec", "overlap_c0.900")
+
+db = 'manySets_co0_900'
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = rbind(dev, res)
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              res$link))
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+    }
+}
+
+colnames(df)[ncol(df)] = 'pan-developmental'
+library(corrplot)
+mylim = max(abs(df))
+quartz()
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim))
+```
+
+![](images/2021-04-27-15-02-36.png)
+
+And we use co.9 to make the regionSpec plots too, as we don't have all sets in
+.95:
+
+```r
+keep_me = c("dev1_c0.900_devSpec_regSpec", "dev2_c0.900_devSpec_regSpec",
+            "dev3_c0.900_devSpec_regSpec", "dev4_c0.900_devSpec_regSpec",
+            "dev5_c0.900_devSpec_regSpec", "overlap_c0.900_regSpec")
+
+db = 'manySets_co0_900'
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = rbind(dev, res)
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              res$link))
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+    }
+}
+
+colnames(df)[ncol(df)] = 'pan-developmental'
+library(corrplot)
+mylim = max(abs(df))
+quartz()
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim))
+```
+
+![](images/2021-04-27-15-04-42.png)
+
+# 2021-04-28 11:56:46
+
+Let's make some stylistic changes to the correlation plot:
+
+```r
+keep_me = c("dev1_c0.950_devSpec", "dev2_c0.950_devSpec", "dev3_c0.950_devSpec",
+            "dev4_c0.950_devSpec", "dev5_c0.950_devSpec", "overlap_c0.950")
+
+db = 'manySets_co0_950'
+r = 'ACC'
+ncomps = 12
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+df = matrix(nrow = 1, ncol = 6, dimnames=list(r, res$link))
+pvals = df
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+        pvals[i, j] = dev[idx, 'pValue'] / ncomps
+    }
+}
+colnames(df)[ncol(df)] = 'pan-developmental'
+mylim = max(abs(df))
+# just to get color for the overlap
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.01/ncomps)
+# ACC
+quartz()
+plot_matrix = t(as.matrix(df[, 1:5]))
+pvals_matrix = t(as.matrix(pvals[, 1:5]))
+rownames(plot_matrix) = r
+rownames(pvals_matrix) = r
+corrplot(plot_matrix, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
+         p.mat=pvals_matrix, insig = "label_sig", pch.col = "white",
+         sig.level=.01/ncomps)
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = res
+
+df = matrix(nrow = 1, ncol = 6, dimnames=list(r, res$link))
+pvals = df
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+        idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+        if (dev[idx, 'pValue'] == 0) {
+            dev[idx, 'pValue'] = 1e-5
+        }
+        df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                    -log(dev[idx, 'pValue']))
+        pvals[i, j] = dev[idx, 'pValue'] / ncomps
+    }
+}
+colnames(df)[ncol(df)] = 'pan-developmental'
+quartz()
+# just to get color for the overlap
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.01/ncomps)
+# Caudate
+quartz()
+plot_matrix = t(as.matrix(df[, 1:5]))
+pvals_matrix = t(as.matrix(pvals[, 1:5]))
+rownames(plot_matrix) = r
+rownames(pvals_matrix) = r
+corrplot(plot_matrix, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
+         p.mat=pvals_matrix, insig = "label_sig", pch.col = "white",
+         sig.level=.01/ncomps)
+```
+
+Now we make the correlation to other disorder plots again:
+
+```r
+fname = 'disorders_corrs_RINe_BBB2_04262021'
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+corrs$disorder = factor(corrs$disorder)
+# just to share axis
+ymax = max(corrs$corr)
+ymin = min(corrs$corr)
+my_colors = RColorBrewer::brewer.pal(7, "Accent")
+
+r = 'ACC' 
+mycorrs = corrs[corrs$region == r, ]
+mycorrs$id = sapply(1:nrow(mycorrs),
+                  function(i) sprintf('%s_%s',
+                                      mycorrs[i, 'disorder'],
+                                      mycorrs[i, 'source']))
+library(ggplot2)
+quartz()
+my_labels = c('Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)',
+              'Parikshak et al. 2016',
+              'Wright et al. 2017',
+              'Akula et al. 2020',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)',
+              'Gandal et al. 2018 (microarray)',
+              'Akula et al. 2020',
+              'Gandal et al. 2018 (microarray)',
+              'Akula et al. 2020',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)'
+              )
+p <- ggplot(mycorrs, aes(x = factor(id), y = corr, fill=disorder)) +
+    geom_violin(trim=FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank())
+p + ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1) +
+   ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
+   scale_fill_manual(breaks = levels(corrs$disorder),
+                                     values = my_colors) +
+   scale_x_discrete(labels=my_labels) 
+
+
+r = 'Caudate' 
+mycorrs = corrs[corrs$region == r, ]
+mycorrs$id = sapply(1:nrow(mycorrs),
+                  function(i) sprintf('%s_%s',
+                                      mycorrs[i, 'disorder'],
+                                      mycorrs[i, 'source']))
+library(ggplot2)
+quartz()
+my_labels = c('Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)',
+              'Pacifico and Davis, 2017',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (microarray)',
+              'Piantadosi et al. 2021',
+              'Benjamin et al. 2020',
+              'Gandal et al. 2018 (microarray)',
+              'Gandal et al. 2018 (RNAseq)'
+              )
+p <- ggplot(mycorrs, aes(x = factor(id), y = corr, fill=disorder)) +
+    geom_violin(trim=FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank())
+p + ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1) +
+   ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
+   scale_fill_manual(breaks = levels(corrs$disorder),
+                                     values = my_colors) +
+   scale_x_discrete(labels=my_labels) 
+
+```
+
+![](images/2021-04-28-15-26-44.png)
+
+## GSEA ontology
+
+Time to plot the GSEA results. I looked a bit and the Molecular function sets
+look the best, but we can make other ones for Supplemental. Let's do the top 20
+sets, with log10FDR on the X axis, similar to this: 
+
+![](images/2021-04-28-19-22-35.png)
+
+Except that the colors will be up/down regulated, with one plot per region. Then
+we can add different markers for robustness.
+
+```r
+mytop = 20
+df = read.csv('~/data/post_mortem/WG30_DGE_ACC_RINe_BBB2_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df = df[1:mytop, ]
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom")
+p + ggtitle('ACC') + ylim(0.5, 2.8) + ylab(bquote(~-Log[10]~italic(P[adjusted])))
+
+df = read.csv('~/data/post_mortem/WG30_DGE_Caudate_RINe_BBB2_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df = df[1:mytop, ]
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom")
+p + ggtitle('Caudate') + ylim(0.5, 2.8) + ylab(bquote(~-Log[10]~italic(P[adjusted])))
+
+
+```
+
+
+![](images/2021-04-28-19-52-18.png)

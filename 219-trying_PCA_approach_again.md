@@ -1939,4 +1939,118 @@ for (g in c('', '_substance', '_comorbid', '_WNH')) {
 }
 ```
 
+# 2021-04-27 07:19:10
+
+What do we get if we look at all our dev sets?
+
+```r
+library(WebGestaltR)
+library(DESeq2)
+
+data_dir = '~/data/post_mortem/'
+ncpu=7
+
+load('~/data/post_mortem/pca_DGE_RINe_04262021.RData')
+for (region in c('ACC', 'Caudate')) {
+    res_str = sprintf('dds = dds.%s', region)
+    eval(parse(text=res_str))
+
+    res = as.data.frame(results(dds, name = "Diagnosis_Case_vs_Control"))
+    
+    ranks = -log(res$pvalue) * sign(res$log2FoldChange)
+    geneid = substring(rownames(res), 1, 15)
+    
+    tmp2 = data.frame(geneid=geneid, rank=ranks)
+    tmp2 = tmp2[order(ranks, decreasing=T),]
+
+    res_str = sprintf('WG30_DGE_%s_RINe_BBB2', region)
+
+    DBs = c('%s_manySets_co0.900', '%s_manySets_co0.950', '%s_manySets_co0.990')
+    for (db in DBs) {
+        db2 = sprintf(db, tolower(region))
+        cat(res_str, db2, '\n')
+        db_file = sprintf('~/data/post_mortem/%s.gmt', db2)
+        project_name = sprintf('%s_%s_10K', res_str, db2)
+        enrichResult <- try(WebGestaltR(enrichMethod="GSEA",
+                            organism="hsapiens",
+                            enrichDatabaseFile=db_file,
+                            enrichDatabaseType="genesymbol",
+                            interestGene=tmp2,
+                            outputDirectory = data_dir,
+                            interestGeneType="ensembl_gene_id",
+                            sigMethod="top", topThr=50,
+                            minNum=3, projectName=project_name,
+                            isOutput=T, isParallel=T,
+                            nThreads=ncpu, perNum=10000, maxNum=2000))
+    }
+}
+```
+
+It's worth looking into this a bit deeper, and seeing how the expression
+threshold affects these results. Let's evaluate them based on nominal pvalues.
+And recall that dev1_c0.90_devSpec from manySets is the same as dev1_c0.90 in
+_developmental GMTs.
+
+```r
+r = 'ACC'
+db = 'manySets_co0_900'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+df = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+df = df[, c('geneSet', 'size', 'normalizedEnrichmentScore', 'pValue', 'FDR')]
+df$geneSet = gsub(df$geneSet, pattern='_c0.900', replacement = '')
+cnames = sapply(colnames(df), function(x) sprintf('%s_c0.9', x))
+colnames(df) = cnames
+df1 = df
+
+db = 'manySets_co0_950'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+df = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+df = df[, c('geneSet', 'size', 'normalizedEnrichmentScore', 'pValue', 'FDR')]
+df$geneSet = gsub(df$geneSet, pattern='_c0.950', replacement = '')
+cnames = sapply(colnames(df), function(x) sprintf('%s_c0.95', x))
+colnames(df) = cnames
+
+m = merge(df1, df, by=1, all.x=T, all.y=T)
+
+db = 'manySets_co0_990'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG30_DGE_%s_RINe_BBB2_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG30_DGE_%s_RINe_BBB2_%s_10K.txt',
+                    r, dev_str)
+df = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+df = df[, c('geneSet', 'size', 'normalizedEnrichmentScore', 'pValue', 'FDR')]
+df$geneSet = gsub(df$geneSet, pattern='_c0.990', replacement = '')
+cnames = sapply(colnames(df), function(x) sprintf('%s_c0.99', x))
+colnames(df) = cnames
+
+m = merge(m, df, by=1, all.x=T, all.y=T)
+
+fname = sprintf('~/data/post_mortem/dev_comps_%s.csv', r)
+write.csv(m, row.names=F, file=fname)
+```
+
+When comparing across expression thresholds, it's clear that our sets are not
+big enough at .99. Things remain stable from .9 to .95, except that we get a
+more clear result for dev5 in ACC at .95, so let's stick with that, and report
+Bonferroni threshold, which is more conservative, but I'm a bit skeedish of
+running FDR on only 6 sets.
+
+Because the overlap is so significant in ACC, it carries every single dev if
+they still contain overlap (i.e. the non devSpec ones). If we go down to .9
+expression, we can also see a nice pattern for dev5_regSpec_devSpec, which would
+also be true if we had enough genes in the .95 sample. But that's dine, because
+we could go with .9 here and .95 for non-region specific. Or just go with .9
+total, if we're keeping both results, as this one kinda makes the point about
+dev.5 already. I can make all plots too (.9 and .95)
+
+
 # TODO
