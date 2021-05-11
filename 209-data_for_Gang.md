@@ -149,3 +149,52 @@ instructions:
 
 ![](images/2021-04-07-12-03-34.png)
 
+
+# 2021-05-04 14:31:01
+
+Let's send Gang some data with family IDs in it as well:
+
+```r
+df = read.csv('/Volumes/NCR/brain_data_compiled/all_DTI_tracts_03222021.csv')
+df = df[, 1:55]
+# removing 1090 for now because I need to reprocess her scan
+df = df[df$maskid != 1090, ]
+df2 = df[1, c(1:3, 6, 8:9, 18:19, 22)]
+df2$FA = NA
+df2$AD = NA
+df2$RD = NA
+df2$tract = NA
+df2 = df2[, c(4, 2, 6, 1, 3, 5, 7:13)]
+tracts = sapply(colnames(df)[23:ncol(df)],
+                function(x) { res = strsplit(x, '_')[[1]];
+                              paste0(res[2:length(res)], collapse='_') })
+tracts = unique(tracts)
+# variables to be repeated
+var_repeat = colnames(df2)[c(1:9)]
+cnt = 1
+for (subj_row in 1:nrow(df)) {
+    for (t in tracts) {
+        df2[cnt, 'tract'] = t
+        df2[cnt, 'SID'] = df[subj_row, 'SID']
+        df2[cnt, var_repeat] = df[subj_row, var_repeat]
+        for (m in c('FA', 'AD', 'RD')) {
+            df2[cnt, m] = df[subj_row, sprintf('%s_%s', m, t)]
+        }
+        cnt = cnt + 1
+    }
+}
+
+# now I'll add the everADHD field as the single group metric
+source('~/research_code/lab_mgmt/merge_on_closest_date.R')
+clin = read.csv('/Volumes/NCR/clinical_data_compiled/augmented_anon_clinical_02222021.csv')
+clin = clin[clin$age_clin != 'child', ]
+clin$age_clin = as.numeric(clin$age_clin)
+m = mergeOnClosestAge(df2, clin[, c('SID', 'age_clin', 'everADHD_dsm')],
+                      unique(df2$SID), x.id='SID',
+                      x.age = 'age_scan', y.id='SID', y.age='age_clin')
+# shuffling some variables around
+m = m[, c(1:13, 15)]
+colnames(m)[14] = 'group'
+m$group = ifelse(m$group == 'yes', 'ADHD', 'NV')
+write.csv(m, row.names=F, file='~/data/long_data_for_gang_with_FAMID.csv')
+```
