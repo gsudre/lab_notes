@@ -826,3 +826,104 @@ ggarrange(p2, p3, nrow=2, ncol=1, legend='bottom')
 ![](images/2021-05-11-14-03-58.png)
 
 ![](images/2021-05-11-14-04-05.png)
+
+
+## Getting the correct numbers
+
+```r
+data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+rownames(data) = data[,1]
+data[,1] = NULL
+data = round(data)
+sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+colnames(data) = sub_name
+
+df = read.csv('~/data/rnaseq_derek/UPDATED_file_for_derek_add_cause_of_death.csv')
+df = df[!duplicated(df$submitted_name),]
+```
+
+```
+r$> dim(df)                                                                             
+[1] 120  28
+
+r$> table(df$Region)                                                                    
+
+    ACC Caudate 
+     56      64 
+
+r$> table(df$Region, df$hbcc_brain_id)                                                  
+         
+          887 890 993 1227 1292 1331 1435 1524 1530 1683 1709 1908 2080 2371 2485 2510
+  ACC       1   1   1    1    1    1    1    1    1    0    1    1    1    1    0    1
+  Caudate   1   1   1    1    1    1    1    1    1    1    1    1    1    1    1    1
+         
+          2546 2623 2636 2646 2724 2753 2781 2842 2873 2877 3002 3003 3005 3006 3007
+  ACC        1    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+  Caudate    1    1    1    1    1    1    1    1    1    6    1    1    1    0    1
+         
+          3008 3009 3010 3011 3012 3013 3014 3016 3017 3018 3019 3020 3021 3022 3023
+  ACC        1    1    1    1    1    1    1    1    1    1    1    1    1    1    0
+  Caudate    1    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+         
+          3024 3025 3027 3028 3049 3050 3051 3052 3053 3055 3056 3057 3058 3059
+  ACC        1    1    1    1    1    1    1    1    1    0    1    1    1    1
+  Caudate    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+
+r$> df[df$hbcc_brain_id==2877 & df$Region=='Caudate' & 'submitted_name']  
+[1] 66552 66553 66554 66556 66557 68068
+```
+
+```r
+library(gdata)
+df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+data = data[, colnames(data) %in% df$submitted_name]
+df = df[df$submitted_name %in% colnames(data), ]
+
+# this is a repeat for Caudate hbcc 2877, but has more genes with zeros than
+# its other replicate
+data = data[, ! colnames(data) %in% c('66552')]
+df = df[df$submitted_name %in% colnames(data), ]
+
+# outliers based on PCA plots
+outliers = c('68080','68096', '68108', '68084', '68082')
+data = data[, ! colnames(data) %in% outliers]
+df = df[df$submitted_name %in% colnames(data), ]
+```
+
+```
+r$> table(df$Region)                                                                    
+
+    ACC Caudate 
+     53      56 
+
+r$> length(unique(df$hbcc_brain_id))                                                    
+[1] 60
+
+r$> table(df$Region, df$hbcc_brain_id)                                                  
+         
+          887 890 993 1227 1292 1331 1435 1524 1530 1683 1709 1908 2080 2371 2485 2510
+  ACC       1   1   1    1    1    1    1    1    1    0    1    1    1    1    0    1
+  Caudate   1   1   1    1    1    1    1    1    0    1    1    1    1    1    1    1
+         
+          2546 2623 2636 2646 2724 2753 2781 2842 2873 2877 3002 3003 3005 3006 3007
+  ACC        1    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+  Caudate    1    1    1    1    1    1    1    1    1    1    1    1    1    0    1
+         
+          3008 3009 3010 3011 3012 3013 3014 3016 3017 3018 3019 3020 3021 3022 3023
+  ACC        1    1    1    1    1    1    1    1    1    1    1    1    1    1    0
+  Caudate    1    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+         
+          3024 3025 3027 3028 3049 3050 3051 3052 3053 3055 3056 3057 3058 3059
+  ACC        1    1    1    1    1    1    1    1    1    0    1    1    1    1
+  Caudate    1    1    1    1    1    1    1    1    1    1    1    1    1    1
+```
+
+And get numbers for the intersection of DGE results:
+
+```r
+res = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
+resw = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
+m = res[which(res$padj.FDR < .05), c('GENEID', 'hgnc_symbol')]
+w = resw[which(resw$padj.FDR < .05), c('GENEID', 'hgnc_symbol')]
+m2 = merge(m, w, by='GENEID', all.x=F, all.y=F)
+```
