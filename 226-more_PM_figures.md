@@ -927,3 +927,39 @@ m = res[which(res$padj.FDR < .05), c('GENEID', 'hgnc_symbol')]
 w = resw[which(resw$padj.FDR < .05), c('GENEID', 'hgnc_symbol')]
 m2 = merge(m, w, by='GENEID', all.x=F, all.y=F)
 ```
+
+# 2021-05-12 19:54:19
+
+Getting some more numbers:
+
+```
+r$> fname = 'disorders_corrs_bigger_04292021' 
+    corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))                        
+
+r$> r = 'ACC'                                                                           
+
+r$> mycorrs = corrs[corrs$region == r, ]                                                
+
+r$> mean(mycorrs[mycorrs$disorder=='ASD' & mycorrs$source=='Gandal_RNAseq', 'corr'])    
+[1] 0.2950491
+
+r$> sd(mycorrs[mycorrs$disorder=='ASD' & mycorrs$source=='Gandal_RNAseq', 'corr'])      
+[1] 0.007907018
+
+r$> mean(mycorrs[mycorrs$disorder=='BD' & mycorrs$source=='Gandal_micro', 'corr'])      
+[1] 0.1630773
+
+r$> sd(mycorrs[mycorrs$disorder=='BD' & mycorrs$source=='Gandal_micro', 'corr'])        
+[1] 0.009873048
+
+r$> mean(mycorrs[mycorrs$disorder=='MDD' & mycorrs$source=='Akula', 'corr'])            
+[1] 0.1088986
+
+r$> sd(mycorrs[mycorrs$disorder=='MDD' & mycorrs$source=='Akula', 'corr'])              
+[1] 0.03250252
+
+r$> mean(mycorrs[mycorrs$disorder=='SCZ' & mycorrs$source=='Gandal_micro', 'corr'])     
+[1] 0.1781614
+
+r$> sd(mycorrs[mycorrs$disorder=='SCZ' & mycorrs$source=='Gandal_micro', 'corr'])       
+[1] 0.009996115
