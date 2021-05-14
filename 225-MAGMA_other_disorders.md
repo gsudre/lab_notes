@@ -562,14 +562,100 @@ for r in 'ACC' 'Caudate'; do
         --gene-covar ../MAGMA_bigger_WNH_log10_dge_${r}.tab \
         --out MAGMA_bigger_log10_gc_dge_AD_WNH_${r};
 done;
-for f in `ls MAGMA_bigger_log10_gc_dge_AD*gsa.out`; do echo $f; cat $f; done
+for f in `ls MAGMA_bigger_log10_gc_dge_AD_*gsa.out`; do echo $f; cat $f; done
+```
+
+```
+MAGMA_bigger_log10_gc_dge_AD_BW_ACC.gsa.out
+# MEAN_SAMPLE_SIZE = 52848
+# TOTAL_GENES = 15114
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15114    -0.023059     -0.01569     0.010539     0.028697
+unsigned_rank     COVAR   15114     0.018603    0.0094221     0.014084      0.18657
+MAGMA_bigger_log10_gc_dge_AD_BW_Caudate.gsa.out
+# MEAN_SAMPLE_SIZE = 52848
+# TOTAL_GENES = 15089
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15089      0.01364    0.0099286     0.010048      0.17466
+unsigned_rank     COVAR   15089    -0.012526   -0.0062717     0.013905      0.36769
+MAGMA_bigger_log10_gc_dge_AD_WNH_ACC.gsa.out
+# MEAN_SAMPLE_SIZE = 46568
+# TOTAL_GENES = 15199
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15199    -0.012424     -0.00915    0.0090768      0.17111
+unsigned_rank     COVAR   15199     0.013649    0.0072311     0.012273       0.2661
+MAGMA_bigger_log10_gc_dge_AD_WNH_Caudate.gsa.out
+# MEAN_SAMPLE_SIZE = 46568
+# TOTAL_GENES = 15274
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15274    0.0069296    0.0050529    0.0092786      0.45517
+unsigned_rank     COVAR   15274    -0.018376   -0.0092042      0.01278      0.15048
 ```
 
 ## Alcohol Use Disorder
 
+```bash
+# grab only rsids
+head -n 1 AUDIT_UKB_2018_AJP.txt > AUD.txt;
+grep rs AUDIT_UKB_2018_AJP.txt >> AUD.txt
+# manually change SNP ahd t_p header (AUDIT total score)
+magma --bfile g1000_eur --seed 42 --pval AUD.txt N=121604 \
+    --gene-annot annot_WNH.genes.annot --out genes_AUD_WNH
+for r in 'ACC' 'Caudate'; do
+    magma --seed 42 --gene-results genes_AUD_WNH.genes.raw \
+        --gene-covar ../MAGMA_bigger_WNH_log10_dge_${r}.tab \
+        --out MAGMA_bigger_log10_gc_dge_AUD_WNH_${r};
+    magma --seed 42 --gene-results genes_AUD_WNH.genes.raw \
+        --gene-covar ../MAGMA_bigger_log10_dge_${r}.tab \
+        --out MAGMA_bigger_log10_gc_dge_AUD_BW_${r};
+done;
+for f in `ls MAGMA_bigger_log10_gc_dge_AUD*gsa.out`; do echo $f; cat $f; done
+```
 
+```
+MAGMA_bigger_log10_gc_dge_AUD_BW_ACC.gsa.out
+# MEAN_SAMPLE_SIZE = 121604
+# TOTAL_GENES = 15232
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15232   -0.0075976   -0.0051858      0.01084      0.48337
+unsigned_rank     COVAR   15232    -0.022757    -0.011562      0.01454      0.11759
+MAGMA_bigger_log10_gc_dge_AUD_BW_Caudate.gsa.out
+# MEAN_SAMPLE_SIZE = 121604
+# TOTAL_GENES = 15211
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15211     0.010862    0.0079011     0.010285      0.29097
+unsigned_rank     COVAR   15211   -0.0036524   -0.0018281     0.014267      0.79795
+MAGMA_bigger_log10_gc_dge_AUD_WNH_ACC.gsa.out
+# MEAN_SAMPLE_SIZE = 121604
+# TOTAL_GENES = 15327
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15327   -0.0029765      -0.0022    0.0098487      0.76248
+unsigned_rank     COVAR   15327    -0.012935   -0.0068778     0.013464      0.33673
+MAGMA_bigger_log10_gc_dge_AUD_WNH_Caudate.gsa.out
+# MEAN_SAMPLE_SIZE = 121604
+# TOTAL_GENES = 15411
+# TEST_DIRECTION = one-sided, positive (set), two-sided (covar)
+# CONDITIONED_INTERNAL = gene size, gene density, inverse mac, log(gene size), log(gene density), log(inverse mac)
+VARIABLE           TYPE  NGENES         BETA     BETA_STD           SE            P
+signed_rank       COVAR   15411     0.011632    0.0084832     0.010357      0.26142
+unsigned_rank     COVAR   15411    0.0063176    0.0031666     0.014095        0.654
+```
 
-
+## Collecting results
 
 Let's collect all results in R and save them in a matrix for plotting:
 
@@ -591,6 +677,45 @@ for (d in dis) {
         }
     }
 }
+saveRDS(res, file='~/data/post_mortem/MAGMA/all_res.rds')
 ```
 
-Might need to do something difference about SCZ BW...  it only has half of the genes!
+Not much to be done about SCZ BW...  it only has half of the genes, but the file
+itself is quite short.
+
+Let's make some plots then:
+
+```r
+library(corrplot)
+res = readRDS('~/data/post_mortem/all_res.rds')
+res = res[res$POP == 'BW', c('REGION', 'DISORDER', 'P')]
+plot_mat = matrix(nrow=2, ncol=length(unique(res$DISORDER)))
+colnames(plot_mat) = unique(res$DISORDER)
+rownames(plot_mat) = unique(res$REGION)
+pvals = plot_mat
+for (i in 1:nrow(res)) {
+    plot_mat[res[i, 'REGION'], res[i, 'DISORDER']] = -log10(res[i, 'P'])
+    pvals[res[i, 'REGION'], res[i, 'DISORDER']] = res[i, 'P']
+}
+quartz()
+par(mfrow=c(2,1))
+corrplot(plot_mat, is.corr=F, tl.col='black', p.mat = pvals, sig.level = .05,
+         cl.lim=c(0,8.5))
+title('ALL')
+
+res = readRDS('~/data/post_mortem/all_res.rds')
+res = res[res$POP == 'WNH', c('REGION', 'DISORDER', 'P')]
+plot_mat = matrix(nrow=2, ncol=length(unique(res$DISORDER)))
+colnames(plot_mat) = unique(res$DISORDER)
+rownames(plot_mat) = unique(res$REGION)
+pvals = plot_mat
+for (i in 1:nrow(res)) {
+    plot_mat[res[i, 'REGION'], res[i, 'DISORDER']] = -log10(res[i, 'P'])
+    pvals[res[i, 'REGION'], res[i, 'DISORDER']] = res[i, 'P']
+}
+corrplot(plot_mat, is.corr=F, tl.col='black', p.mat = pvals, sig.level = .05,
+         cl.lim=c(0,8.5))
+title('WNH')
+```
+
+![](images/2021-05-14-15-26-25.png)
