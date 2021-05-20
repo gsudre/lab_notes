@@ -963,3 +963,116 @@ r$> mean(mycorrs[mycorrs$disorder=='SCZ' & mycorrs$source=='Gandal_micro', 'corr
 
 r$> sd(mycorrs[mycorrs$disorder=='SCZ' & mycorrs$source=='Gandal_micro', 'corr'])       
 [1] 0.009996115
+```
+
+# 2021-05-20 06:23:15
+
+Some more numbers for the paper:
+
+
+```r
+data = read.table('~/data/rnaseq_derek/adhd_rnaseq_counts.txt', header=1)
+rownames(data) = data[,1]
+data[,1] = NULL
+data = round(data)
+sub_name = gsub(x=colnames(data), pattern='X', replacement='')
+colnames(data) = sub_name
+# this is a repeat for Caudate hbcc 2877, but has more genes with zeros than
+# its other replicate
+data = data[, ! colnames(data) %in% c('66552')]
+# # outliers based on PCA plots
+outliers = c('68080','68096', '68108', '68084', '68082')
+data = data[, ! colnames(data) %in% outliers]
+
+library(gdata)
+df = read.xls('~/data/post_mortem/POST_MORTEM_META_DATA_JAN_2021.xlsx')
+data = data[, colnames(data) %in% df$submitted_name]
+df = df[df$submitted_name %in% colnames(data), ]
+df = df[order(df$submitted_name), ]
+data = data[, order(df$submitted_name)]
+
+# cleaning up some variables
+df$Individual = factor(df$hbcc_brain_id)
+df[df$Manner.of.Death=='Suicide (probable)', 'Manner.of.Death'] = 'Suicide'
+df[df$Manner.of.Death=='unknown', 'Manner.of.Death'] = 'natural'
+df$MoD = factor(df$Manner.of.Death)
+df$Sex = factor(df$Sex)
+df$batch = factor(df$batch)
+df$run_date = factor(gsub(df$run_date, pattern='-', replacement=''))
+df$Diagnosis = factor(df$Diagnosis, levels=c('Control', 'Case'))
+df$Region = factor(df$Region, levels=c('Caudate', 'ACC'))
+df$substance_group = factor(df$substance_group)
+df$comorbid_group = factor(df$comorbid_group_update)
+df$evidence_level = factor(df$evidence_level)
+df$brainbank = factor(df$bainbank)
+# replace the one subject missing population PCs by the median of their
+# self-declared race and ethnicity
+idx = (df$Race.x=='White' & df$Ethnicity.x=='Non-Hispanic' & !is.na(df$C1))
+pop_pcs = c('C1', 'C2', 'C3', 'C4', 'C5')
+med_pop = apply(df[idx, pop_pcs], 2, median)
+df[which(is.na(df$C1)), pop_pcs] = med_pop
+df$BBB = factor(sapply(1:nrow(df),
+                        function(x) sprintf('%s_%s',
+                                    as.character(df[x,'brainbank']),
+                                    as.character(df[x, 'batch']))))
+df$BBB2 = NA                                                                        
+df[df$brainbank=='nimh_hbcc', 'BBB2'] = 1                                           
+df[df$batch==3, 'BBB2'] = 2                                                         
+df[df$batch==4, 'BBB2'] = 3      
+df$BBB2 = factor(df$BBB2)                                                   
+```
+
+```
+r$> dim(df)                                                                                  
+[1] 109  59
+
+r$> idx = df$Region=='ACC'                                                                   
+
+r$> x='RINe'; t.test(df[idx & df$Diagnosis!='Control', x], df[idx&df$Diagnosis=='Control', x]
+    )                                                                                        
+
+        Welch Two Sample t-test
+
+data:  df[idx & df$Diagnosis != "Control", x] and df[idx & df$Diagnosis == "Control", x]
+t = -1.2432, df = 46.513, p-value = 0.22
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.6828642  0.1613125
+sample estimates:
+mean of x mean of y 
+ 5.187500  5.448276 
+
+
+r$> mean(df[idx & df$Diagnosis!='Control', x])                                               
+[1] 5.1875
+
+r$> sd(df[idx & df$Diagnosis!='Control', x])                                                 
+[1] 0.7996263
+
+r$> sd(df[idx & df$Diagnosis=='Control', x])                                                 
+[1] 0.7094367
+
+r$> idx = df$Region=='Caudate'                                                               
+
+r$> x='RINe'; t.test(df[idx & df$Diagnosis!='Control', x], df[idx&df$Diagnosis=='Control', x]
+    )                                                                                        
+
+        Welch Two Sample t-test
+
+data:  df[idx & df$Diagnosis != "Control", x] and df[idx & df$Diagnosis == "Control", x]
+t = 0.87704, df = 53.999, p-value = 0.3844
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.1728015  0.4415515
+sample estimates:
+mean of x mean of y 
+ 5.987500  5.853125 
+
+
+r$> sd(df[idx & df$Diagnosis!='Control', x])                                                 
+[1] 0.4910614
+
+r$> sd(df[idx & df$Diagnosis=='Control', x])                                                 
+[1] 0.6554902
+
+```
