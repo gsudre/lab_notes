@@ -182,38 +182,112 @@ nextflow run ${tractoflow_home}/main.nf \
     -resume -profile fully_reproducible
 ```
 
+# 2021-05-20 06:54:42
+
+Today, I'm rethinking this approach. Based on the ABCD notes, they did use the
+FDT pipeline, but used AtlasTrack for tract measures. The most time consuming
+step of Tractoflow and the Tracula pipelines is bedpostX, so I wonder whether we
+need the probabilistic tracking at all. Can we just do what ENIGMA does, and
+what we were doing before with the averages?
+
+AtlasTrack does use a probialistic approach, but that software is not available
+anywhere...
+
+Also, Tracula depends on a good Freesurfer segmentation. Sure, we'd need good
+quality Freesurfer data to use it in the analysis to begin with. However, we
+don't want to constraint the DTI analysis on Freesurfer analysis either. Maybe
+just a good T1 would be enough to use the DTI data, because for most atlases
+we'd need alignment to T1s.
+
+Or, I can just stick with the FDT pipeline, which doesn't require any other
+structural. Then we can do voxel analysis after DTI-TK coregistration, or use
+the JHU atlases after registering to an FA map.
+
 For the ENIGMA-suggested pipeline, we don't have the T2 in PNC. So, let's modify
 it a bit.
 
+# 2021-05-20 10:39:40
 
-Now, for the ENIGMA-suggested pipeline, using DTIPrep:
+For TractoFlow, I ran 9 subjects in a 32machine in 14h:
 
+```
+Duration    : 14h 36m 3s
+CPU hours   : 212.0
+```
 
+It took a maximum of 32Gb, and only in a few instances it took all 32 cores.
+Given that we can only run this once at a time, it makes sense to do more
+subjects for longer.
 
+I'm just not sure we're going to go with probabilistic tracts for now. Let's
+tackle the FDT pipeline first, and then we can decide.
 
+Going back to DTIprep, we'll need to run it quickly first ro get the xml file,
+which is based on the data (bvec and bval) and then change it to only run the
+QC, and not do eddy or motion correction (which we'll do later). If the bvecs
+were always the save this wouldn't be an issue (potentially), but this will not
+be the case for our data, and who knows if the sequences changed in the middle
+for other datasets. So, better safe then sorrow here.
 
+I did run a text and the xml file we get by a quick run (aborted) and the entire
+run is the same. So, let's modify it and get going.
 
+```bash
+timeout 5s ~/tmp/DTIPrepTools-1.2.9_rhel7-Linux/bin/DTIPrep --DWINrrdFile test.nrrd --numberOfThreads 4 -d -c -p test.xml
+# let's do denoising
+lnumber=`grep -n \"DENOISING_bCheck\" test.xml | cut -d":" -f 1`;
+let lnumber=$lnumber+1
+sed "${lnumber}s/No/Yes/" test.xml > test2.xml
+# don't do eddy
+lnumber=`grep -n \"EDDYMOTION_bCheck\" test2.xml | cut -d":" -f 1`;
+let lnumber=$lnumber+1
+sed "${lnumber}s/Yes/No/" test2.xml > test3.xml
 
+# re-run using this new file
+~/tmp/DTIPrepTools-1.2.9_rhel7-Linux/bin/DTIPrep --DWINrrdFile test.nrrd --numberOfThreads 4 -c -p test3.xml
+```
 
+But I cannot find the stupid Rician module, so let's just use ANTs version
+before we convert to nrrd, and then just use DTIPrep to remove bad slices.
 
+```bash
+module load ANTs/2.3.2
+export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$SLURM_CPUS_PER_TASK
+DenoiseImage -v 1 -d 4 -i dwi.nii.gz -o dwi_denoised.nii.gz -n Rician
 
-    /data/NCR_SBRB/software/DTIPrep-1.2.11/bin/DWIConvert \
-        --conversionMode FSLToNrrd --inputVolume dwi.nii.gz \
-        --inputBValues bval --inputBVectors bvec -o dwi.nrrd;
-    /data/NCR_SBRB/software/DTIPrepTools-1.2.9_rhel7-Linux/bin/DTIPrep \
-        --DWINrrdFile dwi.nrrd --numberOfThreads $SLURM_CPUS_PER_TASK \
-        -d -c -p ${s}.xml;
-    mv dwi.nii.gz dwi_orig.nii.gz;
-    mv bval bval_orig;
-    mv bvec bvec_orig;
-    /data/NCR_SBRB/software/DTIPrep-1.2.11/bin/DWIConvert \
-        --inputVolume dwi_QCed.nrrd \
-        --outputVolume dwi.nii.gz \
-        --outputBVectors bvec \
-        --outputBValues bval \
-        --allowLossyConversion \
-        --conversionMode NrrdToFSL;
+/data/NCR_SBRB/software/DTIPrep-1.2.11/bin/DWIConvert \
+    --conversionMode FSLToNrrd --inputVolume dwi_denoised.nii.gz \
+    --inputBValues bval --inputBVectors bvec -o dwi.nrrd;
+timeout 5s /data/NCR_SBRB/software/DTIPrepTools-1.2.9_rhel7-Linux/bin/DTIPrep \
+    --DWINrrdFile dwi.nrrd --numberOfThreads $SLURM_CPUS_PER_TASK \
+    -d -c -p ${s}.xml;
+# don't do eddy
+lnumber=`grep -n \"EDDYMOTION_bCheck\" ${s}.xml | cut -d":" -f 1`;
+let lnumber=$lnumber+1
+sed "${lnumber}s/Yes/No/" ${s}.xml > ${s}_noeddy.xml
+# we also don't need to calculate the tensors or the gradient check, because
+# it fails if we don't run eddy
+/data/NCR_SBRB/software/DTIPrepTools-1.2.9_rhel7-Linux/bin/DTIPrep \
+    --DWINrrdFile dwi.nrrd --numberOfThreads $SLURM_CPUS_PER_TASK \
+    -c -p ${s}_noeddy.xml;
+# save the original image (bval and bvec stay the same)
+mv dwi.nii.gz dwi_orig.nii.gz;
+/data/NCR_SBRB/software/DTIPrep-1.2.11/bin/DWIConvert \
+    --inputVolume dwi_QCed.nrrd \
+    --outputVolume dwi.nii.gz \
+    --outputBVectors bvec \
+    --outputBValues bval \
+    --allowLossyConversion \
+    --conversionMode NrrdToFSL;
+```
 
+This is not working. The bval and bvec files are very different, even when
+nothing is done (only the QC). Maybe I could just grab which volumes are bad and
+remove them manually afterwards?
+
+I'll need to use one of our crappiest scans to see if some get recognized...
+I'll also need to check how long ANTs DenoiseImage took. I left it running with
+32 cores, and it was taking over 1h.
 
 
 
