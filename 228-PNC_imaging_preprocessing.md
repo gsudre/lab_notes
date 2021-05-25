@@ -287,7 +287,58 @@ remove them manually afterwards?
 
 I'll need to use one of our crappiest scans to see if some get recognized...
 I'll also need to check how long ANTs DenoiseImage took. I left it running with
-32 cores, and it was taking over 1h.
+32 cores, and it was taking over 1h...
+
+# 2021-05-21 06:54:46
+
+In the end, it took almost 2h, on 32 cores. Maybe worth it? It used less than
+2Gb the whole time. If we get Slicer to work, we can run it for 10 subjects and
+check it.
+
+In the meanwhile, I'll go ahead and convert the 10 subjects I've been playing
+with, just so they'r ready when I' done with 3dSlicer.
+
+```bash
+# interactive
+module load ANTs/2.3.2
+export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$SLURM_CPUS_PER_TASK
+
+base_dir=/scratch/sudregp/PNC_BIDS
+target_dir=/scratch/sudregp/PNC_DWI
+for s in `cat ${base_dir}/batch1.txt`; do
+    echo "Denoising ${s}";
+    cd ${target_dir}/${s};
+    DenoiseImage -v 1 -d 4 -i dwi.nii.gz -o dwi_denoised.nii.gz -n Rician
+done;
+```
+
+Going back to our dataset, the following are missing 40 volumes: 
+
+0741
+1493
+1999
+2145
+
+Let's try them through Slicer and see what we get...
+
+It didn't detect anything. OK, quitting on DTIPrep. But I did find this:
+
+ * https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/eddyqc/UsersGuide
+ * https://www.sciencedirect.com/science/article/pii/S1053811918319451
+
+So we can just run eddy instead. The main question is whether the initial noise
+removal makes a difference. Given that it takes 2h per subject (using 32 cores),
+it'd have to make a huge difference. 
+
+For now, let's revise what we did for FDT PNC a couple years ago, make sure the
+initial data looks good (in terms of directions), check all the brain mask QCs,
+and other QC that was done. Then we can try running QUAD and seeing what we get.
+
+Then, repeat the same for our own cohort. I'll need to check which images we
+started with though.
+
+
+
 
 
 
