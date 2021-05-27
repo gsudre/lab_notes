@@ -210,9 +210,14 @@ corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
 
 # 2021-05-25 06:23:29
 
-## Molecular function plots
+## Molecular function plots (FDR q < .05)
 
 ```r
+tsize = 16
+ysize = 12
+xsize = 10
+msize = 2
+
 df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
 df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
 df$Behavior = 'Upregulated'
@@ -230,23 +235,20 @@ label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
 
 
 p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
-  geom_dotplot(binaxis='y', stackdir='center') + coord_flip() +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
   geom_hline(yintercept=-log10(.1), linetype="dashed",
                                 color = "black", size=1) + theme(legend.position="bottom") +
     geom_hline(yintercept=-log10(.05), linetype="dotted",
                                 color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=16),
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
           axis.title.y = element_blank(),
-          plot.title = element_text(size = 20),
-          axis.text.x = element_text(size=12),
-          axis.title.x = element_text(size=16))
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize))
 
-p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-```
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
 
-![](images/2021-05-25-07-28-15.png)
-
-```r
 df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
 df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
 df$Behavior = 'Upregulated'
@@ -263,23 +265,208 @@ color_me = c('neurotransmitter receptor activity',
              'serotonin receptor activity', 'GABA receptor activity')
 label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
 
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
-  geom_dotplot(binaxis='y', stackdir='center') + coord_flip() +
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=1.25*msize, binaxis='y', stackdir='center') + coord_flip() +
   geom_hline(yintercept=-log10(.1), linetype="dashed",
                                 color = "black", size=1) + theme(legend.position="bottom") +
     geom_hline(yintercept=-log10(.05), linetype="dotted",
                                 color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=16),
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
           axis.title.y = element_blank(),
-          plot.title = element_text(size = 20),
-          axis.text.x = element_text(size=12),
-          axis.title.x = element_text(size=16))
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize))
 
-quartz()
-p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
+print(p)
 ```
 
-USE GGARRANGE HERE TOO!
+![](images/2021-05-25-11-54-27.png)
+
+
+## Top 10 Cellular components
+
+```r
+tsize = 16
+ysize = 12
+xsize = 10
+msize = 2
+ntop = 10
+
+df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
+df = df[1:ntop, ]
+df[df$FDR == 0, 'FDR'] = 1e-5
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+color_me = c('transporter complex', 'mitochondrial protein complex')
+label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
+
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    scale_fill_manual(values=clrs, labels=levels(df$Behavior)) +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
+df = df[1:ntop, ]
+df[df$FDR == 0, 'FDR'] = 1e-5
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+
+color_me = c('nothing')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
+print(p)
+```
+
+![](images/2021-05-26-06-45-51.png)
+
+
+# 2021-05-26 06:47:20
+
+## Disorder correlation plot
+
+```r
+library(ggplot2)
+library(ggpubr)
+quartz()
+
+fname = 'disorders_corrs_bigger_04292021'
+corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
+sources = unique(corrs$source)
+
+# this leveling only affects the color ordering
+dis_order = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'OCD', 'IBD')
+col_labels = c('Autism Spectrum Disorder', 'Schizophernia', 'Bipolar Disorder',
+               'Major Depression Disorder', 'Alcohol Abuse or Dependene',
+               'Obsessive Compulsive Disorder', 'Irritable Bowel Disorder')
+corrs$disorder = factor(corrs$disorder,
+                        levels=dis_order)
+
+# just to share axis
+ymax = .4
+ymin = -.4
+my_colors = RColorBrewer::brewer.pal(7, "Accent")
+
+r = 'ACC' 
+mycorrs = corrs[corrs$region == r, ]
+mycorrs$id = sapply(1:nrow(mycorrs),
+                  function(i) sprintf('%s [%d]',
+                                      mycorrs[i, 'disorder'],
+                                      which(sources == mycorrs[i, 'source'])))
+# setting the order results appear in X axis
+library(dplyr)
+ranks = mycorrs %>% group_by(id) %>% summarize(Median = abs(median(corr, na.rm=TRUE)))
+mylevels = c()
+for (d in dis_order) {
+    # assumes IDs start with the disorder
+    myranks = ranks[grepl(ranks$id, pattern=paste0('^',d)),]
+    mylevels = c(mylevels, myranks$id[order(myranks$Median, decreasing=T)])
+}
+# regroup levels based on the order we established before
+mycorrs$xorder = factor(mycorrs$id, levels=mylevels)
+
+p1 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
+    geom_violin(trim=FALSE) + 
+    # fake continuous axis to add vertical lines later
+    geom_line(aes(x = as.numeric(xorder), y=0), size = 1, color="red", alpha=0) + 
+    # vertical lines separating disorders
+    geom_vline(xintercept=c(4.5, 7.5, 10.5, 12.5, 13.5),
+               linetype="dashed", color = "grey", size=.5) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank()) +
+    ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1) +
+   ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
+   scale_fill_manual(breaks = levels(corrs$disorder),
+                     values = my_colors,
+                     labels = col_labels,
+                     drop=FALSE)
+
+r = 'Caudate'
+mycorrs = corrs[corrs$region == r, ]
+mycorrs$id = sapply(1:nrow(mycorrs),
+                  function(i) sprintf('%s [%d]',
+                                      mycorrs[i, 'disorder'],
+                                      which(sources == mycorrs[i, 'source'])))
+# setting the order results appear in X axis
+library(dplyr)
+ranks = mycorrs %>% group_by(id) %>% summarize(Median = abs(median(corr, na.rm=TRUE)))
+mylevels = c()
+for (d in dis_order) {
+    # assumes IDs start with the disorder
+    myranks = ranks[grepl(ranks$id, pattern=paste0('^',d)),]
+    mylevels = c(mylevels, myranks$id[order(myranks$Median, decreasing=T)])
+}
+# regroup levels based on the order we established before
+mycorrs$xorder = factor(mycorrs$id, levels=mylevels)
+
+p2 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
+    geom_violin(trim=FALSE) + 
+    # fake continuous axis to add vertical lines later
+    geom_line(aes(x = as.numeric(xorder), y=0), size = 1, color="red", alpha=0) + 
+    # vertical lines separating disorders
+    geom_vline(xintercept=c(2.5, 5.5, 8.5, 9.5, 10.5, 11.5),
+               linetype="dashed", color = "grey", size=.5) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank()) +
+    ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
+                                color = "red", size=1) +
+   ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
+   scale_fill_manual(breaks = levels(corrs$disorder),
+                     values = my_colors,
+                     labels = col_labels,
+                     drop=FALSE)
+
+ggarrange(p1, p2, common.legend = T, legend='right',
+          legend.grob=get_legend(p2)) 
+```
+
+![](images/2021-05-27-17-32-13.png)
 
 
 
@@ -771,162 +958,6 @@ print(annotate_figure(p, r))
 
 I plotted 3 because one was screwing up the dimensions and the functions weren't
 working. Just crop it.
-
-# 2021-05-10 10:44:57
-
-Let's redo the correlation picture, and make the non-significant results very
-dim. I'm using this list from note 222:
-
-```
-ASD_Gandal_micro_ACC 0 
-SCZ_Gandal_micro_ACC 0 
-BD_Gandal_micro_ACC 0 
-MDD_Gandal_micro_ACC 0.2606 
-AAD_Gandal_micro_ACC 0.2823 
-IBD_Gandal_micro_ACC 0 
-ASD_Gandal_micro_Caudate 0 
-SCZ_Gandal_micro_Caudate 0 
-BD_Gandal_micro_Caudate 0 
-MDD_Gandal_micro_Caudate 0 
-AAD_Gandal_micro_Caudate 0 
-IBD_Gandal_micro_Caudate 0.1398 
-SCZ_Gandal_RNAseq_ACC 0 
-BD_Gandal_RNAseq_ACC 0.0154 
-SCZ_Gandal_RNAseq_Caudate 0 
-BD_Gandal_RNAseq_Caudate 0 
-ASD_Gandal_RNAseq_ACC 0 
-ASD_Gandal_RNAseq_Caudate 0 
-BD_Akula_ACC 2e-04 
-SCZ_Akula_ACC 0 
-MDD_Akula_ACC 7e-04 
-SCZ_Benjamin_Caudate 0 
-BD_Pacifico_Caudate 0.294 
-OCD_Piantadosi_Caudate 0 
-ASD_Wright_DLPFC_ACC 0 
-ASD_Neelroop_FrontalTemporal_ACC 0 
-```
-
-```r
-library(ggplot2)
-quartz()
-
-fname = 'disorders_corrs_bigger_04292021'
-corrs = readRDS(sprintf('~/data/post_mortem/%s.rds', fname))
-# quick hack to make IBD last, which affects the X labels but not the color
-corrs[corrs$disorder == 'IBD', 'disorder'] = 'zIBD'
-
-# this leveling only affects the color ordering
-corrs$disorder = factor(corrs$disorder,
-                        levels=c('AAD', 'ASD', 'BD', 'MDD', 'OCD', 'SCZ', 'zIBD'))
-col_labels = c('Alcohol Abuse or Dependene', 'Autism Spectrum Disorder',
-               'Bipolar Disorder', 'Major Depression Disorder',
-               'Obsessive Compulsive Disorder', 'Schizophernia',
-               'Irritable Bowel Disorder')
-
-# just to share axis
-ymax = .4 #max(corrs$corr)
-ymin = -.4 #min(corrs$corr)
-my_colors = RColorBrewer::brewer.pal(7, "Accent")
-imbad = c('MDD_Gandal_micro', 'AAD_Gandal_micro', 'BD_Gandal_RNAseq')
-
-r = 'ACC' 
-mycorrs = corrs[corrs$region == r, ]
-mycorrs$id = sapply(1:nrow(mycorrs),
-                  function(i) sprintf('%s_%s',
-                                      mycorrs[i, 'disorder'],
-                                      mycorrs[i, 'source']))
-mycorrs$alpha = 1
-mycorrs$colour = 'black'
-mycorrs[mycorrs$id %in% imbad, 'alpha'] = .9
-mycorrs[mycorrs$id %in% imbad, 'colour'] = 'grey'
-mycorrs$colour = factor(mycorrs$colour)
-
-my_labels = c('AAD [1]',
-              'ASD [1]',
-              'ASD [2]',
-              'ASD [3]',
-              'ASD [4]',
-              'BD [5]',
-              'BD [1]',
-              'BD [2]',
-              'MDD [5]',
-              'MDD [1]',
-              'SCZ [5]',
-              'SCZ [1]',
-              'SCZ [2]',
-              'IBS [1]'
-              )
-myrefs = c('[1] Gandal et al. 2018 (microarray)',
-           '[2] Gandal et al. 2018 (RNAseq)',
-           '[3] Parikshak et al. 2016',
-           '[4] Wright et al. 2017',
-           '[5] Akula et al. 2020',
-           '[6] Pacifico and Davis, 2017',
-           '[7] Piantadosi et al. 2021',
-           '[8] Benjamin et al. 2020')
-p <- ggplot(mycorrs, aes(x = factor(id), y = corr, fill=disorder,
-                         alpha=alpha)) +
-    geom_violin(trim=FALSE, aes(colour=colour)) +
-    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
-          axis.title.x = element_blank())
-p1 = p + ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
-                                color = "red", size=1) +
-   ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
-   scale_fill_manual(breaks = levels(corrs$disorder),
-                     values = my_colors,
-                     labels = col_labels) +
-    scale_colour_manual(values = c('black'='#000000', 'grey'='#808080')) +
-   scale_x_discrete(labels=my_labels) + 
-   guides(colour=F, alpha=F)
-
-
-r = 'Caudate'
-imbad = c('BD_Pacifico', 'zIBD_Gandal_micro')
-mycorrs = corrs[corrs$region == r, ]
-mycorrs$id = sapply(1:nrow(mycorrs),
-                  function(i) sprintf('%s_%s',
-                                      mycorrs[i, 'disorder'],
-                                      mycorrs[i, 'source']))
-mycorrs$alpha = 1
-mycorrs$colour = 'black'
-mycorrs[mycorrs$id %in% imbad, 'alpha'] = .9
-mycorrs[mycorrs$id %in% imbad, 'colour'] = 'grey'
-mycorrs$colour = factor(mycorrs$colour)
-my_labels = c('AAD [1]',
-              'ASD [1]',
-              'ASD [2]',
-              'BD [1]',
-              'BD [2]',
-              'BD [6]',
-              'MDD [1]',
-              'OCD [7]',
-              'SCZ [8]',
-              'SCZ [1]',
-              'SCZ [2]',
-              'IBD [1]'
-              )
-p <- ggplot(mycorrs, aes(x = factor(id), y = corr, fill=disorder,
-                         alpha=alpha)) +
-    geom_violin(trim=FALSE, aes(colour=colour)) +
-    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
-          axis.title.x = element_blank())
-p2 = p + ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
-                                color = "red", size=1) +
-   ylim(ymin, ymax) + 
-   scale_fill_manual(breaks = levels(corrs$disorder),
-                     values = my_colors,
-                     labels = col_labels,
-                     name='Disorders') +
-    theme(axis.title.y = element_blank()) + 
-   scale_colour_manual(values = c('black'='#000000', 'grey'='#808080')) +
-   scale_x_discrete(labels=my_labels) +
-   guides(colour=F, alpha=F)
-
-ggarrange(p1, p2, common.legend = T, legend='right',
-          legend.grob=get_legend(p2)) 
-```
-
-![](images/2021-05-10-15-03-47.png)
 
 
 ## Redoing PCA plots
