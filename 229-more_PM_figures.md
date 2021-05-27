@@ -384,7 +384,7 @@ dis_order = c('ASD', 'SCZ', 'BD', 'MDD', 'AAD', 'OCD', 'IBD')
 col_labels = c('Autism Spectrum Disorder', 'Schizophernia', 'Bipolar Disorder',
                'Major Depression Disorder', 'Alcohol Abuse or Dependene',
                'Obsessive Compulsive Disorder', 'Irritable Bowel Disorder')
-corrs$disorder = factor(corrs$disorder,
+corrs$Disorders = factor(corrs$disorder,
                         levels=dis_order)
 
 # just to share axis
@@ -410,7 +410,7 @@ for (d in dis_order) {
 # regroup levels based on the order we established before
 mycorrs$xorder = factor(mycorrs$id, levels=mylevels)
 
-p1 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
+p1 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=Disorders)) +
     geom_violin(trim=FALSE) + 
     # fake continuous axis to add vertical lines later
     geom_line(aes(x = as.numeric(xorder), y=0), size = 1, color="red", alpha=0) + 
@@ -422,7 +422,7 @@ p1 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
     ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
                                 color = "red", size=1) +
    ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
-   scale_fill_manual(breaks = levels(corrs$disorder),
+   scale_fill_manual(breaks = levels(corrs$Disorder),
                      values = my_colors,
                      labels = col_labels,
                      drop=FALSE)
@@ -445,7 +445,7 @@ for (d in dis_order) {
 # regroup levels based on the order we established before
 mycorrs$xorder = factor(mycorrs$id, levels=mylevels)
 
-p2 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
+p2 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=Disorders)) +
     geom_violin(trim=FALSE) + 
     # fake continuous axis to add vertical lines later
     geom_line(aes(x = as.numeric(xorder), y=0), size = 1, color="red", alpha=0) + 
@@ -457,7 +457,7 @@ p2 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=disorder)) +
     ggtitle(r) + geom_hline(yintercept=0, linetype="dotted",
                                 color = "red", size=1) +
    ylab('Transcriptome correlation (rho)') + ylim(ymin, ymax) + 
-   scale_fill_manual(breaks = levels(corrs$disorder),
+   scale_fill_manual(breaks = levels(corrs$Disorder),
                      values = my_colors,
                      labels = col_labels,
                      drop=FALSE)
@@ -466,7 +466,7 @@ ggarrange(p1, p2, common.legend = T, legend='right',
           legend.grob=get_legend(p2)) 
 ```
 
-![](images/2021-05-27-17-32-13.png)
+![](images/2021-05-27-17-36-10.png)
 
 
 
