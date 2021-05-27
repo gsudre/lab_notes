@@ -462,11 +462,11 @@ p2 = ggplot(mycorrs, aes(x = xorder, y = corr, fill=Disorders)) +
                      labels = col_labels,
                      drop=FALSE)
 
-ggarrange(p1, p2, common.legend = T, legend='right',
+ggarrange(p1, p2, common.legend = T, legend='right', nrow=2, ncol=1,
           legend.grob=get_legend(p2)) 
 ```
 
-![](images/2021-05-27-17-36-10.png)
+![](images/2021-05-27-17-39-04.png)
 
 
 
