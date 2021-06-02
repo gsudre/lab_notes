@@ -469,6 +469,290 @@ ggarrange(p1, p2, common.legend = T, legend='right', nrow=2, ncol=1,
 ![](images/2021-05-27-17-39-04.png)
 
 
+# 2021-06-01 11:26:45
+
+
+## MAGMA plots
+
+```r
+library(corrplot)
+res = readRDS('~/data/post_mortem/all_res.rds')
+res = res[res$POP == 'BW', c('REGION', 'DISORDER', 'P')]
+res = res[res$DISORDER != 'ADHD', ]
+# AUD and AD are too similar. Keeping AUD as it reproduces in WNH
+res = res[res$DISORDER != 'AD', ]
+
+plot_mat = matrix(nrow=2, ncol=length(unique(res$DISORDER)))
+colnames(plot_mat) = unique(res$DISORDER)
+rownames(plot_mat) = unique(res$REGION)
+pvals = plot_mat
+for (i in 1:nrow(res)) {
+    plot_mat[res[i, 'REGION'], res[i, 'DISORDER']] = -log10(res[i, 'P'])
+    pvals[res[i, 'REGION'], res[i, 'DISORDER']] = res[i, 'P']
+}
+quartz()
+par(mfrow=c(2,1))
+corrplot(plot_mat, is.corr=F, tl.col='black', p.mat = pvals, sig.level = .05,
+         cl.lim=c(0,8.5), cl.length=2, cl.align.text='l', cl.offset=.2)
+title('Entire cohort')
+
+res = readRDS('~/data/post_mortem/all_res.rds')
+res = res[res$POP == 'WNH', c('REGION', 'DISORDER', 'P')]
+res = res[res$DISORDER != 'ADHD', ]
+# AUD and AD are too similar. Keeping AUD as it reproduces in WNH
+res = res[res$DISORDER != 'AD', ]
+
+plot_mat = matrix(nrow=2, ncol=length(unique(res$DISORDER)))
+colnames(plot_mat) = unique(res$DISORDER)
+rownames(plot_mat) = unique(res$REGION)
+pvals = plot_mat
+for (i in 1:nrow(res)) {
+    plot_mat[res[i, 'REGION'], res[i, 'DISORDER']] = -log10(res[i, 'P'])
+    pvals[res[i, 'REGION'], res[i, 'DISORDER']] = res[i, 'P']
+}
+corrplot(plot_mat, is.corr=F, tl.col='black', p.mat = pvals, sig.level = .05,
+         cl.lim=c(0,8.5), cl.length=2, cl.align.text='l', cl.offset=.2)
+title('White non-Hispanics only')
+```
+
+The main figure in the text is just a cropped version of this one.
+
+![](images/2021-06-01-13-48-59.png)
+
+
+# 2021-06-02 07:23:39
+
+# Subpopulation plots
+
+```r
+data = readRDS('~/data/rnaseq_derek/complete_rawCountData_05132020.rds')
+rownames(data) = data$submitted_name  # just to ensure compatibility later
+data = data[!duplicated(data$hbcc_brain_id),]
+data = data[, !grepl(colnames(data), pattern='^ENS')]
+data$Diagnosis = factor(data$Diagnosis, levels=c('Control', 'Case'))
+data$POP_CODE = as.character(data$POP_CODE)
+idx = which(data$POP_CODE == 'AA')
+data[idx, 'POP_CODE'] = 'African-American'
+idx = which(data$POP_CODE == 'WNH')
+data[idx, 'POP_CODE'] = 'White non-Hispanic'
+idx = which(data$POP_CODE == 'WH')
+data[idx, 'POP_CODE'] = 'White Hispanic'
+
+data$POP_CODE = factor(data$POP_CODE)
+imWNH = data$C1 > 0 & data$C2 < -.075
+
+quartz()
+library(ggplot2)
+ggplot(data, aes(x=C1, y=C2, color=POP_CODE)) + geom_point() +
+    geom_vline(aes(xintercept=0), color='red', linetype='dashed') +
+    geom_hline(aes(yintercept=-.075), color='red', linetype='dashed') +
+    labs(color='Sub-populations')
+```
+
+![](images/2021-06-02-07-27-22.png)
+
+
+## Comparison of WNH and main developmental results
+
+```r
+library(corrplot)
+keep_me = c("dev1_c0.900_devSpec_regSpec", "dev2_c0.900_devSpec_regSpec",
+            "dev3_c0.900_devSpec_regSpec", "dev4_c0.900_devSpec_regSpec",
+            "dev5_c0.900_devSpec_regSpec", "overlap_c0.900_regSpec")
+ncomps = 1
+db = 'manySets_co0_900'
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              c('overlap', res$link[1:5])))
+pvals = df
+i = 1
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-5
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = res
+
+i = 2
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-5
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+mylim = max(abs(df))
+colnames(df)[1] = 'pan-developmental'
+
+# i checked and it comes out in the correct order
+pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
+
+quartz()
+# just to get significant ones
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
+df_main = df
+
+# grabbing WNH results
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              c('overlap', res$link[1:5])))
+pvals = df
+i = 1
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-5
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = res
+
+i = 2
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-5
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+mylim = max(abs(df))
+colnames(df)[1] = 'pan-developmental'
+
+# i checked and it comes out in the correct order
+pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
+
+quartz()
+# just to get significant ones
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
+
+
+# making both plots side by side
+# no stars
+quartz()
+par(mfrow=c(2, 1))
+corrplot(df_main, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
+         cl.length=3, cl.align.text='l', cl.offset=.2)
+title('Entire cohort')
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
+         cl.length=3, cl.align.text='l', cl.offset=.2)
+title('White non-Hispanics only')
+```
+
+![](images/2021-06-02-07-46-21.png)
+
+## Comparative DGE p-value picture
+
+```r
+orig = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
+wnh = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
+m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+imnamed = which(m$hgnc_symbol.orig != '')
+m$gene_str = m$GENEID
+m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
+
+imgood = which(m$padj.FDR.orig < .05) 
+df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
+colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
+plot_df = reshape2::melt(df)
+colnames(plot_df)[2] = 'Groups' 
+
+library(ggplot2)
+quartz()
+p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank()) +
+    ggtitle('ACC') + 
+    ylab(bquote(~-Log[10]~italic(P))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+
+orig = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
+wnh = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
+m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+imnamed = which(m$hgnc_symbol.orig != '')
+m$gene_str = m$GENEID
+m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
+
+imgood = which(m$padj.FDR.orig < .05) 
+df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
+colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
+plot_df = reshape2::melt(df)
+colnames(plot_df)[2] = 'Groups' 
+
+p2 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank()) +
+    ggtitle('Caudate') + 
+    ylab(bquote(~-Log[10]~italic(P))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+
+library(ggpubr)
+ggarrange(p1, p2, common.legend = T, legend='right', nrow=1, ncol=2,
+          legend.grob=get_legend(p1)) 
+```
+
+
 
 
 
