@@ -701,6 +701,10 @@ title('White non-Hispanics only')
 ## Comparative DGE p-value picture
 
 ```r
+library(ggplot2)
+library(ggpubr)
+quartz()
+
 orig = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
 wnh = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
 m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
@@ -714,8 +718,6 @@ colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
 plot_df = reshape2::melt(df)
 colnames(plot_df)[2] = 'Groups' 
 
-library(ggplot2)
-quartz()
 p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
     geom_bar(stat="identity", position=position_dodge()) +
     theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
@@ -724,6 +726,7 @@ p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
     ylab(bquote(~-Log[10]~italic(P))) +
     geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
     geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+mylim = max(-log10(plot_df$value))
 
 orig = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
 wnh = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
@@ -739,17 +742,17 @@ plot_df = reshape2::melt(df)
 colnames(plot_df)[2] = 'Groups' 
 
 p2 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
-    geom_bar(stat="identity", position=position_dodge()) +
+    geom_bar(stat="identity", position=position_dodge()) + ylim(c(0, mylim)) +
     theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
-          axis.title.x = element_blank()) +
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          plot.margin = margin(5.5, 5.5, 50, 5.5, "pt")) +
     ggtitle('Caudate') + 
-    ylab(bquote(~-Log[10]~italic(P))) +
     geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
     geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
 
-library(ggpubr)
 ggarrange(p1, p2, common.legend = T, legend='right', nrow=1, ncol=2,
-          legend.grob=get_legend(p1)) 
+          legend.grob=get_legend(p1), widths=c(.885, .115)) 
 ```
 
 
