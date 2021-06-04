@@ -1204,24 +1204,228 @@ one.data$plot_X <- as.numeric( as.character(one.data$plot_X) );
 one.data$plot_Y <- as.numeric( as.character(one.data$plot_Y) );
 one.data$plot_size <- as.numeric( as.character(one.data$plot_size) );
 # data$value is already log10(pvalue)!
-one.data$value <- as.numeric( as.character(one.data$value) );
+one.data$value <- -as.numeric( as.character(one.data$value) );
 one.data$frequency <- as.numeric( as.character(one.data$frequency) );
 one.data$uniqueness <- as.numeric( as.character(one.data$uniqueness) );
 one.data$dispensability <- as.numeric( as.character(one.data$dispensability) );
 
+#p-value for 0 shouldn't be -300
+one.data$value[one.data$value == 300] = -log10(1e-4)
 p1 <- ggplot( data = one.data );
 p1 <- p1 + geom_point( aes( plot_X, plot_Y, colour = value, size = plot_size), alpha = I(0.6) ) + scale_size_area();
-p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$value), 0) );
+p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$value), max(one.data$value)));
 p1 <- p1 + geom_point( aes(plot_X, plot_Y, size = plot_size), shape = 21, fill = "transparent", colour = I (alpha ("black", 0.6) )) + scale_size_area();
 p1 <- p1 + scale_size( range=c(5, 30)) + theme_bw(); # + scale_fill_gradientn(colours = heat_hcl(7), limits = c(-300, 0) );
 ex <- one.data [ one.data$dispensability < 0.15, ];
-p1 <- p1 + geom_text( data = ex, aes(plot_X, plot_Y, label = description), colour = I(alpha("black", 0.85)), size = 3 );
+p1 <- p1 + geom_label( data = ex, aes(plot_X, plot_Y, label = description), colour = I(alpha("black", 1)), size = 3 , fill='white');
 p1 <- p1 + labs (y = "semantic space x", x = "semantic space y");
 p1 <- p1 + theme(legend.key = element_blank()) ;
 one.x_range = max(one.data$plot_X) - min(one.data$plot_X);
 one.y_range = max(one.data$plot_Y) - min(one.data$plot_Y);
 p1 <- p1 + xlim(min(one.data$plot_X)-one.x_range/10,max(one.data$plot_X)+one.x_range/10);
-p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10);
+p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10) + labs(size = bquote(~-Log[10]~italic(P)),
+                   colour=bquote(~-Log[10]~italic(P)))
 
 p1;
+```
+
+![](images/2021-06-03-11-05-05.png)
+
+
+## All significant Cellular Component
+
+## Top 10 Cellular components
+
+```r
+tsize = 16
+ysize = 10
+xsize = 10
+msize = 1.5
+
+df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
+df = df[df$FDR < .05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+color_me = c('neuron spine', 'synaptic membrane', 'glutamatergic synapse',
+             'postsynaptic specialization', 'neuron to neuron synapse',
+             'Schaffer collateral - CA1 synapse', 'axon part',
+             'GABA-ergic synapse', 'presynapse',
+             'neuron projection terminus', 'dendritic shaft',
+             'neuronal cell body', 'neuromuscular junction', 'coated membrane',
+             'myelin sheath', 'excitatory synapse')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df$Behavior = 'Upregulated'
+df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
+df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
+df = df[df$FDR < .05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+
+color_me = c('nothing')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize),
+          plot.margin = margin(5.5, 80, 270, 5.5, "pt")) +
+    scale_fill_discrete(drop = FALSE)
+
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
+print(p)
+```
+
+![](images/2021-06-03-11-55-45.png)
+
+# Specific genes of a given pathway
+
+```r
+mydir = '~/data/post_mortem/'
+fname = 'WG32_DGE_ACC_bigger_geneontology_Molecular_Function_noRedundant'
+df = read.csv(sprintf('%s/%s_10K.csv', mydir, fname))
+genes = df[df$description=='neurotransmitter receptor activity', 'userId']
+gene_list.acc = strsplit(genes, ';')[[1]]
+
+fname = 'WG32_DGE_Caudate_bigger_geneontology_Molecular_Function_noRedundant'
+df = read.csv(sprintf('%s/%s_10K.csv', mydir, fname))
+genes = df[df$description=='neurotransmitter receptor activity', 'userId']
+gene_list.caudate = strsplit(genes, ';')[[1]]
+
+gene_list = intersect(gene_list.acc, gene_list.caudate)
+
+load('~/data/post_mortem/pca_DGE_bigger_04292021.RData')
+
+r = 'ACC'
+res_str = sprintf('dds = dds.%s', r)
+eval(parse(text=res_str))
+
+library(DESeq2)
+vsd <- vst(dds, blind=FALSE)
+norm.cts <- assay(vsd)
+covars = model.matrix(~ RINe + C1 + BBB2 + comorbid_group + SUB2,
+                      data=colData(dds))
+dsn = model.matrix(~ Diagnosis, data=colData(dds))
+mat <- limma::removeBatchEffect(norm.cts, covariates=covars, design=dsn)
+
+gnames = data.frame(full=rownames(counts(dds)),
+                    nov=substr(rownames(counts(dds)), 1, 15))
+mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
+gnames = merge(gnames, mart, by.x='nov', by.y='ensembl_gene_id')
+keep_me = gnames$nov %in% gene_list
+gene_ids = gnames[keep_me, ]
+
+resid_expr = reshape2::melt(mat[gene_ids$full,])
+colnames(resid_expr) = c('gene', 'submitted_name', 'normCount')
+junk = colData(vsd)[, c('Diagnosis', 'submitted_name')]
+resid_expr = merge(resid_expr, junk, by='submitted_name')
+resid_expr = merge(resid_expr, gene_ids, by.x='gene', by.y='full')
+
+# plotting each of the significant genes
+library(ggpubr)
+library(ggbeeswarm)
+myplots = list()
+clrs = c("green3", "red")
+for (g in 1:length(gene_list)) {
+    hgnc = gene_ids[g, 'hgnc_symbol']
+    if (hgnc == '' || is.na(hgnc)) {
+        hgnc = gene_ids[g, 'nov']
+    }
+    cat(gene_ids[g, 'nov'], hgnc, '\n')
+    d = as.data.frame(resid_expr[resid_expr$nov == gene_list[g],])
+    p = (ggplot(d, aes(x=Diagnosis, y=normCount, color = Diagnosis,
+                        fill = Diagnosis)) + 
+            scale_y_log10() +
+            geom_boxplot(alpha = 0.4, outlier.shape = '+', width = 0.8,
+                        lwd = 0.5, notch=T) +
+            scale_color_manual(values = clrs, labels=c('Unaffected', 'ADHD')) +
+            scale_fill_manual(values = clrs, labels=c('Unaffected', 'ADHD')) +
+            theme_bw() + theme(axis.text.x = element_blank(),
+                               axis.title.x = element_blank(),
+                               axis.ticks.x = element_blank(),
+                               axis.title.y = element_blank(),) +
+            ggtitle(hgnc))
+    myplots[[g]] = p + theme(legend.position = "none")
+}
+p = ggarrange(plotlist=myplots, common.legend=T, legend='right')
+print(p)
+```
+
+![](images/2021-06-03-12-58-44.png)
+
+
+# 2021-06-04 14:02:51
+
+## DGE overlap
+
+```r
+res = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
+res2 = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
+tmp = intersect(res[which(res$padj.FDR < .05), 'hgnc_symbol'],
+                res2[which(res2$padj.FDR < .05), 'hgnc_symbol'])
+tmp = intersect(res[which(res$padj.FDR < .1), 'hgnc_symbol'],
+                res2[which(res2$padj.FDR < .1), 'hgnc_symbol'])
+
+res = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
+res2 = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
+tmp = intersect(res[which(res$padj.FDR < .05), 'hgnc_symbol'],
+                res2[which(res2$padj.FDR < .05), 'hgnc_symbol'])
+tmp = intersect(res[which(res$padj.FDR < .1), 'hgnc_symbol'],
+                res2[which(res2$padj.FDR < .1), 'hgnc_symbol'])
+```
+
+## ACC and caudate surface views
+
+Those were a bitch to make. I ended up using SUMA. First, convert the FSL labels
+to SUMA surfaces:
+
+```bash
+# laptop
+cd /usr/local/fsl/data/atlases;
+IsoSurface -isorois -input HarvardOxford/HarvardOxford-sub-maxprob-thr50-1mm.nii.gz -o_gii ~/tmp/auto.all;
+suma -onestate -i auto.all.k16.gii auto.all.k2.gii
+# draw ROIs by hand in SUMA and save them
+ROI2dataset -prefix acc -input acc.niml.roi 
+ROI2dataset -prefix caudate -input caudate.niml.roi
+# reload the ROIs in SUMA and use whatever color you want
 ```
