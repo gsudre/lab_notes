@@ -111,5 +111,36 @@ ggplot(data = m, aes(x = date_scan, y = mean_fa, color=seq)) +
 
 Still not much... what if I only plot the second bit of the plot?
 
+# 2021-06-07 13:31:25
 
+```r
+library(lubridate)
+ggplot(data = m[m$date_scan > ymd(20160801), ],
+       aes(x = date_scan, y = tract_mean_fa, color=seq)) + geom_point() +
+       ylim(.25, .37)
+```
 
+![](images/2021-06-07-13-33-51.png)
+
+```r
+ggplot(data = m[m$date_scan > ymd(20160801), ],
+       aes(x = date_scan, y = mean_fa, color=seq)) + geom_point()
+```
+
+![](images/2021-06-07-13-34-53.png)
+
+```r
+ggplot(data = m[m$date_scan > ymd(20160801), ],
+       aes(x = date_scan, y = mean_ad, color=seq)) + geom_point()
+ggplot(data = m,
+       aes(x = date_scan, y = mean_ad, color=seq)) + geom_point()
+
+ad_cols = which(grepl(colnames(ncr), pattern='^AD'))
+m$tract_mean_ad = rowMeans(m[, ad_cols], na.rm=T)
+ggplot(data = m,
+       aes(x = date_scan, y = tract_mean_ad, color=seq)) + geom_point()
+
+```
+
+![](images/2021-06-07-13-39-52.png)
+![](images/2021-06-07-13-41-55.png)
