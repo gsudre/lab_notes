@@ -192,6 +192,23 @@ docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
     group --no-sub
 ```
 
+# 2021-06-10 20:38:35
+
+Quick update on the wrapper. Now, the swarm call should be something like:
+
+```bash
+main_bids=/data/NCR_SBRB/OCR/OCR_BIDS/;
+out_mriqc=/scratch/sudregp/mriqc_output;
+
+ls -1 $main_bids | sed "s/sub\-//" > ~/tmp/scan_ids.txt;
+
+for m in `head ~/tmp/scan_ids.txt`; do
+    echo "bash ~/research_code/mriqc_wrapper.sh $m $main_bids $out_mriqc " >> swarm.bids;
+done
+swarm -g 10 -t 4 --logdir trash_mriqc --gres=lscratch:10 --time 45:00 -f swarm.bids \
+    --partition quick,norm --job-name mriqc -m mriqc/0.16.1
+```
+
 # TODO
 * Run MRIQC on all our data (collect it)
 * Run Tonya's script on all our data

@@ -417,7 +417,7 @@ fm <- brm(as.formula(fm_str),
           data=dat, family='student', chains = nch, iter=nit,
           control = list(adapt_delta = 0.99, max_treedepth = 20),
           backend = "rstan")
-nsave.image(file=out_fname)
+save.image(file=out_fname)
 ```
 
 It's taking forever in the warmup step. But that's not just in rstan backedn...
@@ -435,9 +435,9 @@ require(brms)
 require(ggplot2)
 source('~/research_code/stackOrdered.R')
 
-for (m in c('FA', 'AD', 'RD')) {
-    for (it in c('', 'Slope')) {
-        froot = sprintf('%s_clean_rndIntercept%s', m, it)
+for (it in c('', 'Slope')) {
+    for (m in c('FA', 'AD', 'RD')) {
+        froot = sprintf('%s_cleanLong_rndIntercept%s', m, it)
         cat(froot, '\n')
         load(sprintf('~/data/bayesian/%s.RData', froot))
         ns <- 2000
@@ -484,7 +484,7 @@ for (md in c('FA', 'AD', 'RD')) {
 res.df = data.frame(res)
 colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
                      'deviance', 'formula')
-write.csv(res.df, file='~/data/bayesian/univar_allLong_rndIntercept.csv',
+write.csv(res.df, file='~/data/bayesian/univar_allLong_rndInterceptSlope.csv',
           row.names=F)
 print(res.df[res.df$pval_grp < .05, 1:3])
 ```
@@ -651,8 +651,8 @@ dat <- read.csv('~/data/long_data_for_gang_with_FAMID_clean.csv', header=T)
 dat$famID <- as.factor(dat$famID) # 277 families
 dat$SID <- as.factor(dat$SID) # 415 subjects
 dd <- dat[complete.cases(dat), ] # 10670 observations remaining
-dd <- dat[complete.cases(dat), ] # 20053 observations remaining
 long_subjs = names(table(dd$SID))[table(dd$SID)>=22]
+dd = dd[dd$SID %in% long_subjs, ]
 dd$grp <- ifelse(dd$group=='NV', -0.5, 0.5)  # dummy code group
 dd$GA <- dd$grp*dd$age_scan   # group-by-age interaction
  
