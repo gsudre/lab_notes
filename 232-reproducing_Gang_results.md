@@ -49,28 +49,18 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_all_rndIntercept.csv',
           row.names=F)
 ```
 
-```
-r$> # quick assessment 
-    res.df[res.df$pval_grp < .05, 1:3]
-        prop     tract             pval_grp
-temp.6    FA right_ifo   0.0128237473046893
-temp.8    FA right_slf   0.0243673966451264
-temp.23   RD  left_ifo  0.00694181538202031
-temp.28   RD right_ifo   0.0014938787235355
-temp.30   RD right_slf 0.000256452532878001
-temp.31   RD right_unc  0.00163695177969821
-```
 
 ## Clean data, univariate, random intercept only
 
@@ -172,28 +162,18 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_clean_rndIntercept.csv',
           row.names=F)
 ```
 
-```
-r$> # quick assessment 
-    res.df[res.df$pval_grp < .05, 1:3]
-        prop     tract            pval_grp
-temp      FA  left_cst  0.0146252351616683
-temp.2    FA  left_ilf  0.0133132661423609
-temp.7    FA right_ilf  0.0141072577552538
-temp.13   AD  left_ilf 0.00051669816065722
-temp.29   RD right_ilf  0.0435892170760677
-temp.31   RD right_unc  0.0495423982674764
-```
 
 Results change a bit from using all data points. 
 
@@ -211,23 +191,16 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_clean_rndInterceptSlope.csv',
           row.names=F)
-print(res.df[res.df$pval_grp < .05, 1:3])
-```
-
-```
-        prop    tract           pval_grp
-temp      FA left_cst 0.0215027658358196
-temp.2    FA left_ilf 0.0199250826036848
-temp.13   AD left_ilf 0.0103914545675075
 ```
 
 
@@ -477,16 +450,16 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_allLong_rndInterceptSlope.csv',
           row.names=F)
-print(res.df[res.df$pval_grp < .05, 1:3])
 ```
 
 Got several singular issues, but it ran without crashing errors. Nothing with
@@ -509,40 +482,16 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_allLong_rndIntercept.csv',
           row.names=F)
-print(res.df[res.df$pval_grp < .05, 1:3])
-```
-
-A few warnings that the model didn't converge, but lots of results p < .05:
-
-```
-        prop     tract             pval_grp
-temp      FA  left_cst   0.0316321241337544
-temp.1    FA  left_ifo   0.0337826201828238
-temp.2    FA  left_ilf   0.0433848055434377
-temp.3    FA  left_slf   0.0231147443920181
-temp.4    FA  left_unc   0.0326683982040515
-temp.5    FA right_cst   0.0130615344944267
-temp.6    FA right_ifo   0.0251524701096188
-temp.7    FA right_ilf  0.00549799020703181
-temp.8    FA right_slf   0.0238289894786366
-temp.9    FA right_unc   0.0178932267213103
-temp.10   FA        cc   0.0396473454287343
-temp.23   RD  left_ifo   0.0291829587974558
-temp.25   RD  left_slf  0.00448023186489197
-temp.26   RD  left_unc   0.0123828097616283
-temp.28   RD right_ifo   0.0114010177064767
-temp.29   RD right_ilf 0.000127576266537002
-temp.30   RD right_slf  0.00516034212602674
-temp.31   RD right_unc 0.000502365259487459
 ```
 
 ## Clean data, longitudinal only, univariate, random intercept only
@@ -571,22 +520,16 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_cleanLong_rndIntercept.csv',
           row.names=F)
-print(res.df[res.df$pval_grp < .05, 1:3])
-```
-
-```
-        prop     tract            pval_grp
-temp.13   AD  left_ilf 0.00579010277909848
-temp.31   RD right_unc  0.0200698648576646
 ```
 
 ## Clean data, univariate, random intercept and slope
@@ -601,24 +544,16 @@ for (md in c('FA', 'AD', 'RD')) {
         this_data = dd[dd$tract == tr, ]
         fit = lmer(fm, data=this_data, REML = FALSE)
         p = Anova(fit)
-        temp = c(md, tr, p[1,3], summary(fit)$AIC[1:4], fm_str)
+        temp = c(md, tr, p['GA',3], summary(fit)$AIC[1:4],
+                 summary(fit)$coefficients['GA',1:2], fm_str)
         res = rbind(res, temp)
     }
 }
 res.df = data.frame(res)
-colnames(res.df) = c('prop', 'tract', 'pval_grp', 'AIC', 'BIC', 'logLik',
-                     'deviance', 'formula')
+colnames(res.df) = c('prop', 'tract', 'pval_GA', 'AIC', 'BIC', 'logLik',
+                     'deviance', 'Estimate', 'StdError', 'formula')
 write.csv(res.df, file='~/data/bayesian/univar_cleanLong_rndInterceptSlope.csv',
           row.names=F)
-print(res.df[res.df$pval_grp < .05, 1:3])
-```
-
-Lots of singular warnings and model not converging. Still...
-
-```
-        prop    tract           pval_grp
-temp      FA left_cst 0.0430661303801234
-temp.13   AD left_ilf 0.0403563164388045
 ```
 
 # All longitudinal data, Bayesian model, random intercept only
@@ -667,6 +602,11 @@ for (m in mds) {
 ```
 
 These shouldn't take very long, because it's way less data than before.
+
+# 2021-06-14 17:21:40
+
+Let's also create some data density plots to show how it changes as we cleaned
+the data.
 
 
 
@@ -750,3 +690,4 @@ ps <- apply(ge[['tract']][,,'GA'], 2, '+', pe[,'GA'])
 source('~/stackOrdered.R')
 stackPlot(ps, range(ps), 'RD-GA')
 ```
+
