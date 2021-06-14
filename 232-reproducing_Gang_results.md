@@ -608,8 +608,59 @@ These shouldn't take very long, because it's way less data than before.
 Let's also create some data density plots to show how it changes as we cleaned
 the data.
 
+```r
+dat <- read.csv('~/data/long_data_for_gang_with_FAMID.csv', header=T)
+dat$status = 'all'
+datc <- read.csv('~/data/long_data_for_gang_with_FAMID_clean.csv', header=T)
+datc$status = 'clean'
+datc$grp = NULL
+datc$GA=NULL
+df = rbind(dat, datc)
 
+quartz()
+myplots = list()
+cnt = 1
+for (m in c('FA', 'AD', 'RD')) {
+    df$x = df[, m]
+    p = ggplot(df, aes(x=x, fill=status)) + geom_density(alpha=0.4) +
+        labs(x=m)
+    myplots[[cnt]] = p
+    cnt = cnt + 1
+}
 
+dat <- read.csv('~/data/long_data_for_gang_with_FAMID.csv', header=T)
+dat$status = 'all'
+datl <- read.csv('~/data/long_data_for_gang_with_FAMID.csv', header=T)
+datl$status = 'all_long'
+long_subjs = names(table(datl$SID))[table(datl$SID)>=22]
+datl = datl[datl$SID %in% long_subjs, ]
+df = rbind(dat, datl)
+for (m in c('FA', 'AD', 'RD')) {
+    df$x = df[, m]
+    p = ggplot(df, aes(x=x, fill=status)) + geom_density(alpha=0.4) +
+        labs(x=m)
+    myplots[[cnt]] = p
+    cnt = cnt + 1
+}
+
+dat <- read.csv('~/data/long_data_for_gang_with_FAMID_clean.csv', header=T)
+dat$status = 'clean'
+datl <- read.csv('~/data/long_data_for_gang_with_FAMID_clean.csv', header=T)
+datl$status = 'clean_long'
+long_subjs = names(table(datl$SID))[table(datl$SID)>=22]
+datl = datl[datl$SID %in% long_subjs, ]
+df = rbind(dat, datl)
+for (m in c('FA', 'AD', 'RD')) {
+    df$x = df[, m]
+    p = ggplot(df, aes(x=x, fill=status)) + geom_density(alpha=0.4) +
+        labs(x=m)
+    myplots[[cnt]] = p
+    cnt = cnt + 1
+}
+
+library(ggpubr)
+ggarrange(plotlist=myplots, nrow=3, ncol=3)
+```
 
 # TODO
  * I saw this: "Ensure that the data is randomly sorted such that consecutive
