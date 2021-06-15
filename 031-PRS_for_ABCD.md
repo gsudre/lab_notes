@@ -954,3 +954,121 @@ done
 
 And then we try the imputation server again.
 
+# 2021-06-14 19:27:14
+
+Let's create the exact same stuff, but for ABCD release v3. They are now
+releasing an imputed version too. For the populaion analysis, let's just use the
+regular genotype data though.
+
+I looked at our first two SNPs, and we get:
+
+```
+[sudregp@cn3617 genotype_QCed]$ head ABCD_release_3.0_QCed.bim
+1       rs3131972       0.008   752721  A       G
+1       rs3131962       0.008   756604  A       G
+```
+
+So, according to dbSNP, we're using GRCh37.
+
+```bash
+# interactive
+conda activate base
+cd /data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed
+module load plink/1.9.0-beta4.4
+# used acspsw03.txt to create the update file (it also has FAMIDs). It's the same info in pdem02.txt, and there are the same NAs in both.
+# split-x did not work because dataset already has XY region
+plink --bfile ABCD_release_3.0_QCed --update-sex update_sex.txt \
+    --make-bed --out ABCD_sex;
+plink --bfile ABCD_sex --check-sex;
+```
+
+PLINK found problems, but they were mostly related to the samples without
+pre-dtermined sex. Let's impute it from the genotype data:
+
+```bash
+plink --bfile ABCD_sex --impute-sex --make-bed --out ABCD_imputedSex;
+plink --bfile ABCD_imputedSex --check-sex;
+```
+
+There was only one remaining problem NDAR_INV874HFG94, but it was so close to
+the .2 threshold (0.2033), that I manually changed the .fam to F (2).
+
+I know from acspsw03.txt that there are many twins and other familial
+relationships. I won't need the IBD data for now, so let's just go ahead and
+compute the PCs according to the ENIGMA pipeline:
+
+```bash
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bed.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.bim.gz"
+wget "http://genepi.qimr.edu.au/staff/sarahMe/enigma/MDS/HM3_b37.fam.gz"
+# Filter SNPs out from your dataset which do not meet Quality Control criteria
+# (Minor Allele Frequency < 0.01; Genotype Call Rate < 95%; Hardy­Weinberg
+# Equilibrium < 1x10­6)
+export datafileraw=ABCD_imputedSex
+plink --bfile $datafileraw --hwe 1e-6 --geno 0.05 --maf 0.01 --noweb \
+      --make-bed --out ${datafileraw}_filtered
+# Unzip the HM3 genotypes. Prepare the HM3 and the raw genotype data by
+# extracting only snps that are in common between the two genotype data sets
+# this avoids exhausting the system memory. We are also removing the strand
+# ambiguous snps from the genotyped data set to avoid strand mismatch among
+# these snps. Your genotype files should be filtered to remove markers which
+# do not satisfy the quality control criteria above.
+gunzip HM3_b37*.gz
+export datafile=${datafileraw}_filtered
+awk '{print $2}' HM3_b37.bim > HM3_b37.snplist.txt
+plink --bfile ${datafile} --extract HM3_b37.snplist.txt --make-bed --noweb --out local
+awk '{ if (($5=="T" && $6=="A")||($5=="A" && $6=="T")||($5=="C" && $6=="G")||($5=="G" && $6=="C")) print $2, "ambig" ; else print $2 ;}' $datafile.bim | grep -v ambig > local.snplist.txt
+plink --bfile HM3_b37 --extract local.snplist.txt --make-bed --noweb --out external
+# Merge the two sets of plink files. In merging the two files plink will check
+# for strand differences. If any strand differences are found plink will crash
+# with the following error (ERROR: Stopping due to mis­matching SNPs - check +/­
+# strand?). Ignore warnings regarding different physical positions
+plink --bfile local --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# got the error
+plink --bfile local --flip HM3_b37merge-merge.missnp --make-bed --noweb \
+  --out flipped
+plink --bfile flipped --bmerge external.bed external.bim external.fam \
+  --make-bed --noweb --out HM3_b37merge
+# running MDS analysis... switching to 10 dimensions to conform to old analysis
+plink --bfile HM3_b37merge --cluster --mind .05 --mds-plot 10 \
+  --extract local.snplist.txt --noweb --out HM3_b37mds
+# making the MDS plot
+awk 'BEGIN{OFS=","};{print $1, $2, $3, $4, $5, $6, $7}' HM3_b37mds.mds >> HM3_b37mds2R.mds.csv
+```
+
+Then, I made the plot locally:
+
+```R
+library(calibrate)
+mds.cluster = read.csv("~/tmp/HM3_b37mds2R.mds.csv", header=T);
+colors=rep("red",length(mds.cluster$C1));
+colors[which(mds.cluster$FID == "CEU")] <- "lightblue";
+colors[which(mds.cluster$FID == "CHB")] <- "brown";
+colors[which(mds.cluster$FID == "YRI")] <- "yellow";
+colors[which(mds.cluster$FID == "TSI")] <- "green";
+colors[which(mds.cluster$FID == "JPT")] <- "purple";
+colors[which(mds.cluster$FID == "CHD")] <- "orange";
+colors[which(mds.cluster$FID == "MEX")] <- "grey50";
+colors[which(mds.cluster$FID == "GIH")] <- "black";
+colors[which(mds.cluster$FID == "ASW")] <- "darkolivegreen";
+colors[which(mds.cluster$FID == "LWK")] <- "magenta";
+colors[which(mds.cluster$FID == "MKK")] <- "darkblue";
+# pdf(file="mdsplot.pdf",width=7,height=7)
+plot(rev(mds.cluster$C2), rev(mds.cluster$C1), col=rev(colors),
+         ylab="Dimension 1", xlab="Dimension 2",pch=20)
+legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
+                     "MEX", "GIH", "ASW","LWK", "MKK"),
+       fill=c("red", "lightblue", "brown", "yellow", "green", "purple",
+              "orange", "grey50", "black", "darkolivegreen", "magenta",
+              "darkblue"))
+# if you want to know the subject ID label of each sample on the graph,
+# uncomment the value below
+# FIDlabels <- c("CEU", "CHB", "YRI", "TSI", "JPT", "CHD", "MEX", "GIH", "ASW",
+#                "LWK", "MKK");
+# textxy(mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C2"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "C1"],
+#        mds.cluster[which(!(mds.cluster$FID %in% FIDlabels)), "IID"])
+# dev.off();
+```
+
