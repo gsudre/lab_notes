@@ -25,9 +25,9 @@ mkdir -p ~/tmp
 rm -rf ~/tmp/missing*
 mkdir ~/tmp/missing
 # for example, say we're processing mask ids 2404 to 2435
-for i in {2404..2435}; do echo $i >> ~/tmp/missing.txt; done
-python3 /usr/local/neuro/research_code/lab_mgmt/copy_mprages.py ~/tmp/missing.txt /mnt/shaw/$USER/ ~/tmp/missing/
-cp -rv ~/tmp/missing/* /Volumes/Shaw/best_mprages/
+for i in {2745..2771}; do echo $i >> ~/tmp/missing.txt; done
+python3 /usr/local/neuro/research_code/lab_mgmt/copy_mprages.py ~/tmp/missing.txt /mnt/NCR/$USER/ ~/tmp/missing/
+cp -rv ~/tmp/missing/* /mnt/shaw/$USER/best_mprages/
 scp ~/tmp/missing.txt helix.nih.gov:/scratch/sudregp/mprage/
 scp -r ~/tmp/missing/* helix.nih.gov:/scratch/sudregp/mprage/
 ```

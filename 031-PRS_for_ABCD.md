@@ -1055,9 +1055,9 @@ colors[which(mds.cluster$FID == "ASW")] <- "darkolivegreen";
 colors[which(mds.cluster$FID == "LWK")] <- "magenta";
 colors[which(mds.cluster$FID == "MKK")] <- "darkblue";
 # pdf(file="mdsplot.pdf",width=7,height=7)
-plot(rev(mds.cluster$C2), rev(mds.cluster$C1), col=rev(colors),
+plot(mds.cluster$C2, mds.cluster$C1, col=colors,
          ylab="Dimension 1", xlab="Dimension 2",pch=20)
-legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
+legend("topleft", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
                      "MEX", "GIH", "ASW","LWK", "MKK"),
        fill=c("red", "lightblue", "brown", "yellow", "green", "purple",
               "orange", "grey50", "black", "darkolivegreen", "magenta",
@@ -1072,3 +1072,96 @@ legend("topright", c("My Sample", "CEU", "CHB", "YRI", "TSI", "JPT", "CHD",
 # dev.off();
 ```
 
+![](images/2021-06-15-09-28-38.png)
+
+The dimensions are certainly not as clear cut as with our data. We might need to
+use the proportions from the acspsw03.txt file as main cut-offs, and then just
+use the PCs for covariates.
+
+Let's see if running MDs through KING makes any difference (I see in my notes
+above that PCA won't work in KING):
+
+```bash
+#bw
+/data/NCR_SBRB/software/KING/king --mds --cpus 30 -b ABCD_imputedSex.bed
+```
+
+Then, before we run PRSice we need to convert them to PLINK binary. 
+
+```bash
+# bw
+conda activate base
+module load plink/1.9.0-beta4.4
+cd /data/NCR_SBRB/ABCD_genomics/v3/imputed/
+for c in {1..22}; do echo $c >> chr_list.txt; done
+cat chr_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+    plink --vcf chr{}.dose.vcf.gz --biallelic-only strict \
+        --double-id --make-bed --out chr{};
+```
+
+It only uses one core, so it makes sense to parallelize it this way.
+
+```bash
+cd /data/NCR_SBRB/ABCD_genomics/v3/imputed/
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_jul2017  \
+    --target chr# \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out ABCD_v3_PRS_adhd_jul2017
+```
+
+
+
+
+
+
+
+
+Finally, merge everything:
+
+```r
+# this takes a while because we're reading in TXT files!
+a = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_jun2017.all.score', header=1)
+b = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_eur_jun2017.all.score', header=1)
+s = read.table('/data/NCR_SBRB/ABCD/SCZ.all.score', header=1)
+d = read.table('/data/NCR_SBRB/ABCD/ASD.all.score', header=1)
+pcs = read.table('/data/NCR_SBRB/ABCD/kingpc.ped')
+
+# keep only some of the PRs columns that were created
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4', 'X0.3', 'X0.2')
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHD_PRS%f', x)))
+af = a[, mycols]
+colnames(af) = new_names
+bf = b[, mycols]
+new_names = gsub('ADHD', x=new_names, 'ADHDeur')
+colnames(bf) = new_names
+df = d[, mycols]
+new_names = gsub('ADHDeur', x=new_names, 'ASD')
+colnames(df) = new_names
+mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
+            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
+            'X0.5', 'X0.4001', 'X0.3002', 'X0.2002')
+sf = s[,mycols]
+new_names = gsub('ASD', x=new_names, 'SCZ')
+colnames(sf) = new_names
+
+m = merge(af, bf, by='IID')
+m = merge(m, df, by='IID')
+m = merge(m, sf, by='IID')
+
+pcsf = pcs[, c(2, 7:26)]
+new_names = c('IID', sapply(1:20, function(x) sprintf('PC%.2d', x)))
+colnames(pcsf) = new_names
+m = merge(m, pcsf, by='IID')
+
+m = merge(pcs[, 1:2], m, by.x='V2', by.y='IID')
+colnames(m)[1:2] = c('IID', 'FID')
+write.csv(m, file='/data/NCR_SBRB/ABCD/merged_PRS_08062019.csv', row.names=F)
+```
