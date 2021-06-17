@@ -64,10 +64,10 @@ while read s; do echo "recon-all -make all -s ${s} | tee -a ${s}_freesurfer.log"
 Then, to bring everyone back:
 
 ```bash
-# desktop
+# ncrshell01
 scp helix:~/freesurfer_logs/finished.txt ~/tmp
 while read s; do
-    scp -r helix:~/data/MEG_structural/freesurfer/${s} /Volumes/NCR/freesurfer5.3_subjects/;
+    scp -r helix:~/data/MEG_structural/freesurfer/${s} /mnt/NCR/${USER}/freesurfer5.3_subjects/;
 done < ~/tmp/finished.txt
 ```
 
@@ -79,7 +79,6 @@ while read s; do
     echo $s;
     mv ${s}_freesurfer.log old/;
     rm -rf /scratch/sudregp/mprage/${s};
-    # rm -rf ~/data/MEG_structural/freesurfer/${s};
     mv ~/data/MEG_structural/freesurfer/${s} /data/NCR_SBRB/freesurfer5.3_subjects/
 done < finished.txt
 ```
