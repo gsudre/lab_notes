@@ -1086,6 +1086,8 @@ above that PCA won't work in KING):
 /data/NCR_SBRB/software/KING/king --mds --cpus 30 -b ABCD_imputedSex.bed
 ```
 
+Wow... this took over 26h!
+
 Then, before we run PRSice we need to convert them to PLINK binary. 
 
 ```bash
@@ -1102,6 +1104,7 @@ cat chr_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
 It only uses one core, so it makes sense to parallelize it this way.
 
 ```bash
+module load R
 cd /data/NCR_SBRB/ABCD_genomics/v3/imputed/
 Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
@@ -1113,55 +1116,427 @@ Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --out ABCD_v3_PRS_adhd_jul2017
 ```
 
+These are the default options it runs with:
+
+```
+PRSice 2.3.3 (2020-08-05) 
+https://github.com/choishingwan/PRSice
+(C) 2016-2020 Shing Wan (Sam) Choi and Paul F. O'Reilly
+GNU General Public License v3
+If you use PRSice in any published work, please cite:
+Choi SW, O'Reilly PF.
+PRSice-2: Polygenic Risk Score Software for Biobank-Scale Data.
+GigaScience 8, no. 7 (July 1, 2019)
+2021-06-15 19:46:11
+/data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --a1 A1 \
+    --a2 A2 \
+    --all-score  \
+    --bar-levels 0.001,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+    --base /home/sudregp/data/post_mortem/MAGMA/adhd_jul2017 \
+    --base-info INFO:0.9 \
+    --binary-target T \
+    --bp BP \
+    --chr CHR \
+    --clump-kb 250kb \
+    --clump-p 1.000000 \
+    --clump-r2 0.100000 \
+    --interval 5e-05 \
+    --lower 5e-08 \
+    --no-regress  \
+    --num-auto 22 \
+    --out ABCD_v3_PRS_adhd_jul2017 \
+    --pvalue P \
+    --seed 176381405 \
+    --snp SNP \
+    --stat BETA \
+    --target chr# \
+    --thread 1 \
+    --upper 0.5
+```
+
+I might need to renames the SNPs in the base file:
+
+```bash
+awk '{print "chr"$1":"$3":"$4":"$5}' ~/data/post_mortem/MAGMA/adhd_jul2017 > new_rsids.txt
+paste ~/data/post_mortem/MAGMA/adhd_jul2017 new_rsids.txt > adhd_mod.txt
+```
+
+I then changed the last header to newid.
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod.txt  \
+    --target chr# \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid \
+    --out ABCD_v3_PRS_adhd_jul2017
+```
+
+PRSice didn't like some of the SNPs because they were ambiguous. Let's extract
+just the good ones then:
+
+```bash
+rm -rf chr_list.txt;
+for c in {1..22}; do echo $c >> chr_list.txt; done
+cat chr_list.txt | parallel -j $SLURM_CPUS_PER_TASK --max-args=1 \
+    plink --bfile chr{} --extract ABCD_v3_PRS_adhd_jul2017.valid \
+        --make-bed --out chr{}_valid;
+```
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod.txt  \
+    --target chr#_valid \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid \
+    --out ABCD_v3_PRS_adhd_jul2017
+```
+
+NOT SURE IF THE NAMING OF THE RSIDS IS CORRECT... MAYBE TRY THE OTHER ALLELE
+ORDER AROUND, OR EVEN REPLACE BY ACTUA RSIDS? OR, SHOULD I JUST USE THE
+NON-INPUTED DATA?
+
+# 2021-06-16 05:59:53
+
+For now, let's just run the non-imputed data. I'll figure out how to run the
+imputed in the meanwhile:
 
 
+```bash
+cd /data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_jul2017  \
+    --target ABCD_release_3.0_QCed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out ABCD_v3_PRS_adhd_jul2017
+```
 
+While we wait for PRS on the genotype data, let's go back to the imputed one. Let's use the HRC variables just for renaming, as I can't find a similar file
+for 1KG.
 
+```bash
+wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+gunzip HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+awk '{print $1 ":" $2 " " $3}' HRC.r1-1.GRCh37.wgs.mac5.sites.tab | tail -n +2 > rename_ids.txt 
+cat rename_ids.txt | sort -u -k 1,1 | uniq > unique_rename_ids.txt
+# remove the variant from the name column
+for c in {1..22}; do
+    echo $c;
+    # filtering on MAF and rs
+    zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - >> r2s.txt;
+    awk '$2 > .01 && $3 > .9 { print }' \
+        r2s.txt > chr${c}_rsids_MAFbtp01_rsbtp9.txt;
+    plink --bfile chr${c} --extract chr${c}_rsids_MAFbtp01_rsbtp9.txt \
+        --geno .05 --make-bed --out tmp;
+    # grab just the variant name
+    cut -f 2 tmp.bim > tmp_name.txt;
+    # grab only chr and position, remove chr
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    sed -i -e "s/chr//g" tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile tmp --update-name update_snps1.txt \
+        --make-bed --out tmp2;
+    plink --bfile tmp2 --write-snplist --out all_snps;
+    # remove any duplicated SNPs
+    cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist --out tmp_nodups \
+        --make-bed --noweb;
+    # then remove positional to rs ids
+    plink --bfile tmp_nodups --update-name unique_rename_ids.txt \
+        --make-bed --out chr${c}_genop05MAFbtp01rsbtp9_renamed;
+done
+```
 
+And let's see if this runs in PRSice:
 
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod.txt  \
+    --target chr#_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out ABCD_v3_renamed_PRS_adhd_jul2017
+```
+
+```
+9926406 variant(s) not found in previous data 
+9133 variant(s) with mismatch information 
+48398 variant(s) included 
+
+Start performing clumping 
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 11325 
+```
+
+I could also just rename based on chr and pos, and forget the allele order.
+
+```bash
+for c in {1..22}; do
+    echo $c;
+    # filtering on MAF and rs
+    zcat chr${c}.info.gz | awk '{ print $1,$5,$7 }' - >> r2s.txt;
+    awk '$2 > .01 && $3 > .9 { print }' \
+        r2s.txt > chr${c}_rsids_MAFbtp01_rsbtp9.txt;
+    plink --bfile chr${c} --extract chr${c}_rsids_MAFbtp01_rsbtp9.txt \
+        --geno .05 --make-bed --out tmp;
+    # grab just the variant name
+    cut -f 2 tmp.bim > tmp_name.txt;
+    # grab only chr and position, remove chr
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    sed -i -e "s/chr//g" tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile tmp --update-name update_snps1.txt \
+        --make-bed --out tmp2;
+    plink --bfile tmp2 --write-snplist --out all_snps;
+    # remove any duplicated SNPs
+    cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist \
+        --out chr${c}_rsids_MAFbtp01_rsbtp9_nodups \
+        --make-bed --noweb;
+done
+```
+
+```bash
+awk '{print $1":"$3}' ~/data/post_mortem/MAGMA/adhd_jul2017 > new_rsids.txt;
+paste ~/data/post_mortem/MAGMA/adhd_jul2017 new_rsids.txt > adhd_mod2.txt;
+sed -i -e "s/CHR:BP/newid/" adhd_mod2.txt;
+```
+
+And run PRSice like this:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod2.txt  \
+    --target chr#_rsids_MAFbtp01_rsbtp9_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid\
+    --out ABCD_v3_nodups_PRS_adhd_jul2017 \
+    --extract ABCD_v3_nodups_PRS_adhd_jul2017.valid
+```
+
+I had to run it once to get the .valid list, and then use the extract flag.
+
+```
+Reading 100.00%
+8047420 variant(s) observed in base file, with: 
+1775597 variant(s) excluded based on user input 
+6271823 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+9916299 variant(s) not found in previous data 
+13098 variant(s) with mismatch information 
+54540 variant(s) included 
+
+Start performing clumping 
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 12175 
+```
+
+Now that this is working, let's run the European only sample too:
+
+```bash
+cd /data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_eur_jun2017  \
+    --target ABCD_release_3.0_QCed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress \
+    --out ABCD_v3_PRS_adhd_eur_jun2017
+```
+
+```
+Reading 100.00%
+8094094 variant(s) observed in base file, with: 
+737677 variant(s) with INFO score less than 0.900000 
+1029756 ambiguous variant(s) excluded 
+6326661 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11099 people (0 male(s), 0 female(s)) observed 
+11099 founder(s) included 
+
+Warning: Currently not support haploid chromosome and sex 
+         chromosomes 
+
+212441 variant(s) not found in previous data 
+3167 variant(s) with mismatch information 
+288248 variant(s) included 
+
+Start performing clumping 
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 82860 
+```
+
+And do the same for the imputed data:
+
+```bash
+awk '{print $1":"$3}' ~/data/post_mortem/MAGMA/adhd_eur_jun2017 > new_rsids.txt;
+paste ~/data/post_mortem/MAGMA/adhd_eur_jun2017 new_rsids.txt > adhd_mod3.txt;
+sed -i -e "s/CHR:BP/newid/" adhd_mod3.txt;
+
+module load R
+cd /data/NCR_SBRB/ABCD_genomics/v3/imputed/
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod3.txt  \
+    --target chr#_rsids_MAFbtp01_rsbtp9_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid\
+    --out ABCD_v3_nodups_PRS_adhd_eur_jun2017 \
+    --extract ABCD_v3_nodups_PRS_adhd_eur_jun2017.valid
+```
 
 Finally, merge everything:
 
 ```r
+library(data.table)
 # this takes a while because we're reading in TXT files!
-a = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_jun2017.all.score', header=1)
-b = read.table('/data/NCR_SBRB/ABCD/ABCD_rel2_PRS_adhd_eur_jun2017.all.score', header=1)
-s = read.table('/data/NCR_SBRB/ABCD/SCZ.all.score', header=1)
-d = read.table('/data/NCR_SBRB/ABCD/ASD.all.score', header=1)
-pcs = read.table('/data/NCR_SBRB/ABCD/kingpc.ped')
+raw.eur = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/ABCD_v3_PRS_adhd_eur_jun2017.all_score', header=T, sep=' ')
+raw.all = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/ABCD_v3_PRS_adhd_jul2017.all_score', header=T, sep=' ')
+imp.eur = fread('/data/NCR_SBRB/ABCD_genomics/v3/imputed/ABCD_v3_nodups_PRS_adhd_eur_jun2017.all_score', header=T, sep=' ')
+imp.all = fread('/data/NCR_SBRB/ABCD_genomics/v3/imputed/ABCD_v3_nodups_PRS_adhd_jul2017.all_score', header=T, sep=' ')
+pcs.king = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/kingpc.ped',
+                 header=F, sep=' ')
+pcs.plink = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/HM3_b37mds.mds', header=T, sep=' ')
 
 # keep only some of the PRs columns that were created
-mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
-            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
-            'X0.5', 'X0.4', 'X0.3', 'X0.2')
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.5', 'Pt_0.4', 'Pt_0.3', 'Pt_0.2')
 new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
                               .5, .4, .3, .2),
-                            function(x) sprintf('ADHD_PRS%f', x)))
-af = a[, mycols]
-colnames(af) = new_names
-bf = b[, mycols]
-new_names = gsub('ADHD', x=new_names, 'ADHDeur')
-colnames(bf) = new_names
-df = d[, mycols]
-new_names = gsub('ADHDeur', x=new_names, 'ASD')
-colnames(df) = new_names
-mycols = c('IID', 'X0.00010005', 'X0.00100005', 'X0.01', 'X0.1',
-            'X5.005e.05', 'X0.00050005', 'X0.00500005', 'X0.0500001',
-            'X0.5', 'X0.4001', 'X0.3002', 'X0.2002')
-sf = s[,mycols]
-new_names = gsub('ASD', x=new_names, 'SCZ')
-colnames(sf) = new_names
+                            function(x) sprintf('ADHD_raw_all_PRS%f', x)))
+raw.all.filt = as.data.frame(raw.all)[, mycols]
+colnames(raw.all.filt) = new_names
+new_names = gsub('all', x=new_names, 'eur')
+raw.eur.filt = as.data.frame(raw.eur)[, mycols]
+colnames(raw.eur.filt) = new_names
 
-m = merge(af, bf, by='IID')
-m = merge(m, df, by='IID')
-m = merge(m, sf, by='IID')
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.5', 'Pt_0.4', 'Pt_0.3001', 'Pt_0.2001')
+new_names = gsub('raw', x=new_names, 'imp')
+imp.eur.filt = as.data.frame(imp.eur)[, mycols]
+colnames(imp.eur.filt) = new_names
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.4998', 'Pt_0.4', 'Pt_0.3001', 'Pt_0.2')
+new_names = gsub('eur', x=new_names, 'all')
+imp.all.filt = as.data.frame(imp.all)[, mycols]
+colnames(imp.all.filt) = new_names
 
-pcsf = pcs[, c(2, 7:26)]
-new_names = c('IID', sapply(1:20, function(x) sprintf('PC%.2d', x)))
-colnames(pcsf) = new_names
-m = merge(m, pcsf, by='IID')
+# remove the two bad subjects in the imputed files (from SUBJ_QC_BAD.txt)
+rm_me = which(grepl('NDAR_INVA7RNTEHU', x=imp.all.filt$IID))
+imp.all.filt = imp.all.filt[-rm_me, ]
+imp.eur.filt = imp.eur.filt[-rm_me, ]
+rm_me = which(grepl('NDAR_INVV7NEVHLK', x=imp.all.filt$IID))
+imp.all.filt = imp.all.filt[-rm_me, ]
+imp.eur.filt = imp.eur.filt[-rm_me, ]
+# remove first part of imp IID so we can merge everything
+imp.all.filt$IID2 = sapply(imp.all.filt$IID,
+                           function(x) paste0(strsplit(x, '_')[[1]][2:3],
+                                              collapse='_'))
+imp.eur.filt$IID2 = sapply(imp.eur.filt$IID,
+                           function(x) paste0(strsplit(x, '_')[[1]][2:3],
+                                              collapse='_'))
 
-m = merge(pcs[, 1:2], m, by.x='V2', by.y='IID')
-colnames(m)[1:2] = c('IID', 'FID')
-write.csv(m, file='/data/NCR_SBRB/ABCD/merged_PRS_08062019.csv', row.names=F)
+m = merge(raw.all.filt, raw.eur.filt, by='IID')
+m = merge(m, imp.all.filt, by.x='IID', by.y='IID2', all.x=T, all.y=T)
+m$IID.y = NULL
+m = merge(m, imp.eur.filt, by='IID', by.y='IID2', all.x=T, all.y=T)
+m$IID.y = NULL
+
+pcs.king.filt = pcs.king[, c(2, 7:26)]
+new_names = c('IID', sapply(1:20, function(x) sprintf('kingPC%.2d', x)))
+colnames(pcs.king.filt) = new_names
+m = merge(m, pcs.king.filt, by='IID', all.x=T, all.y=T)
+
+pcs.plink.filt = pcs.plink[, c(2, 4:13)]
+new_names = c('IID', sapply(1:10, function(x) sprintf('plinkPC%.2d', x)))
+colnames(pcs.plink.filt) = new_names
+# don't include the ENIGMA reference population subjects
+m = merge(m, pcs.plink.filt, by='IID', all.x=T, all.y=F)
+
+write.csv(m, file='/data/NCR_SBRB/ABCD_genomics/v3/ABCD_v3_PRS_06172021.csv',
+          row.names=F)
 ```
+
+I'm interested to check out the correlation between the different PRS
+profiles...
+
+```r
+#local
+library(corrplot)
+df = read.csv('/Volumes/Shaw/ABCD/ABCD_v3_PRS_06172021.csv')
+M <- cor(df[, 2:49], use='na.or.complete')
+quartz()
+corrplot(M, method = "circle")
+```
+
+![](images/2021-06-17-11-14-11.png)
+
+Interesting... I was expecting a lot more correlation between raw and imp. It's
+also weird that the non-imputed data used way more variants than the imputed
+data. Non-imputed: 289K included, 83K after clumping. Imputed: 54K included, 12K
+after clumping. I'd expect it to use more variants on the imputed data,
+especially before clumping... let's see what's going on.
+
+Let's try not filtering the imputed data:
+
+```bash
+for c in {1..22}; do
+    echo $c;
+    # grab just the variant name
+    cut -f 2 chr${c}.bim > tmp_name.txt;
+    # grab only chr and position, remove chr
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    sed -i -e "s/chr//g" tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile chr${c} --update-name update_snps1.txt \
+        --make-bed --out tmp2;
+    plink --bfile tmp2 --write-snplist --out all_snps;
+    # remove any duplicated SNPs
+    cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist \
+        --out chr${c}_ren_nodups --make-bed --noweb;
+done
+
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_mod2.txt  \
+    --target chr#_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid\
+    --out ABCD_v3_ren_nodups_PRS_adhd_jul2017 \
+    --extract ABCD_v3_ren_nodups_PRS_adhd_jul2017.valid
+
+
+# TODO:
