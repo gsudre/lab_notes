@@ -1537,6 +1537,8 @@ Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --no-regress --snp newid\
     --out ABCD_v3_ren_nodups_PRS_adhd_jul2017 \
     --extract ABCD_v3_ren_nodups_PRS_adhd_jul2017.valid
+```
 
+Left this running in BW... did it die?
 
 # TODO:

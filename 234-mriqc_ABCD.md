@@ -70,10 +70,22 @@ for m in `cat /scratch/sudregp/batch?.txt`; do
 done
 ```
 
-Some of the redos were eating too much memory and Biowulf killed them. I might
-need to check why they died first, before retrying. I think some of them don't
-have data in the bids directory? Worth checking until I get the OK to re-run
-them.
+Time to see why the redos are not working. At this point I've run them 2 times,
+with all the memory they should need. Are they not in BIDS?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 While I'm re-running the redos, let's make sure the data collection is still
 working:
