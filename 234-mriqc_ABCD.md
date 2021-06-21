@@ -50,7 +50,7 @@ cd /scratch/sudregp
 
 main_bids=/data/ABCD_MBDU/abcd_bids/bids/;
 out_mriqc=/scratch/sudregp/mriqc_output;
-bname=redo;
+bname=xab;
 
 rm -rf swarm.$bname; 
 for m in `cat ${bname}.txt`; do
@@ -62,9 +62,9 @@ swarm -g 40 -t 4 --logdir trash_mriqc --gres=lscratch:20 --time 4:00:00 \
 
 ```bash
 rm -rf /scratch/sudregp/redo.txt
-for m in `cat /scratch/sudregp/batch?.txt`; do
+for m in `cat /scratch/sudregp/batch*.txt`; do
     nres=`ls /scratch/sudregp/mriqc_output/sub-${m}/ses-*/anat/*json 2>/dev/null | wc -l`;
-    if [[ $nres != 1 ]]; then
+    if [[ $nres == 0 ]]; then
         echo $m >> /scratch/sudregp/redo.txt;
     fi;
 done
@@ -72,6 +72,17 @@ done
 
 Time to see why the redos are not working. At this point I've run them 2 times,
 with all the memory they should need. Are they not in BIDS?
+
+
+# 2021-06-21 11:29:00
+
+While I investigate this, let's run some other batches too. But in meanwhile we
+can check batches 1 through 9 to see why they crashed... it turns out they
+didn't crash... they just had more than 1 file associated with them, and my
+script was crashing. I changed it to zero, and there are no redos. Gotta wait
+now for the last batches running, possibly re-run them, and see how it goes.
+
+
 
 
 
@@ -106,11 +117,15 @@ docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
 
 # directories for mriqc to play with
 mkdir ${TMPDIR}/mriqc_output
-mkdir ${TMPDIR}/mriqc_work
 
-mriqc ${TMPDIR}/BIDS/ ${TMPDIR}/mriqc_output participant \
-    --participant_label ${s} -m T1w --no-sub --n_procs $SLURM_CPUS_PER_TASK \
-    --mem_gb $SLURM_MEM_PER_NODE -w ${TMPDIR}/mriqc_work;
+
+
+module load mriqc/0.16.1
+TMPDIR=/lscratch/$SLURM_JOBID;
+mkdir ${TMPDIR}/mriqc_work;
+mriqc /data/ABCD_MBDU/abcd_bids/bids /scratch/sudregp/mriqc_output \
+    group -m T1w --no-sub \
+    --n_procs 16 --mem_gb 40 -w ${TMPDIR}/mriqc_work;
 
 
 
