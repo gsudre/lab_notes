@@ -1539,6 +1539,64 @@ Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --extract ABCD_v3_ren_nodups_PRS_adhd_jul2017.valid
 ```
 
-Left this running in BW... did it die?
+# 2021-06-21 17:03:28
+
+So, this is using 11977 variants before clumping, and the raw data used 288898.
+That's already a bit weird. I think part of it is that our .valid file removes
+7869443 out of the 8047420, leaving only 177977 to begin with. So, let's focus
+on that step then.
+
+... Actually, I just read that the TOPMED database that ABCD is imputed to is
+aligned to GRCh38! Oh well, that's probably the issue then. 
+
+https://www.nhlbiwgs.org/topmed-whole-genome-sequencing-methods-freeze-9
+
+So, now I need to liftover either the imputed data or the GWAS. Maybe the GWAS will be easier?
+
+```bash
+awk '{print "chr"$1":"$3"-"$3}' ~/data/post_mortem/MAGMA/adhd_jul2017 | tail -n +2 > chr_pos_hg19.txt;
+module load ucsc
+liftOver -positions chr_pos_hg19.txt hg19ToHg38.over.chain.gz chr_pos_hg38.txt unmapped.txt
+```
+
+Now we do some sourcery to remove only the unmapped lines from the GWAS file:
+
+```bash
+awk '{{print "chr"$1":"$3"-"$3}}' ~/data/post_mortem/MAGMA/adhd_jul2017 > new_rsids.txt;
+paste ~/data/post_mortem/MAGMA/adhd_jul2017 new_rsids.txt > adhd_hg19.txt;
+# filter out comments
+grep -v \# unmapped.txt > unmapped_clean.txt;
+bad_lines='';
+# find the number of each line to be removed because they did not map
+for l in `cat unmapped_clean.txt`; do
+    ln=`grep -n $l adhd_hg19.txt | cut -d":" -f 1`;
+    bad_lines=${bad_lines}${ln}'d;';
+done
+# remove them all at the same time to go faster
+sed -i -e "${bad_lines}" adhd_hg19.txt;
+# add in the new ids, mapped to hg38
+echo "hg38_id" > hg38_ids.txt;
+cat chr_pos_hg38.txt >> hg38_ids.txt;
+paste adhd_hg19.txt hg38_ids.txt > adhd_hg38.txt;
+
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38.txt  \
+    --target chr#_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newid\
+    --out ABCD_v3_ren_nodups_hg38_PRS_adhd_jul2017
+
+
+
+    --extract ABCD_v3_ren_nodups_PRS_adhd_jul2017.valid
+
+```
+
+
+
+
+
 
 # TODO:

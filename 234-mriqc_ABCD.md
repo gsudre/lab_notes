@@ -82,51 +82,16 @@ didn't crash... they just had more than 1 file associated with them, and my
 script was crashing. I changed it to zero, and there are no redos. Gotta wait
 now for the last batches running, possibly re-run them, and see how it goes.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-While I'm re-running the redos, let's make sure the data collection is still
-working:
-
-
-
-
-
-
-
+It all ran fine, so then I ran this to collect everything:
 
 ```bash
-#interactive
-docker run -it --rm -v /Volumes/Shaw/NCR_BIDS/:/data:ro \
-    -v /Volumes/Shaw/mriqc_output/:/out poldracklab/mriqc:latest /data /out \
-    group --no-sub
-
-
-# directories for mriqc to play with
-mkdir ${TMPDIR}/mriqc_output
-
-
-
 module load mriqc/0.16.1
 TMPDIR=/lscratch/$SLURM_JOBID;
 mkdir ${TMPDIR}/mriqc_work;
 mriqc /data/ABCD_MBDU/abcd_bids/bids /scratch/sudregp/mriqc_output \
     group -m T1w --no-sub \
     --n_procs 16 --mem_gb 40 -w ${TMPDIR}/mriqc_work;
+```
 
-
-
-**Need to resubmit anything that didn't finish**
+I then rsynced everything from scratch to /data/NCR_SBRB/ABCD_mriqc, and copied
+it to shaw/ABCD/.

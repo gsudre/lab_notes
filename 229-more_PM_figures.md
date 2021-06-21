@@ -1434,7 +1434,10 @@ ROI2dataset -prefix caudate -input caudate.niml.roi
 
 In today's group meeting I showed the current version of the figures, and people
 seemd to enjoy them. There are a few changes that were suggested:
- * Figure 3 and Fig S6-- don’t give up and down regulation ---just the enrichment score.   Color the circles according to whether or not they are neural gene set (the same color as the labels on the y axis in other words).
+ * Figure 3 and Fig S6-- don’t give up and down regulation ---just the
+   enrichment score.   Color the circles according to whether or not they are
+   neural gene set (the same color as the labels on the y axis in other words).
+   But keep label red too.
  * Fig 4: thicker lines between the disorders
  * Fig 1: do only red and grey, no green
  * Fig 4: remove IBD
@@ -1449,3 +1452,5 @@ seemd to enjoy them. There are a few changes that were suggested:
  * S9: B: move cohort labels to the side, A: add line for FDR without stars
  * Check if other disorders transcriptome cohorts were all WNH. What were they?
  * Panelize figures, similar to Nature Genetics papers, like the PTSD one
+ * dump fig S8
+ * 
