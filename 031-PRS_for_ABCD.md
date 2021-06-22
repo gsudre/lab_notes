@@ -1559,43 +1559,46 @@ module load ucsc
 liftOver -positions chr_pos_hg19.txt hg19ToHg38.over.chain.gz chr_pos_hg38.txt unmapped.txt
 ```
 
-Now we do some sourcery to remove only the unmapped lines from the GWAS file:
+Now we do some sourcery to remove only the unmapped lines from the GWAS file. I
+tried doing it in the command line but it was taking forever. So, let's just do
+it in R:
 
 ```bash
 awk '{{print "chr"$1":"$3"-"$3}}' ~/data/post_mortem/MAGMA/adhd_jul2017 > new_rsids.txt;
 paste ~/data/post_mortem/MAGMA/adhd_jul2017 new_rsids.txt > adhd_hg19.txt;
 # filter out comments
 grep -v \# unmapped.txt > unmapped_clean.txt;
-bad_lines='';
-# find the number of each line to be removed because they did not map
-for l in `cat unmapped_clean.txt`; do
-    ln=`grep -n $l adhd_hg19.txt | cut -d":" -f 1`;
-    bad_lines=${bad_lines}${ln}'d;';
-done
-# remove them all at the same time to go faster
-sed -i -e "${bad_lines}" adhd_hg19.txt;
-# add in the new ids, mapped to hg38
-echo "hg38_id" > hg38_ids.txt;
-cat chr_pos_hg38.txt >> hg38_ids.txt;
-paste adhd_hg19.txt hg38_ids.txt > adhd_hg38.txt;
+```
 
+```r
+library(data.table)
+gwas = data.frame(fread('adhd_hg19.txt', header=T, sep='\t'))
+unmapped = read.table('unmapped_clean.txt')[, 1]
+idx = gwas[, ncol(gwas)] %in% unmapped
+gwas.clean = gwas[!idx,]
+
+newids = read.table('chr_pos_hg38.txt')[, 1]
+gwas.clean = cbind(gwas.clean, newids)
+write.table(gwas.clean, file='adhd_hg38.txt', row.names=F, quote=F,
+            sep='\t')
+```
+
+```bash
 Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
     --base adhd_hg38.txt  \
     --target chr#_ren_nodups \
     --all-score \
     --lower 5e-08 --upper .5 --interval 5e-05 \
-    --no-regress --snp newid\
-    --out ABCD_v3_ren_nodups_hg38_PRS_adhd_jul2017
-
-
-
-    --extract ABCD_v3_ren_nodups_PRS_adhd_jul2017.valid
-
+    --no-regress --snp newids\
+    --out ABCD_v3_ren_nodups_hg38_PRS_adhd_jul2017 \
+    --extract ABCD_v3_ren_nodups_hg38_PRS_adhd_jul2017.valid
 ```
 
-
-
+Now the valid file is only removing 1774591, leaving 6268710 for evalutation. Of
+those, X are in the imputed data, compared to 288898 in the the raw data (before
+clumping). After clumping, I get X in the imputed data, compared to 83174 in the raw
+data. 
 
 
 
