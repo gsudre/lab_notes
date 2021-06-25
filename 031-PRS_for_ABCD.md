@@ -1578,7 +1578,12 @@ idx = gwas[, ncol(gwas)] %in% unmapped
 gwas.clean = gwas[!idx,]
 
 newids = read.table('chr_pos_hg38.txt')[, 1]
-gwas.clean = cbind(gwas.clean, newids)
+# clean up the new ids to remove chr and the ending position, so they match the
+# .bim
+newids2 = gsub(newids, pattern='chr', replacement='')
+newids3 = sapply(newids2, function(x) strsplit(x, '-')[[1]][1])
+gwas.clean = cbind(gwas.clean, newids3)
+colnames(gwas.clean)[ncol(gwas.clean)] = 'newids'
 write.table(gwas.clean, file='adhd_hg38.txt', row.names=F, quote=F,
             sep='\t')
 ```
@@ -1595,11 +1600,634 @@ Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
     --extract ABCD_v3_ren_nodups_hg38_PRS_adhd_jul2017.valid
 ```
 
-Now the valid file is only removing 1774591, leaving 6268710 for evalutation. Of
-those, X are in the imputed data, compared to 288898 in the the raw data (before
-clumping). After clumping, I get X in the imputed data, compared to 83174 in the raw
-data. 
+Not sure what's going on here... it's still only reading in about 40K SNPs...
 
+
+# 2021-06-22 07:11:19
+
+Let me try using only the SNPs that were well-imputed, in case there's something
+wrong with loading all these data at the same time:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38.txt  \
+    --target chr#_rsids_MAFbtp01_rsbtp9_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newids\
+    --out ABCD_v3_rsids_MAFbtp01_rsbtp9_nodups_hg38_PRS_adhd_jul2017 \
+    --extract ABCD_v3_rsids_MAFbtp01_rsbtp9_nodups_hg38_PRS_adhd_jul2017.valid
+```
+
+Still not working. So, I concatenated all the ren_nodups, and I get 262191773
+variants. Of those, 66954818 are duplicated. 
+
+When I lookd at the dbSNP website, I think it'd make sense to map everything
+based on rsids. But I do need to find a map of all the rsids in the topmed data.
+The HRC file I have is for hg19. 
+
+What I think is going on is that all SNVs in the GWAS file are mapped correctly.
+However, all INS or DELs are off by one base! Also, some SNPs exist in the raw
+data, but not in the imputed. For example:
+
+```
+(radian) [sudregp@cn3529 imputed]$ grep rs3131962 adhd_hg38.txt 1       rs3131962       756604  A       G       0.885   1.03448 0.0212  0.1102  chr1:756604-756604      1:821224
+(radian) [sudregp@cn3529 imputed]$ grep 756604 ../genotype_QCed/ABCD_release_3.0_QCed.bim
+1       rs3131962       0.008   756604  A       G
+8       rs75660473      0.61    42533305        G       T
+18      rs8094613       0.4     13756604        T       C
+18      rs75660435      1.092   72927293        A       G
+22      rs55756604      0.379   33945338        G       A
+(radian) [sudregp@cn3529 imputed]$ grep 1:821224: chr1.bim(radian) [sudregp@cn3529 imputed]$ 
+```
+
+Not sure why PRSice is only finding 40K either... I see almost a 5.4M overlap:
+
+```
+r$> library(data.table)
+data.table 1.14.0 using 16 threads (see ?getDTthreads).  Latest news: r-datatable.com
+
+r$> gwas = data.frame(fread('adhd_hg38.txt', header=T, sep='\t'))
+|--------------------------------------------------|
+|==================================================|
+
+r$> unmapped = data.frame(fread('vars_ren_nodups.txt', header=F))
+$> sum(duplicated(unmapped)  
+
+[1] 66954819
+
+r$> dim(unmapped)                                             
+[1] 262191773         1
+
+r$> unmapped2 = unmapped[!duplicated(unmapped), 1]    
+
+r$> length(unmapped2)                                       
+[1] 195236954
+
+r$> dim(gwas)                                                       
+[1] 8043301      11
+
+r$> sum(gwas$newids %in% unmapped2)                                            
+[1] 5423537
+
+r$> gwas.clean = gwas[!duplicated(gwas$newids), ]        
+
+r$> dim(gwas.clean)                         
+[1] 8007260      11
+
+r$> sum(gwas.clean$newids %in% unmapped2)           
+[1] 5417659
+
+```
+
+Kwangmi suggested I could try flipping the strand in PLINK. Let's try that.
+Maybe there's something to how I'm creating the plink files? Let's play with
+chromosome 21 because it's tiny. First, using our default encoding:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38.txt  \
+    --target chr21_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newids\
+    --out test_chr21_ren_nodups --extract test_chr21_ren_nodups.valid
+```
+
+I know that chr21_ren_nodups has 3477133 variants. PRSice did its usual trimming of
+our GWAS file. It starts with 8043301, removes 686209 because of low INFO score,
+and 1025908 for ambiguity. The remaining test_chr21_ren_nodups.valid has 6268710
+variants. So, when we re-run it extracting those valid variants, PRSice did not
+find 3402029 and the remaining 75104 had mismatched information.
+
+I then imported using --keep-allele-order.
+
+This does not solve the issue that all INS/DEL are shifted by 1 in the GWAS
+data. For example:
+
+![](images/2021-06-22-11-22-54.png)
+
+My gwas file, which is in hg19, has it as:
+
+```
+rs34229524m     14631344        CTT     C
+```
+
+So, off by one position. My imputed data is correct (in hg38): 
+
+```
+chr21:13259024:TTTA:T   0       13259024        T       TTTA
+```
+
+So, it looks like I'll have to add one to the position of all the non-SNV in my
+gwas file... this wasn't an issue when I used the raw data because they were
+indexed by rsids, so even if the position was off, it still worked. I guess the
+other option would be to convert all my imputed data to rsid as well.
+
+```bash
+c=21;
+cut -f 2 chr_${c}_rev.bim > tmp_name.txt;
+# grab only chr and position, remove chr
+cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+sed -i -e "s/chr//g" tmp_name2.txt;
+# create file to map between variant with alleles and just chr:pos 
+paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+plink --bfile chr_${c}_rev --update-name update_snps1.txt \
+    --make-bed --out tmp2;
+plink --bfile tmp2 --write-snplist --out all_snps;
+# remove any duplicated SNPs
+cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+plink --bfile tmp2 --exclude duplicated_snps.snplist \
+    --out chr${c}_rev_ren_nodups --make-bed --noweb;
+```
+
+I also tried using snpflip (https://github.com/biocore-ntnu/snpflip) but nothing
+came up as reverse... lots of ambiguous ones, about 55K, but that's out of 3.8M.
+chr21_rev_ren_nodups has the same number of variants. Do their alleles differ?
+Nope... exactly the same. Let's try --real-ref-alleles instead. Also, not
+difference... well, let's see if there is any way we can do this in R, when I
+attach rsids.
+
+```r
+library(biomaRt)
+snpMart = useEnsembl(biomart = "snps", dataset='hsapiens_snp')  # hg38 
+SNP_M <- data.frame(CHR = c(1,1,21), START = c(10020, 10039,13259024), END = c(10020
+    , 10039,13259024))
+coords <- apply(SNP_M, 1, paste, collapse = ":")
+getBM(attributes = c('refsnp_id', 'chr_name', 'chrom_start', 'chrom_end', 'allele'),
+
+          filters = c('chromosomal_region'), 
+          values = coords, 
+          mart = snpMart)
+
+library(data.table)
+bim = data.frame(fread('chr21.bim', header=F, sep='\t'))
+bed = data.frame(fread('bed_chr_21.bed', header=F, sep='\t', skip=1))
+bed$ID = sapply(bed[, 2], function(x) sprintf('%d:%d', chr, x))
+bim$ID = apply(bim[, c(1,4)], 1, paste, collapse = ":")
+# let's make the merge go a bit faster by only considering rsids we have
+bed.clean = bed[bed$ID %in% bim$ID, ]
+bed.clean = bed.clean[!duplicated(bed.clean$ID), c('ID', 'V4')]
+colnames(bed.clean)[2] = 'rsid'
+m = merge(bim, bed.clean, by='ID', all.x=T, all.y=F, sort=F)
+# make sure we're in the same order as the bim
+m = m[match(bim$ID, m$ID),]
+idx = which(is.na(m$rsid))
+m$aux = sapply(m$ID, function(x) sprintf('chr%s', x))
+m[idx, 'rsid'] = m[idx, 'aux']
+write.table(m[, c('V1', 'rsid', 'V3', 'V4', 'V5', 'V6')],
+            file='chr21_annot.bim', row.names=F, col.names=F, quote=F, sep='\t')
+```
+
+Now, let's see if anything changes in my PRSice call:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38.txt  \
+    --target chr21 \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress
+    --out test_chr21 --extract test_chr21.valid
+```
+
+This helped. I'm still getting a whole bunch of variants with mismatched
+information. What does that even mean?
+
+For now, let's fix the position of the other SNPs that don't have rsid so they
+are in hg38 space. Also, I was reading that PRSice checks BP as well, so that's
+likely what's going on. Let's add a new BP column too.
+
+```r
+library(data.table)
+gwas = data.frame(fread('adhd_hg19.txt', header=T, sep='\t'))
+unmapped = read.table('unmapped_clean.txt')[, 1]
+# remove gwas entries we couldn't find mapping in hg38
+idx = gwas[, ncol(gwas)] %in% unmapped
+gwas.clean = gwas[!idx,]
+
+newids = read.table('chr_pos_hg38.txt')[, 1]
+# clean up the new ids to remove the ending position, so they match the
+# .bim
+newids = gsub(newids, pattern='chr', replacement='')
+newids2 = sapply(newids, function(x) strsplit(x, '-')[[1]][1])
+bp2 = sapply(newids2, function(x) strsplit(x, ':')[[1]][2])
+gwas.clean = cbind(gwas.clean, newids2)
+colnames(gwas.clean)[ncol(gwas.clean)] = 'newids'
+gwas.clean = cbind(gwas.clean, bp2)
+colnames(gwas.clean)[ncol(gwas.clean)] = 'BP2'
+
+# we only need new ids for variants without rsid
+use_rsid = which(grepl(gwas.clean$SNP, pattern='^rs'))
+gwas.clean[use_rsid, 'newids'] = gwas.clean[use_rsid, 'SNP']
+write.table(gwas.clean, file='adhd_hg38_rsids.txt', row.names=F, quote=F,
+            sep='\t')
+```
+
+So, now we have a file that keeps all the mapped positions between hg19 and hg38
+(only 4K out of 8M weren't). Then, if it had an rsid in the original GWAS file,
+it keeps that rsid as its new id, and BP2 has the position in hg38. If it didn't
+have an rsid, its new id is chr:hg38Pos, to match the identifiers in
+chr#_ren_nodups.
+
+Finally, we need to change the .bims to use rsid as well, or chr:pos when it
+doesn't have a match. First, download everything:
+
+```bash
+cd /scratch/sudregp
+for c in {1..22}; do
+    wget https://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/BED/bed_chr_${c}.bed.gz;
+done
+```
+
+```r
+library(data.table)
+gwas = data.frame(fread('adhd_hg38_rsids.txt'))
+# unmapped = read.table('unmapped_clean.txt')[, 1]
+# newids = read.table('chr_pos_hg38.txt')[, 1]
+for (chr in 1:22) {
+    cat('Opening BED for chr', chr, '\n')
+    bed = data.frame(fread(sprintf('/scratch/sudregp/bed_chr_%d.bed.gz', chr),
+                    header=F, sep='\t', skip=1))
+    # let's make the merge go a bit faster by only considering rsids we have
+    cat('cleaning...\n')
+    bed.clean = bed[bed$V4 %in% gwas$SNP, ]
+    bed.clean = bed.clean[!duplicated(bed.clean$V4), 1:4]
+    colnames(bed.clean) = c('CHR', 'START', 'STOP', 'SNP')
+
+    # have to use nodups so there's no merging errors
+    cat('Opening BIM for chr', chr, '\n')
+    bim = data.frame(fread(sprintf('chr%d_ren_nodups.bim', chr),
+                     header=F, sep='\t'))
+    cat('creating merge IDs...\n')
+    bed.clean$ID = sapply(bed.clean[, 2], function(x) sprintf('%d:%d', chr, x))
+    bed.clean = bed.clean[!duplicated(bed.clean$ID), ]
+    colnames(bim)[2] = 'ID'
+    cat('merging BIM and BED...\n')
+    m = merge(bim, bed.clean, by='ID', all.x=T, all.y=F, sort=F)
+    # make sure we're in the same order as the bim
+    m = m[match(bim$ID, m$ID),]
+    idx = which(is.na(m$SNP))
+    m[idx, 'SNP'] = m[idx, 'ID']
+    write.table(m[, c('V1', 'SNP', 'V3', 'V4', 'V5', 'V6')],
+                file=sprintf('chr%d_annot.bim', chr),
+                row.names=F, col.names=F, quote=F, sep='\t')
+}
+```
+
+Then we just need to replace the original bims by the ones we just made:
+
+```bash
+cd /data/NCR_SBRB/ABCD_genomics/v3/imputed
+for chr in {1..22}; do
+    cp chr${chr}_ren_nodups.bim chr${chr}_ren_nodups.bim_old;
+    cp chr${chr}_annot.bim chr${chr}_ren_nodups.bim;
+done
+```
+
+Now, let's try PRSice again:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38_rsids.txt  \
+    --target chr#_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newids --bp BP2 \
+    --out ABCD_v3_rsids_hg38_PRS_adhd_jul2017 \
+    --extract ABCD_v3_rsids_hg38_PRS_adhd_jul2017.valid
+```
+
+This is better... I'm now at 165K before clumping, but it's still way below the
+288K used in the raw data. Let's see what happens, if I disable the matching
+like suggested in https://github.com/choishingwan/PRSice/issues/30:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_hg38_rsids.txt  \
+    --target chr#_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newids --bp X1 --A2 X2 --chr X3 \
+    --out ABCD_v3_rsids_hg38_PRS_adhd_jul2017 \
+    --extract ABCD_v3_rsids_hg38_PRS_adhd_jul2017.valid
+```
+
+OK, now we have 846385 input SNPs, which is much better.
+
+```
+Reading 100.00%
+8043301 variant(s) observed in base file, with:
+7202518 variant(s) excluded based on user input
+840783 total variant(s) included from base file
+
+Loading Genotype info from target
+==================================================
+
+11101 people (0 male(s), 0 female(s)) observed
+11101 founder(s) included
+
+261350990 variant(s) not found in previous data
+840783 variant(s) included
+Start performing clumping
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 697422
+
+Start calculating the scores
+```
+
+Not as many as I would have thought, but it is considerably more after clumping, since the raw data only used 83K.
+Let's take a deeper dive to see why not more variants are being pulled in the
+initial screening.
+
+```bash
+cut -f 2 chr*_ren_nodups.bim > vars_ren_nodups.txt
+```
+
+```
+r$> gwas = data.frame(fread('adhd_hg38_rsids.txt', header=T, sep='\t'))
+|--------------------------------------------------|
+|==================================================|
+
+r$> bims = data.frame(fread('vars_ren_nodups.txt', header=F))
+|--------------------------------------------------|
+|==================================================|
+
+r$> bims2 = bims[!duplicated(bims), 1] 
+
+r$> gwas2 = gwas[!duplicated(gwas$newids), ]
+
+r$> length(bims2)                                          
+[1] 195617348
+
+r$> dim(gwas2)                                                
+[1] 8039583      12
+
+r$> sum(gwas2$newids %in% bims2)                        
+[1] 1053991
+```
+
+So, the overlap is not that much bigger... 
+
+The PRSice flow of operations is described here:
+https://groups.google.com/g/prsice/c/RLOZ2lUf1aU 
+
+# WNH GWAS
+
+Re-generate ren_nodups from scratch:
+
+```bash
+for c in {1..22}; do
+    echo $c;
+    # grab just the variant name
+    cut -f 2 chr${c}.bim > tmp_name.txt;
+    # grab only chr and position, remove chr
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    sed -i -e "s/chr//g" tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile chr${c} --update-name update_snps1.txt \
+        --make-bed --out tmp2;
+    plink --bfile tmp2 --write-snplist --out all_snps;
+    # remove any duplicated SNPs
+    cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist \
+        --out chr${c}_ren_nodups --make-bed --noweb;
+done
+
+# liftOver WNH GWAS
+module load ucsc
+awk '{print "chr"$1":"$3"-"$3}' ~/data/post_mortem/MAGMA/adhd_eur_jun2017 | tail -n +2 > chr_eur_pos_hg19.txt;
+liftOver -positions chr_eur_pos_hg19.txt hg19ToHg38.over.chain.gz \
+    chr_eur_pos_hg38.txt eur_unmapped.txt
+
+# add chr:pos to GWAS file
+awk '{{print "chr"$1":"$3"-"$3}}' ~/data/post_mortem/MAGMA/adhd_eur_jun2017 > new_rsids.txt;
+paste ~/data/post_mortem/MAGMA/adhd_eur_jun2017 new_rsids.txt > adhd_eur_hg19.txt;
+# filter out comments
+grep -v \# eur_unmapped.txt > eur_unmapped_clean.txt;
+```
+
+Add hg38 ids to the GWAS file:
+
+```r
+library(data.table)
+gwas = data.frame(fread('adhd_eur_hg19.txt', header=T, sep='\t'))
+unmapped = read.table('eur_unmapped_clean.txt')[, 1]
+# remove gwas entries we couldn't find mapping in hg38
+idx = gwas[, ncol(gwas)] %in% unmapped
+gwas.clean = gwas[!idx,]
+
+newids = read.table('chr_eur_pos_hg38.txt')[, 1]
+# clean up the new ids to remove the ending position, so they match the
+# .bim
+newids = gsub(newids, pattern='chr', replacement='')
+newids2 = sapply(newids, function(x) strsplit(x, '-')[[1]][1])
+bp2 = sapply(newids2, function(x) strsplit(x, ':')[[1]][2])
+gwas.clean = cbind(gwas.clean, newids2)
+colnames(gwas.clean)[ncol(gwas.clean)] = 'newids'
+gwas.clean = cbind(gwas.clean, bp2)
+colnames(gwas.clean)[ncol(gwas.clean)] = 'BP2'
+
+# we only need new ids for variants without rsid
+use_rsid = which(grepl(gwas.clean$SNP, pattern='^rs'))
+gwas.clean[use_rsid, 'newids'] = gwas.clean[use_rsid, 'SNP']
+write.table(gwas.clean, file='adhd_eur_hg38_rsids.txt', row.names=F, quote=F,
+            sep='\t')
+
+#################################
+# create the annotated .bim files
+library(data.table)
+gwas = data.frame(fread('adhd_eur_hg38_rsids.txt'))
+# unmapped = read.table('unmapped_clean.txt')[, 1]
+# newids = read.table('chr_pos_hg38.txt')[, 1]
+for (chr in 1:22) {
+    cat('Opening BED for chr', chr, '\n')
+    bed = data.frame(fread(sprintf('/scratch/sudregp/bed_chr_%d.bed.gz', chr),
+                    header=F, sep='\t', skip=1))
+    # let's make the merge go a bit faster by only considering rsids we have
+    cat('cleaning...\n')
+    bed.clean = bed[bed$V4 %in% gwas$SNP, ]
+    bed.clean = bed.clean[!duplicated(bed.clean$V4), 1:4]
+    colnames(bed.clean) = c('CHR', 'START', 'STOP', 'SNP')
+
+    # have to use nodups so there's no merging errors
+    cat('Opening BIM for chr', chr, '\n')
+    bim = data.frame(fread(sprintf('chr%d_ren_nodups.bim', chr),
+                     header=F, sep='\t'))
+    cat('creating merge IDs...\n')
+    bed.clean$ID = sapply(bed.clean[, 2], function(x) sprintf('%d:%d', chr, x))
+    bed.clean = bed.clean[!duplicated(bed.clean$ID), ]
+    colnames(bim)[2] = 'ID'
+    cat('merging BIM and BED...\n')
+    m = merge(bim, bed.clean, by='ID', all.x=T, all.y=F, sort=F)
+    # make sure we're in the same order as the bim
+    m = m[match(bim$ID, m$ID),]
+    idx = which(is.na(m$SNP))
+    m[idx, 'SNP'] = m[idx, 'ID']
+    write.table(m[, c('V1', 'SNP', 'V3', 'V4', 'V5', 'V6')],
+                file=sprintf('chr%d_eur_annot.bim', chr),
+                row.names=F, col.names=F, quote=F, sep='\t')
+}
+```
+
+Now, we rename the files and run PRSice:
+
+
+```bash
+cd /data/NCR_SBRB/ABCD_genomics/v3/imputed
+for chr in {1..22}; do
+    cp chr${chr}_ren_nodups.bim chr${chr}_ren_nodups.bim_old;
+    cp chr${chr}_eur_annot.bim chr${chr}_ren_nodups.bim;
+done
+```
+
+Now, let's try PRSice again:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base adhd_eur_hg38_rsids.txt  \
+    --target chr#_ren_nodups \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --snp newids --bp BP2 \
+    --out ABCD_v3_rsids_hg38_PRS_adhd_eur_jun2017 \
+    --extract ABCD_v3_rsids_hg38_PRS_adhd_eur_jun2017.valid
+```
+
+For the european cohort we're using:
+
+```
+Reading 100.00%
+8089943 variant(s) observed in base file, with: 
+7867957 variant(s) excluded based on user input 
+221986 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+269210186 variant(s) not found in previous data 
+221986 variant(s) included 
+Start performing clumping
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 68956
+
+```
+
+Hum... this didn't work again. Using the raw data, I got:
+
+```
+212441 variant(s) not found in previous data 
+3167 variant(s) with mismatch information 
+288248 variant(s) included 
+
+Start performing clumping 
+
+Number of variant(s) after clumping : 82860
+```
+
+So, once again I'm getting less variants with the imputed data than with the
+raw. Why's that? I did the same overlap analysis in R. vars_eur_ren_nodups.txt
+starts with 272M variants. The GWAS itself has 8M. 
+
+```r
+gwas = data.frame(fread('adhd_eur_hg38_rsids.txt', header=T, sep='\t'))
+bims = data.frame(fread('vars_eur_ren_nodups.txt', header=F))
+bims2 = bims[!duplicated(bims), 1] 
+gwas2 = gwas[!duplicated(gwas$newids), ]
+print(length(bims2))
+print(dim(gwas2))                                                
+print(sum(gwas2$newids %in% bims2))
+``` 
+
+```
+[1] 266890792
+[1] 8086149      12
+[1] 1442351
+```
+
+So, we don't lose much after removing duplicates, but still the overlap is only
+1/8 of the gwas... interesting.
+
+Here's something else: 7958717 of the 8089944 (98.3%) of the SNPs in the EUR
+GWAS have rsids. Why don't I just use rsids and tell PRSice not to check
+anything? I already have rsids for all the PLINK files anyways... that's weird
+though. Only 1403094 of the 272909305 variants in my PLINK files have rsids...
+maybe something funky there? I wouldn't expect all of the 272M variants to have
+rsids, but at least something comparable to what's in the GWAS already?
+
+I can do the same approach I always do with HRC. But first I'll need to lift
+over the sites, but that shouldn't be hard.
+
+```bash
+wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+gunzip HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+module load ucsc
+awk '{print "chr"$1":"$2"-"$2,$3}' HRC.r1-1.GRCh37.wgs.mac5.sites.tab | \
+    tail -n +2 > HRC_chrpos_hg19.txt;
+# about 6M out of the 40M don't have a rsid
+grep rs HRC_chrpos_hg19.txt | cut -d" " -f 1 > HRC_chrpos_hg19_posOnly.txt;
+grep rs HRC_chrpos_hg19.txt > HRC_chrpos_hg19_clean.txt;
+liftOver -positions HRC_chrpos_hg19_posOnly.txt hg19ToHg38.over.chain.gz \
+    HRC_chrpos_hg38.txt HRC_unmapped.txt
+```
+
+Now we remove the unmapped in R, because it goes faster than in command line:
+
+```r
+library(data.table)
+rsids = data.frame(fread('HRC_chrpos_hg19_clean.txt', header=F, sep=' '))
+unmapped = read.table('HRC_unmapped.txt')[, 1]
+idx = rsids[, 1] %in% unmapped
+rsids.clean = rsids[!idx,]
+
+# concatenate hg38 positions to rsids, but first remove the end location
+hg38 = data.frame(fread('HRC_chrpos_hg38.txt', header=F, sep=' '))
+hg38.clean = sapply(hg38, function(x) strsplit(x, '-')[[1]][1])
+hg38.rsids = cbind(hg38.clean, rsids.clean[, 2])
+write.table(hg38.rsids, file='HRC_chrpos_hg38_rsid.txt',
+            row.names=F, col.names=F, quote=F, sep=' ')
+```
+
+Now we go back to renaming the plink files:
+
+```bash
+for chr in {1..22}; do
+    echo $chr;
+    # filtering on MAF and rs
+    zcat chr${chr}.info.gz | awk '{ print $1,$5,$7 }' - > r2s.txt;
+    awk '$2 > .01 && $3 > .9 { print }' \
+        r2s.txt > chr${chr}_rsids_MAFbtp01_rsbtp9.txt;
+    plink --bfile chr${chr} --extract chr${chr}_rsids_MAFbtp01_rsbtp9.txt \
+        --geno .05 --make-bed --out tmp;
+    # grab just the variant name
+    cut -f 2 tmp.bim > tmp_name.txt;
+    # grab only chr and position
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile tmp --update-name update_snps1.txt \
+        --make-bed --write-snplist --out tmp2;
+    # remove any duplicated SNPs
+    cat all_snps.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist --out tmp_nodups \
+        --make-bed --noweb;
+    # update chr:pos to rsid
+    plink --bfile tmp_nodups --update-name HRC_chrpos_hg38_rsid.txt \
+        --make-bed --out chr${c}_genop05MAFbtp01rsbtp9_renamed;
+done
+```
 
 
 # TODO:
