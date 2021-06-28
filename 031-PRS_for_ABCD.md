@@ -2194,8 +2194,9 @@ rsids.clean = rsids[!idx,]
 
 # concatenate hg38 positions to rsids, but first remove the end location
 hg38 = data.frame(fread('HRC_chrpos_hg38.txt', header=F, sep=' '))
-hg38.clean = sapply(hg38, function(x) strsplit(x, '-')[[1]][1])
+hg38.clean = sapply(hg38[,1], function(x) strsplit(x, '-')[[1]][1])
 hg38.rsids = cbind(hg38.clean, rsids.clean[, 2])
+hg38.rsids = hg38.rsids[!duplicated(hg38.rsids[,1]), ]
 write.table(hg38.rsids, file='HRC_chrpos_hg38_rsid.txt',
             row.names=F, col.names=F, quote=F, sep=' ')
 ```
@@ -2225,9 +2226,332 @@ for chr in {1..22}; do
         --make-bed --noweb;
     # update chr:pos to rsid
     plink --bfile tmp_nodups --update-name HRC_chrpos_hg38_rsid.txt \
-        --make-bed --out chr${c}_genop05MAFbtp01rsbtp9_renamed;
+        --make-bed --out chr${chr}_genop05MAFbtp01rsbtp9_renamed;
 done
 ```
 
+I got almost 10M variants in the BIMs now, but only 860K of those have rsids.  And lastly, we just run PRSice without validation:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_eur_jun2017  \
+    --target chr#_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --bp X1 --A2 X2 --chr X3 \
+    --out ABCD_v3_eur_genop05MAFbtp01rsbtp9_renamed_hg38_PRS_adhd_jun2017
+```
+
+```
+Reading 100.00%
+8094094 variant(s) observed in base file, with: 
+737677 variant(s) with INFO score less than 0.900000 
+7356417 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+9492263 variant(s) not found in previous data 
+2438 variant(s) with mismatch information 
+71792 ambiguous variant(s) excluded 
+417444 variant(s) included 
+Start performing clumping 
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 29185 
+```
+
+So, I have more than using raw before clumping, but not after.
+
+And how many variants do we get if we run the entire cohort GWAS? More than
+before?
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_jul2017  \
+    --target chr#_genop05MAFbtp01rsbtp9_renamed \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --bp X1 --A2 X2 --chr X3 \
+    --out ABCD_v3_genop05MAFbtp01rsbtp9_renamed_hg38_PRS_adhd_jul2017
+```
+
+```
+Reading 100.00%
+8047420 variant(s) observed in base file, with: 
+691020 variant(s) with INFO score less than 0.900000 
+7356400 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+9491886 variant(s) not found in previous data 
+2435 variant(s) with mismatch information 
+71839 ambiguous variant(s) excluded 
+417777 variant(s) included 
+
+Start performing clumping 
+
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 29200 
+```
+
+Nope, this doesn't help much...
+
+# 2021-06-25 10:32:17
+
+Let's try something else. When assigning rsids to my 10M filtered variants in
+the BIMs, only 860K of those have rsids. That seems a bit low. What if I used
+the beds instead of the HRC file? Note that the beds do have start and stop
+positions, so I'll need to play with those to see what works best.
+
+```bash
+for chr in {1..22}; do
+    echo $chr;
+    # filtering on MAF and rs
+    zcat chr${chr}.info.gz | awk '{ print $1,$5,$7 }' - > r2s.txt;
+    awk '$2 > .01 && $3 > .9 { print }' \
+        r2s.txt > chr${chr}_rsids_MAFbtp01_rsbtp9.txt;
+    plink --bfile chr${chr} --extract chr${chr}_rsids_MAFbtp01_rsbtp9.txt \
+        --geno .05 --make-bed --out tmp;
+    # grab just the variant name
+    cut -f 2 tmp.bim > tmp_name.txt;
+    # grab only chr and position
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile tmp --update-name update_snps1.txt \
+        --make-bed --write-snplist --out tmp2;
+    # remove any duplicated SNPs
+    cat tmp2.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist --out tmp_nodups \
+        --make-bed --noweb;
+    # update chr:pos to rsid
+    # use start position at first
+    zcat /scratch/sudregp/bed_chr_${chr}.bed.gz | tail -n +2 | awk \
+        '{ print $1":"$2, $4 }' > rsids.txt;
+    # filter out any chr:pos that is repeated 
+    awk '!seen[$1]++' rsids.txt > rsids_clean.txt;
+    cut -d" " -f 1 rsids_clean.txt > keep_vars.txt;
+    plink --bfile tmp_nodups --extract keep_vars.txt --make-bed --out tmp3;
+    plink --bfile tmp3 --update-name rsids_clean.txt --make-bed \
+        --out chr${chr}_genop05MAFbtp01rsbtp9_fromBED;
+done
+```
+
+OK, now we have 3M rsids, which is much more than the 800L I had using HRC. Out
+of curiosity, let's see how many I'd get using the end position from the BED:
+
+```bash
+for chr in {1..22}; do
+    echo $chr;
+    # filtering on MAF and rs
+    zcat chr${chr}.info.gz | awk '{ print $1,$5,$7 }' - > r2s.txt;
+    awk '$2 > .01 && $3 > .9 { print }' \
+        r2s.txt > chr${chr}_rsids_MAFbtp01_rsbtp9.txt;
+    plink --bfile chr${chr} --extract chr${chr}_rsids_MAFbtp01_rsbtp9.txt \
+        --geno .05 --make-bed --out tmp;
+    # grab just the variant name
+    cut -f 2 tmp.bim > tmp_name.txt;
+    # grab only chr and position
+    cut -d":" -f 1,2 tmp_name.txt > tmp_name2.txt;
+    # create file to map between variant with alleles and just chr:pos 
+    paste tmp_name.txt tmp_name2.txt > update_snps1.txt;
+    plink --bfile tmp --update-name update_snps1.txt \
+        --make-bed --write-snplist --out tmp2;
+    # remove any duplicated SNPs
+    cat tmp2.snplist | sort | uniq -d > duplicated_snps.snplist;
+    plink --bfile tmp2 --exclude duplicated_snps.snplist --out tmp_nodups \
+        --make-bed --noweb;
+    # update chr:pos to rsid
+    # use end position at first
+    zcat /scratch/sudregp/bed_chr_${chr}.bed.gz | tail -n +2 | awk \
+        '{ print $1":"$3, $4 }' > rsids.txt;
+    # filter out any chr:pos that is repeated 
+    awk '!seen[$1]++' rsids.txt > rsids_clean.txt;
+    cut -d" " -f 1 rsids_clean.txt > keep_vars.txt;
+    plink --bfile tmp_nodups --extract keep_vars.txt --make-bed --out tmp3;
+    plink --bfile tmp3 --update-name rsids_clean.txt --make-bed \
+        --out chr${chr}_genop05MAFbtp01rsbtp9_fromBEDend;
+done
+```
+
+Oh wow... that gives me 9M. 3x more... let's see what our results are if we use
+this for PRSice:
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_jul2017  \
+    --target chr#_genop05MAFbtp01rsbtp9_fromBEDend \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --bp X1 --A2 X2 --chr X3 \
+    --out ABCD_v3_genop05MAFbtp01rsbtp9_fromBEDend_hg38_PRS_adhd_jul2017
+```
+
+Now we're talking!
+
+```
+Reading 100.00%
+8047420 variant(s) observed in base file, with: 
+691020 variant(s) with INFO score less than 0.900000 
+7356400 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+3710793 variant(s) not found in previous data 
+1499 variant(s) with mismatch information 
+899846 ambiguous variant(s) excluded 
+4961566 variant(s) included 
+
+Start performing clumping 
+Number of variant(s) after clumping : 160885
+
+```
+
+```bash
+Rscript /data/NCR_SBRB/software/PRSice_2.3.3/PRSice.R  \
+    --prsice /data/NCR_SBRB/software/PRSice_2.3.3/PRSice_linux \
+    --base ~/data/post_mortem/MAGMA/adhd_eur_jun2017  \
+    --target chr#_genop05MAFbtp01rsbtp9_fromBEDend \
+    --all-score \
+    --lower 5e-08 --upper .5 --interval 5e-05 \
+    --no-regress --bp X1 --A2 X2 --chr X3 \
+    --out ABCD_v3_genop05MAFbtp01rsbtp9_fromBEDend_hg38_PRS_adhd_eur_jun2017
+```
+
+```
+Reading 100.00%
+8094094 variant(s) observed in base file, with: 
+737677 variant(s) with INFO score less than 0.900000 
+7356417 total variant(s) included from base file 
+
+Loading Genotype info from target 
+================================================== 
+
+11101 people (0 male(s), 0 female(s)) observed 
+11101 founder(s) included 
+
+3714443 variant(s) not found in previous data 
+1501 variant(s) with mismatch information 
+899334 ambiguous variant(s) excluded 
+4958426 variant(s) included 
+
+Start performing clumping 
+Clumping Progress: 100.00%
+Number of variant(s) after clumping : 161104 
+
+Start calculating the scores
+```
+
+Now we can go ahead and merge everything!
+
+# 2021-06-28 10:05:00
+
+```r
+library(data.table)
+# this takes a while because we're reading in TXT files!
+raw.eur = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/ABCD_v3_PRS_adhd_eur_jun2017.all_score', header=T, sep=' ')
+raw.all = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/ABCD_v3_PRS_adhd_jul2017.all_score', header=T, sep=' ')
+imp.eur = fread('/data/NCR_SBRB/ABCD_genomics/v3/imputed/ABCD_v3_genop05MAFbtp01rsbtp9_fromBEDend_hg38_PRS_adhd_eur_jun2017.all_score', header=T, sep=' ')
+imp.all = fread('/data/NCR_SBRB/ABCD_genomics/v3/imputed/ABCD_v3_genop05MAFbtp01rsbtp9_fromBEDend_hg38_PRS_adhd_jul2017.all_score', header=T, sep=' ')
+pcs.king = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/kingpc.ped',
+                 header=F, sep=' ')
+pcs.plink = fread('/data/NCR_SBRB/ABCD_genomics/v3/genotype_QCed/HM3_b37mds.mds', header=T, sep=' ')
+
+# keep only some of the PRs columns that were created
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.5', 'Pt_0.4', 'Pt_0.3', 'Pt_0.2')
+new_names = c('IID', sapply(c(.0001, .001, .01, .1, .00005, .0005, .005, .05,
+                              .5, .4, .3, .2),
+                            function(x) sprintf('ADHD_raw_all_PRS%f', x)))
+raw.all.filt = as.data.frame(raw.all)[, mycols]
+colnames(raw.all.filt) = new_names
+new_names = gsub('all', x=new_names, 'eur')
+raw.eur.filt = as.data.frame(raw.eur)[, mycols]
+colnames(raw.eur.filt) = new_names
+
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.5', 'Pt_0.4', 'Pt_0.3001', 'Pt_0.2001')
+new_names = gsub('raw', x=new_names, 'imp')
+imp.eur.filt = as.data.frame(imp.eur)[, mycols]
+colnames(imp.eur.filt) = new_names
+mycols = c('IID', 'Pt_0.00010005', 'Pt_0.00100005', 'Pt_0.01', 'Pt_0.1',
+            'Pt_5.005e-05', 'Pt_0.00050005', 'Pt_0.00500005', 'Pt_0.0500001',
+            'Pt_0.4998', 'Pt_0.4', 'Pt_0.3001', 'Pt_0.2')
+new_names = gsub('eur', x=new_names, 'all')
+imp.all.filt = as.data.frame(imp.all)[, mycols]
+colnames(imp.all.filt) = new_names
+
+# remove the two bad subjects in the imputed files (from SUBJ_QC_BAD.txt)
+rm_me = which(grepl('NDAR_INVA7RNTEHU', x=imp.all.filt$IID))
+imp.all.filt = imp.all.filt[-rm_me, ]
+imp.eur.filt = imp.eur.filt[-rm_me, ]
+rm_me = which(grepl('NDAR_INVV7NEVHLK', x=imp.all.filt$IID))
+imp.all.filt = imp.all.filt[-rm_me, ]
+imp.eur.filt = imp.eur.filt[-rm_me, ]
+# remove first part of imp IID so we can merge everything
+imp.all.filt$IID2 = sapply(imp.all.filt$IID,
+                           function(x) paste0(strsplit(x, '_')[[1]][2:3],
+                                              collapse='_'))
+imp.eur.filt$IID2 = sapply(imp.eur.filt$IID,
+                           function(x) paste0(strsplit(x, '_')[[1]][2:3],
+                                              collapse='_'))
+
+m = merge(raw.all.filt, raw.eur.filt, by='IID')
+m = merge(m, imp.all.filt, by.x='IID', by.y='IID2', all.x=T, all.y=T)
+m$IID.y = NULL
+m = merge(m, imp.eur.filt, by='IID', by.y='IID2', all.x=T, all.y=T)
+m$IID.y = NULL
+
+pcs.king.filt = pcs.king[, c(2, 7:26)]
+new_names = c('IID', sapply(1:20, function(x) sprintf('kingPC%.2d', x)))
+colnames(pcs.king.filt) = new_names
+m = merge(m, pcs.king.filt, by='IID', all.x=T, all.y=T)
+
+pcs.plink.filt = pcs.plink[, c(2, 4:13)]
+new_names = c('IID', sapply(1:10, function(x) sprintf('plinkPC%.2d', x)))
+colnames(pcs.plink.filt) = new_names
+# don't include the ENIGMA reference population subjects
+m = merge(m, pcs.plink.filt, by='IID', all.x=T, all.y=F)
+
+write.csv(m, file='/data/NCR_SBRB/ABCD_genomics/v3/ABCD_v3_PRS_06282021.csv',
+          row.names=F)
+```
+
+For reference, in raw data we used 83,174 (288,898) variants for all and 82,860
+(288,248) for WNH, with the number in parenthesis being before clumping. For the
+imputed data, we had 160,885 (4,961,566) and 161,104 (4,958,426) for WNH.
+
+I'm interested to check out the correlation between the different PRS
+profiles...
+
+```r
+#local
+library(corrplot)
+df = read.csv('/Volumes/Shaw/ABCD/ABCD_v3_PRS_06282021.csv')
+M <- cor(df[, 2:49], use='na.or.complete')
+quartz()
+corrplot(M, method = "circle")
+```
+
+![](images/2021-06-28-10-14-28.png)
+
+Great! Much better now.
 
 # TODO:
