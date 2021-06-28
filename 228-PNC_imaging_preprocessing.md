@@ -338,6 +338,55 @@ Then, repeat the same for our own cohort. I'll need to check which images we
 started with though.
 
 
+# 2021-06-28 12:39:56
+
+Going back to this, I'll give qsiprep a chance. I'll process the 10 subjects I
+started with first, but in the meanwhile I can also BIDSize another batch, say
+about 100. The only oplan is that it's taking forever to install dcm2bids in BW,
+so I'll just keep BIDSizing in ncrshell01:
+
+```bash
+# ncrshell01
+conda activate dcm2bids
+cd /mnt/shaw/sudregp/PNC_BIDS;
+base_dir=/mnt/NCR/sudregp/PNC/raw/66134/NeurodevelopmentalGenomics;
+tmp_dir=/mnt/shaw/sudregp/tmp/;
+for s in `cat batch2.txt`; do
+    echo "Uncompressing ${s}";
+    gz_fname=${s}_1.tar.gz;
+    if [[ -e ${base_dir}/Study_version1/${gz_fname} ]]; then
+        tar -zxf ${base_dir}/Study_version1/${gz_fname} -C $tmp_dir;
+    else
+        tar -zxf ${base_dir}/Study_version2/${gz_fname} -C $tmp_dir;
+    fi;
+    echo "BIDSizing ${s}";
+    dcm2bids -d ${tmp_dir}/${s} -p ${s} -c ~/research_code/pnc2bids.json;
+    rm -rf $tmp_dir/${s};
+done;
+```
+
+qsiprep in BW, using their generic pipeline, took only 1.5h. It used less than
+15Gb of memory, and although it had a couple spikes, most of the time it stayed
+under 18 threads, even though I gave it all 32.
+
+Let me try another subject just to check, specifying less memory and threads.
+
+Analyzing that first output (sub-600053476714), a few things:
+ * need to combine both runs after denoising (I thought it was the default?)
+ * what derivatives are being computed?
+ * Freesurfer?
+
+Maybe this will do it.
+
+qsiprep ./ ../PNC_qsiprep_outputs/ participant \
+    --participant_label sub-600039665619 -w /lscratch/$SLURM_JOB_ID \
+    --notrack --nthreads 16 --mem_mb 15000 --stop-on-first-crash \
+    --output-resolution 1.2 --recon-input ../PNC_qsiprep_outputs/ \
+    --recon_spec mrtrix_singleshell_ss3t --do-reconall \
+    --denoise_before_combining --combine_all_dwis \
+    --recon_input ../PNC_qsiprep_outputs/qsiprep \
+    --recon_spec mrtrix_singleshell_ss3t
+
 
 
 

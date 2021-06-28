@@ -356,6 +356,154 @@ myplots[[2]] = p
 ggarrange(plotlist=myplots)
 ```
 
+# 2021-06-28 10:37:53
+
+## Molecular function plots (FDR q < .05)
+
+```r
+tsize = 16
+ysize = 12
+xsize = 10
+msize = 2
+
+df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[df$FDR <= 0.05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+color_me = c('fatty acid derivative binding', 'dynein light chain binding',
+             'tau-protein kinase activity')
+label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
+df$Behavior = ifelse(df$description %in% color_me, "notneuro", "neuro")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize))
+
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[df$FDR <= 0.05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+
+color_me = c('neurotransmitter receptor activity',
+             'serotonin receptor activity', 'GABA receptor activity')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+df$Behavior = ifelse(df$description %in% color_me, "neuro", "notneuro")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=1.25*msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize))
+
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=F, ncol=2, nrow=1, legend='none')
+print(p)
+```
+
+![](images/2021-06-28-14-08-50.png)
+
+
+## Top 10 Cellular components
+
+```r
+tsize = 16
+ysize = 12
+xsize = 10
+msize = 2
+ntop = 10
+
+df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[1:ntop, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+color_me = c('transporter complex', 'mitochondrial protein complex')
+label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
+df$Behavior = ifelse(df$description %in% color_me, "notneuro", "neuro")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[1:ntop, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+
+color_me = c('nothing')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+df$Behavior = ifelse(df$description %in% color_me, "neuro", "notneuro")
+df$Behavior = factor(df$Behavior, levels=c('neuro', 'notneuro'))
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='none')
+print(p)
+```
+
+![](images/2021-06-28-14-16-08.png)
 
 
 
@@ -520,169 +668,6 @@ corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black',
 ![](images/2021-06-03-06-46-24.png)
 
 ![](images/2021-06-03-06-45-41.png)
-
-
-# 2021-05-25 06:23:29
-
-## Molecular function plots (FDR q < .05)
-
-```r
-tsize = 16
-ysize = 12
-xsize = 10
-msize = 2
-
-df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df = df[df$FDR <= 0.05, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-color_me = c('fatty acid derivative binding', 'dynein light chain binding',
-             'tau-protein kinase activity')
-label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
-
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
-  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize))
-
-library(ggpubr)
-p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Molecular_Function_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df = df[df$FDR <= 0.05, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-
-color_me = c('neurotransmitter receptor activity',
-             'serotonin receptor activity', 'GABA receptor activity')
-label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
-  geom_dotplot(dotsize=1.25*msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize))
-
-p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
-print(p)
-```
-
-![](images/2021-06-03-06-53-37.png)
-
-
-## Top 10 Cellular components
-
-```r
-tsize = 16
-ysize = 12
-xsize = 10
-msize = 2
-ntop = 10
-
-df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
-df = df[1:ntop, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-color_me = c('transporter complex', 'mitochondrial protein complex')
-label_colors <- ifelse(levels(df$description) %in% color_me, "grey20", "red")
-
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
-  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize)) +
-    scale_fill_discrete(drop = FALSE)
-
-library(ggpubr)
-p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
-df = df[1:ntop, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-
-color_me = c('nothing')
-label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
-  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize)) +
-    scale_fill_discrete(drop = FALSE)
-
-p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
-print(p)
-```
-
-![](images/2021-06-03-07-02-09.png)
-
-
-# 2021-05-26 06:47:20
-
-
-# 2021-06-01 11:26:45
 
 
 ## MAGMA plots
