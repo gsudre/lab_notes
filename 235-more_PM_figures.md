@@ -2,15 +2,15 @@
 
 In today's group meeting I showed the current version of the figures, and people
 seemd to enjoy them. There are a few changes that were suggested:
- * Figure 3 and Fig S6-- don’t give up and down regulation ---just the
+ * ~~Figure 3 and Fig S6-- don’t give up and down regulation ---just the
    enrichment score.   Color the circles according to whether or not they are
    neural gene set (the same color as the labels on the y axis in other words).
-   But keep label red too.
+   But keep label red too.~~
  * ~~Fig 4: thicker lines between the disorders~~
  * ~~Fig 1: do only red and grey, no green~~
  * ~~Fig 4: remove IBD~~
- * S2: Put the stuff in the arrows inside the box, and name first box Brain
-   tissue with RNA, without N=115. Similar to how I was explaining it
+ * ~~S2: Put the stuff in the arrows inside the box, and name first box Brain
+   tissue with RNA, without N=115. Similar to how I was explaining it~~
  * Check if person with unknown race in the table is the same without genotype
  * Semantic space
    * color by cluster
@@ -506,6 +506,85 @@ print(p)
 ![](images/2021-06-28-14-16-08.png)
 
 
+## All significant Cellular Component
+
+```r
+tsize = 16
+ysize = 10
+xsize = 10
+msize = 1.5
+
+df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[df$FDR < .05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+color_me = c('neuron spine', 'synaptic membrane', 'glutamatergic synapse',
+             'postsynaptic specialization', 'neuron to neuron synapse',
+             'Schaffer collateral - CA1 synapse', 'axon part',
+             'GABA-ergic synapse', 'presynapse',
+             'neuron projection terminus', 'dendritic shaft',
+             'neuronal cell body', 'neuromuscular junction', 'coated membrane',
+             'myelin sheath', 'excitatory synapse')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+df$Behavior = ifelse(df$description %in% color_me, "neuro", "notneuro")
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize)) +
+    scale_fill_discrete(drop = FALSE)
+
+library(ggpubr)
+p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
+df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
+df = df[df$FDR < .05, ]
+df[df$FDR == 0, 'FDR'] = 1e-4
+
+df$description = factor(df$description,
+                        levels=df$description[sort(df$FDR,
+                                                   index.return=T,
+                                                   decreasing=T)$ix])
+
+color_me = c('nothing')
+label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
+df$Behavior = ifelse(df$description %in% color_me, "neuro", "notneuro")
+df$Behavior = factor(df$Behavior, levels=c('neuro', 'notneuro'))
+
+p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
+  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
+  geom_hline(yintercept=-log10(.1), linetype="dashed",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    geom_hline(yintercept=-log10(.05), linetype="dotted",
+                                color = "black", size=1) + theme(legend.position="bottom") +
+    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = tsize),
+          axis.text.x = element_text(size=xsize),
+          axis.title.x = element_text(size=ysize),
+          plot.margin = margin(5.5, 80, 270, 5.5, "pt")) +
+    scale_fill_discrete(drop = FALSE)
+
+p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
+
+p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='none')
+print(p)
+```
+
+![](images/2021-06-28-16-17-06.png)
 
 
 
@@ -1259,92 +1338,6 @@ p1;
 
 ![](images/2021-06-03-11-05-05.png)
 
-
-## All significant Cellular Component
-
-## Top 10 Cellular components
-
-```r
-tsize = 16
-ysize = 10
-xsize = 10
-msize = 1.5
-
-df = read.csv('~/data/post_mortem/WG32_DGE_Caudate_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
-df = df[df$FDR < .05, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-color_me = c('neuron spine', 'synaptic membrane', 'glutamatergic synapse',
-             'postsynaptic specialization', 'neuron to neuron synapse',
-             'Schaffer collateral - CA1 synapse', 'axon part',
-             'GABA-ergic synapse', 'presynapse',
-             'neuron projection terminus', 'dendritic shaft',
-             'neuronal cell body', 'neuromuscular junction', 'coated membrane',
-             'myelin sheath', 'excitatory synapse')
-label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
-
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior)) +
-  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize)) +
-    scale_fill_discrete(drop = FALSE)
-
-library(ggpubr)
-p1 = p + ggtitle('Caudate') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-df = read.csv('~/data/post_mortem/WG32_DGE_ACC_bigger_log10_geneontology_Cellular_Component_noRedundant_10K.csv')
-df = df[order(df$FDR), c('description', 'normalizedEnrichmentScore', 'FDR')]
-df$Behavior = 'Upregulated'
-df[df$normalizedEnrichmentScore <= 0, 'Behavior'] = 'Downregulated'
-df$Behavior = factor(df$Behavior, levels=c('Downregulated', 'Upregulated'))
-df = df[df$FDR < .05, ]
-df[df$FDR == 0, 'FDR'] = 1e-4
-
-df$description = factor(df$description,
-                        levels=df$description[sort(df$FDR,
-                                                   index.return=T,
-                                                   decreasing=T)$ix])
-
-color_me = c('nothing')
-label_colors <- ifelse(levels(df$description) %in% color_me, "red", "grey20")
-
-p <- ggplot(df, aes(y=-log10(FDR), x=description, fill=Behavior, size=msize)) +
-  geom_dotplot(dotsize=msize, binaxis='y', stackdir='center') + coord_flip() +
-  geom_hline(yintercept=-log10(.1), linetype="dashed",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    geom_hline(yintercept=-log10(.05), linetype="dotted",
-                                color = "black", size=1) + theme(legend.position="bottom") +
-    theme(axis.text.y = element_text(colour = label_colors, size=ysize),
-          axis.title.y = element_blank(),
-          plot.title = element_text(size = tsize),
-          axis.text.x = element_text(size=xsize),
-          axis.title.x = element_text(size=ysize),
-          plot.margin = margin(5.5, 80, 270, 5.5, "pt")) +
-    scale_fill_discrete(drop = FALSE)
-
-p2 = p + ggtitle('ACC') + ylab(bquote(~-Log[10]~italic(P[adjusted]))) 
-
-p = ggarrange(p1, p2, common.legend=T, ncol=2, nrow=1, legend='bottom')
-print(p)
-```
-
-![](images/2021-06-03-11-55-45.png)
 
 # Specific genes of a given pathway
 
