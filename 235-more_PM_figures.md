@@ -586,8 +586,217 @@ print(p)
 
 ![](images/2021-06-28-16-17-06.png)
 
+## Comparison of WNH and main developmental results
+
+```r
+library(corrplot)
+keep_me = c("dev1_c0.900_devSpec_regSpec", "dev2_c0.900_devSpec_regSpec",
+            "dev3_c0.900_devSpec_regSpec", "dev4_c0.900_devSpec_regSpec",
+            "dev5_c0.900_devSpec_regSpec", "overlap_c0.900_regSpec")
+ncomps = 1
+db = 'manySets_co0_900'
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              c('overlap', res$link[1:5])))
+pvals = df
+i = 1
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-4
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = res
+
+i = 2
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-4
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+mylim = max(abs(df))
+colnames(df)[1] = 'pan-developmental'
+
+# i checked and it comes out in the correct order
+pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
+
+quartz()
+# just to get significant ones
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
+df_main = df
+
+# grabbing WNH results
+r = 'ACC'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+dev = res
+dev$Region = r
+
+df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
+                                              c('overlap', res$link[1:5])))
+pvals = df
+i = 1
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-4
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+
+r = 'Caudate'
+dev_str = sprintf('%s_%s', tolower(r), db)
+dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
+                   r, dev_str)
+file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
+                    r, dev_str)
+res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
+res = res[res$geneSet %in% keep_me, ]
+res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
+res$Region = r
+dev = res
+
+i = 2
+for (j in 1:ncol(df)) {
+    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
+    if (dev[idx, 'pValue'] == 0) {
+        dev[idx, 'pValue'] = 1e-4
+    }
+    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
+                -log10(dev[idx, 'pValue']))
+    pvals[i, j] = dev[idx, 'pValue'] / ncomps
+}
+mylim = max(abs(df))
+colnames(df)[1] = 'pan-developmental'
+
+# i checked and it comes out in the correct order
+pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
+
+quartz()
+# just to get significant ones
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
+         insig = "label_sig", pch.col = "white",
+         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
 
 
+# making both plots side by side
+# no stars
+quartz()
+par(mfrow=c(2, 1))
+corrplot(df_main, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
+         cl.length=3, cl.align.text='l', cl.offset=.2)
+corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
+         cl.length=3, cl.align.text='l', cl.offset=.2)
+```
+
+![](images/2021-06-29-11-09-02.png)
+
+
+## Comparative DGE p-value picture (no stars)
+
+```r
+library(ggplot2)
+library(ggpubr)
+quartz()
+
+orig = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
+wnh = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
+m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+imnamed = which(m$hgnc_symbol.orig != '')
+m$gene_str = m$GENEID
+m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
+
+imgood = which(m$padj.FDR.orig < .05) 
+df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
+colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
+plot_df = reshape2::melt(df)
+colnames(plot_df)[2] = 'Groups' 
+
+plot_df$star_pos = -log10(plot_df$value) + .5
+sig_wnh = m[which(m$padj.FDR.wnh < .05), 'gene_str']
+stars.df <- plot_df[plot_df$gene_str %in% sig_wnh,
+                    c('gene_str', 'Groups', 'star_pos')]
+# keep only the cohort with higher bars
+stars.df = stars.df[stars.df$Groups == 'Entire cohort',]
+
+p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank()) +
+    ggtitle('ACC') + 
+    ylab(bquote(~-Log[10]~italic(P))) +
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black") +
+    geom_text(data = stars.df, aes(y = star_pos, fill=NA), label = "*",
+            size = 10)
+mylim = max(-log10(plot_df$value))
+
+orig = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
+wnh = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
+m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
+imnamed = which(m$hgnc_symbol.orig != '')
+m$gene_str = m$GENEID
+m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
+
+imgood = which(m$padj.FDR.orig < .05) 
+df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
+colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
+plot_df = reshape2::melt(df)
+colnames(plot_df)[2] = 'Groups' 
+
+# nothing significant for Caudate WNH
+p2 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
+    geom_bar(stat="identity", position=position_dodge()) + ylim(c(0, mylim)) +
+    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          plot.margin = margin(5.5, 5.5, 50, 5.5, "pt")) +
+    ggtitle('Caudate') + 
+    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
+
+ggarrange(p1, p2, common.legend = T, legend='right', nrow=1, ncol=2,
+          legend.grob=get_legend(p1), widths=c(.885, .115)) 
+```
 
 
 
@@ -827,221 +1036,6 @@ ggplot(data, aes(x=C1, y=C2, color=POP_CODE)) + geom_point() +
 ```
 
 ![](images/2021-06-02-07-27-22.png)
-
-
-## Comparison of WNH and main developmental results
-
-```r
-library(corrplot)
-keep_me = c("dev1_c0.900_devSpec_regSpec", "dev2_c0.900_devSpec_regSpec",
-            "dev3_c0.900_devSpec_regSpec", "dev4_c0.900_devSpec_regSpec",
-            "dev5_c0.900_devSpec_regSpec", "overlap_c0.900_regSpec")
-ncomps = 1
-db = 'manySets_co0_900'
-r = 'ACC'
-dev_str = sprintf('%s_%s', tolower(r), db)
-dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
-                   r, dev_str)
-file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
-                    r, dev_str)
-res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
-res = res[res$geneSet %in% keep_me, ]
-res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-dev = res
-dev$Region = r
-
-df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
-                                              c('overlap', res$link[1:5])))
-pvals = df
-i = 1
-for (j in 1:ncol(df)) {
-    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-    if (dev[idx, 'pValue'] == 0) {
-        dev[idx, 'pValue'] = 1e-4
-    }
-    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                -log10(dev[idx, 'pValue']))
-    pvals[i, j] = dev[idx, 'pValue'] / ncomps
-}
-
-r = 'Caudate'
-dev_str = sprintf('%s_%s', tolower(r), db)
-dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_log10_%s_10K/',
-                   r, dev_str)
-file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_log10_%s_10K.txt',
-                    r, dev_str)
-res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
-res = res[res$geneSet %in% keep_me, ]
-res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-res$Region = r
-dev = res
-
-i = 2
-for (j in 1:ncol(df)) {
-    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-    if (dev[idx, 'pValue'] == 0) {
-        dev[idx, 'pValue'] = 1e-4
-    }
-    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                -log10(dev[idx, 'pValue']))
-    pvals[i, j] = dev[idx, 'pValue'] / ncomps
-}
-mylim = max(abs(df))
-colnames(df)[1] = 'pan-developmental'
-
-# i checked and it comes out in the correct order
-pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
-
-quartz()
-# just to get significant ones
-corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
-         insig = "label_sig", pch.col = "white",
-         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
-df_main = df
-
-# grabbing WNH results
-r = 'ACC'
-dev_str = sprintf('%s_%s', tolower(r), db)
-dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
-                   r, dev_str)
-file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
-                    r, dev_str)
-res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
-res = res[res$geneSet %in% keep_me, ]
-res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-dev = res
-dev$Region = r
-
-df = matrix(nrow = 2, ncol = 6, dimnames=list(c('ACC', 'Caudate'),
-                                              c('overlap', res$link[1:5])))
-pvals = df
-i = 1
-for (j in 1:ncol(df)) {
-    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-    if (dev[idx, 'pValue'] == 0) {
-        dev[idx, 'pValue'] = 1e-4
-    }
-    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                -log10(dev[idx, 'pValue']))
-    pvals[i, j] = dev[idx, 'pValue'] / ncomps
-}
-
-r = 'Caudate'
-dev_str = sprintf('%s_%s', tolower(r), db)
-dir_name = sprintf('~/data/post_mortem/Project_WG32_DGE_%s_bigger_WNH_log10_%s_10K/',
-                   r, dev_str)
-file_name = sprintf('enrichment_results_WG32_DGE_%s_bigger_WNH_log10_%s_10K.txt',
-                    r, dev_str)
-res = read.table(sprintf('%s/%s', dir_name, file_name), header=1, sep='\t')
-res = res[res$geneSet %in% keep_me, ]
-res = res[order(res$geneSet), c('link', 'normalizedEnrichmentScore', 'pValue')]
-res$Region = r
-dev = res
-
-i = 2
-for (j in 1:ncol(df)) {
-    idx = dev$Region == rownames(df)[i] & dev$link == colnames(df)[j]
-    if (dev[idx, 'pValue'] == 0) {
-        dev[idx, 'pValue'] = 1e-4
-    }
-    df[i, j] = (sign(dev[idx, 'normalizedEnrichmentScore']) *
-                -log10(dev[idx, 'pValue']))
-    pvals[i, j] = dev[idx, 'pValue'] / ncomps
-}
-mylim = max(abs(df))
-colnames(df)[1] = 'pan-developmental'
-
-# i checked and it comes out in the correct order
-pvals2 = matrix(p.adjust(pvals, method='fdr'), ncol=6, nrow=2)
-
-quartz()
-# just to get significant ones
-corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', p.mat=pvals2,
-         insig = "label_sig", pch.col = "white",
-         sig.level=.05/ncomps, cl.length=3, cl.align.text='l', cl.offset=.2)
-
-
-# making both plots side by side
-# no stars
-quartz()
-par(mfrow=c(2, 1))
-corrplot(df_main, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
-         cl.length=3, cl.align.text='l', cl.offset=.2)
-title('Entire cohort')
-corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
-         cl.length=3, cl.align.text='l', cl.offset=.2)
-title('White non-Hispanics only')
-```
-
-![](images/2021-06-02-07-46-21.png)
-
-## Comparative DGE p-value picture
-
-```r
-library(ggplot2)
-library(ggpubr)
-quartz()
-
-orig = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
-wnh = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
-m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
-imnamed = which(m$hgnc_symbol.orig != '')
-m$gene_str = m$GENEID
-m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
-
-imgood = which(m$padj.FDR.orig < .05) 
-df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
-colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
-plot_df = reshape2::melt(df)
-colnames(plot_df)[2] = 'Groups' 
-
-plot_df$star_pos = -log10(plot_df$value) + .5
-sig_wnh = m[which(m$padj.FDR.wnh < .05), 'gene_str']
-stars.df <- plot_df[plot_df$gene_str %in% sig_wnh,
-                    c('gene_str', 'Groups', 'star_pos')]
-# keep only the cohort with higher bars
-stars.df = stars.df[stars.df$Groups == 'Entire cohort',]
-
-p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
-    geom_bar(stat="identity", position=position_dodge()) +
-    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
-          axis.title.x = element_blank()) +
-    ggtitle('ACC') + 
-    ylab(bquote(~-Log[10]~italic(P))) +
-    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
-    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black") +
-    geom_text(data = stars.df, aes(y = star_pos, fill=NA), label = "*",
-            size = 10)
-mylim = max(-log10(plot_df$value))
-
-orig = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
-wnh = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
-m = merge(orig, wnh, by='GENEID', suffix=c('.orig', '.wnh'), all.x=T, all.y=T)
-imnamed = which(m$hgnc_symbol.orig != '')
-m$gene_str = m$GENEID
-m[imnamed, 'gene_str'] = m[imnamed, 'hgnc_symbol.orig']
-
-imgood = which(m$padj.FDR.orig < .05) 
-df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
-colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
-plot_df = reshape2::melt(df)
-colnames(plot_df)[2] = 'Groups' 
-
-# nothing significant for Caudate WNH
-p2 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
-    geom_bar(stat="identity", position=position_dodge()) + ylim(c(0, mylim)) +
-    theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5),
-          axis.title.x = element_blank(),
-          axis.title.y = element_blank(),
-          plot.margin = margin(5.5, 5.5, 50, 5.5, "pt")) +
-    ggtitle('Caudate') + 
-    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
-    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
-
-ggarrange(p1, p2, common.legend = T, legend='right', nrow=1, ncol=2,
-          legend.grob=get_legend(p1), widths=c(.885, .115)) 
-```
-
 
 
 ## Molecular function comparison to WNH results
@@ -1339,115 +1333,5 @@ p1;
 ![](images/2021-06-03-11-05-05.png)
 
 
-# Specific genes of a given pathway
 
-```r
-mydir = '~/data/post_mortem/'
-fname = 'WG32_DGE_ACC_bigger_geneontology_Molecular_Function_noRedundant'
-df = read.csv(sprintf('%s/%s_10K.csv', mydir, fname))
-genes = df[df$description=='neurotransmitter receptor activity', 'userId']
-gene_list.acc = strsplit(genes, ';')[[1]]
-
-fname = 'WG32_DGE_Caudate_bigger_geneontology_Molecular_Function_noRedundant'
-df = read.csv(sprintf('%s/%s_10K.csv', mydir, fname))
-genes = df[df$description=='neurotransmitter receptor activity', 'userId']
-gene_list.caudate = strsplit(genes, ';')[[1]]
-
-gene_list = intersect(gene_list.acc, gene_list.caudate)
-
-load('~/data/post_mortem/pca_DGE_bigger_04292021.RData')
-
-r = 'ACC'
-res_str = sprintf('dds = dds.%s', r)
-eval(parse(text=res_str))
-
-library(DESeq2)
-vsd <- vst(dds, blind=FALSE)
-norm.cts <- assay(vsd)
-covars = model.matrix(~ RINe + C1 + BBB2 + comorbid_group + SUB2,
-                      data=colData(dds))
-dsn = model.matrix(~ Diagnosis, data=colData(dds))
-mat <- limma::removeBatchEffect(norm.cts, covariates=covars, design=dsn)
-
-gnames = data.frame(full=rownames(counts(dds)),
-                    nov=substr(rownames(counts(dds)), 1, 15))
-mart = readRDS('~/data/rnaseq_derek/mart_rnaseq.rds')
-gnames = merge(gnames, mart, by.x='nov', by.y='ensembl_gene_id')
-keep_me = gnames$nov %in% gene_list
-gene_ids = gnames[keep_me, ]
-
-resid_expr = reshape2::melt(mat[gene_ids$full,])
-colnames(resid_expr) = c('gene', 'submitted_name', 'normCount')
-junk = colData(vsd)[, c('Diagnosis', 'submitted_name')]
-resid_expr = merge(resid_expr, junk, by='submitted_name')
-resid_expr = merge(resid_expr, gene_ids, by.x='gene', by.y='full')
-
-# plotting each of the significant genes
-library(ggpubr)
-library(ggbeeswarm)
-myplots = list()
-clrs = c("green3", "red")
-for (g in 1:length(gene_list)) {
-    hgnc = gene_ids[g, 'hgnc_symbol']
-    if (hgnc == '' || is.na(hgnc)) {
-        hgnc = gene_ids[g, 'nov']
-    }
-    cat(gene_ids[g, 'nov'], hgnc, '\n')
-    d = as.data.frame(resid_expr[resid_expr$nov == gene_list[g],])
-    p = (ggplot(d, aes(x=Diagnosis, y=normCount, color = Diagnosis,
-                        fill = Diagnosis)) + 
-            scale_y_log10() +
-            geom_boxplot(alpha = 0.4, outlier.shape = '+', width = 0.8,
-                        lwd = 0.5, notch=T) +
-            scale_color_manual(values = clrs, labels=c('Unaffected', 'ADHD')) +
-            scale_fill_manual(values = clrs, labels=c('Unaffected', 'ADHD')) +
-            theme_bw() + theme(axis.text.x = element_blank(),
-                               axis.title.x = element_blank(),
-                               axis.ticks.x = element_blank(),
-                               axis.title.y = element_blank(),) +
-            ggtitle(hgnc))
-    myplots[[g]] = p + theme(legend.position = "none")
-}
-p = ggarrange(plotlist=myplots, common.legend=T, legend='right')
-print(p)
-```
-
-![](images/2021-06-03-12-58-44.png)
-
-
-# 2021-06-04 14:02:51
-
-## DGE overlap
-
-```r
-res = read.csv('~/data/post_mortem/DGE_ACC_bigger_annot_04292021.csv')
-res2 = read.csv('~/data/post_mortem/DGE_ACC_bigger_WNH_annot_04292021.csv')
-tmp = intersect(res[which(res$padj.FDR < .05), 'hgnc_symbol'],
-                res2[which(res2$padj.FDR < .05), 'hgnc_symbol'])
-tmp = intersect(res[which(res$padj.FDR < .1), 'hgnc_symbol'],
-                res2[which(res2$padj.FDR < .1), 'hgnc_symbol'])
-
-res = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
-res2 = read.csv('~/data/post_mortem/DGE_Caudate_bigger_WNH_annot_04292021.csv')
-tmp = intersect(res[which(res$padj.FDR < .05), 'hgnc_symbol'],
-                res2[which(res2$padj.FDR < .05), 'hgnc_symbol'])
-tmp = intersect(res[which(res$padj.FDR < .1), 'hgnc_symbol'],
-                res2[which(res2$padj.FDR < .1), 'hgnc_symbol'])
-```
-
-## ACC and caudate surface views
-
-Those were a bitch to make. I ended up using SUMA. First, convert the FSL labels
-to SUMA surfaces:
-
-```bash
-# laptop
-cd /usr/local/fsl/data/atlases;
-IsoSurface -isorois -input HarvardOxford/HarvardOxford-sub-maxprob-thr50-1mm.nii.gz -o_gii ~/tmp/auto.all;
-suma -onestate -i auto.all.k16.gii auto.all.k2.gii
-# draw ROIs by hand in SUMA and save them
-ROI2dataset -prefix acc -input acc.niml.roi 
-ROI2dataset -prefix caudate -input caudate.niml.roi
-# reload the ROIs in SUMA and use whatever color you want
-```
 
