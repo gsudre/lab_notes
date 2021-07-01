@@ -609,11 +609,177 @@ done
 # now, for the JHU tracts, the dti_FA and other property files are already in the correct space, so it's just a matter of averaging over the mask. See script in note 007 for example.
 ```
 
+Let's check which ones didn't finish qsiprep:
+
+```bash
+cd /scratch/sudregp/;
+qsiprep_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/;
+suf='space-T1w_desc-preproc_dwi';
+rm -rf qsiprep_redo.txt
+for s in `cat batch?.txt`; do
+    if [ ! -e ${qsiprep_dir}/sub-${s}/dwi/sub-${s}_${suf}.nii.gz ]; then
+        echo $s >> qsiprep_redo.txt;
+    fi;
+done
+```
+
+Only 26 did not finish. Let's erase their folders just in case and re-run with a
+bigger wall time:
+
+```bash
+# bw
+cd /scratch/sudregp
+
+main_bids=/data/NCR_SBRB/PNC_BIDS/;
+out_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/;
+bname=qsiprep_redo;
+
+rm -rf swarm.$bname; 
+for m in `cat ${bname}.txt`; do
+    rm -rf ${out_dir}/sub-${m};
+    echo "bash ~/research_code/qsiprep_wrapper.sh $m $main_bids $out_dir " >> swarm.$bname;
+done
+swarm -g 20 -t 16 --logdir trash_qsiprep --gres=lscratch:20 --time 8:00:00 \
+    -f swarm.$bname --partition norm --job-name $bname -m qsiprep/0.8.0
+```
+
+We're at a point where we can run tbss. Let's run for everyone, knowing that
+some will fail:
+
+```bash
+# bw
+cd /scratch/sudregp
+
+conda activate mrtrix3;
+out_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/;
+bname=batch5;
+
+rm -rf swarm.$bname; 
+for m in `cat ${bname}.txt`; do
+    rm -rf ${out_dir}/tbss/sub-${m};
+    echo "bash ~/research_code/tbss_pnc_wrapper.sh $m $out_dir" >> swarm.$bname;
+done
+swarm -g 8 -t 2 -b 10 --logdir trash_tbss --gres=lscratch:20 --time 20:00 \
+    -f swarm.$bname --partition quick,norm --job-name $bname -m fsl/6.0.4/fsl
+```
+
+Had to run a few subjects with 2h because they were taking forever.
+
+I then did a quick check of the DEC maps for a few random subjects, and they
+look fine. To do that, we need a V1 image, which I have not produced or saved.
+In fact, I haven't been saving the tensors either, but they calculate quite fast
+from the cleaned data. For the DEC, I followed this:
+
+https://community.mrtrix.org/t/fa-color-maps/992/4
+
+```bash
+cd /lscratch/$SLURM_JOBID
+cp -r /data/NCR_SBRB/PNC_qsiprep_outputs/sub-600009963128 .
+cd sub-600009963128/
+conda activate mrtrix3
+dwi2tensor -fslgrad sub-600009963128_space-T1w_desc-preproc_dwi.bvec \
+    sub-600009963128_space-T1w_desc-preproc_dwi.bval \
+    -nthreads $SLURM_CPUS_PER_TASK \
+    sub-600009963128_space-T1w_desc-preproc_dwi.nii.gz tensors.nii.gz
+cd dwi
+tensor2metric tensors.nii.gz -fa dti_FA.nii.gz -ad dti_AD.nii.gz \
+    -rd dti_RD.nii.gz -vector dti_V1.nii.gz -force
+mrcalc dti_V1.nii.gz -abs fac.nii.gz
+module load afni
+fat_proc_decmap -in_fa dti_FA.nii.gz -in_v1 fac.nii.gz -fa_thr .2 -prefix DEC
+# then look at the pngs in the QC folder
+```
+
+Now, we just need to calculate the JHU tracts and labels. If we want our usual
+11 tracts from DTI-TK, we'll need to run that entire pipeline in the tensors.
+It's doable, but it will take a while.
+
+I talked ot Marine and we agreed that it's best to wait and just play with JHU
+for now. Before I do that, I'll organize everything in
+/data/NCR_SBRB/PNC_qsiprep_outputs/ inside qsiprep, on the same level as tbss. I
+then started rsyncing everything back to Shaw.
+
+## Averaging JHU tracts and labels
+
+```bash
+# sinteractive
+module load afni
+module load fsl
+
+tbss_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/tbss;
+atlas=$FSLDIR/data/atlases/JHU/JHU-ICBM-tracts-maxprob-thr25-1mm.nii.gz;
+weighted_tracts=pnc_jhu_tracts.csv;
+
+# copy everything to /lscratch to make it faster (need 300Gb)
+cd /lscratch/$SLURM_JOBID/;
+cp -r $tbss_dir .;
+wrk_dir=$RANDOM;
+mkdir -p $wrk_dir; cd $wrk_dir;
+imcp $atlas ./atlas.nii.gz
+row="id";
+for t in `seq 1 20`; do
+    for m in fa ad rd; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat /scratch/sudregp/ready.txt`; do
+    row="${m}";
+    froot=../tbss/sub-$m/stats/all;
+    echo $m;
+    for t in `seq 1 20`; do
+        3dcalc -a atlas.nii.gz -expr "amongst(a, $t)" -prefix mask.nii \
+            -overwrite 2>/dev/null &&
+        fa=`3dmaskave -q -mask mask.nii ${froot}_FA.nii.gz 2>/dev/null`;
+        ad=`3dmaskave -q -mask mask.nii ${froot}_AD.nii.gz 2>/dev/null`;
+        rd=`3dmaskave -q -mask mask.nii ${froot}_RD.nii.gz 2>/dev/null`;
+        row=${row}','${fa}','${ad}','${rd};
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+And re-using the copied files from above, we can run the same thing for JHU
+labels:
+
+
+```bash
+atlas=$FSLDIR/data/atlases/JHU/JHU-ICBM-labels-1mm.nii.gz;
+weighted_tracts=pnc_jhu_labels.csv;
+
+# copy everything to /lscratch to make it faster (need 300Gb)
+cd /lscratch/$SLURM_JOBID/;
+wrk_dir=$RANDOM;
+mkdir -p $wrk_dir; cd $wrk_dir;
+imcp $atlas ./atlas.nii.gz
+row="id";
+for t in `seq 1 48`; do
+    for m in fa ad rd; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+for m in `cat /scratch/sudregp/ready.txt`; do
+    row="${m}";
+    froot=../tbss/sub-$m/stats/all;
+    echo $m;
+    for t in `seq 1 48`; do
+        3dcalc -a atlas.nii.gz -expr "amongst(a, $t)" -prefix mask.nii \
+            -overwrite 2>/dev/null &&
+        fa=`3dmaskave -q -mask mask.nii ${froot}_FA.nii.gz 2>/dev/null`;
+        ad=`3dmaskave -q -mask mask.nii ${froot}_AD.nii.gz 2>/dev/null`;
+        rd=`3dmaskave -q -mask mask.nii ${froot}_RD.nii.gz 2>/dev/null`;
+        row=${row}','${fa}','${ad}','${rd};
+    done
+    echo $row >> $weighted_tracts;
+done
+```
+
+
+
 
 # TODO
-  * write tensor fit and JHU tracts pipeline
-  * review html output of first batch
-
+  * compile QC and JHU tracts
 
 # useful links
  * https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0226715
