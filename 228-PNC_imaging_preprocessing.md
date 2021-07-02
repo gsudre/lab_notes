@@ -775,11 +775,36 @@ for m in `cat /scratch/sudregp/ready.txt`; do
 done
 ```
 
+This takes a LONG time, even grabbing from lscratch. May need to parallelize it
+for ABCD, or even for this if the interactive machine times out.
+
+## Recon
+
+I copied the 3 subjects I ran fully in qsirecon, but from now I'll only get the
+matlab file and the figures for the html report to save on size. Each directory
+is 15G, so we'd be looking at lots of Terabytes if we save everything. Testing
+the wrapper script now to make sure we copy the correct files in the end.
+
+For now, let's collect the QC variables:
+
+```bash
+qsiprep_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/qsiprep;
+out_fname=pnc_qsiprep_QC.csv;
+
+cd /scratch/sudregp/;
+s1=`head -n 1 ready.txt`;
+head -n 1 ${qsiprep_dir}/sub-${s1}/dwi/sub-${s1}_desc-ImageQC_dwi.csv > $out_fname;
+for s in `cat ready.txt`; do
+    tail -n +2 ${qsiprep_dir}/sub-${s}/dwi/sub-${s}_desc-ImageQC_dwi.csv >> $out_fname;
+done
+```
+
 
 
 
 # TODO
-  * compile QC and JHU tracts
+  * compile JHU tracts
+  * run recon
 
 # useful links
  * https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0226715

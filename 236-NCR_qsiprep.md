@@ -12,9 +12,60 @@ created after qsiprep, by removing the re-acquired volumes from the eddy output.
 Not sure how much difference this will make, or even if it's feasible, because
 it'd only work if all volumes are processed independently.
 
+It was getting a bit too complex for dcm2bids, so I'll need to do it manually:
+_
+```bash
+# ncrshell01
+net_dir=/mnt/NCR/sudregp/MR_data_by_maskid;
+for m in `cat subjs.txt`; do
+    echo $m;
+    cd /mnt/shaw/sudregp/NCR_BIDS/sub-${m};
+
+    # find name of date folders
+    ls -1 $net_dir/${m}/ | grep -e ^20 > ~/tmp/date_dirs;
+
+    # for each date folder, check for dti scans
+    mkdir -p dwi;
+    while read d; do
+        if grep -q cdiflist08 $net_dir/${m}/${d}/*README*; then
+            nruns=3;
+            tail -n +2 $net_dir/${m}/E*/cdiflist08 | split \
+                --numeric-suffixes=1 -l 20;
+        elif grep -q cdiflist09 $net_dir/${m}/${d}/*README*; then
+            nruns=4;
+            tail -n +2 $net_dir/${m}/E*/cdiflist09 | split \
+                --numeric-suffixes=1 -l 20;
+        else
+            echo "No cdi sequence for $m";
+        fi;
+        # we need to convert the runs in order
+        for s in `seq 1 $nruns`; do
+            grep cdiflist $net_dir/${m}/${d}/*README* | \
+                grep -i _g0${s} > ~/tmp/scan;
+            awk '{for(i=1;i<=NF;i++) {if ($i ~ /Series/) print $i}}' \
+                ~/tmp/scan | sed "s/Series://g" > ~/tmp/scan_clean;
+            mr_dir=`cat ~/tmp/scan_clean | sed "s/,//g"`;
+            echo "Converting ${net_dir}/${m}/${d}/${mr_dir}/";
+            dcm2niix_afni -o dwi/ -z y -f sub-${m}_run-${s}_dwi \
+                ${net_dir}/${m}/${d}/${mr_dir}/;
+            # replace bvecs by the one we split
+            1dtranspose x0${s} > dwi/sub-${m}_run-${s}_dwi.bvec;
+            # replace PhaseEncodingAxis by PhaseEncodingDirection in JSON to
+            # conform with BIDS
+            sed -i -e "s/PhaseEncodingAxis/PhaseEncodingDirection/" \
+                dwi/sub-${m}_run-${s}_dwi.json;
+        done
+        rm -f x??;
+    done < ~/tmp/date_dirs;
+done;
+```
 
 
-
+# TODO
+ * test that directions make sense
+ * add 99
+ * add new sequence check that each sequence has the correct number of volumes
+ * ignore sequences that don't have everything
 
 
 
