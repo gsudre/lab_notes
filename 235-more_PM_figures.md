@@ -11,13 +11,13 @@ seemd to enjoy them. There are a few changes that were suggested:
  * ~~Fig 4: remove IBD~~
  * ~~S2: Put the stuff in the arrows inside the box, and name first box Brain
    tissue with RNA, without N=115. Similar to how I was explaining it~~
- * Check if person with unknown race in the table is the same without genotype
+ * ~~Check if person with unknown race in the table is the same without genotype~~
  * Semantic space
    * color by cluster
    * move it to main figures
    * are there only two colors for p-values in the bottom figure?
    * make semantic labels bigger
- * S9: B: move cohort labels to the side, A: add line for FDR without stars
+ * ~~S9: B: move cohort labels to the side, A: add line for FDR without stars~~
  * Check if other disorders transcriptome cohorts were all WNH. What were they?
  * Panelize figures, similar to Nature Genetics papers, like the PTSD one
  * ~~dump fig S8~~
@@ -731,6 +731,8 @@ corrplot(df, is.corr=F, cl.lim=c(-mylim, mylim), tl.col='black', tl.cex=.8,
 ![](images/2021-06-29-11-09-02.png)
 
 
+# 2021-07-08 20:56:46
+
 ## Comparative DGE p-value picture (no stars)
 
 ```r
@@ -749,14 +751,13 @@ imgood = which(m$padj.FDR.orig < .05)
 df = m[imgood, c('gene_str', 'pvalue.orig', 'pvalue.wnh')] 
 colnames(df) = c('gene_str', 'Entire cohort', 'White non-Hispanics only')
 plot_df = reshape2::melt(df)
-colnames(plot_df)[2] = 'Groups' 
+colnames(plot_df)[2] = 'Groups'
 
-plot_df$star_pos = -log10(plot_df$value) + .5
-sig_wnh = m[which(m$padj.FDR.wnh < .05), 'gene_str']
-stars.df <- plot_df[plot_df$gene_str %in% sig_wnh,
-                    c('gene_str', 'Groups', 'star_pos')]
-# keep only the cohort with higher bars
-stars.df = stars.df[stars.df$Groups == 'Entire cohort',]
+# figure out where the cutoff for FDR should be: between 2nd and 3rd bars
+sp = sort(-log10(plot_df[plot_df$Groups == 'White non-Hispanics only',
+                         'value']),
+          decreasing = T)
+fdr_lim = sp[3] + (sp[2] - sp[3]) / 2
 
 p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
     geom_bar(stat="identity", position=position_dodge()) +
@@ -764,10 +765,8 @@ p1 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
           axis.title.x = element_blank()) +
     ggtitle('ACC') + 
     ylab(bquote(~-Log[10]~italic(P))) +
-    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
-    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black") +
-    geom_text(data = stars.df, aes(y = star_pos, fill=NA), label = "*",
-            size = 10)
+    geom_hline(yintercept=fdr_lim, linetype="dashed", color = "black") +
+    geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
 mylim = max(-log10(plot_df$value))
 
 orig = read.csv('~/data/post_mortem/DGE_Caudate_bigger_annot_04292021.csv')
@@ -791,14 +790,30 @@ p2 = ggplot(data=plot_df, aes(x=gene_str, y=-log10(value), fill=Groups)) +
           axis.title.y = element_blank(),
           plot.margin = margin(5.5, 5.5, 50, 5.5, "pt")) +
     ggtitle('Caudate') + 
-    geom_hline(yintercept=-log10(.05), linetype="dashed", color = "black") +
     geom_hline(yintercept=-log10(.01), linetype="dotted", color = "black")
 
 ggarrange(p1, p2, common.legend = T, legend='right', nrow=1, ncol=2,
           legend.grob=get_legend(p1), widths=c(.885, .115)) 
 ```
 
+![](images/2021-07-08-20-43-21.png)
 
+
+## Checking person without Ethnicity and genotype
+
+No, person who has no Race.x is 3028, but they do have C variables. Person
+without genotyping is 2842 (WNH self-described).
+
+## Race/ethnicity for other transcriptome data:
+
+* [1] Gandal et al. 2018 (microarray): many
+* [2] Gandal et al. 2018 (RNAseq): many
+* [3] Akula et al. 2020: African american and caucasians
+* [4] Benjamin et al. 2020: African american and caucasians
+* [5] Pacifico and Davis, 2017: could not find demographics?
+* [6] Piantadosi et al. 2021: could not find demographics?
+* [7] Wright et al. 2017: African american and caucasians
+* [8] Parikshak et al. 2016.: could not find demographics?
 
 
 

@@ -799,12 +799,132 @@ for s in `cat ready.txt`; do
 done
 ```
 
+# 2021-07-02 10:00:04
 
+Let's go on with the reconstruction, now that I have the script working. 
+
+```bash
+# bw
+cd /scratch/sudregp
+
+main_bids=/data/NCR_SBRB/PNC_BIDS/;
+out_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/;
+bname=batch5;
+
+rm -rf swarm.$bname; 
+for m in `cat ${bname}.txt`; do
+    echo "bash ~/research_code/qsirecon_wrapper.sh $m $main_bids $out_dir " >> swarm.$bname;
+done
+swarm -g 30 -t 16 --logdir trash_qsirecon --gres=lscratch:30 --time 18:00:00 \
+    -f swarm.$bname --partition norm --job-name $bname -m qsiprep/0.8.0
+```
+
+# 2021-07-07 10:48:01
+
+Let's redo the script to collect the JHU tracts, because it's timing out.
+
+```bash
+# sinteractive
+module load afni
+module load fsl
+
+tbss_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/tbss;
+
+
+# copy everything to /lscratch to make it faster (need 300Gb)
+cd /lscratch/$SLURM_JOBID/;
+cp -r $tbss_dir .;
+
+function write_JHU_labels() {
+    weighted_tracts=pnc_jhu_labels.csv;
+    atlas=/usr/local/apps/fsl/6.0.4/data/atlases/JHU/JHU-ICBM-labels-1mm.nii.gz;
+    wrk_dir=$RANDOM;
+    mkdir -p $wrk_dir; cd $wrk_dir;
+    imcp $atlas ./atlas.nii.gz
+    row="id";
+    for t in `seq 1 48`; do
+        for m in fa ad rd; do
+            row=${row}','${m}_${t};
+        done
+    done
+    echo $row > $weighted_tracts;
+    for m in `cat $1`; do
+        row="${m}";
+        froot=../tbss/sub-$m/stats/all;
+        echo $m;
+        for t in `seq 1 48`; do
+            3dcalc -a atlas.nii.gz -expr "amongst(a, $t)" -prefix mask.nii \
+                -overwrite 2>/dev/null &&
+            fa=`3dmaskave -q -mask mask.nii ${froot}_FA.nii.gz 2>/dev/null`;
+            ad=`3dmaskave -q -mask mask.nii ${froot}_AD.nii.gz 2>/dev/null`;
+            rd=`3dmaskave -q -mask mask.nii ${froot}_RD.nii.gz 2>/dev/null`;
+            row=${row}','${fa}','${ad}','${rd};
+        done
+        echo $row >> $weighted_tracts;
+    done
+}
+
+split -n 30 /scratch/sudregp/ready.txt;
+ls -1 -d `pwd`/x?? > myfiles.txt;
+export -f write_JHU_labels;
+cat myfiles.txt | parallel --env write_JHU_labels -j 30 --max-args=1 \
+    write_JHU_labels {};
+weighted_tracts=pnc_jhu_labels.csv;
+row="id";
+for t in `seq 1 48`; do
+    for m in fa ad rd; do
+        row=${row}','${m}_${t};
+    done
+done
+echo $row > $weighted_tracts;
+cat ?????/pnc_jhu_labels.csv ????/pnc_jhu_labels.csv | grep \
+    -v fa >> $weighted_tracts
+```
+
+There were some racing conditions that screwed up a few IDs. I noticed that
+because the number of lines didn't align with the ready file, and also it looked
+funky in Excel. So, let's re-run just those IDs.
+
+
+Let's also check that everyone that's ready got their connectivity matrices
+computed:
+
+```bash
+cd /scratch/sudregp/;
+qsiprep_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/qsirecon/;
+suf='space-T1w_desc-preproc_space-T1w_dhollanderconnectome';
+rm -rf qsirecon_redo.txt;
+for s in `cat ready.txt`; do
+    if [ ! -e ${qsiprep_dir}/sub-${s}/sub-${s}_${suf}.mat ]; then
+        echo $s >> qsirecon_redo.txt;
+    fi;
+done
+```
+
+We're missing 43 out of 1376. Let's see if we can find out what happened to
+them.
+
+```bash
+# bw
+cd /scratch/sudregp
+
+main_bids=/data/NCR_SBRB/PNC_BIDS/;
+out_dir=/data/NCR_SBRB/PNC_qsiprep_outputs/;
+bname=qsirecon_redo;
+
+rm -rf swarm.$bname; 
+for m in `cat ${bname}.txt`; do
+    echo "bash ~/research_code/qsirecon_wrapper.sh $m $main_bids $out_dir " >> swarm.$bname;
+done
+swarm -g 30 -t 16 --logdir trash_qsirecon --gres=lscratch:30 --time 18:00:00 \
+    -f swarm.$bname --partition norm --job-name $bname -m qsiprep/0.8.0
+```
+
+We seem to have everyone now. Let's copy them back.
 
 
 # TODO
-  * compile JHU tracts
-  * run recon
+
 
 # useful links
  * https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0226715

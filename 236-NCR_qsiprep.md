@@ -48,8 +48,41 @@ for m in `cat subjs.txt`; do
             echo "Converting ${net_dir}/${m}/${d}/${mr_dir}/";
             dcm2niix_afni -o dwi/ -z y -f sub-${m}_run-${s}_dwi \
                 ${net_dir}/${m}/${d}/${mr_dir}/;
-            # replace bvecs by the one we split
-            1dtranspose x0${s} > dwi/sub-${m}_run-${s}_dwi.bvec;
+            # replace gradients with scaled versions
+            cp dwi/sub-${m}_run-${s}_dwi.bval \
+                dwi/sub-${m}_run-${s}_dwi.bval.orig;
+            cp dwi/sub-${m}_run-${s}_dwi.bvec \
+                dwi/sub-${m}_run-${s}_dwi.bvec.orig;
+            cp dwi/sub-${m}_run-${s}_dwi.nii.gz \
+                dwi/sub-${m}_run-${s}_dwi.nii.gz.orig;
+            
+            cd dwi;
+            1dDW_Grad_o_Mat++           \
+                -in_col_vec        ../x0${s}          \
+                -out_row_vec       x0${s}_rowvec
+            # disable reorient because qsiprep couldn't merge it
+            fat_proc_convert_dcm_dwis \
+                -innii sub-${m}_run-${s}_dwi.nii.gz \
+                -inbval sub-${m}_run-${s}_dwi.bval.orig \
+                -inbvec x0${s}_rowvec -prefix sub-${m}_run-${s}_dwi \
+                -flip_z -no_qc_view -reorig_reorient_off;
+            cp sub-${m}_run-${s}_dwi_bval.dat sub-${m}_run-${s}_dwi.bval;
+            cp sub-${m}_run-${s}_dwi_rvec.dat sub-${m}_run-${s}_dwi.bvec;
+            # cleaning up
+            shopt -s extglob;
+            rm -v !(*.bvec|*.bval|*.nii.gz|*.json);
+            shopt -u extglob;
+            cd ..;
+
+            # # convert gradients to the correct magnitude and format
+            # 1dDW_Grad_o_Mat++           \
+            #     -in_col_vec        x0${s}          \
+            #     -in_bvals          dwi/sub-${m}_run-${s}_dwi.bval.orig  \
+            #     -out_row_vec       dwi/sub-${m}_run-${s}_dwi.bvec       \
+            #     -out_row_bval_sep  dwi/sub-${m}_run-${s}_dwi.bval        \
+            #     -unit_mag_out -flip_z
+
+
             # replace PhaseEncodingAxis by PhaseEncodingDirection in JSON to
             # conform with BIDS
             sed -i -e "s/PhaseEncodingAxis/PhaseEncodingDirection/" \
@@ -61,8 +94,14 @@ done;
 ```
 
 
+
+
+
 # TODO
- * test that directions make sense
+ * use checkFlip script on PNC dataset!
+ * this didn't work again... any luck importing with mrtrix? Worst case scenario
+   we use TORTOISE for importing...
+ * test that directions make sense (/scratch/sudregp/ncr_qsiprep)
  * add 99
  * add new sequence check that each sequence has the correct number of volumes
  * ignore sequences that don't have everything
