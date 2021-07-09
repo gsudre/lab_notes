@@ -13,12 +13,12 @@ seemd to enjoy them. There are a few changes that were suggested:
    tissue with RNA, without N=115. Similar to how I was explaining it~~
  * ~~Check if person with unknown race in the table is the same without genotype~~
  * Semantic space
-   * color by cluster
-   * move it to main figures
+   * ~~color by cluster~~
+   * ~~move it to main figures~~
    * are there only two colors for p-values in the bottom figure?
-   * make semantic labels bigger
+   * ~~make semantic labels bigger~~
  * ~~S9: B: move cohort labels to the side, A: add line for FDR without stars~~
- * Check if other disorders transcriptome cohorts were all WNH. What were they?
+ * ~~Check if other disorders transcriptome cohorts were all WNH. What were they?~~
  * Panelize figures, similar to Nature Genetics papers, like the PTSD one
  * ~~dump fig S8~~
 
@@ -816,6 +816,105 @@ without genotyping is 2842 (WNH self-described).
 * [8] Parikshak et al. 2016.: could not find demographics?
 
 
+# 2021-07-09 09:45:40
+
+## Semantic space plot
+
+```r
+library( ggplot2 );
+library( scales );
+quartz()
+
+revigo.names <- c("term_ID","description","frequency_%","plot_X","plot_Y","plot_size","value","uniqueness","dispensability");
+# removing obsolete tag as it was not present in the sets I used in WebGestalt
+revigo.data <- rbind(c("GO:0033267","axon part",0.466,-6.389,0.040,1.924,-3.244,1.000,0.000),
+c("GO:0044455","mitochondrial membrane part",0.466,-4.226,-0.635,1.924,-2.253,1.000,0.000),
+c("GO:0099572","postsynaptic specialization",1.884,-3.413,5.719,2.550,-300.000,0.748,0.000),
+c("GO:1990351","transporter complex",1.782,4.485,4.112,2.526,-3.332,0.821,0.000),
+c("GO:0043209","myelin sheath",0.250,-3.880,-4.594,1.681,-1.770,0.998,0.002),
+c("GO:0070469","respirasome",0.532,4.381,-4.765,2.004,-2.322,0.940,0.002),
+c("GO:0030427","site of polarized growth",0.968,-6.699,1.600,2.262,-2.377,0.997,0.002),
+c("GO:0044309","neuron spine",0.979,0.316,-5.769,2.267,-4.664,0.922,0.002),
+c("GO:0031252","cell leading edge",2.219,-6.021,-1.772,2.621,-1.325,0.997,0.002),
+c("GO:0036019","endolysosome",0.133,-4.881,-3.158,1.415,-1.322,0.975,0.058),
+c("GO:0048475","coated membrane",0.500,5.901,-4.097,1.978,-1.865,0.940,0.126),
+c("GO:0019898","extrinsic component of membrane",1.623,3.818,-3.506,2.486,-1.384,0.934,0.142),
+c("GO:0070069","cytochrome complex",0.186,4.068,6.122,1.556,-1.651,0.852,0.243),
+c("GO:1903293","phosphatase complex",0.261,6.089,4.127,1.699,-2.650,0.804,0.251),
+c("GO:0016469","proton-transporting two-sector ATPase complex",0.277,5.053,1.366,1.724,-2.399,0.779,0.252),
+c("GO:0030684","preribosome",0.415,5.532,5.204,1.898,-1.938,0.823,0.263),
+c("GO:0120114","Sm-like protein family complex",0.420,4.744,5.632,1.903,-1.564,0.842,0.264),
+c("GO:1904949","ATPase complex",0.580,4.042,4.840,2.041,-1.552,0.838,0.273),
+c("GO:0098798","mitochondrial protein-containing complex",1.405,6.289,1.703,2.423,-2.804,0.783,0.302),
+c("GO:0042611","MHC protein complex",0.144,3.736,1.884,1.447,-1.780,0.781,0.427),
+c("GO:1905360","GTPase complex",0.181,6.433,3.751,1.544,-1.447,0.809,0.429),
+c("GO:0031201","SNARE complex",0.266,4.660,1.588,1.708,-1.369,0.776,0.449),
+c("GO:0031514","motile cilium",1.096,-0.027,-5.868,2.316,-2.069,0.912,0.469),
+c("GO:1990204","oxidoreductase complex",0.596,5.677,3.594,2.053,-1.948,0.791,0.476),
+c("GO:0030964","NADH dehydrogenase complex",0.266,5.070,2.343,1.708,-1.375,0.737,0.477),
+c("GO:0043198","dendritic shaft",0.186,-0.526,-5.160,1.556,-2.560,0.900,0.481),
+c("GO:1905368","peptidase complex",0.500,5.584,3.956,1.978,-1.495,0.794,0.505),
+c("GO:0060076","excitatory synapse",0.245,-2.806,6.577,1.672,-1.313,0.802,0.529),
+c("GO:0044306","neuron projection terminus",0.745,0.598,-5.843,2.149,-2.599,0.923,0.551),
+c("GO:0098982","GABA-ergic synapse",0.372,-3.717,5.377,1.851,-2.661,0.795,0.552),
+c("GO:0031594","neuromuscular junction",0.383,-3.146,6.493,1.863,-2.184,0.795,0.554),
+c("GO:0098685","Schaffer collateral - CA1 synapse",0.415,-3.813,5.729,1.898,-3.663,0.793,0.559),
+c("GO:0005743","mitochondrial inner membrane",2.628,5.561,-2.609,2.695,-1.318,0.883,0.616),
+c("GO:0043025","neuronal cell body",2.660,-1.574,-3.113,2.700,-2.234,0.931,0.624),
+c("GO:0005681","spliceosomal complex",1.016,6.416,2.906,2.283,-1.561,0.793,0.661),
+c("GO:0098978","glutamatergic synapse",1.804,-3.165,5.892,2.531,-300.000,0.764,0.661),
+c("GO:0098984","neuron to neuron synapse",1.921,-3.489,6.072,2.559,-300.000,0.763,0.667),
+c("GO:0097060","synaptic membrane",2.038,-2.239,4.480,2.584,-300.000,0.697,0.673),
+c("GO:0044298","cell body membrane",0.165,-0.647,-1.603,1.505,-1.598,0.903,0.696),
+c("GO:0098793","presynapse",2.692,-3.186,6.136,2.705,-2.652,0.755,0.703));
+
+one.data <- data.frame(revigo.data);
+names(one.data) <- revigo.names;
+one.data <- one.data [(one.data$plot_X != "null" & one.data$plot_Y != "null"), ];
+one.data$plot_X <- as.numeric( as.character(one.data$plot_X) );
+one.data$plot_Y <- as.numeric( as.character(one.data$plot_Y) );
+one.data$plot_size <- as.numeric( as.character(one.data$plot_size) );
+# data$value is already log10(pvalue)!
+one.data$value <- -as.numeric( as.character(one.data$value) );
+one.data$frequency <- as.numeric( as.character(one.data$frequency) );
+one.data$uniqueness <- as.numeric( as.character(one.data$uniqueness) );
+one.data$dispensability <- as.numeric( as.character(one.data$dispensability) );
+
+#p-value for 0 shouldn't be -300
+one.data$value[one.data$value == 300] = -log10(1e-4)
+res = kmeans(one.data[, c('plot_X', 'plot_Y')], centers=5, algorithm='Forgy') 
+one.data$cluster = factor(res$cluster)
+p1 <- ggplot( data = one.data );
+p1 <- p1 + geom_point( aes( plot_X, plot_Y, colour=cluster, size = plot_size), alpha = I(0.6), show.legend=F) + scale_size_area();
+# p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$value), max(one.data$value)));
+p1 <- p1 + scale_colour_discrete()
+p1 <- p1 + geom_point( aes(plot_X, plot_Y, size = plot_size), shape = 21, fill = "transparent", colour = I (alpha ("black", 0.6) )) + scale_size_area();
+p1 <- p1 + scale_size( range=c(5, 30)) + theme_bw(); # + scale_fill_gradientn(colours = heat_hcl(7), limits = c(-300, 0) );
+ex <- one.data [ one.data$dispensability < 0.15, ];
+p1 <- p1 + geom_label( data = ex, aes(plot_X, plot_Y, label = description),
+                      colour = I(alpha("black", 1)), size = 4 , fill='white');
+p1 <- p1 + labs (y = "semantic space x", x = "semantic space y");
+p1 <- p1 + theme(legend.key = element_blank(),
+                 axis.text.x = element_text(size=10),
+                 axis.text.y = element_text(size=10),
+                 axis.title.x = element_text(size=12),
+                 axis.title.y = element_text(size=12)) ;
+one.x_range = max(one.data$plot_X) - min(one.data$plot_X);
+one.y_range = max(one.data$plot_Y) - min(one.data$plot_Y);
+p1 <- p1 + xlim(min(one.data$plot_X)-one.x_range/10,max(one.data$plot_X)+one.x_range/10);
+p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10) + labs(size = bquote(~-Log[10]~italic(P)),
+                   colour=bquote(~-Log[10]~italic(P)))
+
+p1;
+```
+
+![](images/2021-07-09-10-24-37.png)
+
+
+
+
+
+
 
 
 
@@ -1148,205 +1247,6 @@ ggarrange(p2, p1, common.legend=T, ncol=2, nrow=1, legend='bottom')
 ```
 
 ![](images/2021-06-03-07-09-52.png)
-
-# 2021-06-03 06:16:12
-
-## Semantic space plot
-
-Here are the configurations I used for REVIGO using the Cellular Component
-Caudate results:
-
-![](images/2021-06-03-06-18-14.png)
-
-That generated the following figures plus R code:
-
-```r
-# A plotting R script produced by the REVIGO server at http://revigo.irb.hr/
-# If you found REVIGO useful in your work, please cite the following reference:
-# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
-# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
-
-# --------------------------------------------------------------------------
-# If you don't have the ggplot2 package installed, uncomment the following line:
-# install.packages( "ggplot2" );
-library( ggplot2 );
-
-# --------------------------------------------------------------------------
-# If you don't have the scales package installed, uncomment the following line:
-# install.packages( "scales" );
-library( scales );
-
-# --------------------------------------------------------------------------
-# Here is your data from REVIGO. Scroll down for plot configuration options.
-
-revigo.names <- c("term_ID","description","frequency_%","plot_X","plot_Y","plot_size","value","uniqueness","dispensability");
-revigo.data <- rbind(c("GO:0033267","(obsolete) axon part",0.466,-6.389,0.040,1.924,-3.244,1.000,0.000),
-c("GO:0044455","(obsolete) mitochondrial membrane part",0.466,-4.226,-0.635,1.924,-2.253,1.000,0.000),
-c("GO:0099572","postsynaptic specialization",1.884,-3.413,5.719,2.550,-300.000,0.748,0.000),
-c("GO:1990351","transporter complex",1.782,4.485,4.112,2.526,-3.332,0.821,0.000),
-c("GO:0043209","myelin sheath",0.250,-3.880,-4.594,1.681,-1.770,0.998,0.002),
-c("GO:0070469","respirasome",0.532,4.381,-4.765,2.004,-2.322,0.940,0.002),
-c("GO:0030427","site of polarized growth",0.968,-6.699,1.600,2.262,-2.377,0.997,0.002),
-c("GO:0044309","neuron spine",0.979,0.316,-5.769,2.267,-4.664,0.922,0.002),
-c("GO:0031252","cell leading edge",2.219,-6.021,-1.772,2.621,-1.325,0.997,0.002),
-c("GO:0036019","endolysosome",0.133,-4.881,-3.158,1.415,-1.322,0.975,0.058),
-c("GO:0048475","coated membrane",0.500,5.901,-4.097,1.978,-1.865,0.940,0.126),
-c("GO:0019898","extrinsic component of membrane",1.623,3.818,-3.506,2.486,-1.384,0.934,0.142),
-c("GO:0070069","cytochrome complex",0.186,4.068,6.122,1.556,-1.651,0.852,0.243),
-c("GO:1903293","phosphatase complex",0.261,6.089,4.127,1.699,-2.650,0.804,0.251),
-c("GO:0016469","proton-transporting two-sector ATPase complex",0.277,5.053,1.366,1.724,-2.399,0.779,0.252),
-c("GO:0030684","preribosome",0.415,5.532,5.204,1.898,-1.938,0.823,0.263),
-c("GO:0120114","Sm-like protein family complex",0.420,4.744,5.632,1.903,-1.564,0.842,0.264),
-c("GO:1904949","ATPase complex",0.580,4.042,4.840,2.041,-1.552,0.838,0.273),
-c("GO:0098798","mitochondrial protein-containing complex",1.405,6.289,1.703,2.423,-2.804,0.783,0.302),
-c("GO:0042611","MHC protein complex",0.144,3.736,1.884,1.447,-1.780,0.781,0.427),
-c("GO:1905360","GTPase complex",0.181,6.433,3.751,1.544,-1.447,0.809,0.429),
-c("GO:0031201","SNARE complex",0.266,4.660,1.588,1.708,-1.369,0.776,0.449),
-c("GO:0031514","motile cilium",1.096,-0.027,-5.868,2.316,-2.069,0.912,0.469),
-c("GO:1990204","oxidoreductase complex",0.596,5.677,3.594,2.053,-1.948,0.791,0.476),
-c("GO:0030964","NADH dehydrogenase complex",0.266,5.070,2.343,1.708,-1.375,0.737,0.477),
-c("GO:0043198","dendritic shaft",0.186,-0.526,-5.160,1.556,-2.560,0.900,0.481),
-c("GO:1905368","peptidase complex",0.500,5.584,3.956,1.978,-1.495,0.794,0.505),
-c("GO:0060076","excitatory synapse",0.245,-2.806,6.577,1.672,-1.313,0.802,0.529),
-c("GO:0044306","neuron projection terminus",0.745,0.598,-5.843,2.149,-2.599,0.923,0.551),
-c("GO:0098982","GABA-ergic synapse",0.372,-3.717,5.377,1.851,-2.661,0.795,0.552),
-c("GO:0031594","neuromuscular junction",0.383,-3.146,6.493,1.863,-2.184,0.795,0.554),
-c("GO:0098685","Schaffer collateral - CA1 synapse",0.415,-3.813,5.729,1.898,-3.663,0.793,0.559),
-c("GO:0005743","mitochondrial inner membrane",2.628,5.561,-2.609,2.695,-1.318,0.883,0.616),
-c("GO:0043025","neuronal cell body",2.660,-1.574,-3.113,2.700,-2.234,0.931,0.624),
-c("GO:0005681","spliceosomal complex",1.016,6.416,2.906,2.283,-1.561,0.793,0.661),
-c("GO:0098978","glutamatergic synapse",1.804,-3.165,5.892,2.531,-300.000,0.764,0.661),
-c("GO:0098984","neuron to neuron synapse",1.921,-3.489,6.072,2.559,-300.000,0.763,0.667),
-c("GO:0097060","synaptic membrane",2.038,-2.239,4.480,2.584,-300.000,0.697,0.673),
-c("GO:0044298","cell body membrane",0.165,-0.647,-1.603,1.505,-1.598,0.903,0.696),
-c("GO:0098793","presynapse",2.692,-3.186,6.136,2.705,-2.652,0.755,0.703));
-
-one.data <- data.frame(revigo.data);
-names(one.data) <- revigo.names;
-one.data <- one.data [(one.data$plot_X != "null" & one.data$plot_Y != "null"), ];
-one.data$plot_X <- as.numeric( as.character(one.data$plot_X) );
-one.data$plot_Y <- as.numeric( as.character(one.data$plot_Y) );
-one.data$plot_size <- as.numeric( as.character(one.data$plot_size) );
-one.data$value <- as.numeric( as.character(one.data$value) );
-one.data$frequency <- as.numeric( as.character(one.data$frequency) );
-one.data$uniqueness <- as.numeric( as.character(one.data$uniqueness) );
-one.data$dispensability <- as.numeric( as.character(one.data$dispensability) );
-#head(one.data);
-
-
-# --------------------------------------------------------------------------
-# Names of the axes, sizes of the numbers and letters, names of the columns,
-# etc. can be changed below
-
-p1 <- ggplot( data = one.data );
-p1 <- p1 + geom_point( aes( plot_X, plot_Y, colour = value, size = plot_size), alpha = I(0.6) ) + scale_size_area();
-p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$value), 0) );
-p1 <- p1 + geom_point( aes(plot_X, plot_Y, size = plot_size), shape = 21, fill = "transparent", colour = I (alpha ("black", 0.6) )) + scale_size_area();
-p1 <- p1 + scale_size( range=c(5, 30)) + theme_bw(); # + scale_fill_gradientn(colours = heat_hcl(7), limits = c(-300, 0) );
-ex <- one.data [ one.data$dispensability < 0.15, ];
-p1 <- p1 + geom_text( data = ex, aes(plot_X, plot_Y, label = description), colour = I(alpha("black", 0.85)), size = 3 );
-p1 <- p1 + labs (y = "semantic space x", x = "semantic space y");
-p1 <- p1 + theme(legend.key = element_blank()) ;
-one.x_range = max(one.data$plot_X) - min(one.data$plot_X);
-one.y_range = max(one.data$plot_Y) - min(one.data$plot_Y);
-p1 <- p1 + xlim(min(one.data$plot_X)-one.x_range/10,max(one.data$plot_X)+one.x_range/10);
-p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10);
-
-
-# --------------------------------------------------------------------------
-# Output the plot to screen
-
-p1;
-
-# Uncomment the line below to also save the plot to a file.
-# The file type depends on the extension (default=pdf).
-
-# ggsave("/path_to_your_file/revigo-plot.pdf");
-```
-
-So, let's modify that a bit:
-
-```r
-library( ggplot2 );
-library( scales );
-
-revigo.names <- c("term_ID","description","frequency_%","plot_X","plot_Y","plot_size","value","uniqueness","dispensability");
-# removing obsolete tag as it was not present in the sets I used in WebGestalt
-revigo.data <- rbind(c("GO:0033267","axon part",0.466,-6.389,0.040,1.924,-3.244,1.000,0.000),
-c("GO:0044455","mitochondrial membrane part",0.466,-4.226,-0.635,1.924,-2.253,1.000,0.000),
-c("GO:0099572","postsynaptic specialization",1.884,-3.413,5.719,2.550,-300.000,0.748,0.000),
-c("GO:1990351","transporter complex",1.782,4.485,4.112,2.526,-3.332,0.821,0.000),
-c("GO:0043209","myelin sheath",0.250,-3.880,-4.594,1.681,-1.770,0.998,0.002),
-c("GO:0070469","respirasome",0.532,4.381,-4.765,2.004,-2.322,0.940,0.002),
-c("GO:0030427","site of polarized growth",0.968,-6.699,1.600,2.262,-2.377,0.997,0.002),
-c("GO:0044309","neuron spine",0.979,0.316,-5.769,2.267,-4.664,0.922,0.002),
-c("GO:0031252","cell leading edge",2.219,-6.021,-1.772,2.621,-1.325,0.997,0.002),
-c("GO:0036019","endolysosome",0.133,-4.881,-3.158,1.415,-1.322,0.975,0.058),
-c("GO:0048475","coated membrane",0.500,5.901,-4.097,1.978,-1.865,0.940,0.126),
-c("GO:0019898","extrinsic component of membrane",1.623,3.818,-3.506,2.486,-1.384,0.934,0.142),
-c("GO:0070069","cytochrome complex",0.186,4.068,6.122,1.556,-1.651,0.852,0.243),
-c("GO:1903293","phosphatase complex",0.261,6.089,4.127,1.699,-2.650,0.804,0.251),
-c("GO:0016469","proton-transporting two-sector ATPase complex",0.277,5.053,1.366,1.724,-2.399,0.779,0.252),
-c("GO:0030684","preribosome",0.415,5.532,5.204,1.898,-1.938,0.823,0.263),
-c("GO:0120114","Sm-like protein family complex",0.420,4.744,5.632,1.903,-1.564,0.842,0.264),
-c("GO:1904949","ATPase complex",0.580,4.042,4.840,2.041,-1.552,0.838,0.273),
-c("GO:0098798","mitochondrial protein-containing complex",1.405,6.289,1.703,2.423,-2.804,0.783,0.302),
-c("GO:0042611","MHC protein complex",0.144,3.736,1.884,1.447,-1.780,0.781,0.427),
-c("GO:1905360","GTPase complex",0.181,6.433,3.751,1.544,-1.447,0.809,0.429),
-c("GO:0031201","SNARE complex",0.266,4.660,1.588,1.708,-1.369,0.776,0.449),
-c("GO:0031514","motile cilium",1.096,-0.027,-5.868,2.316,-2.069,0.912,0.469),
-c("GO:1990204","oxidoreductase complex",0.596,5.677,3.594,2.053,-1.948,0.791,0.476),
-c("GO:0030964","NADH dehydrogenase complex",0.266,5.070,2.343,1.708,-1.375,0.737,0.477),
-c("GO:0043198","dendritic shaft",0.186,-0.526,-5.160,1.556,-2.560,0.900,0.481),
-c("GO:1905368","peptidase complex",0.500,5.584,3.956,1.978,-1.495,0.794,0.505),
-c("GO:0060076","excitatory synapse",0.245,-2.806,6.577,1.672,-1.313,0.802,0.529),
-c("GO:0044306","neuron projection terminus",0.745,0.598,-5.843,2.149,-2.599,0.923,0.551),
-c("GO:0098982","GABA-ergic synapse",0.372,-3.717,5.377,1.851,-2.661,0.795,0.552),
-c("GO:0031594","neuromuscular junction",0.383,-3.146,6.493,1.863,-2.184,0.795,0.554),
-c("GO:0098685","Schaffer collateral - CA1 synapse",0.415,-3.813,5.729,1.898,-3.663,0.793,0.559),
-c("GO:0005743","mitochondrial inner membrane",2.628,5.561,-2.609,2.695,-1.318,0.883,0.616),
-c("GO:0043025","neuronal cell body",2.660,-1.574,-3.113,2.700,-2.234,0.931,0.624),
-c("GO:0005681","spliceosomal complex",1.016,6.416,2.906,2.283,-1.561,0.793,0.661),
-c("GO:0098978","glutamatergic synapse",1.804,-3.165,5.892,2.531,-300.000,0.764,0.661),
-c("GO:0098984","neuron to neuron synapse",1.921,-3.489,6.072,2.559,-300.000,0.763,0.667),
-c("GO:0097060","synaptic membrane",2.038,-2.239,4.480,2.584,-300.000,0.697,0.673),
-c("GO:0044298","cell body membrane",0.165,-0.647,-1.603,1.505,-1.598,0.903,0.696),
-c("GO:0098793","presynapse",2.692,-3.186,6.136,2.705,-2.652,0.755,0.703));
-
-one.data <- data.frame(revigo.data);
-names(one.data) <- revigo.names;
-one.data <- one.data [(one.data$plot_X != "null" & one.data$plot_Y != "null"), ];
-one.data$plot_X <- as.numeric( as.character(one.data$plot_X) );
-one.data$plot_Y <- as.numeric( as.character(one.data$plot_Y) );
-one.data$plot_size <- as.numeric( as.character(one.data$plot_size) );
-# data$value is already log10(pvalue)!
-one.data$value <- -as.numeric( as.character(one.data$value) );
-one.data$frequency <- as.numeric( as.character(one.data$frequency) );
-one.data$uniqueness <- as.numeric( as.character(one.data$uniqueness) );
-one.data$dispensability <- as.numeric( as.character(one.data$dispensability) );
-
-#p-value for 0 shouldn't be -300
-one.data$value[one.data$value == 300] = -log10(1e-4)
-p1 <- ggplot( data = one.data );
-p1 <- p1 + geom_point( aes( plot_X, plot_Y, colour = value, size = plot_size), alpha = I(0.6) ) + scale_size_area();
-p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$value), max(one.data$value)));
-p1 <- p1 + geom_point( aes(plot_X, plot_Y, size = plot_size), shape = 21, fill = "transparent", colour = I (alpha ("black", 0.6) )) + scale_size_area();
-p1 <- p1 + scale_size( range=c(5, 30)) + theme_bw(); # + scale_fill_gradientn(colours = heat_hcl(7), limits = c(-300, 0) );
-ex <- one.data [ one.data$dispensability < 0.15, ];
-p1 <- p1 + geom_label( data = ex, aes(plot_X, plot_Y, label = description), colour = I(alpha("black", 1)), size = 3 , fill='white');
-p1 <- p1 + labs (y = "semantic space x", x = "semantic space y");
-p1 <- p1 + theme(legend.key = element_blank()) ;
-one.x_range = max(one.data$plot_X) - min(one.data$plot_X);
-one.y_range = max(one.data$plot_Y) - min(one.data$plot_Y);
-p1 <- p1 + xlim(min(one.data$plot_X)-one.x_range/10,max(one.data$plot_X)+one.x_range/10);
-p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10) + labs(size = bquote(~-Log[10]~italic(P)),
-                   colour=bquote(~-Log[10]~italic(P)))
-
-p1;
-```
-
-![](images/2021-06-03-11-05-05.png)
-
 
 
 
