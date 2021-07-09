@@ -59,5 +59,3 @@ I'll wait until they post the ages for all scans in RawDataBIDSLatest. I sent
 them an e-mail with a request for it... worst case scenario I could go with the
 ones above, but I'd be missing a dozen or so scans.
 
-# 2021-01-04 19:46:12
-
