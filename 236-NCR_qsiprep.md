@@ -56,15 +56,15 @@ for m in `cat subjs.txt`; do
             cp dwi/sub-${m}_run-${s}_dwi.nii.gz \
                 dwi/sub-${m}_run-${s}_dwi.nii.gz.orig;
             
-            cd dwi;
             1dDW_Grad_o_Mat++           \
-                -in_col_vec        ../x0${s}          \
+                -in_col_vec        x0${s}          \
                 -out_row_vec       x0${s}_rowvec
+            cd dwi;
             # disable reorient because qsiprep couldn't merge it
             fat_proc_convert_dcm_dwis \
                 -innii sub-${m}_run-${s}_dwi.nii.gz \
                 -inbval sub-${m}_run-${s}_dwi.bval.orig \
-                -inbvec x0${s}_rowvec -prefix sub-${m}_run-${s}_dwi \
+                -inbvec ../x0${s}_rowvec -prefix sub-${m}_run-${s}_dwi \
                 -flip_z -no_qc_view -reorig_reorient_off;
             cp sub-${m}_run-${s}_dwi_bval.dat sub-${m}_run-${s}_dwi.bval;
             cp sub-${m}_run-${s}_dwi_rvec.dat sub-${m}_run-${s}_dwi.bvec;
